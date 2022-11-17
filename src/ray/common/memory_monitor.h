@@ -29,6 +29,9 @@ struct MemorySnapshot {
   /// The total memory that can be used. >= used_bytes;
   int64_t total_bytes;
 
+  /// The per-process memory used;
+  absl::flat_hash_map<pid_t, int64_t> process_used_bytes;
+
   friend std::ostream &operator<<(std::ostream &os,
                                   const MemorySnapshot &memory_snapshot);
 };
@@ -66,19 +69,22 @@ class MemoryMonitor {
                 MemoryUsageRefreshCallback monitor_callback);
 
  public:
-  /// \param pid the process id
-  /// \param proc_dir the process directory
-  ///
-  /// \return the used memory in bytes for the process,
-  /// kNull if the file doesn't exist or it fails to find the fields
-  static int64_t GetProcessMemoryBytes(pid_t pid, const std::string proc_dir = kProcDirectory);
-
   /// \param top_n the number of top memory-using processes
+  /// \param system_memory the snapshot of memory usage
   /// \param proc_dir the directory to scan for the processes
   ///
   /// \return the debug string that contains up to the top N memory-using processes,
   /// empty if process directory is invalid
-  static const std::string TopNMemoryDebugString(uint32_t top_n, const std::string proc_dir = kProcDirectory);
+  static const std::string TopNMemoryDebugString(
+      uint32_t top_n,
+      const MemorySnapshot system_memory,
+      const std::string proc_dir = kProcDirectory);
+
+  /// \param proc_dir the directory to scan for the processes
+  ///
+  /// \return the pid to memory usage map for all the processes
+  static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
+      const std::string proc_dir = kProcDirectory);
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
@@ -133,26 +139,24 @@ class MemoryMonitor {
   ///
   /// \return list of process ids found in the directory,
   /// or empty list if the directory doesn't exist
-  static const std::vector<pid_t> GetPidsFromDir(const std::string proc_dir = kProcDirectory);
+  static const std::vector<pid_t> GetPidsFromDir(
+      const std::string proc_dir = kProcDirectory);
 
   /// \param pid the process id
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return the command line for the executing process,
   /// or empty string if the processs doesn't exist
-  static const std::string GetCommandLineForPid(pid_t pid, const std::string proc_dir = kProcDirectory);
+  static const std::string GetCommandLineForPid(
+      pid_t pid, const std::string proc_dir = kProcDirectory);
 
+  /// Truncates string if it is too long and append '...'
+  ///
   /// \param value the string to truncate
   /// \param max_length the max length of the string value to preserve
   ///
   /// \return the debug string that contains the top N memory using process
   static const std::string TruncateString(const std::string value, uint32_t max_length);
-
-  /// \param top_n the number of top memory-using processes
-  /// \param proc_dir the directory to scan for the processes
-  ///
-  /// \return the top N processes sorted by memory-usage descending, or empty if process directory is invalid
-  static const std::vector<std::tuple<pid_t, int64_t>> TopNMemoryProcesses(uint32_t top_n, const std::string proc_dir = kProcDirectory);
 
   /// \return the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
@@ -171,6 +175,21 @@ class MemoryMonitor {
   static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes);
+
+  /// \param pid the process id
+  /// \param proc_dir the process directory
+  ///
+  /// \return the used memory in bytes for the process,
+  /// kNull if the file doesn't exist or it fails to find the fields
+  static int64_t GetProcessMemoryBytes(pid_t pid,
+                                       const std::string proc_dir = kProcDirectory);
+
+  /// \param top_n the number of top memory-using processes
+  /// \param all_usage process to memory usage map
+  ///
+  /// \return the top N memory-using processes
+  static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
+      uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage);
 
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);

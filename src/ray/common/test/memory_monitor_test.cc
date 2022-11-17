@@ -15,6 +15,7 @@
 #include "ray/common/memory_monitor.h"
 
 #include <sys/sysinfo.h>
+
 #include <boost/filesystem.hpp>
 #include <filesystem>
 #include <fstream>
@@ -41,7 +42,9 @@ class MemoryMonitorTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_;
   instrumented_io_context io_context_;
 
-  void MakeMemoryUsage(pid_t pid, const std::string usage_kb, const std::string proc_dir) {
+  void MakeMemoryUsage(pid_t pid,
+                       const std::string usage_kb,
+                       const std::string proc_dir) {
     boost::filesystem::create_directory(proc_dir);
     boost::filesystem::create_directory(proc_dir + "/" + std::to_string(pid));
 
@@ -425,7 +428,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
   cmdline_file << "/my/very/custom/command --test passes!     ";
   cmdline_file.close();
 
-  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
+  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
 
   boost::filesystem::remove_all(proc_dir);
 
@@ -435,7 +438,8 @@ TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
 TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
+    std::string commandline =
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -443,7 +447,8 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     boost::filesystem::create_directory(proc_dir);
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
+    std::string commandline =
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -452,7 +457,8 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     std::string pid_dir = proc_dir + "/123";
     boost::filesystem::create_directories(pid_dir);
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
+    std::string commandline =
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -469,40 +475,46 @@ TEST_F(MemoryMonitorTest, TestLongStringTruncated) {
 }
 
 TEST_F(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
+  absl::flat_hash_map<pid_t, int64_t> usage;
+  usage.insert({1, 111});
+  usage.insert({2, 222});
+  usage.insert({3, 333});
 
-  MakeMemoryUsage(1, "111", proc_dir);
-  MakeMemoryUsage(2, "222", proc_dir);
-  MakeMemoryUsage(3, "333", proc_dir);
-
-  auto list = MemoryMonitor::TopNMemoryProcesses(2, proc_dir);
-
-  boost::filesystem::remove_all(proc_dir);
+  auto list = MemoryMonitor::GetTopNMemoryUsage(3, usage);
 
   ASSERT_EQ(list.size(), 2);
   ASSERT_EQ(std::get<0>(list[0]), 3);
-  ASSERT_EQ(std::get<1>(list[0]), 333 * 1024);
+  ASSERT_EQ(std::get<1>(list[0]), 333);
   ASSERT_EQ(std::get<0>(list[1]), 2);
-  ASSERT_EQ(std::get<1>(list[1]), 222 * 1024);
+  ASSERT_EQ(std::get<1>(list[1]), 222);
 }
 
 TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
+  absl::flat_hash_map<pid_t, int64_t> usage;
+  usage.insert({1, 111});
+  usage.insert({2, 222});
 
-  MakeMemoryUsage(1, "111", proc_dir);
-  MakeMemoryUsage(2, "222", proc_dir);
-
-  // Ignore bad pids with no memory usage
-  boost::filesystem::create_directory(proc_dir + "/85");
-  boost::filesystem::create_directory(proc_dir + "/54");
-
-  auto list = MemoryMonitor::TopNMemoryProcesses(3, proc_dir);
+  auto list = MemoryMonitor::GetTopNMemoryUsage(3, usage);
 
   ASSERT_EQ(list.size(), 2);
   ASSERT_EQ(std::get<0>(list[0]), 2);
-  ASSERT_EQ(std::get<1>(list[0]), 222 * 1024);
+  ASSERT_EQ(std::get<1>(list[0]), 222);
   ASSERT_EQ(std::get<0>(list[1]), 1);
-  ASSERT_EQ(std::get<1>(list[1]), 111 * 1024);
+  ASSERT_EQ(std::get<1>(list[1]), 111);
+}
+
+TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
+  std::string proc_dir = UniqueID::FromRandom().Hex();
+  MakeMemoryUsage(1, "111", proc_dir);
+
+  // Invalid pids with no memory usage file.
+  boost::filesystem::create_directory(proc_dir + "/2");
+  boost::filesystem::create_directory(proc_dir + "/3");
+
+  auto usage = MemoryMonitor::GetProcessMemoryUsage();
+
+  ASSERT_EQ(usage.size(), 1);
+  ASSERT_TRUE(usage.contains(1));
 }
 
 }  // namespace ray

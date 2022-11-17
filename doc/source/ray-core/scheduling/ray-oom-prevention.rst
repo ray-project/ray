@@ -142,13 +142,13 @@ To speed up the example, set ``RAY_task_oom_retries=1`` on the application so th
 
     RAY_event_stats_print_interval_ms=1000 RAY_task_oom_retries=1 python oom.py
 
-    2022-11-16 19:12:43,361 INFO worker.py:1534 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+    2022-11-17 09:16:40,792 INFO worker.py:1534 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 
-    (raylet) [2022-11-16 19:12:54,969 E 94043 94043] (raylet) node_manager.cc:3081: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 0c8504daa4e19e86b6fb888ae7629b34546e688812c70d8566db9af4, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
+    (raylet) [2022-11-17 09:16:52,264 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
     (raylet) 
     (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
 
-    (raylet) [2022-11-16 19:13:07,154 E 94043 94043] (raylet) node_manager.cc:3081: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 0c8504daa4e19e86b6fb888ae7629b34546e688812c70d8566db9af4, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
+    (raylet) [2022-11-17 09:17:03,461 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
     (raylet) 
     (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
 
@@ -160,20 +160,18 @@ To speed up the example, set ``RAY_task_oom_retries=1`` on the application so th
       File "/home/ray/github/rayclarng/ray/python/ray/_private/worker.py", line 2310, in get
         raise value
     ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
-    Memory on the node (IP: 172.17.0.2, ID: 0c8504daa4e19e86b6fb888ae7629b34546e688812c70d8566db9af4) where the task (task ID: c4e6a8f5784350d7af5dcba1e295322a42edcd6801000000, name=allocate_memory, memory used=21.24GB) was running was 32.87GB / 33.28GB (0.987464), which exceeds the memory usage threshold of 0.984978. Ray killed this worker (ID: d2d5fa5a8bc0f90645ee17a6775ff7eee07f3d121ea9471454dbf8a6) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-d2d5fa5a8bc0f90645ee17a6775ff7eee07f3d121ea9471454dbf8a6*out -ip 172.17.0.2.
-    Top 10 memory users:
+    Memory on the node (IP: 172.17.0.2, ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f) where the task (task ID: a6755d1708846b10007fda8a687eb57eb8a083c001000000, name=allocate_memory, pid=91085, memory used=24.99GB) was running was 32.62GB / 33.28GB (0.980175), which exceeds the memory usage threshold of 0.96. Ray killed this worker (ID: a8101629b7605f88776a08193f108adcc637248d976add819bbecbba) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-a8101629b7605f88776a08193f108adcc637248d976add819bbecbba*out -ip 172.17.0.2.Top 10 memory users:
     PID     MEM(GB) COMMAND
-    48949   3.55    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
-    57330   2.71    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools
-    86641   1.88    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {F57B...
-    54387   0.75    bazel(ray) -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/home/ray/.cache/bazel/_bazel_ray/8c472b...
-    87457   0.53    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {9746...
-    16821   0.28    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
-    94088   0.07    /home/ray/anaconda3/bin/python -u /home/ray/github/rayclarng/ray/python/ray/dashboard/agent.py --nod...
-    93982   0.07    /home/ray/anaconda3/bin/python /home/ray/github/rayclarng/ray/python/ray/dashboard/dashboard.py --ho...
-    93911   0.07    python oom.py
-    94117   0.06    ray::IDLE
-
+    91085   24.99   ray::allocate_memory
+    57330   2.63    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools
+    48949   1.70    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
+    54387   0.80    bazel(ray) -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/home/ray/.cache/bazel/_bazel_ray/8c472b...
+    35099   0.66    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {1729...
+    16821   0.23    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
+    61800   0.17    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {54EF...
+    91043   0.07    /home/ray/anaconda3/bin/python -u /home/ray/github/rayclarng/ray/python/ray/dashboard/agent.py --nod...
+    90935   0.07    /home/ray/anaconda3/bin/python /home/ray/github/rayclarng/ray/python/ray/dashboard/dashboard.py --ho...
+    90870   0.07    python oom.py
     Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
 
 Verify the task was indeed executed twice via ``task_oom_retry``:

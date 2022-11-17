@@ -15,7 +15,6 @@
 #include "ray/common/memory_monitor.h"
 
 #include <boost/algorithm/string.hpp>
-
 #include <filesystem>
 #include <fstream>  // std::ifstream
 #include <tuple>
@@ -305,9 +304,9 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
 }
 
 int64_t MemoryMonitor::GetProcessMemoryBytes(pid_t pid, const std::string proc_dir) {
-  std::stringstream smap_path;
-  smap_path << proc_dir << "/" << std::to_string(pid) << "/smaps_rollup";
-  return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());
+  std::stringstream smaps_path;
+  smaps_path << proc_dir << "/" << std::to_string(pid) << "/smaps_rollup";
+  return GetLinuxProcessMemoryBytesFromSmap(smaps_path.str());
 }
 
 /// TODO:(clarng) align logic with psutil / Python-side memory calculations
@@ -333,10 +332,9 @@ int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap
 
     /// Linux reports them as kiB
     RAY_CHECK(unit == "kB");
-    value = value * 1024;
-    if (title == "Private_Clean:" || title == "Private_Dirty:" ||
-        title == "Private_Hugetlb:") {
-      uss += value;
+    /// Captures Private_Clean, Private_Dirty, Private_Hugetlb
+    if (boost::starts_with(title, "Private_")) {
+      uss += value * 1024;
     }
   }
 
@@ -383,10 +381,11 @@ int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes,
 const std::vector<pid_t> MemoryMonitor::GetPidsFromDir(const std::string proc_dir) {
   std::vector<pid_t> pids;
   if (!std::filesystem::exists(proc_dir)) {
-    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << "Proc dir doesn't exist, return no pids. Dir: " << proc_dir;
+    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
+        << "Proc dir doesn't exist, return no pids. Dir: " << proc_dir;
     return pids;
   }
-  for (const auto & file : std::filesystem::directory_iterator(proc_dir)) {
+  for (const auto &file : std::filesystem::directory_iterator(proc_dir)) {
     std::string filename{file.path().filename().u8string()};
     if (std::all_of(filename.begin(), filename.end(), ::isdigit)) {
       pids.push_back(static_cast<pid_t>(std::stoi(filename)));
@@ -395,50 +394,53 @@ const std::vector<pid_t> MemoryMonitor::GetPidsFromDir(const std::string proc_di
   return pids;
 }
 
-const std::string MemoryMonitor::GetCommandLineForPid(pid_t pid, const std::string proc_dir) {
-  std::string path = proc_dir + "/" + std::to_string(pid) + "/" + MemoryMonitor::kCommandlinePath;
+const std::string MemoryMonitor::GetCommandLineForPid(pid_t pid,
+                                                      const std::string proc_dir) {
+  std::string path =
+      proc_dir + "/" + std::to_string(pid) + "/" + MemoryMonitor::kCommandlinePath;
   std::ifstream commandline_ifs(path, std::ios::in | std::ios::binary);
   if (!commandline_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << "Command line path doesn't exist, returning empty command. Path: " << path;
+    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
+        << "Command line path doesn't exist, returning empty command. Path: " << path;
     return {};
   }
 
   std::string line;
   while (std::getline(commandline_ifs, line)) {
-    boost::trim(line);
     std::replace(line.begin(), line.end(), '\0', ' ');
+    boost::trim(line);
     return line;
   }
-  RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << "Empty file. Returning empty command. Path: " << path;
+  RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
+      << "Empty file. Returning empty command. Path: " << path;
   return {};
 }
 
-const std::string MemoryMonitor::TopNMemoryDebugString(uint32_t top_n, const std::string proc_dir) {
-  std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage = MemoryMonitor::TopNMemoryProcesses(top_n, proc_dir);
-  if (pid_to_memory_usage.size() == 0) {
-    return {};
-  }
+const std::string MemoryMonitor::TopNMemoryDebugString(uint32_t top_n,
+                                                       const MemorySnapshot system_memory,
+                                                       const std::string proc_dir) {
+  auto pid_to_memory_usage =
+      MemoryMonitor::GetTopNMemoryUsage(top_n, system_memory.process_used_bytes);
 
   std::string debug_string = "PID\tMEM(GB)\tCOMMAND";
   for (std::tuple<pid_t, int64_t> entry : pid_to_memory_usage) {
     auto [pid, memory_used_bytes] = entry;
     auto pid_string = std::to_string(pid);
-    auto memory_usage_gb = FormatFloat(static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024, 2);
-    auto commandline = MemoryMonitor::TruncateString(MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
+    auto memory_usage_gb =
+        FormatFloat(static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024, 2);
+    auto commandline = MemoryMonitor::TruncateString(
+        MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
     debug_string += "\n" + pid_string + "\t" + memory_usage_gb + "\t" + commandline;
   }
 
   return debug_string;
 }
 
-const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::TopNMemoryProcesses(uint32_t top_n, const std::string proc_dir) {
-  std::vector<pid_t> pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::GetTopNMemoryUsage(
+    uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage) {
   std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage;
-  for (int32_t pid : pids) {
-    int64_t memory_used_bytes = MemoryMonitor::GetProcessMemoryBytes(pid, proc_dir);
-    if (memory_used_bytes != kNull) {
-      pid_to_memory_usage.push_back({pid, memory_used_bytes});
-    }
+  for (auto entry : all_usage) {
+    pid_to_memory_usage.push_back({entry.first, entry.second});
   }
 
   std::sort(pid_to_memory_usage.begin(),
@@ -457,7 +459,22 @@ const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::TopNMemoryProcesses
   return pid_to_memory_usage;
 }
 
-const std::string MemoryMonitor::TruncateString(const std::string value, uint32_t max_length) {
+const absl::flat_hash_map<pid_t, int64_t> MemoryMonitor::GetProcessMemoryUsage(
+    const std::string proc_dir) {
+  std::vector<pid_t> pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+  absl::flat_hash_map<pid_t, int64_t> pid_to_memory_usage;
+
+  for (int32_t pid : pids) {
+    int64_t memory_used_bytes = MemoryMonitor::GetProcessMemoryBytes(pid, proc_dir);
+    if (memory_used_bytes != kNull) {
+      pid_to_memory_usage.insert({pid, memory_used_bytes});
+    }
+  }
+  return pid_to_memory_usage;
+}
+
+const std::string MemoryMonitor::TruncateString(const std::string value,
+                                                uint32_t max_length) {
   if (value.length() > max_length) {
     return value.substr(0, max_length) + "...";
   }

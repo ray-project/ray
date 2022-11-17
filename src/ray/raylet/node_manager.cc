@@ -2927,6 +2927,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
             << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
       } else {
+        system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
         auto workers = worker_pool_.GetAllRegisteredWorkers();
         if (workers.empty()) {
           RAY_LOG_EVERY_MS(WARNING, 5000)
@@ -2937,7 +2938,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         }
         RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill =
-            worker_killing_policy.SelectWorkerToKill(workers, *memory_monitor_.get());
+            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -3002,24 +3003,36 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   std::string total_bytes_gb =
       FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
   std::stringstream oom_kill_details_ss;
-  std::string process_used_bytes_gb = 
-      FormatFloat(static_cast<float>(MemoryMonitor::GetProcessMemoryBytes(
-        worker->GetProcess().GetId())) / 1024 / 1024 / 1024, 2);
+
+  auto pid = worker->GetProcess().GetId();
+  int64_t used_bytes = 0;
+  const auto pid_entry = system_memory.process_used_bytes.find(pid);
+  if (pid_entry != system_memory.process_used_bytes.end()) {
+    used_bytes = pid_entry->second;
+  } else {
+    return "";
+    RAY_LOG_EVERY_MS(INFO, 60000)
+        << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+  }
+  std::string process_used_bytes_gb =
+      FormatFloat(static_cast<float>(used_bytes) / 1024 / 1024 / 1024, 2);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
       << ", name=" << worker->GetAssignedTask().GetTaskSpecification().GetName()
+      << ", pid=" << worker->GetProcess().GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
-      << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
-      << usage_fraction << "), which exceeds the memory usage threshold of "
-      << usage_threshold << ". Ray killed this worker (ID: " << worker->WorkerId()
+      << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+      << "), which exceeds the memory usage threshold of " << usage_threshold
+      << ". Ray killed this worker (ID: " << worker->WorkerId()
       << ") because it was the most recently scheduled task; to see more "
          "information about memory usage on this node, use `ray logs raylet.out "
          "-ip "
       << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
-      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << ".\nTop 10 memory users:\n"
-      << MemoryMonitor::TopNMemoryDebugString(10);
+      << worker->WorkerId() << "*out -ip " << worker->IpAddress()
+      << ".Top 10 memory users:\n"
+      << MemoryMonitor::TopNMemoryDebugString(10, system_memory);
   return oom_kill_details_ss.str();
 }
 
