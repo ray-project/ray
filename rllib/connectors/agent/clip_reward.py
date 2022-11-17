@@ -28,7 +28,7 @@ class ClipRewardAgentConnector(AgentConnector):
             type(d) == dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
 
-        if not SampleBatch.REWARDS in d:
+        if SampleBatch.REWARDS not in d:
             # Nothing to clip. May happen for initial obs.
             return ac_data
 
