@@ -234,8 +234,6 @@ message ReportResourceUsageReply {
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Check alive.
-  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message AddProfileDataRequest {
@@ -583,6 +581,10 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
+  /// True if gcs finds infeasible or pending actor creation tasks
+  /// locally (when gcs actor scheduler is enabled). This field is
+  /// expected to help triggering auto-scaling.
+  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 // Service for node resource info access.
@@ -617,5 +619,7 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

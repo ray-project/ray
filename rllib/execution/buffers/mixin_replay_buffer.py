@@ -6,6 +6,7 @@ from typing import Optional
 from ray.util.timer import _Timer
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
@@ -14,12 +15,12 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType
 class MixInMultiAgentReplayBuffer:
     """This buffer adds replayed samples to a stream of new experiences.
 
-    - Any newly added batch (`add_batch()`) is immediately returned upon
+    - Any newly added batch (`add()`) is immediately returned upon
     the next `replay` call (close to on-policy) as well as being moved
     into the buffer.
     - Additionally, a certain number of old samples is mixed into the
     returned sample according to a given "replay ratio".
-    - If >1 calls to `add_batch()` are made without any `replay()` calls
+    - If >1 calls to `add()` are made without any `replay()` calls
     in between, all newly added batches are returned (plus some older samples
     according to the "replay ratio").
 
@@ -29,25 +30,25 @@ class MixInMultiAgentReplayBuffer:
         >>> buffer = MixInMultiAgentReplayBuffer(capacity=100, # doctest: +SKIP
         ...                                      replay_ratio=0.66) # doctest: +SKIP
         >>> A, B, C, D = ... # doctest: +SKIP
-        >>> buffer.add_batch(A) # doctest: +SKIP
-        >>> buffer.add_batch(B) # doctest: +SKIP
+        >>> buffer.add(A) # doctest: +SKIP
+        >>> buffer.add(B) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [A, B, B]
-        >>> buffer.add_batch(C) # doctest: +SKIP
+        >>> buffer.add(C) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [C, A, B]
         >>> # or: [C, A, A] or [C, B, B], but always C as it
         >>> # is the newest sample
-        >>> buffer.add_batch(D) # doctest: +SKIP
+        >>> buffer.add(D) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [D, A, C]
         >>> # replay proportion 0.0 -> replay disabled:
         >>> from ray.rllib.execution import MixInReplay
         >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0) # doctest: +SKIP
-        >>> buffer.add_batch(A) # doctest: +SKIP
+        >>> buffer.add(A) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [A]
-        >>> buffer.add_batch(B) # doctest: +SKIP
+        >>> buffer.add(B) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [B]
     """
@@ -97,7 +98,7 @@ class MixInMultiAgentReplayBuffer:
         # Last added batch(es).
         self.last_added_batches = collections.defaultdict(list)
 
-    def add_batch(self, batch: SampleBatchType) -> None:
+    def add(self, batch: SampleBatchType) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
@@ -177,3 +178,7 @@ class MixInMultiAgentReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @Deprecated(new="MixInMultiAgentReplayBuffer.add()", error=False)
+    def add_batch(self, *args, **kwargs):
+        return self.add(*args, **kwargs)

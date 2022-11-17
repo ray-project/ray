@@ -51,5 +51,5 @@ __all__ = [
 deprecation_warning(
     "ray.rllib.agents.dqn",
     "ray.rllib.algorithms.[dqn|simple_q|r2d2|apex_dqn]",
-    error=False,
+    error=True,
 )

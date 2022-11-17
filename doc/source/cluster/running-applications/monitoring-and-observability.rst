@@ -110,8 +110,10 @@ This allows you to scrape all metrics in the cluster without knowing their IPs. 
 The service discovery file is generated on the :ref:`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``).
 Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
-Now, on the same node, modify a Prometheus config to scrape the file for service discovery.
-Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
+Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found at `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`.
+
+With this config, Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
 
 .. code-block:: yaml
 

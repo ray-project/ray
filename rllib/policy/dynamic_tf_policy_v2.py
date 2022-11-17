@@ -1,10 +1,9 @@
+from collections import OrderedDict
+import gym
 import logging
 import re
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
-
-import gym
 import tree  # pip install dm_tree
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -24,6 +23,10 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
@@ -62,7 +65,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         self.observation_space = obs_space
         self.action_space = action_space
-        config = dict(self.get_default_config(), **config)
         self.config = config
         self.framework = "tf"
         self._seq_lens = None
@@ -129,7 +131,7 @@ class DynamicTFPolicyV2(TFPolicy):
             prev_action_input=prev_action_input,
             prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
             explore=explore,
             timestep=timestep,
@@ -141,11 +143,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # This is static graph TF policy.
         # Simply do nothing.
         pass
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -514,7 +511,7 @@ class DynamicTFPolicyV2(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).
@@ -712,7 +709,10 @@ class DynamicTFPolicyV2(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
@@ -986,6 +986,7 @@ class DynamicTFPolicyV2(TFPolicy):
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
+            num_grad_updates=batch.num_grad_updates,
         )
 
     @override(Policy)
@@ -1028,9 +1029,21 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        return self.multi_gpu_tower_stacks[buffer_index].optimize(
-            self.get_session(), offset
+        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        results = tower_stack.optimize(self.get_session(), offset)
+        self.num_grad_updates += 1
+
+        results.update(
+            {
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates - 1 - (tower_stack.num_grad_updates or 0)
+                ),
+            }
         )
+
+        return results
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):

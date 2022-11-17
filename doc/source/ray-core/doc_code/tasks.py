@@ -29,7 +29,7 @@ def slow_function():
     return 1
 
 
-# Invocations of Ray remote functions happen in parallel.
+# Ray tasks are executed in parallel.
 # All computation is performed in the background, driven by Ray's internal event loop.
 for _ in range(4):
     # This doesn't block.

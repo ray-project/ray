@@ -1,0 +1,313 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: locusttest-{cluster_id}
+data:
+  locustfile.py: |
+{locustfile}
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: script-{cluster_id}
+data:
+  solution.py: |
+{solution}
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config-{cluster_id}
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    dir /data
+    port 6379
+    bind 0.0.0.0
+    appendonly yes
+    protected-mode no
+    requirepass 5241590000000000
+    pidfile /data/redis-6379.pid
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-{cluster_id}
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-{cluster_id}
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.8
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config-{cluster_id}
+---
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+  name: service-{cluster_id}
+  annotations:
+    ray.io/ft-enabled: "true"
+spec:
+  serviceUnhealthySecondThreshold: 300
+  deploymentUnhealthySecondThreshold: 300
+  serveConfig:
+    importPath: solution.serve_entrypoint
+    runtimeEnv: |
+      env_vars:
+        PYTHONPATH: "/tmp/testing/"
+    deployments:
+      - name: a
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+      - name: b
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+      - name: c
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+      - name: d
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+      - name: e
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+      - name: DAGDriver
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 1
+  rayClusterConfig:
+    rayVersion: '3.0.0.dev0' # should match the Ray version in the image of the containers
+    ######################headGroupSpecs#################################
+    # head group template and specs, (perhaps 'group' is not needed in the name)
+    headGroupSpec:
+      # Kubernetes Service Type, valid values are 'ClusterIP', 'NodePort' and 'LoadBalancer'
+      serviceType: ClusterIP
+      # the pod replicas in this group typed head (assuming there could be more than 1 in the future)
+      replicas: 1
+      # logical group name, for this called head-group, also can be functional
+      # pod type head or worker
+      # rayNodeType: head # Not needed since it is under the headgroup
+      # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
+      rayStartParams:
+        port: '6379' # should match container port named gcs-server
+        object-store-memory: '100000000'
+        dashboard-host: '0.0.0.0'
+        num-cpus: '0' # can be auto-completed from the limits
+        node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
+        block: 'true'
+      #pod template
+      template:
+        metadata:
+          labels:
+            rayCluster: cluster-{cluster_id}
+            rayNodeType: head # will be injected if missing, must be head or wroker
+            groupName: headgroup # will be injected if missing
+          # annotations for pod
+          annotations:
+            key: value
+        spec:
+          volumes:
+            - name: script
+              configMap:
+                name: script-{cluster_id}
+            - name: log-volume
+              emptyDir: {{}}
+          containers:
+            - name: ray-head
+              image: {ray_image}
+              imagePullPolicy: Always
+              env:
+                - name: MY_POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+                - name: RAY_REDIS_ADDRESS
+                  value: redis-{cluster_id}:6379
+                - name: RAY_gcs_rpc_server_reconnect_timeout_s
+                  value: "600"
+                - name: RAY_num_heartbeats_timeout
+                  value: "120"
+                - name: RAY_gcs_failover_worker_reconnect_timeout
+                  value: "600"
+                - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
+                  value: "1"
+              resources:
+                limits:
+                  cpu: 2
+                requests:
+                  cpu: 2
+              ports:
+                - containerPort: 6379
+                  name: gcs-server
+                - containerPort: 8265 # Ray dashboard
+                  name: dashboard
+                - containerPort: 10001
+                  name: client
+                - containerPort: 8000
+                  name: serve
+              volumeMounts:
+                - name: script
+                  mountPath: /tmp/testing/solution.py
+                  subPath: solution.py
+                - mountPath: /tmp/ray/
+                  name: log-volume
+    workerGroupSpecs:
+      # the pod replicas in this group typed worker
+      - replicas: 12
+        minReplicas: 12
+        maxReplicas: 12
+        # logical group name, for this called small-group, also can be functional
+        groupName: small-group
+        # if worker pods need to be added, we can simply increment the replicas
+        # if worker pods need to be removed, we decrement the replicas, and populate the podsToDelete list
+        # the operator will remove pods from the list until the number of replicas is satisfied
+        # when a pod is confirmed to be deleted, its name will be removed from the list below
+        #scaleStrategy:
+        #  workersToDelete:
+        #  - raycluster-complete-worker-small-group-bdtwh
+        #  - raycluster-complete-worker-small-group-hv457
+        #  - raycluster-complete-worker-small-group-k8tj7
+        # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
+        rayStartParams:
+          node-ip-address: $MY_POD_IP
+          block: 'true'
+          num-cpus: '4' # can be auto-completed from the limits
+        #pod template
+        template:
+          metadata:
+            labels:
+              key: value
+              rayCluster: cluster-{cluster_id}
+            # annotations for pod
+            annotations:
+              key: value
+          spec:
+            initContainers:
+              # the env var $RAY_IP is set by the operator if missing, with the value of the head service name
+              - name: init-myservice
+                image: busybox:1.28
+                command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+            volumes:
+              - name: script
+                configMap:
+                  name: script-{cluster_id}
+              - name: log-volume
+                emptyDir: {{}}
+            containers:
+              - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
+                image: {ray_image}
+                imagePullPolicy: Always
+                livenessProbe:
+                  initialDelaySeconds: 30
+                  periodSeconds: 5
+                  timeoutSeconds: 10
+                readinessProbe:
+                  initialDelaySeconds: 30
+                  periodSeconds: 5
+                  timeoutSeconds: 10
+
+                # environment variables to set in the container.Optional.
+                # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+                env:
+                  - name:  RAY_DISABLE_DOCKER_CPU_WARNING
+                    value: "1"
+                  - name: TYPE
+                    value: "worker"
+                  - name: CPU_REQUEST
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: requests.cpu
+                  - name: CPU_LIMITS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: limits.cpu
+                  - name: MEMORY_LIMITS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: limits.memory
+                  - name: MEMORY_REQUESTS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: requests.memory
+                  - name: MY_POD_NAME
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.name
+                  - name: MY_POD_IP
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: status.podIP
+                  - name: RAY_gcs_rpc_server_reconnect_timeout_s
+                    value: "600"
+                  - name: RAY_num_heartbeats_timeout
+                    value: "120"
+                  - name: RAY_gcs_failover_worker_reconnect_timeout
+                    value: "600"
+                  - name: RAY_gcs_server_request_timeout_seconds
+                    value: "5"
+                  - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
+                    value: "1"
+                ports:
+                  - containerPort: 80
+                    name: client
+                lifecycle:
+                  preStop:
+                    exec:
+                      command: ["/bin/sh","-c","ray stop"]
+                resources:
+                  limits:
+                    cpu: "2"
+                  requests:
+                    cpu: "2"
+                volumeMounts:
+                  - name: script
+                    mountPath: /tmp/testing/solution.py
+                    subPath: solution.py
+                  - mountPath: /tmp/ray/
+                    name: log-volume

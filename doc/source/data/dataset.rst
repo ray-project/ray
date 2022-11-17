@@ -11,7 +11,7 @@ Ray Datasets: Distributed Data Preprocessing
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
 They provide basic distributed data transformations such as maps
 (:meth:`map_batches <ray.data.Dataset.map_batches>`),
-global and grouped aggregations (:class:`GroupedDataset <ray.data.GroupedDataset>`), and
+global and grouped aggregations (:class:`GroupedDataset <ray.data.grouped_dataset.GroupedDataset>`), and
 shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`sort <ray.data.Dataset.sort>`,
 :meth:`repartition <ray.data.Dataset.repartition>`),
@@ -29,21 +29,23 @@ is already supported.
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
 
+----------------------------------------------
 Data Loading and Preprocessing for ML Training
-==============================================
+----------------------------------------------
 
-Ray Datasets is designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
 Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Ray Datasets is not intended as a replacement for more general data processing systems.
-:ref:`Learn more about how Ray Datasets works with other ETL systems <datasets-ml-preprocessing>`.
+Ray Datasets are not intended as a replacement for more general data processing systems.
+:ref:`Learn more about how Ray Datasets work with other ETL systems <datasets-ml-preprocessing>`.
 
+-----------------------------
 Datasets for Parallel Compute
-=============================
+-----------------------------
 
-Datasets also simplifies general purpose parallel GPU and CPU compute in Ray; for
+Datasets also simplify general purpose parallel GPU and CPU compute in Ray; for
 instance, for :ref:`GPU batch inference <transforming_datasets>`.
-It provides a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
+They provide a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
 internally handling operations like batching, pipelining, and memory management.
 
 .. image:: images/dataset-compute-1.png
@@ -70,8 +72,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     **Getting Started**
     ^^^
 
-    Start with our quick start tutorials for :ref:`working with Datasets<datasets_getting_started>`
-    and :ref:`Dataset Pipelines<pipelining_datasets>`.
+    Start with our quick start tutorials for working with Datasets.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++
@@ -102,7 +103,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
     transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    work with :ref:`tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
+    :ref:`work with tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
 
     +++
     .. link-button:: data_user_guide
@@ -110,7 +111,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
         :text: Start Using Ray Datasets
         :classes: btn-outline-info btn-block
     ---
-    
+
     **Examples**
     ^^^
 
@@ -200,9 +201,15 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
+   * - Image Files (experimental)
+     - :func:`ray.data.read_images()`
+     - 🚧
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
+   * - TFRecord Files
+     - :func:`ray.data.read_tfrecords()`
+     - 🚧
    * - Python Objects
      - :func:`ray.data.from_items()`
      - ✅
@@ -256,6 +263,9 @@ Supported Output Formats
    * - Numpy File Format
      - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
      - ✅
+   * - TFRecords File Format
+     - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
+     - ✅
    * - Spark Dataframe
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
      - ✅
@@ -289,8 +299,8 @@ Supported Output Formats
    * - PyTorch Tensor Iterator
      - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
      - ✅
-   * - TensorFlow Tensor Iterator
-     - :meth:`ds.iter_tf_batches() <ray.data.Dataset.iter_tf_batches>`
+   * - TensorFlow Dataset
+     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
    * - Random Access Dataset
      - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
@@ -314,7 +324,7 @@ Learn More
 Contribute
 ----------
 
-Contributions to Ray Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__!
+Contributions to Ray Datasets are :ref:`welcome <getting-involved>`!
 There are many potential improvements, including:
 
 - Supporting more data sources and transforms.

@@ -1,3 +1,23 @@
+/* Styling the "Try Anyscale" button */
+.topbar-main > button.try-anyscale {
+  float: right;
+  border-radius: 6px;
+  background-color: #e7f2fa;
+  padding-left: 12px;
+  padding-right: 12px;
+  margin-left: 12px;
+  height: 40px;
+  border: none;
+}
+@media (max-width: 900px) {
+  .topbar-main > button.try-anyscale {
+    display: none;
+  }
+}
+.topbar-main > button.try-anyscale > span {
+  margin-right: 12px;
+}
+
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
@@ -273,9 +293,14 @@ div.topic{
   border-left-color: var(--border-color-gray);
 }
 
-/* custom css for up and down arrows in colllapsable cards */
+/* custom css for up and down arrows in collapsible cards */
 details.dropdown .summary-up, details.dropdown .summary-down {
   top: 1em;
+}
+
+/* remove focus border in collapsible admonition buttons */
+.toggle.admonition button.toggle-button:focus {
+  outline: none;
 }
 
 /* custom css for shadow class */

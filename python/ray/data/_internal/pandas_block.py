@@ -83,7 +83,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
             if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
@@ -94,7 +95,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
-    def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    @staticmethod
+    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -141,7 +143,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             tensor = tensor.to_numpy()
         return tensor
 
-    def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
+    def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
         view.reset_index(drop=True, inplace=True)
         if copy:
@@ -152,6 +154,14 @@ class PandasBlockAccessor(TableBlockAccessor):
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
+
+    def select(self, columns: List[KeyFn]) -> "pandas.DataFrame":
+        if not all(isinstance(col, str) for col in columns):
+            raise ValueError(
+                "Columns must be a list of column name strings when aggregating on "
+                f"Pandas blocks, but got: {columns}."
+            )
+        return self._table[columns]
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)

@@ -1,0 +1,182 @@
+meta:
+  section-titles: true
+  container: container pb-12
+  column: col-md-12 px-2 py-2
+  img-top-cls: pt-10 w-50 d-block mx-auto
+
+buttons:
+  classes: btn-outline-info btn-block
+
+projects:
+  - name: Classy Vision Integration
+    section_title: Classy Vision
+    description: Classy Vision is a new end-to-end, PyTorch-based framework for
+      large-scale training of state-of-the-art image and video classification models.
+      The library features a modular, flexible design that allows anyone to train
+      machine learning models on top of PyTorch using very simple abstractions.
+    website: https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb
+    repo: https://github.com/facebookresearch/ClassyVision
+    image: ../images/classyvision.png
+  - name: Dask Integration
+    section_title: Dask
+    description: Dask provides advanced parallelism for analytics, enabling performance
+      at scale for the tools you love. Dask uses existing Python APIs and data
+      structures to make it easy to switch between Numpy, Pandas,
+      Scikit-learn to their Dask-powered equivalents.
+    website: dask-on-ray
+    repo: https://github.com/dask/dask
+    image: ../images/dask.png
+  - name: Flambé Integration
+    section_title: Flambé
+    description: Flambé is a machine learning experimentation framework built to
+      accelerate the entire research life cycle. Flambé’s main objective is to
+      provide a unified interface for prototyping models, running experiments
+      containing complex pipelines, monitoring those experiments in real-time,
+      reporting results, and deploying a final model for inference.
+    website: https://github.com/asappresearch/flambe
+    repo: https://github.com/asappresearch/flambe
+    image: ../images/flambe.png
+  - name: Flyte Integration
+    section_title: Flyte
+    description: Flyte is a Kubernetes-native workflow automation platform for complex,
+      mission-critical data and ML processes at scale. It has been battle-tested
+      at Lyft, Spotify, Freenome, and others and is truly open-source.
+    website: https://flyte.org/
+    repo: https://github.com/flyteorg/flyte
+    image: ../images/flyte.png
+  - name: Horovod Integration
+    section_title: Horovod
+    description: Horovod is a distributed deep learning training framework for
+      TensorFlow, Keras, PyTorch, and Apache MXNet. The goal of
+      Horovod is to make distributed deep learning fast and easy to use.
+    website: https://horovod.readthedocs.io/en/stable/ray_include.html
+    repo: https://github.com/horovod/horovod
+    image: ../images/horovod.png
+  - name: Hugging Face Integration
+    section_title: Hugging Face Transformers
+    description: State-of-the-art Natural Language Processing for
+      Pytorch and TensorFlow 2.0. It integrates with Ray for distributed
+      hyperparameter tuning of transformer models.
+    website: https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
+    repo: https://github.com/huggingface/transformers
+    image: ../images/hugging.png
+  - name: Intel Analytics Zoo Integration
+    section_title: Intel Analytics Zoo
+    description: Analytics Zoo seamlessly scales TensorFlow, Keras and PyTorch
+      to distributed big data (using Spark, Flink & Ray).
+    website: https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/
+    repo: https://github.com/intel-analytics/analytics-zoo
+    image: ../images/zoo.png
+  - name: NLU Integration
+    section_title: John Snow Labs' NLU
+    description: The power of 350+ pre-trained NLP models, 100+ Word Embeddings,
+      50+ Sentence Embeddings, and 50+ Classifiers in 46 languages
+      with 1 line of Python code.
+    website: https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe
+    repo: https://github.com/JohnSnowLabs/nlu
+    image: ../images/nlu.png
+  - name: Ludwig Integration
+    section_title: Ludwig AI
+    description: Ludwig is a toolbox that allows users to train and test deep learning
+      models without the need to write code. With Ludwig, you can train a deep learning
+      model on Ray in zero lines of code, automatically leveraging Dask on Ray for data
+      preprocessing, Horovod on Ray for distributed training, and Ray Tune for
+      hyperparameter optimization.
+    website: https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e
+    repo: https://github.com/ludwig-ai/ludwig
+    image: ../images/ludwig.png
+  - name: MARS Integration
+    section_title: MARS
+    description: Mars is a tensor-based unified framework for large-scale data
+      computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to
+      a single machine, and scale out to a cluster with thousands of machines.
+    website: mars-on-ray
+    repo: https://github.com/mars-project/mars
+    image: ../images/mars.png
+  - name: Modin Integration
+    section_title: Modin
+    description: Scale your pandas workflows by changing one line of code.
+      Modin transparently distributes the data and computation so that all you need
+      to do is continue using the pandas API as you were before installing Modin.
+    website: https://github.com/modin-project/modin
+    repo: https://github.com/modin-project/modin
+    image: ../images/modin.png
+  - name: Prefect Integration
+    section_title: Prefect
+    description: Prefect is an open source workflow orchestration platform in Python.
+      It allows you to easily define, track and schedule workflows in Python. This
+      integration makes it easy to run a Prefect workflow on a Ray cluster in a
+      distributed way.
+    website: https://github.com/PrefectHQ/prefect-ray
+    repo: https://github.com/PrefectHQ/prefect-ray
+    image: ../images/prefect.png
+  - name: PyCaret Integration
+    section_title: PyCaret
+    description: PyCaret is an open source low-code machine learning library in Python
+      that aims to reduce the hypothesis to insights cycle time in a ML experiment.
+      It enables data scientists to perform end-to-end experiments quickly
+      and efficiently.
+    website: https://github.com/pycaret/pycaret
+    repo: https://github.com/pycaret/pycaret
+    image: ../images/pycaret.png
+  - name: PyTorch Lightning Integration
+    section_title: PyTorch Lightning
+    description: PyTorch Lightning is a popular open-source library that provides a
+      high level interface for PyTorch. The goal of PyTorch Lightning is to structure
+      your PyTorch code to abstract the details of training, making AI research
+      scalable and fast to iterate on.
+    website: https://github.com/ray-project/ray_lightning_accelerators
+    repo: https://github.com/ray-project/ray_lightning_accelerators
+    image: ../images/pytorch_lightning_small.png
+  - name: RayDP Integration
+    section_title: Spark on Ray (RayDP)
+    description: RayDP ("Spark on Ray") enables you to easily use Spark inside a
+      Ray program. You can use Spark to read the input data, process the data using
+      SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features
+      using Spark MLLib, and use RayDP Estimator API for distributed training
+      on the preprocessed dataset.
+    website: https://github.com/Intel-bigdata/oap-raydp
+    repo: https://github.com/Intel-bigdata/oap-raydp
+    image: ../images/intel.png
+  - name: Scikit Learn Integration
+    section_title: Scikit Learn
+    description: Scikit-learn is a free software machine learning library for
+      the Python programming language. It features various classification,
+      regression and clustering algorithms including support vector machines,
+      random forests, gradient boosting, k-means and DBSCAN, and is designed to
+      interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+    website: https://docs.ray.io/en/master/joblib.html
+    repo: https://docs.ray.io/en/master/joblib.html
+    image: ../images/scikit.png
+  - name: Seldon Alibi Integration
+    section_title: Seldon Alibi
+    description: Alibi is an open source Python library aimed at machine learning model
+      inspection and interpretation. The focus of the library is to provide high-quality
+      implementations of black-box, white-box, local and global explanation methods for
+      classification and regression models.
+    website: https://github.com/SeldonIO/alibi
+    repo: https://github.com/SeldonIO/alibi
+    image: ../images/seldon.png
+  - name: spaCy Integration
+    section_title: spaCy
+    description: spaCy is a library for advanced Natural Language Processing in Python
+      and Cython. It's built on the very latest research, and was designed from
+      day one to be used in real products.
+    website: https://pypi.org/project/spacy-ray/
+    repo: https://github.com/explosion/spacy-ray
+    image: ../images/spacy.png
+  - name: XGBoost Integration
+    section_title: XGBoost
+    description: XGBoost is a popular gradient boosting library for classification
+      and regression. It is one of the most popular tools in data science and
+      workhorse of many top-performing Kaggle kernels.
+    website: https://github.com/ray-project/xgboost_ray
+    repo: https://github.com/ray-project/xgboost_ray
+    image: ../images/xgboost_logo.png
+  - name: LightGBM Integration
+    section_title: LightGBM
+    description: LightGBM is a high-performance gradient boosting library for
+      classification and regression. It is designed to be distributed and efficient.
+    website: https://github.com/ray-project/lightgbm_ray
+    repo: https://github.com/ray-project/lightgbm_ray
+    image: ../images/lightgbm_logo.png

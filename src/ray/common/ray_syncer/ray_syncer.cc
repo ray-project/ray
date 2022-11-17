@@ -258,30 +258,38 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
       RayConfig::instance().raylet_report_resources_period_milliseconds());
 }
 
-RaySyncer::~RaySyncer() { *stopped_ = true; }
+RaySyncer::~RaySyncer() {
+  *stopped_ = true;
+  for (auto &call : inflight_requests_) {
+    auto f = call->promise.get_future();
+    if (!f.valid()) {
+      call->context.TryCancel();
+    }
+    f.get();
+  }
+}
 
 void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
-  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-  auto request = std::make_shared<StartSyncRequest>();
-  request->set_node_id(local_node_id_);
-  auto response = std::make_shared<StartSyncResponse>();
+  auto call = std::make_unique<StartSyncCall>();
 
-  auto client_context = std::make_shared<grpc::ClientContext>();
+  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+  call->request.set_node_id(local_node_id_);
+
   stub->async()->StartSync(
-      client_context.get(),
-      request.get(),
-      response.get(),
-      [this, channel, request, response, client_context, stopped = this->stopped_](
-          grpc::Status status) {
+      &call->context,
+      &call->request,
+      &call->response,
+      [this, channel, call = call.get(), stopped = this->stopped_](grpc::Status status) {
+        call->promise.set_value();
         if (*stopped) {
           return;
         }
         if (status.ok()) {
           io_context_.dispatch(
-              [this, channel, response]() {
+              [this, channel, node_id = call->response.node_id()]() {
                 auto connection = std::make_unique<ClientSyncConnection>(
                     io_context_,
-                    response->node_id(),
+                    node_id,
                     [this](auto msg) { BroadcastMessage(msg); },
                     channel);
                 Connect(std::move(connection));
@@ -289,6 +297,7 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
               "StartSyncCallback");
         }
       });
+  inflight_requests_.emplace(std::move(call));
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
@@ -353,6 +362,10 @@ bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
     return true;
   }
   return false;
+}
+
+void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message) {
+  BroadcastMessage(std::move(message));
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {

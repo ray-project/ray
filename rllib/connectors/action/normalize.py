@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
@@ -29,6 +29,7 @@ class NormalizeActionsConnector(ActionConnector):
         return ActionConnectorDataType(
             ac_data.env_id,
             ac_data.agent_id,
+            ac_data.input_dict,
             (unsquash_action(actions, self._action_space_struct), states, fetches),
         )
 
@@ -36,7 +37,7 @@ class NormalizeActionsConnector(ActionConnector):
         return NormalizeActionsConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return NormalizeActionsConnector(ctx)
 
 

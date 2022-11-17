@@ -89,9 +89,9 @@ build:llvm --action_env=BAZEL_LINKOPTS=-lm:-pthread
 build:llvm --define force_libcpp=enabled
 
 # Thread sanitizer configuration:
+build:tsan --per_file_copt="-bazel-ray/external/com_github_antirez_redis/.*$@-fsanitize=thread"
+build:tsan --per_file_copt="-bazel-ray/external/com_github_antirez_redis/.*$@-DTHREAD_SANITIZER"
 build:tsan --strip=never
-build:tsan --copt -fsanitize=thread
-build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
@@ -144,10 +144,8 @@ build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
 build:ci-travis --disk_cache=~/ray-bazel-cache
-build:ci-travis --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has low disk space, so prefer hardlinks there.
 build:ci-github --disk_cache=~/ray-bazel-cache
-build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
 # Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
 # declared dependencies to determine if a result should be cached. More details at:

@@ -65,7 +65,9 @@ def main():
         metric="eval-binary_error",
         mode="min",
         num_samples=4,
-        resources_per_trial={"cpu": 1, "extra_cpu": num_actors * num_cpus_per_actor},
+        resources_per_trial=RayParams(
+            num_actors=num_actors, cpus_per_actor=num_cpus_per_actor
+        ).get_tune_resources(),
     )
 
     # Load in the best performing model.

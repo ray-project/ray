@@ -94,6 +94,9 @@ class _PolicyCollector:
         self.batches = []
         # Reset agent steps to 0.
         self.agent_steps = 0
+        # Add num_grad_updates counter to the policy's batch.
+        batch.num_grad_updates = self.policy.num_grad_updates
+
         return batch
 
 
@@ -220,8 +223,8 @@ class SimpleListCollector(SampleCollector):
         agent_id: AgentID,
         env_id: EnvID,
         policy_id: PolicyID,
-        t: int,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -251,8 +254,8 @@ class SimpleListCollector(SampleCollector):
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
             env_id=env_id,
-            t=t,
             init_obs=init_obs,
+            t=t,
         )
 
         self.episodes[episode.episode_id] = episode
@@ -588,6 +591,10 @@ class SimpleListCollector(SampleCollector):
         for pid, collector in episode.batch_builder.policy_collectors.items():
             if collector.agent_steps > 0:
                 ma_batch[pid] = collector.build()
+
+        # TODO(sven): We should always return the same type here (MultiAgentBatch),
+        #  no matter what. Just have to unify our `training_step` methods, then. This
+        #  will reduce a lot of confusion about what comes out of the sampling process.
         # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
             ma_batch, env_steps=episode.batch_builder.env_steps
@@ -623,7 +630,7 @@ class SimpleListCollector(SampleCollector):
 
             # Reached the fragment-len -> We should build an MA-Batch.
             if built_steps + ongoing_steps >= self.rollout_fragment_length:
-                if self.count_steps_by != "agent_steps":
+                if self.count_steps_by == "env_steps":
                     assert built_steps + ongoing_steps == self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.

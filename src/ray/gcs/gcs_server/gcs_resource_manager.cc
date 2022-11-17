@@ -43,13 +43,12 @@ void GcsResourceManager::ConsumeSyncMessage(
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
         UpdateFromResourceReport(resources);
       },
       "GcsResourceManager::Update");
 }
 
-void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
+void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
                                             rpc::GetResourcesReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   scheduling::NodeID node_id(request.node_id());
@@ -71,7 +70,7 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 }
 
 void GcsResourceManager::HandleGetAllAvailableResources(
-    const rpc::GetAllAvailableResourcesRequest &request,
+    rpc::GetAllAvailableResourcesRequest request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
@@ -96,12 +95,12 @@ void GcsResourceManager::HandleGetAllAvailableResources(
         if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
           resource.mutable_resources_available()->insert(
               {resource_name, resource_iter->second});
-          continue;
         }
+      } else {
+        const auto &resource_value = node_resources.available.Get(resource_id);
+        resource.mutable_resources_available()->insert(
+            {resource_name, resource_value.Double()});
       }
-      const auto &resource_value = node_resources.available.Get(resource_id);
-      resource.mutable_resources_available()->insert(
-          {resource_name, resource_value.Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -111,6 +110,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
+  // When gcs detects task pending, we may receive an local update. But it can be ignored
+  // here because gcs' syncer has already broadcast it.
+  if (node_id == local_node_id_) {
+    return;
+  }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
@@ -139,7 +143,7 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request,
+    rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   UpdateFromResourceReport(request.resources());
@@ -148,53 +152,69 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
+void GcsResourceManager::FillAggregateLoad(
+    const rpc::ResourcesData &resources_data,
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+        *aggregate_load) {
+  auto load = resources_data.resource_load_by_shape();
+  for (const auto &demand : load.resource_demands()) {
+    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
+    aggregate_demand.set_num_ready_requests_queued(
+        aggregate_demand.num_ready_requests_queued() +
+        demand.num_ready_requests_queued());
+    aggregate_demand.set_num_infeasible_requests_queued(
+        aggregate_demand.num_infeasible_requests_queued() +
+        demand.num_infeasible_requests_queued());
+    aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                      demand.backlog_size());
+  }
+}
+
 void GcsResourceManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request,
+    rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (cluster_task_manager_ && RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    rpc::ResourcesData resources_data;
-    cluster_task_manager_->FillPendingActorInfo(resources_data);
-    node_resource_usages_[local_node_id_].CopyFrom(resources_data);
-  }
   if (!node_resource_usages_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+    rpc::ResourceUsageBatchData batch;
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
+
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
-      auto load = usage.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto &aggregate_demand = aggregate_load[demand.shape()];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                          demand.backlog_size());
-      }
+      FillAggregateLoad(usage.second, &aggregate_load);
+      batch.add_batch()->CopyFrom(usage.second);
+    }
 
-      batch->add_batch()->CopyFrom(usage.second);
+    if (cluster_task_manager_) {
+      // Fill the gcs info when gcs actor scheduler is enabled.
+      rpc::ResourcesData gcs_resources_data;
+      cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
+      // Aggregate the load (pending actor info) of gcs.
+      FillAggregateLoad(gcs_resources_data, &aggregate_load);
+      // We only export gcs's pending info without adding the corresponding
+      // `ResourcesData` to the `batch` list. So if gcs has detected cluster full of
+      // actors, set the dedicated field in reply.
+      if (gcs_resources_data.cluster_full_of_actors_detected()) {
+        reply->set_cluster_full_of_actors_detected_by_gcs(true);
+      }
     }
 
     for (const auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
       for (const auto &resource_pair : demand.first) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
     }
-
     // Update placement group load to heartbeat batch.
     // This is updated only one per second.
     if (placement_group_load_.has_value()) {
       auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      auto placement_group_load_proto = batch.mutable_placement_group_load();
       placement_group_load_proto->CopyFrom(*placement_group_load.get());
     }
-    reply->mutable_resource_usage_data()->CopyFrom(*batch);
+
+    reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

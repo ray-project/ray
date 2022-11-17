@@ -1,4 +1,4 @@
-.. _generators:
+.. _generator-pattern:
 
 Pattern: Using generators to reduce heap memory usage
 =====================================================

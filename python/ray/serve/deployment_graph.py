@@ -40,7 +40,9 @@ class RayServeDAGHandle:
     def __reduce__(self):
         return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
-    async def remote(self, *args, **kwargs) -> ray.ObjectRef:
+    async def remote(
+        self, *args, _ray_cache_refs: bool = False, **kwargs
+    ) -> ray.ObjectRef:
         """Execute the request, returns a ObjectRef representing final result."""
         if self.dag_node is None:
             from ray.serve._private.json_serde import dagnode_from_json
@@ -50,6 +52,10 @@ class RayServeDAGHandle:
             )
 
         if FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC:
-            return self.dag_node.execute(*args, **kwargs)
+            return self.dag_node.execute(
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+            )
         else:
-            return await self.dag_node.execute(*args, **kwargs)
+            return await self.dag_node.execute(
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+            )

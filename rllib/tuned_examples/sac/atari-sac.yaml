@@ -50,4 +50,4 @@ atari-sac-tf-and-torch:
             entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 1
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5

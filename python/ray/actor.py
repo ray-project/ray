@@ -545,7 +545,8 @@ class ActorClass:
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_restarts: This specifies the maximum
                 number of times that the actor should be restarted when it dies
@@ -1160,6 +1161,12 @@ class ActorHandle:
             assert (
                 not self._ray_is_cross_language
             ), "Cross language remote actor method cannot be executed locally."
+
+        if num_returns == "dynamic":
+            # TODO(swang): Support dynamic generators for actors.
+            raise NotImplementedError(
+                'num_returns="dynamic" not yet supported for actor tasks.'
+            )
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,

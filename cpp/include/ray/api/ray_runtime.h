@@ -84,7 +84,7 @@ class RayRuntime {
       const ray::PlacementGroupCreationOptions &create_options) = 0;
   virtual void RemovePlacementGroup(const std::string &group_id) = 0;
   virtual bool WaitPlacementGroupReady(const std::string &group_id,
-                                       int timeout_seconds) = 0;
+                                       int64_t timeout_seconds) = 0;
   virtual bool WasCurrentActorRestarted() = 0;
   virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;

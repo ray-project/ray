@@ -215,56 +215,15 @@ void WorkerPool::RemoveWorkerProcess(State &state,
   state.worker_processes.erase(proc_startup_token);
 }
 
-std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
-    const Language &language,
-    const rpc::WorkerType worker_type,
-    const JobID &job_id,
-    PopWorkerStatus *status,
-    const std::vector<std::string> &dynamic_options,
-    const int runtime_env_hash,
-    const std::string &serialized_runtime_env_context,
-    const std::string &allocated_instances_serialized_json,
-    const rpc::RuntimeEnvInfo &runtime_env_info) {
-  rpc::JobConfig *job_config = nullptr;
-  if (!IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!job_id.IsNil());
-    auto it = all_jobs_.find(job_id);
-    if (it == all_jobs_.end()) {
-      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      *status = PopWorkerStatus::JobConfigMissing;
-      process_failed_job_config_missing_++;
-      return {Process(), (StartupToken)-1};
-    }
-    job_config = &it->second;
-  }
-
-  auto &state = GetStateForLanguage(language);
-  // If we are already starting up too many workers of the same worker type, then return
-  // without starting more.
-  int starting_workers = 0;
-  for (auto &entry : state.worker_processes) {
-    if (entry.second.worker_type == worker_type) {
-      starting_workers += entry.second.is_pending_registration ? 1 : 0;
-    }
-  }
-
-  // Here we consider both task workers and I/O workers.
-  if (starting_workers >= maximum_startup_concurrency_) {
-    // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
-                   << " workers of language type " << static_cast<int>(language)
-                   << " pending registration";
-    *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
-    process_failed_rate_limited_++;
-    return {Process(), (StartupToken)-1};
-  }
-  // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process of language "
-                 << rpc::Language_Name(language) << " and type "
-                 << rpc::WorkerType_Name(worker_type) << ", current pool has "
-                 << state.idle.size() << " workers";
-
+std::pair<std::vector<std::string>, ProcessEnvironment>
+WorkerPool::BuildProcessCommandArgs(const Language &language,
+                                    rpc::JobConfig *job_config,
+                                    const rpc::WorkerType worker_type,
+                                    const JobID &job_id,
+                                    const std::vector<std::string> &dynamic_options,
+                                    const int runtime_env_hash,
+                                    const std::string &serialized_runtime_env_context,
+                                    const WorkerPool::State &state) const {
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
@@ -392,6 +351,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     // We pass the job ID to worker processes via an environment variable, so we don't
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
+    RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
@@ -436,6 +396,68 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     // Make sure only the main thread is running in Python workers.
     env.insert({"RAY_start_python_importer_thread", "0"});
   }
+
+  return {std::move(worker_command_args), std::move(env)};
+}
+
+std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
+    const Language &language,
+    const rpc::WorkerType worker_type,
+    const JobID &job_id,
+    PopWorkerStatus *status,
+    const std::vector<std::string> &dynamic_options,
+    const int runtime_env_hash,
+    const std::string &serialized_runtime_env_context,
+    const rpc::RuntimeEnvInfo &runtime_env_info) {
+  rpc::JobConfig *job_config = nullptr;
+  if (!IsIOWorkerType(worker_type)) {
+    RAY_CHECK(!job_id.IsNil());
+    auto it = all_jobs_.find(job_id);
+    if (it == all_jobs_.end()) {
+      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
+      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      *status = PopWorkerStatus::JobConfigMissing;
+      process_failed_job_config_missing_++;
+      return {Process(), (StartupToken)-1};
+    }
+    job_config = &it->second;
+  }
+
+  auto &state = GetStateForLanguage(language);
+  // If we are already starting up too many workers of the same worker type, then return
+  // without starting more.
+  int starting_workers = 0;
+  for (auto &entry : state.worker_processes) {
+    if (entry.second.worker_type == worker_type) {
+      starting_workers += entry.second.is_pending_registration ? 1 : 0;
+    }
+  }
+
+  // Here we consider both task workers and I/O workers.
+  if (starting_workers >= maximum_startup_concurrency_) {
+    // Workers have been started, but not registered. Force start disabled -- returning.
+    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
+                   << " workers of language type " << static_cast<int>(language)
+                   << " pending registration";
+    *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
+    process_failed_rate_limited_++;
+    return {Process(), (StartupToken)-1};
+  }
+  // Either there are no workers pending registration or the worker start is being forced.
+  RAY_LOG(DEBUG) << "Starting new worker process of language "
+                 << rpc::Language_Name(language) << " and type "
+                 << rpc::WorkerType_Name(worker_type) << ", current pool has "
+                 << state.idle.size() << " workers";
+
+  auto [worker_command_args, env] =
+      BuildProcessCommandArgs(language,
+                              job_config,
+                              worker_type,
+                              job_id,
+                              dynamic_options,
+                              runtime_env_hash,
+                              serialized_runtime_env_context,
+                              state);
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
@@ -540,6 +562,9 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       }
       // We may have places to start more workers now.
       TryStartIOWorkers(language);
+      if (worker_type == rpc::WorkerType::WORKER) {
+        TryPendingPopWorkerRequests(language);
+      }
       starting_worker_timeout_callback_();
     }
   });
@@ -730,6 +755,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const StartupToken worker_startup_token = worker->GetStartupToken();
+  const auto &worker_type = worker->GetWorkerType();
 
   auto it = state.worker_processes.find(worker_startup_token);
   if (it != state.worker_processes.end()) {
@@ -738,7 +764,6 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     // We may have slots to start more workers now.
     TryStartIOWorkers(worker->GetLanguage());
   }
-  const auto &worker_type = worker->GetWorkerType();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.started_io_workers.insert(worker);
@@ -968,6 +993,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // TODO(SongGuyang): This worker will not be used forever. We should kill it.
       state.idle_dedicated_workers[task_id] = worker;
     }
+    // We either have an idle worker or a slot to start a new worker.
+    if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+      TryPendingPopWorkerRequests(worker->GetLanguage());
+    }
     return;
   }
 
@@ -985,6 +1014,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
+  }
+  // We either have an idle worker or a slot to start a new worker.
+  if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+    TryPendingPopWorkerRequests(worker->GetLanguage());
   }
 }
 
@@ -1157,7 +1190,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                      std::vector<std::string> dynamic_options,
                                      bool dedicated,
                                      const std::string &serialized_runtime_env_context,
-                                     const PopWorkerCallback &callback) -> Process {
+                                     const PopWorkerCallback &callback) {
     PopWorkerStatus status = PopWorkerStatus::OK;
     auto [proc, startup_token] = StartWorkerProcess(task_spec.GetLanguage(),
                                                     rpc::WorkerType::WORKER,
@@ -1166,7 +1199,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                                     dynamic_options,
                                                     task_spec.GetRuntimeEnvHash(),
                                                     serialized_runtime_env_context,
-                                                    allocated_instances_serialized_json,
                                                     task_spec.RuntimeEnvInfo());
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
@@ -1177,13 +1209,16 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       } else {
         state.starting_workers_to_tasks[startup_token] = std::move(task_info);
       }
+    } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+      // TODO(jjyao) As an optimization, we don't need to delete the runtime env
+      // but reuse it the next time we retry the request.
+      DeleteRuntimeEnvIfPossible(task_spec.SerializedRuntimeEnv());
+      state.pending_pop_worker_requests.emplace_back(
+          PopWorkerRequest{task_spec, callback, allocated_instances_serialized_json});
     } else {
       DeleteRuntimeEnvIfPossible(task_spec.SerializedRuntimeEnv());
-      // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
-      // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
     }
-    return proc;
   };
 
   if (task_spec.IsActorTask()) {
@@ -1202,10 +1237,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     } else {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      std::vector<std::string> dynamic_options = {};
-      if (task_spec.IsActorCreationTask()) {
-        dynamic_options = task_spec.DynamicWorkerOptions();
-      }
+      std::vector<std::string> dynamic_options = task_spec.DynamicWorkerOptions();
 
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
@@ -1360,6 +1392,9 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
       // Worker is either starting or started,
       // if it's not started, we should remove it from starting.
       it->second.is_pending_registration = false;
+      if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+        TryPendingPopWorkerRequests(worker->GetLanguage());
+      }
     }
     if (it->second.alive_started_workers.size() == 0 &&
         !it->second.is_pending_registration) {
@@ -1427,21 +1462,6 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
          worker_type == rpc::WorkerType::RESTORE_WORKER;
-}
-
-std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
-    const JobID &job_id) const {
-  std::vector<std::shared_ptr<WorkerInterface>> workers;
-
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
-      if (worker->GetAssignedJobId() == job_id) {
-        workers.push_back(worker);
-      }
-    }
-  }
-
-  return workers;
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
@@ -1527,6 +1547,21 @@ void WorkerPool::WarnAboutSize() {
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+}
+
+void WorkerPool::TryPendingPopWorkerRequests(const Language &language) {
+  auto &state = GetStateForLanguage(language);
+  if (state.pending_pop_worker_requests.empty()) {
+    return;
+  }
+
+  std::deque<PopWorkerRequest> pending_pop_worker_requests;
+  state.pending_pop_worker_requests.swap(pending_pop_worker_requests);
+  for (const auto &pop_worker_request : pending_pop_worker_requests) {
+    PopWorker(pop_worker_request.task_spec,
+              pop_worker_request.callback,
+              pop_worker_request.allocated_instances_serialized_json);
+  }
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,

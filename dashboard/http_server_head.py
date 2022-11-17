@@ -2,17 +2,28 @@ import asyncio
 import errno
 import ipaddress
 import logging
+from math import floor
 import os
 import sys
-from distutils.version import LooseVersion
+import time
+from ray._private.utils import get_or_create_event_loop
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray._private.gcs_utils import GcsClient
+
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -33,7 +44,6 @@ def setup_static_dir():
             "from source, please follow the additional steps "
             "required to build the dashboard"
             f"(cd python/ray/{module_name}/client "
-            "&& npm install "
             "&& npm ci "
             "&& npm run build)",
             build_dir,
@@ -45,11 +55,25 @@ def setup_static_dir():
 
 
 class HttpServerDashboardHead:
-    def __init__(self, ip, http_host, http_port, http_port_retries):
+    def __init__(
+        self,
+        ip: str,
+        http_host: str,
+        http_port: int,
+        http_port_retries: int,
+        gcs_address: str,
+        gcs_client: GcsClient,
+        session_name: str,
+        metrics: DashboardPrometheusMetrics,
+    ):
         self.ip = ip
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
+        self.gcs_client = gcs_client
+        self.head_node_ip = gcs_address.split(":")[0]
+        self.metrics = metrics
+        self._session_name = session_name
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -70,8 +94,8 @@ class HttpServerDashboardHead:
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 
@@ -95,13 +119,46 @@ class HttpServerDashboardHead:
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
 
+    @aiohttp.web.middleware
+    async def metrics_middleware(self, request, handler):
+        start_time = time.monotonic()
+
+        try:
+            response = await handler(request)
+            status_tag = f"{floor(response.status / 100)}xx"
+            return response
+        except (Exception, asyncio.CancelledError):
+            status_tag = "5xx"
+            raise
+        finally:
+            resp_time = time.monotonic() - start_time
+            try:
+                self.metrics.metrics_request_duration.labels(
+                    endpoint=handler.__name__,
+                    http_status=status_tag,
+                    SessionName=self._session_name,
+                    Component="dashboard",
+                ).observe(resp_time)
+                self.metrics.metrics_request_count.labels(
+                    method=request.method,
+                    endpoint=handler.__name__,
+                    http_status=status_tag,
+                    SessionName=self._session_name,
+                    Component="dashboard",
+                ).inc()
+            except Exception as e:
+                logger.exception(f"Error emitting api metrics: {e}")
+
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
-        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
+        app = aiohttp.web.Application(
+            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
+        )
         app.add_routes(routes=routes.bound_routes())
 
         self.runner = aiohttp.web.AppRunner(

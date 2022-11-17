@@ -27,7 +27,7 @@ public class StrategyCalcOnRayServe {
   // docs-deploy-end
 
   // docs-calc-start
-  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+  public List<String> calc(Long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
     List<String> results = new ArrayList<>();
@@ -50,7 +50,7 @@ public class StrategyCalcOnRayServe {
   // docs-calc-end
 
   // docs-parallel-calc-start
-  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+  public List<String> parallelCalc(Long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
     List<String> results = new ArrayList<>();
@@ -72,6 +72,7 @@ public class StrategyCalcOnRayServe {
 
   // docs-main-start
   public static void main(String[] args) {
+
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";
     String bank2 = "demo_bank_2";

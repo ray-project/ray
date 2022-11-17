@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.memory_utils as memory_utils
 
-# TODO(fyrestone): Not import from dashboard module.
-from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
-from ray.dashboard.utils import Dict, Signal, async_loop_forever
+from ray.dashboard.utils import (
+    Dict,
+    Signal,
+    async_loop_forever,
+    MutableNotificationDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +27,8 @@ class DataSource:
     node_physical_stats = Dict()
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
-    actors = Dict()
+    actors = MutableNotificationDict()
     # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
-    jobs = Dict()
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
@@ -39,24 +40,16 @@ class DataSource:
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
-    node_actors = Dict()
-    # {job id hex(str): worker list}
-    job_workers = Dict()
-    # {job id hex(str): {actor id hex(str): actor table data}}
-    job_actors = Dict()
+    node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
     events = Dict()
-    # {node ip (str): log counts by pid
-    # (dict from pid to count of logs for that pid)}
-    ip_and_pid_to_log_counts = Dict()
-    # {node ip (str): error entries by pid
-    # (dict from pid to list of latest err entries)}
-    ip_and_pid_to_errors = Dict()
 
 
 class DataOrganizer:
+    head_node_ip = None
+
     @staticmethod
     @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
     async def purge():
@@ -67,7 +60,6 @@ class DataOrganizer:
         #   * nodes
         #   * node_id_to_ip
         #   * node_id_to_hostname
-        logger.info("Purge data.")
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -82,29 +74,22 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
     async def organize(cls):
-        job_workers = {}
         node_workers = {}
         core_worker_stats = {}
         # await inside for loop, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
-                job_id = worker["jobId"]
-                job_workers.setdefault(job_id, []).append(worker)
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
-        DataSource.job_workers.reset(job_workers)
         DataSource.node_workers.reset(node_workers)
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
     async def get_node_workers(cls, node_id):
         workers = []
-        node_ip = DataSource.node_id_to_ip[node_id]
-        node_log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
-        node_errs = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
@@ -119,17 +104,9 @@ class DataOrganizer:
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
-        # Clean up logs from a dead pid.
-        dead_pids = set(node_log_counts.keys()) - pids_on_node
-        for dead_pid in dead_pids:
-            if dead_pid in node_log_counts:
-                node_log_counts.mutable().pop(dead_pid)
-
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["logCount"] = node_log_counts.get(str(pid), 0)
-            worker["errorCount"] = len(node_errs.get(str(pid), []))
             worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
@@ -146,23 +123,16 @@ class DataOrganizer:
         node_physical_stats = dict(DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
         node = DataSource.nodes.get(node_id, {})
-        node_ip = DataSource.node_id_to_ip.get(node_id)
-        # Merge node log count information into the payload
-        log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
-        node_log_count = 0
-        for entries in log_counts.values():
-            node_log_count += entries
-        error_info = DataSource.ip_and_pid_to_errors.get(node_ip, {})
-        node_err_count = 0
-        for entries in error_info.values():
-            node_err_count += len(entries)
 
         node_stats.pop("coreWorkersStats", None)
-
-        view_data = node_stats.get("viewData", [])
-        ray_stats = cls._extract_view_data(
-            view_data, {"object_store_used_memory", "object_store_available_memory"}
-        )
+        store_stats = node_stats.get("storeStats", {})
+        used = int(store_stats.get("objectStoreBytesUsed", 0))
+        # objectStoreBytesAvail == total in the object_manager.cc definition.
+        total = int(store_stats.get("objectStoreBytesAvail", 0))
+        ray_stats = {
+            "object_store_used_memory": used,
+            "object_store_available_memory": total - used,
+        }
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
@@ -171,12 +141,17 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_info["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
         # Merge actors to node physical stats
         node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
         node_info["workers"] = DataSource.node_workers.get(node_id, [])
-        node_info["logCount"] = node_log_count
-        node_info["errorCount"] = node_err_count
         await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
@@ -189,11 +164,14 @@ class DataOrganizer:
 
         node_physical_stats.pop("workers", None)
         node_stats.pop("workersStats", None)
-        view_data = node_stats.get("viewData", [])
-        ray_stats = cls._extract_view_data(
-            view_data, {"object_store_used_memory", "object_store_available_memory"}
-        )
-        node_stats.pop("viewData", None)
+        store_stats = node_stats.get("storeStats", {})
+        used = int(store_stats.get("objectStoreBytesUsed", 0))
+        # objectStoreBytesAvail == total in the object_manager.cc definition.
+        total = int(store_stats.get("objectStoreBytesAvail", 0))
+        ray_stats = {
+            "object_store_used_memory": used,
+            "object_store_available_memory": total - used,
+        }
 
         node_summary = node_physical_stats
         # Merge node stats to node physical stats
@@ -201,6 +179,13 @@ class DataOrganizer:
         node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_summary["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
 
         await GlobalSignals.node_summary_fetched.send(node_summary)
 
@@ -219,6 +204,18 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
+
+    @classmethod
+    async def get_all_agent_infos(cls):
+        agent_infos = dict()
+        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+            agent_infos[node_id] = dict(
+                ipAddress=DataSource.node_id_to_ip[node_id],
+                httpPort=int(http_port or -1),
+                grpcPort=int(grpc_port or -1),
+                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            )
+        return agent_infos
 
     @classmethod
     async def get_all_actors(cls):
@@ -272,73 +269,3 @@ class DataOrganizer:
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
         return actor
-
-    @classmethod
-    async def get_actor_creation_tasks(cls):
-        infeasible_tasks = sum(
-            (
-                list(node_stats.get("infeasibleTasks", []))
-                for node_stats in DataSource.node_stats.values()
-            ),
-            [],
-        )
-        new_infeasible_tasks = []
-        for task in infeasible_tasks:
-            task = dict(task)
-            task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "INFEASIBLE"
-            new_infeasible_tasks.append(task)
-
-        resource_pending_tasks = sum(
-            (
-                list(data.get("readyTasks", []))
-                for data in DataSource.node_stats.values()
-            ),
-            [],
-        )
-        new_resource_pending_tasks = []
-        for task in resource_pending_tasks:
-            task = dict(task)
-            task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "PENDING_RESOURCES"
-            new_resource_pending_tasks.append(task)
-
-        results = {
-            task["actorCreationTaskSpec"]["actorId"]: task
-            for task in new_resource_pending_tasks + new_infeasible_tasks
-        }
-        return results
-
-    @classmethod
-    async def get_memory_table(
-        cls,
-        sort_by=memory_utils.SortingType.OBJECT_SIZE,
-        group_by=memory_utils.GroupByType.STACK_TRACE,
-    ):
-        all_worker_stats = []
-        for node_stats in DataSource.node_stats.values():
-            all_worker_stats.extend(node_stats.get("coreWorkersStats", []))
-        memory_information = memory_utils.construct_memory_table(
-            all_worker_stats, group_by=group_by, sort_by=sort_by
-        )
-        return memory_information
-
-    @staticmethod
-    def _extract_view_data(views, data_keys):
-        view_data = {}
-        for view in views:
-            view_name = view["viewName"]
-            if view_name in data_keys:
-                if not view.get("measures"):
-                    view_data[view_name] = 0
-                    continue
-                measure = view["measures"][0]
-                if "doubleValue" in measure:
-                    measure_value = measure["doubleValue"]
-                elif "intValue" in measure:
-                    measure_value = measure["intValue"]
-                else:
-                    measure_value = 0
-                view_data[view_name] = measure_value
-
-        return view_data

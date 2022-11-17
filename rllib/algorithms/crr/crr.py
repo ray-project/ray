@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
@@ -17,7 +18,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -57,55 +57,68 @@ class CRRConfig(AlgorithmConfig):
         # Only PyTorch supported thus far. Make this the default framework.
         self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
-        self.num_workers = 4
+        self.num_rollout_workers = 4
         self.offline_sampling = True
         self.min_time_s_per_iteration = 10.0
+
+        self.td_error_loss_fn = "mse"
+        self.categorical_distribution_temperature = 1.0
 
     def training(
         self,
         *,
-        weight_type: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_weight: Optional[float] = None,
-        advantage_type: Optional[str] = None,
-        n_action_sample: Optional[int] = None,
-        twin_q: Optional[bool] = None,
-        target_network_update_freq: Optional[int] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        tau: Optional[float] = None,
+        weight_type: Optional[str] = NotProvided,
+        temperature: Optional[float] = NotProvided,
+        max_weight: Optional[float] = NotProvided,
+        advantage_type: Optional[str] = NotProvided,
+        n_action_sample: Optional[int] = NotProvided,
+        twin_q: Optional[bool] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        td_error_loss_fn: Optional[str] = NotProvided,
+        categorical_distribution_temperature: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CRRConfig":
 
-        """
-        === CRR configs
+        r"""
+        CRR training configuration
 
         Args:
             weight_type: weight type to use `bin` | `exp`.
             temperature: the exponent temperature used in exp weight type.
             max_weight: the max weight limit for exp weight type.
             advantage_type: The way we reduce q values to v_t values
-            `max` | `mean` | `expectation`. `max` and `mean` work for both
-            discrete and continuous action spaces while `expectation` only
-            works for discrete action spaces.
+                `max` | `mean` | `expectation`. `max` and `mean` work for both
+                discrete and continuous action spaces while `expectation` only
+                works for discrete action spaces.
                 `max`: Uses max over sampled actions to estimate the value.
+
                 .. math::
+
                     A(s_t, a_t) = Q(s_t, a_t) - \max_{a^j} Q(s_t, a^j)
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `mean`: Uses mean over sampled actions to estimate the value.
+
                 .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}[Q
-                    (s_t, a^j)]
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+
+                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}
+                    [Q(s_t, a^j)]
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `expectation`: This uses categorical distribution to evaluate
                 the expectation of the q values directly to estimate the value.
+
                 .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,
-                    a^j)]
+
+                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,a^j)]
+
             n_action_sample: the number of actions to sample for v_t estimation.
             twin_q: if True, uses pessimistic q estimation.
             target_network_update_freq: The frequency at which we update the
@@ -117,6 +130,12 @@ class CRRConfig(AlgorithmConfig):
             critic_hidden_activation: The activation used in the critic's fc network.
             tau: Polyak averaging coefficient
                 (making it 1 is reduces it to a hard update).
+            td_error_loss_fn: "huber" or "mse".
+                Loss function for calculating critic error.
+            categorical_distribution_temperature: Set the temperature parameter used
+                by Categorical action distribution. A valid temperature is in the range
+                of [0, 1]. Note that this mostly affects evaluation since critic error
+                uses selected action for return calculation.
             **kwargs: forward compatibility kwargs
 
         Returns:
@@ -124,30 +143,40 @@ class CRRConfig(AlgorithmConfig):
         """
         super().training(**kwargs)
 
-        if weight_type is not None:
+        if weight_type is not NotProvided:
             self.weight_type = weight_type
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if max_weight is not None:
+        if max_weight is not NotProvided:
             self.max_weight = max_weight
-        if advantage_type is not None:
+        if advantage_type is not NotProvided:
             self.advantage_type = advantage_type
-        if n_action_sample is not None:
+        if n_action_sample is not NotProvided:
             self.n_action_sample = n_action_sample
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
+        if td_error_loss_fn is not NotProvided:
+            self.td_error_loss_fn = td_error_loss_fn
+            assert self.td_error_loss_fn in [
+                "huber",
+                "mse",
+            ], "td_error_loss_fn must be 'huber' or 'mse'."
+        if categorical_distribution_temperature is not NotProvided:
+            self.categorical_distribution_temperature = (
+                categorical_distribution_temperature
+            )
 
         return self
 
@@ -163,10 +192,10 @@ class CRR(Algorithm):
 
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        if self.config.get("target_network_update_freq", None) is None:
-            self.config["target_network_update_freq"] = (
-                self.config["train_batch_size"] * 100
-            )
+
+        self.target_network_update_freq = self.config.target_network_update_freq
+        if self.target_network_update_freq is None:
+            self.target_network_update_freq = self.config.train_batch_size * 100
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
@@ -174,11 +203,14 @@ class CRR(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CRRConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CRRConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
 
@@ -209,11 +241,13 @@ class CRR(Algorithm):
         # update target every few gradient updates
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(

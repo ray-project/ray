@@ -63,23 +63,23 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
   /// Handle get resource rpc request.
-  void HandleGetResources(const rpc::GetResourcesRequest &request,
+  void HandleGetResources(rpc::GetResourcesRequest request,
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get available resources of all nodes.
   void HandleGetAllAvailableResources(
-      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle report resource usage rpc from a raylet.
-  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+  void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,
                                  rpc::ReportResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all resource usage rpc request.
-  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+  void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
@@ -134,6 +134,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
+  /// Aggregate nodes' pending task info.
+  ///
+  /// \param resources_data A node's pending task info (by shape).
+  /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
+  void FillAggregateLoad(const rpc::ResourcesData &resources_data,
+                         std::unordered_map<google::protobuf::Map<std::string, double>,
+                                            rpc::ResourceDemand> *aggregate_load);
+
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;

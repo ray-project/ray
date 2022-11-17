@@ -4,10 +4,11 @@
 Transforming Datasets
 =====================
 
-Datasets transformations take in datasets and produce new datasets.
-For example, *map* is a transformation that applies a user-defined function (UDF)
-on each dataset record and returns a new dataset as the result. Datasets
-transformations can be composed to express a chain of computations.
+Datasets transformations take in datasets and produce new datasets. For example, *map*
+is a transformation that applies a
+:ref:`user-defined function <transform_datasets_writing_udfs>` on each dataset record
+and returns a new dataset as the result. Datasets transformations can be composed to
+express a chain of computations.
 
 .. _transform_datasets_transformations:
 
@@ -32,7 +33,7 @@ Here is a table listing some common transformations supported by Ray Datasets.
      - Description
    * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
      - One-to-one
-     - Apply a given function to batches of records of this dataset. 
+     - Apply a given function to batches of records of this dataset.
    * - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
      - One-to-one
      - Apply a given function to batches of records to create a new column.
@@ -75,9 +76,9 @@ the Iris dataset.
 
 .. _transform_datasets_writing_udfs:
 
-------------
-Writing UDFs
-------------
+-------------------------------------
+Writing User-defined Functions (UDFs)
+-------------------------------------
 
 User-defined functions (UDFs) are routines that apply on one row (e.g.
 :meth:`.map() <ray.data.Dataset.map>`) or a batch of rows (e.g.
@@ -120,25 +121,35 @@ Choose the *batch format* of the data given to UDFs
 by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
 Here is an overview of the available batch formats:
 
-.. tabbed:: "native" (default)
+.. tabbed:: "default"
 
-  The "native" batch format presents data as follows for each Dataset type:
+  The "default" batch format presents data as follows for each Dataset type:
 
   * **Tabular Datasets**: Each batch will be a
     `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
     This may incur a conversion cost if the underlying Dataset block is not
     zero-copy convertible from an Arrow table.
 
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_tabular_begin__
+      :end-before: __writing_default_udfs_tabular_end__
+
   * **Tensor Datasets** (single-column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
     containing the single tensor column for this batch.
 
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_tensor_begin__
+      :end-before: __writing_default_udfs_tensor_end__
+
   * **Simple Datasets**: Each batch will be a Python list.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
-    :language: python
-    :start-after: __writing_native_udfs_begin__
-    :end-before: __writing_native_udfs_end__
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_list_begin__
+      :end-before: __writing_default_udfs_list_end__
 
 .. tabbed:: "pandas"
 
