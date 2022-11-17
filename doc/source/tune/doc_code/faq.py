@@ -100,7 +100,7 @@ if not MOCK:
             resources=ScalingConfig(
                 trainer_resources={"CPU": 2, "GPU": 0.5, "hdd": 80},
                 num_workers=2,
-                resources_per_worker={"CPU": 1}
+                resources_per_worker={"CPU": 1},
             ),
         )
     )
@@ -115,7 +115,7 @@ if not MOCK:
         ),
         param_space={
             "use_gpu": True,
-        }
+        },
     )
     tuner.fit()
     # __resources_lambda_end__
