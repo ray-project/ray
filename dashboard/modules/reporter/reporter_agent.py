@@ -432,6 +432,7 @@ class ReporterAgent(
     def _get_disk_io_stats():
         stats = psutil.disk_io_counters()
         # stats can be None or {} if the machine is diskless.
+        # https://psutil.readthedocs.io/en/latest/#psutil.disk_io_counters
         if not stats:
             return (0, 0, 0, 0)
         else:
