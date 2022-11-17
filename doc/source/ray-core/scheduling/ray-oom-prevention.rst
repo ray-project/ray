@@ -28,16 +28,7 @@ The memory monitor is controlled by the following environment variables:
 - ``RAY_memory_monitor_interval_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
 - ``RAY_memory_usage_threshold_fraction (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
-  capacity. If the memory usage is above this value and the free space is
-  below min_memory_free_bytes then it will start killing processes to free up space. Ranges from [0, 1].
-
-- ``RAY_min_memory_free_bytes (int, defaults to -1)`` is the minimum amount of free space. If the memory usage is above
-  ``memory_usage_threshold_fraction`` and the free space is below this value then it
-  will start killing processes to free up space. This setting is unused if it is set to -1.
-
-  This value is useful for larger hosts where the ``memory_usage_threshold_fraction`` could
-  represent a large chunk of memory, e.g. a host with 64GB of memory and a 0.9 threshold
-  means 6.4 GB of the memory will not be usable.
+  capacity. If the memory usage is above this value it will start killing processes to free up space. Ranges from [0, 1].
 
 - ``RAY_task_oom_retries (int, defaults to 15):`` The number of retries for the task or actor when
   it fails due to the process being killed by the memory monitor.
@@ -45,80 +36,6 @@ The memory monitor is controlled by the following environment variables:
   only when the process is killed by the memory monitor, and the retry counter of the
   task or actor is used when it fails in other ways. If the process is killed by the operating system OOM killer it will use the task retry and not this value.
   Infinite retries is not supported.
-
-Enabling the memory monitor
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Enable the memory monitor by setting the environment variable when Ray starts.
-
-.. code-block:: bash
-
-    RAY_memory_monitor_interval_ms=100 ray start --head
-
-Check the logs to see the monitor is now running:
-
-.. code-block:: bash
-
-    grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
-
-Which should print
-
-.. code-block:: bash
-
-    (raylet) memory_monitor.cc MemoryMonitor initialized with usage threshold at 34664513536 bytes (0.97 system memory), total system memory bytes: 35738255360
-
-If the memory monitor is not running (the default) it will print something like this:
-
-.. code-block:: bash
-
-    (raylet) memory_monitor.cc: MemoryMonitor disabled. Specify `memory_monitor_interval_ms` > 0 to enable the monitor.
-
-Memory usage threshold
-~~~~~~~~~~~~~~~~~~~~~~
-
-The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables:
-
-- ``RAY_memory_usage_threshold_fraction`` (default: 0.95)
-- ``RAY_min_memory_free_bytes`` (default: -1)
-
-When the node starts it computes the usage threshold as follows:
-
-.. code-block:: bash
-
-    usage_threshold = max(system_memory * RAY_memory_usage_threshold_fraction, system_memory - RAY_min_memory_free_bytes)
-
-``RAY_min_memory_free_bytes`` can be disabled by setting its value to -1. In that case it only uses ``RAY_memory_usage_threshold_fraction`` to determine the usage threshold.
-
-
-.. dropdown:: Example: Utilizing the thresholds
-
-    Let's walk through an example of configuring the above threshold. Here we set the memory threshold to be 0.9 of system memory:
-
-    .. code-block:: bash
-
-        RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.9 RAY_min_memory_free_bytes=-1 ray start --head
-
-    For a node with ~33 GiB of RAM the raylet log prints:
-
-    .. code-block:: bash
-
-        $ grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
-
-        (raylet) memory_monitor.cc: MemoryMonitor initialized with usage threshold at 32164429824 bytes (0.90 system memory), total system memory bytes: 35738255360
-
-    On the other hand, if we set ``RAY_min_memory_free_bytes`` to a low value it will limit the amount of free memory reserved by the memory monitor. This helps limit the free memory for a node with large amounts of RAM.
-
-    .. code-block:: bash
-
-        RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.9 RAY_min_memory_free_bytes=1000000000 ray start --head
-
-    For a node with ~33 GiB of RAM it should have a threshold close to 32GiB by leaving only 1000000000 bytes of free memory.
-
-    .. code-block:: bash
-
-        $ grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
-
-        (raylet) memory_monitor.cc: MemoryMonitor initialized with usage threshold at 34738255360 bytes (0.97 system memory), total system memory bytes: 35738255360
 
 Using the Memory Monitor
 ------------------------
@@ -195,7 +112,7 @@ The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries
 
     .. code-block:: bash
 
-        RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.4 RAY_min_memory_free_bytes=-1 ray start --head
+        RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.4 ray start --head
 
 
     Let's create an application two_actors.py that submits two actors, where the first one is retriable and the second one is non-retriable.

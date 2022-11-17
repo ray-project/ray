@@ -97,7 +97,7 @@ RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
 /// This value is useful for larger host where the memory_usage_threshold_fraction could
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t) -1)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
