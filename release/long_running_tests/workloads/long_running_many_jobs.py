@@ -22,7 +22,7 @@ NUM_CLIENTS = 1
 NUM_JOBS_PER_BATCH = 4
 
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
-FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
+FULL_TEST_TIMEOUT = 1 * 60 * 60  # 1 hour
 
 # Stop calling list_jobs after this many batches.
 NUM_INITIAL_BATCHES_TO_CALL_LIST_JOBS_FOR = 500
