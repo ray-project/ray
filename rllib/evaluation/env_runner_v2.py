@@ -787,7 +787,7 @@ class EnvRunnerV2:
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
     ):
         """Process resetted obs through agent connectors for policy eval.
-        
+
         Args:
             env_id: The env id.
             obs: The Resetted obs.
@@ -906,7 +906,10 @@ class EnvRunnerV2:
 
             if not soft_reset:
                 self.__process_resetted_obs_for_eval(
-                    env_id, resetted_obs, new_episode, to_eval,
+                    env_id,
+                    resetted_obs,
+                    new_episode,
+                    to_eval,
                 )
             else:
                 # This Env was soft-reset. to_eval should already have the
