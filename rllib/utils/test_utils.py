@@ -330,14 +330,7 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
-            assert worker_set
-            if isinstance(worker_set, list):
-                obs_space = algorithm.get_policy(pid).observation_space
-            else:
-                obs_space = worker_set.local_worker().for_policy(
-                    lambda p: p.observation_space, policy_id=pid
-                )
+            obs_space = algorithm.get_policy(pid).observation_space
             obs_space = getattr(obs_space, "original_space", obs_space)
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid

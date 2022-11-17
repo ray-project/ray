@@ -187,10 +187,20 @@ def local_policy_inference(
     server-client deployment.
 
     Args:
-        policy: Policy.
-        env_id: Environment ID.
-        agent_id: Agent ID.
-        obs: Env obseration.
+        policy: Policy object used in inference.
+        env_id: Environment ID. RLlib builds environments' trajectories internally with
+            connectors based on this, i.e. one trajectory per (env_id, agent_id) tuple.
+        agent_id: Agent ID. RLlib builds agents' trajectories internally with connectors
+            based on this, i.e. one trajectory per (env_id, agent_id) tuple.
+        obs: Environment observation to base the action on.
+        reward: Reward that is potentially used during inference. If not required,
+            may be left empty. Some policies have ViewRequirements that require this.
+            This can be set to zero at the first inference step - for example after
+            calling gmy.Env.reset.
+        done: Done that is potentially used during inference. If not required,
+            may be left empty. Some policies have ViewRequirements that require this.
+        info: Info that is potentially used durin inference. If not required,
+            may be left empty. Some policies have ViewRequirements that require this.
 
     Returns:
         List of outputs from policy forward pass.

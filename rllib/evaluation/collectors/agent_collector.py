@@ -132,21 +132,21 @@ class AgentCollector:
         future.
         """
 
-        if (
-            log_once(
-                f"view_requirement_"
-                f"{view_requirement_name}_checked_in_agent_collector"
-            )
-            and view_requirement_name in self.view_requirements
-        ):
+        if view_requirement_name in self.view_requirements:
             vr = self.view_requirements[view_requirement_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
             # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
             #  space that is not a gym.Space
-            # TODO (Artur): Don't use np.shape here after ViewRequirements have
-            #  stabelized -> use data.shape
-            if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
+            if (
+                hasattr(vr.space, "shape")
+                and not vr.space.shape == np.shape(data)
+                and log_once(
+                    f"view_requirement"
+                    f"_{view_requirement_name}_checked_in_agent_collector"
+                )
+            ):
+
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
@@ -185,8 +185,8 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        # When adding initial observation, it's expected that the view_requirement
-        # dict has the SampleBatch.OBS key
+        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
+        # view requirement does not match init_obs
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
@@ -245,11 +245,19 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            # Check if view requirement dict has k and warn once if
+            # view requirement does not match v
             self._check_view_requirement(k, v)
 
             if k not in self.buffers:
-                self._build_buffers(single_row=values)
-
+                if self.training and k.startswith("state_out_"):
+                    vr = self.view_requirements[k]
+                    data_col = vr.data_col or k
+                    self._fill_buffer_with_initial_values(
+                        data_col, vr, build_for_inference=False
+                    )
+                else:
+                    self._build_buffers({k: v})
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
@@ -357,7 +365,6 @@ class AgentCollector:
             SampleBatch: The built SampleBatch for this agent, ready to go into
             postprocessing.
         """
-
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
