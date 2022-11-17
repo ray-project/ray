@@ -24,17 +24,22 @@ NUM_JOBS_PER_BATCH = 4
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
 
+# Stop calling list_jobs after this many batches.
+NUM_INITIAL_BATCHES_TO_CALL_LIST_JOBS_FOR = 500
+
 
 def wait_until_finish(
     client: JobSubmissionClient,
     job_id: str,
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 10,
+    get_list_jobs: bool = False,
 ) -> Optional[JobStatus]:
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
         # Test calling list_jobs
-        client.list_jobs()
+        if get_list_jobs:
+            client.list_jobs()
         status = client.get_job_status(job_id)
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
@@ -47,6 +52,7 @@ def submit_batch_jobs(
     num_jobs: int,
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 1,
+    get_list_jobs: bool = False,
 ) -> bool:
     job_ids = []
     for i in range(num_jobs):
@@ -60,7 +66,9 @@ def submit_batch_jobs(
 
     for job_id in job_ids:
         client = clients[job_ids.index(job_id) % len(clients)]
-        status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
+        status = wait_until_finish(
+            client, job_id, timeout_s, retry_interval_s, get_list_jobs
+        )
         if status != JobStatus.SUCCEEDED:
             print(
                 f"Info for failed/timed-out job {job_id}: {client.get_job_info(job_id)}"
@@ -103,28 +111,36 @@ if __name__ == "__main__":
 
     clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
 
+    # Print current time
+    print(f"Current time: {time.time()}")
+
     batch_counter = 0
     while time.time() - start < timeout:
         batch_counter += 1
         print(f"Submitting batch {batch_counter}...")
+        get_list_jobs = batch_counter <= NUM_INITIAL_BATCHES_TO_CALL_LIST_JOBS_FOR
         # Submit a batch of jobs
-        if not submit_batch_jobs(clients, NUM_JOBS_PER_BATCH):
+        if not submit_batch_jobs(
+            clients, NUM_JOBS_PER_BATCH, get_list_jobs=get_list_jobs
+        ):
             print("FAILED")
             exit(1)
+        if get_list_jobs:
+            # Test list jobs
+            jobs: List[JobDetails] = clients[0].list_jobs()
+            print(f"Total jobs submitted so far: {len(jobs)}")
 
-        # Test list jobs
-        jobs: List[JobDetails] = clients[0].list_jobs()
-        print(f"Total jobs submitted so far: {len(jobs)}")
-
-        # Get job logs from random submission job
-        is_submission_job = False
-        while not is_submission_job:
-            job_details = random.choice(jobs)
-            is_submission_job = job_details.type == "SUBMISSION"
-        job_id = job_details.submission_id
-        print(f"Getting logs for randomly chosen job {job_id}...")
-        logs = clients[0].get_job_logs(job_id)
-        print(logs)
+            # Get job logs from random submission job
+            is_submission_job = False
+            while not is_submission_job:
+                job_details = random.choice(jobs)
+                is_submission_job = job_details.type == "SUBMISSION"
+            job_id = job_details.submission_id
+            print(f"Getting logs for randomly chosen job {job_id}...")
+            logs = clients[0].get_job_logs(job_id)
+            print(logs)
+        else:
+            print("No longer getting logs for random jobs")
 
     time_taken = time.time() - start
     result = {
