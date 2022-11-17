@@ -406,6 +406,7 @@ const std::string MemoryMonitor::GetCommandLineForPid(pid_t pid, const std::stri
   std::string line;
   while (std::getline(commandline_ifs, line)) {
     boost::trim(line);
+    std::replace(line.begin(), line.end(), '\0', ' ');
     return line;
   }
   RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << "Empty file. Returning empty command. Path: " << path;

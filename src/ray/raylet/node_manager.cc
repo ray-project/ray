@@ -3018,7 +3018,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
          "information about memory usage on this node, use `ray logs raylet.out "
          "-ip "
       << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
-      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << ". Top 10 memory users:\n"
+      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << ".\nTop 10 memory users:\n"
       << MemoryMonitor::TopNMemoryDebugString(10);
   return oom_kill_details_ss.str();
 }
