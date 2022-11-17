@@ -8,7 +8,6 @@ import tarfile
 import tempfile
 import traceback
 import uuid
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
@@ -399,13 +398,11 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        warnings.warn(
+        raise DeprecationWarning(
             "`from_object_ref` is deprecated and will be removed in a future Ray "
             "version. To restore a Checkpoint from a remote object ref, call "
             "`ray.get(obj_ref)` instead.",
-            DeprecationWarning,
         )
-        return cls(obj_ref=obj_ref)
 
     @Deprecated(
         message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
@@ -417,16 +414,11 @@ class Checkpoint:
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
-        warnings.warn(
+        raise DeprecationWarning(
             "`to_object_ref` is deprecated and will be removed in a future Ray "
             "version. To store the checkpoint in the Ray object store, call "
             "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
-            DeprecationWarning,
         )
-        if self._obj_ref:
-            return self._obj_ref
-        else:
-            return ray.put(self.to_dict())
 
     @classmethod
     def from_directory(cls, path: str) -> "Checkpoint":

@@ -7,6 +7,7 @@ This section is an overview of how tasks and actors are scheduled
     :maxdepth: 1
 
     resources
+    ../tasks/using-ray-with-gpus
     placement-group
     memory-management
     ray-oom-prevention

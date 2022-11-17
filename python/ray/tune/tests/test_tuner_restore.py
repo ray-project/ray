@@ -35,6 +35,14 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def chdir_tmpdir(tmpdir):
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    yield tmpdir
+    os.chdir(old_cwd)
+
+
 def _train_fn_sometimes_failing(config):
     # Fails if failing is set and marker file exists.
     # Hangs if hanging is set and marker file exists.
@@ -583,6 +591,19 @@ def test_tuner_restore_from_moved_experiment_path(
 
     # Make sure that we did not create a logdir in the old location
     assert not old_local_dir.exists()
+
+
+def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
+    tuner = Tuner(
+        lambda config: session.report({"score": 1}),
+        run_config=RunConfig(local_dir="relative_dir", name="exp_name"),
+    )
+    tuner.fit()
+
+    tuner = Tuner.restore("relative_dir/exp_name")
+    results = tuner.fit()
+    assert not results.errors
+    assert results[0].metrics["score"] == 1
 
 
 if __name__ == "__main__":
