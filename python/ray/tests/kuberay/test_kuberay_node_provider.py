@@ -2,6 +2,7 @@ import copy
 import mock
 import sys
 
+import jsonpatch
 import pytest
 
 from ray.autoscaler.batching_node_provider import NodeData
@@ -257,33 +258,58 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
         assert patch_payload == expected_patch_payload
 
 
+@pytest.mark.parametrize("node_set", [{"A", "B", "C", "D", "E"}])
+@pytest.mark.parametrize("cpu_workers_to_delete", ["A", "Z"])
+@pytest.mark.parametrize("gpu_workers_to_delete", ["B", "Y"])
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_safe_to_scale(
     node_set: Set[NodeID],
     cpu_workers_to_delete: List[NodeID],
     gpu_workers_to_delete: List[NodeID],
-    expected_safe: bool,
 ):
+    # NodeData values unimportant for this test.
     mock_node_data = NodeData("-", "-", "-", "-")
     node_data_dict = {node_id: mock_node_data for node_id in node_set}
 
     raycluster = _get_basic_ray_cr_workers_to_delete(cpu_workers_to_delete, gpu_workers_to_delete)
 
-    def mock_patch():
-        pass
+    def mock_patch(kuberay_provider, path, patch_payload):
+        patch = jsonpatch.JsonPatch(patch_payload)
+        kuberay_provider._patched_raycluster = patch.apply(kuberay_provider._raycluster)
 
-    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
+    with mock.patch.object(
+            KuberayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(
+            KuberayNodeProvider, "_patch", mock_patch
+    ):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
-        kr_node_provider.node_data_dict = node_data_dict
+        kr_node_provider.cluster_name = "fake"
+        kr_node_provider._patched_raycluster = raycluster
         kr_node_provider._raycluster = raycluster
+        kr_node_provider.node_data_dict = node_data_dict
         actual_safe = kr_node_provider.safe_to_scale()
 
-    no_overlap = not any(
-        cpu_worker_to_delete in node_set for cpu_worker_to_delete in cpu_workers_to_delete
+    expected_safe = not any(
+        cpu_worker_to_delete in node_set
+        for cpu_worker_to_delete in cpu_workers_to_delete
     ) and not any(
-        gpu_worker_to_delete in node_set for gpu_worker_to_delete in gpu_workers_to_delete
+        gpu_worker_to_delete in node_set
+        for gpu_worker_to_delete in gpu_workers_to_delete
     )
-    assert expected_safe is actual_safe is no_overlap
+    assert expected_safe is actual_safe
+    patched_cpu_workers_to_delete = kr_node_provider._patched_raycluster[
+        "spec"]["workerGroupSpecs"][0]["scaleStrategy"]["workersToDelete"]
+    patched_gpu_workers_to_delete = kr_node_provider._patched_raycluster[
+        "spec"]["workerGroupSpecs"][1]["scaleStrategy"]["workersToDelete"]
+
+    if expected_safe:
+        # Cleaned up workers to delete
+        assert patched_cpu_workers_to_delete == []
+        assert patched_gpu_workers_to_delete == []
+    else:
+        # Did not clean up workers to delete
+        assert patched_cpu_workers_to_delete == cpu_workers_to_delete
+        assert patched_gpu_workers_to_delete == gpu_workers_to_delete
 
 
 if __name__ == "__main__":
