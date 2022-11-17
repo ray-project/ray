@@ -64,9 +64,25 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[str, Union[List[List[bytes]], List[List[float]], List[List[int]]]]:
+) -> Dict[
+    str,
+    Union[
+        List[bytes],
+        List[List[bytes]],
+        List[float],
+        List[List[float]],
+        List[int],
+        List[List[int]],
+    ],
+]:
     record = {}
     for feature_name, feature in example.features.feature.items():
+        value = _get_feature_value(feature)
+        # Return value itself if the list has single value.
+        # This is to give better user experience when writing preprocessing UDF on
+        # these single-value lists.
+        if len(value) == 1:
+            value = value[0]
         record[feature_name] = [_get_feature_value(feature)]
     return record
 

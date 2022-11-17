@@ -37,18 +37,18 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
     assert dict(df.dtypes) == {
-        "int64": object,
+        "int64": np.int64,
         "int64_list": object,
-        "float": object,
+        "float": np.float,
         "float_list": object,
         "bytes": object,
         "bytes_list": object,
     }
-    assert np.array_equal(df["int64"][0], np.array([1]))
+    assert list(df["int64"]) == [1]
     assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
-    assert np.array_equal(df["float"][0], np.array([1.0]))
+    assert list(df["float"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
-    assert np.array_equal(df["bytes"][0], np.array([b"abc"]))
+    assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
 
 
@@ -174,20 +174,20 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
         [
             # Row one.
             {
-                "int_item": [1],
+                "int_item": 1,
                 "int_list": [2, 2, 3],
-                "float_item": [1.0],
+                "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
-                "bytes_item": [b"abc"],
+                "bytes_item": b"abc",
                 "bytes_list": [b"abc", b"1234"],
             },
             # Row two.
             {
-                "int_item": [2],
+                "int_item": 2,
                 "int_list": [3, 3, 4],
-                "float_item": [2.0],
+                "float_item": 2.0,
                 "float_list": [2.0, 2.0, 3.0],
-                "bytes_item": [b"def"],
+                "bytes_item": b"def",
                 "bytes_list": [b"def", b"1234"],
             },
         ]
