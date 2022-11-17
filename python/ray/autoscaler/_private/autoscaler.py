@@ -384,6 +384,14 @@ class StandardAutoscaler:
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
 
+        # Back off the update if the provider says it's not safe to proceed.
+        if not self.provider.safe_to_scale():
+            logger.info(
+                "Backing off of autoscaler update."
+                f" Will try again in {self.update_interval_s} seconds."
+            )
+            return
+
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 

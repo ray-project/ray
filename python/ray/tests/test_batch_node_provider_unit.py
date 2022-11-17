@@ -144,6 +144,11 @@ class BatchingNodeProviderTester:
         # Also validate node provider state.
         self.validate_non_terminated_nodes()
 
+        # Abort if it's not safe to scale.
+        # This behavior is tested in the context of an actual autoscaler update in
+        # test_autoscaler:test_safe_to_scale.
+        if not self.node_provider.safe_to_scale():
+            return
         # Terminate some nodes.
         # Set to track nodes marked for termination during the update.
         to_terminate_this_update = set()
@@ -166,8 +171,7 @@ class BatchingNodeProviderTester:
                 to_terminate_this_update.add(node)
                 to_terminate_this_request.append(node)
             self.node_provider.terminate_nodes(to_terminate_this_request)
-            if safe_to_scale_flag:
-                self.expected_node_counts[node_type] -= len(to_terminate_this_request)
+            self.expected_node_counts[node_type] -= len(to_terminate_this_request)
             # else: the scale request will not be submitted.
 
         # Create some nodes.
@@ -175,8 +179,7 @@ class BatchingNodeProviderTester:
             self.node_provider.create_node(
                 node_config={}, tags={TAG_RAY_USER_NODE_TYPE: node_type}, count=count
             )
-            if safe_to_scale_flag:
-                self.expected_node_counts[node_type] += count
+            self.expected_node_counts[node_type] += count
             # else: the scale request will not be submitted.
 
         # Scale change is needed exactly when there's something to create or terminate.
@@ -186,7 +189,9 @@ class BatchingNodeProviderTester:
 
         # Submit the scale request.
         self.node_provider.post_process()
-        if safe_to_scale_flag and (create_node_requests or terminate_nodes_requests):
+        # Expect a scale request to be submitted iff we called create or terminate
+        # at least one.
+        if (create_node_requests or terminate_nodes_requests):
             self.expected_scale_request_submitted_count += 1
 
     def validate_non_terminated_nodes(self):
@@ -300,7 +305,7 @@ class BatchingNodeProviderTester:
             count = random.choice(range(10))
             terminate_nodes_requests.append((node_type, count))
 
-        # 50% chance of the scale request being submitted.
+        # 50% chance of the update being executed.
         safe_to_scale_flag = random.choice([True, False])
 
         return create_node_requests, terminate_nodes_requests, safe_to_scale_flag
@@ -328,15 +333,6 @@ def test_batching_node_provider_basic():
         terminate_nodes_requests=[("type-1", 2)],
         safe_to_scale_flag=True,
     )
-    tester.assert_worker_counts({"type-1": 3, "type-2": 10})
-
-    tester.update(
-        create_node_requests=[("type-1", 3)],
-        terminate_nodes_requests=[("type-1", 2)],
-        safe_to_scale_flag=False,
-    )
-    # Scale request was not processed because safe_to_scale returned false.
-    # Same result as above.
     tester.assert_worker_counts({"type-1": 3, "type-2": 10})
 
     tester.update(

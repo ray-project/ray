@@ -74,10 +74,11 @@ class BatchingNodeProvider(NodeProvider):
     Implementing a concrete subclass of BatchingNodeProvider only requires overriding
     get_node_data() and submit_scale_request().
 
-    The scale request for an autoscaling update may be conditionally
-    cancelled using the optional method safe_to_scale().
-
     See the method docstrings for more information.
+
+    Note that an autoscaling update may be conditionally
+    cancelled using the optional method safe_to_scale()
+    of the root NodeProvider.
     """
 
     def __init__(
@@ -145,20 +146,9 @@ class BatchingNodeProvider(NodeProvider):
         """
         raise NotImplementedError
 
-    def safe_to_scale(self) -> bool:
-        """Optional condition to determine if it's safe to submit a scale request.
-        Can be used to wait for convergence of state managed by an external cluster
-        manager.
-
-        If False is returned, the scale request will not be submitted during the current
-        autoscaler update iteration.
-        """
-        return True
-
     def post_process(self) -> None:
         """Submit a scale request if it is safe to do so."""
-        if self.scale_change_needed and self.safe_to_scale():
-            self.submit_scale_request(self.scale_request)
+        self.submit_scale_request(self.scale_request)
         self.scale_change_needed = False
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
