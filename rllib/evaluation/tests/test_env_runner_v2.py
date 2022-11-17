@@ -146,7 +146,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         env_id = 0
         env_runner = local_worker.sampler._env_runner_obj
         env_runner.create_episode(env_id)
-        to_eval, _ = env_runner._process_observations(
+        _, to_eval, _ = env_runner._process_observations(
             {0: obs}, {0: rewards}, {0: dones}, {0: infos}
         )
 
@@ -336,13 +336,14 @@ class TestEnvRunnerV2(unittest.TestCase):
         env_runner.step()
         env_runner.step()
 
-        to_eval, outputs = env_runner._process_observations(
+        active_envs, to_eval, outputs = env_runner._process_observations(
             unfiltered_obs={0: AttributeError("mock error")},
             rewards={0: {}},
             dones={0: {"__all__": True}},
             infos={0: {}},
         )
 
+        self.assertEqual(active_envs, {0})
         self.assertTrue(to_eval)  # to_eval contains data for the resetted new episode.
         self.assertEqual(len(outputs), 1)
         self.assertTrue(isinstance(outputs[0], RolloutMetrics))
