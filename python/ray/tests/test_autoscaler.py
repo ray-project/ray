@@ -62,7 +62,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2
-from ray.tests.batching_node_provider.test_batching_node_provider_unit import (
+from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
 )
 
@@ -331,6 +331,7 @@ class MockProvider(NodeProvider):
         self.cache_stopped = cache_stopped
         self.unique_ips = unique_ips
         self.fail_to_fetch_ip = False
+        self._safe_to_scale_flag = True
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
@@ -434,6 +435,9 @@ class MockProvider(NodeProvider):
             for node in self.mock_nodes.values():
                 if node.state == "pending":
                     node.state = "running"
+
+    def safe_to_scale(self):
+        return self.safe_to_scale_flag
 
 
 class MockAutoscaler(StandardAutoscaler):
@@ -1701,6 +1705,16 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling7(self):
         self.helperDynamicScaling(DrainNodeOutcome.DrainDisabled)
 
+    def testDynamicScalingForegroundLauncher(self):
+        """Test autoscaling with node launcher in the foreground."""
+        self.helperDynamicScaling(foreground_node_launcher=True)
+
+    def testDynamicScalingBatchingNodeProvider(self):
+        """Test autoscaling with BatchingNodeProvider"""
+        self.helperDynamicScaling(
+            foreground_node_launcher=True, batching_node_provider=True
+        )
+
     def helperDynamicScaling(
         self,
         drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
@@ -1767,16 +1781,6 @@ class AutoscalingTest(unittest.TestCase):
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # There were no successful calls either.
             assert mock_node_info_stub.drain_node_reply_success == 0
-
-    def testDynamicScalingForegroundLauncher(self):
-        """Test autoscaling with node launcher in the foreground."""
-        self.helperDynamicScaling(foreground_node_launcher=True)
-
-    def testDynamicScalingBatchingNodeProvider(self):
-        """Test autoscaling with BatchingNodeProvider"""
-        self.helperDynamicScaling(
-            foreground_node_launcher=True, batching_node_provider=True
-        )
 
     def _helperDynamicScaling(
         self,
@@ -1848,6 +1852,14 @@ class AutoscalingTest(unittest.TestCase):
         if mock_node_info_stub.drain_node_outcome == DrainNodeOutcome.FailedToFindIp:
             autoscaler.fail_to_find_ip_during_drain = True
         self.waitForNodes(0, tag_filters=WORKER_FILTER)
+        # Test aborting an autoscaler update with the batching NodeProvider.
+        if batching_node_provider:
+            self.provider.safe_to_scale_flag = False
+            autoscaler.update()
+            # The autoscaler update was aborted, so there's no change in worker count.
+            assert self.num_nodes(tag_filters=WORKER_FILTER) == 0
+            self.provider.safe_to_scale_flag = True
+
         autoscaler.update()
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes

@@ -2,7 +2,7 @@
 Adapts FakeMultiNodeProvider tests.
 """
 from copy import deepcopy
-import platform
+import sys
 
 import pytest
 
@@ -109,15 +109,14 @@ class BatchingAutoscalingCluster(AutoscalingCluster):
         # Load the node provider class above.
         config["provider"]["type"] = "external"
         config["provider"]["module"] = (
-            "ray.tests.batching_node_provider."
-            "test_batching_node_provider_integration.FakeBatchingNodeProvider"
+            "ray.tests." "test_batch_node_provider_integration.FakeBatchingNodeProvider"
         )
         # Need to run in single threaded mode to use BatchingNodeProvider.
         config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         return config
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant on Windows.")
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_fake_batching_autoscaler_e2e(shutdown_only):
     cluster = BatchingAutoscalingCluster(
         head_resources={"CPU": 2},
