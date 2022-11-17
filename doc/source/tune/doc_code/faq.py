@@ -111,7 +111,7 @@ if not MOCK:
     tuner = tune.Tuner(
         tune.with_resources(
             train_fn,
-            resources=lambda param_space: {"GPU": 1} if param_space["use_gpu"] else {"GPU": 0},
+            resources=lambda config: {"GPU": 1} if config["use_gpu"] else {"GPU": 0},
         ),
         param_space={
             "use_gpu": True,
