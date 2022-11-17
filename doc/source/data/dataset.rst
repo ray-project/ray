@@ -269,6 +269,9 @@ Supported Output Formats
    * - TFRecords File Format
      - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
      - ✅
+   * - MongoDB
+     - :meth:`ds.write_mongo() <ray.data.Dataset.write_mongo>`
+     - ✅
    * - Spark Dataframe
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
      - ✅

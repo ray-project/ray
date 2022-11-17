@@ -597,6 +597,14 @@ the collection. The execution results are then used to create a Dataset.
         pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
     )
 
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
+
 .. _datasets_custom_datasource:
 
 ------------------

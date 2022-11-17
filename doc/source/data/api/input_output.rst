@@ -211,6 +211,9 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.TFRecordDatasource
     :members:
 
+.. autoclass:: ray.data.datasource.MongoDatasource
+    :members:
+
 Partitioning API
 ----------------
 
