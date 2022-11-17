@@ -431,12 +431,17 @@ class ReporterAgent(
     @staticmethod
     def _get_disk_io_stats():
         stats = psutil.disk_io_counters()
-        return (
-            stats.read_bytes,
-            stats.write_bytes,
-            stats.read_count,
-            stats.write_count,
-        )
+        # stats can be None or {} if the machine is diskless.
+        # https://psutil.readthedocs.io/en/latest/#psutil.disk_io_counters
+        if not stats:
+            return (0, 0, 0, 0)
+        else:
+            return (
+                stats.read_bytes,
+                stats.write_bytes,
+                stats.read_count,
+                stats.write_count,
+            )
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
