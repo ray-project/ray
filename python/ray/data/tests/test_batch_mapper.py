@@ -26,7 +26,7 @@ def test_batch_mapper_basic(ray_start_regular_shared):
         df["to_be_modified"] *= 2
         return df
 
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    batch_mapper = BatchMapper(fn=add_and_modify_udf, batch_format="pandas")
     batch_mapper.fit(ds)
     transformed = batch_mapper.transform(ds)
     out_df = transformed.to_pandas()
