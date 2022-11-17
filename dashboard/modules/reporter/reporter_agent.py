@@ -284,7 +284,8 @@ class ReporterAgent(
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
-        self._workers = set()
+        # (pid, created_time) -> psutil.Process
+        self._workers = {}
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -438,22 +439,43 @@ class ReporterAgent(
             stats.write_count,
         )
 
+    def _get_agent_proc(self) -> psutil.Process:
+        # Agent is the current process.
+        # This method is not necessary, but we have it for mock testing.
+        return psutil.Process()
+
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
+
+        def generate_worker_key(proc: psutil.Process):
+            return (proc.pid, proc.create_time())
+
         if raylet_proc is None:
             return []
         else:
-            workers = set(raylet_proc.children())
+            workers = {
+                generate_worker_key(proc): proc for proc in raylet_proc.children()
+            }
+
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
             # See more: https://github.com/ray-project/ray/issues/29848
-            for worker in self._workers:
-                if worker not in workers:
-                    self._workers.remove(worker)
-            self._workers.update(workers)
+            keys_to_pop = []
+            # Add all new workers.
+            for key, worker in workers.items():
+                if key not in self._workers:
+                    self._workers[key] = worker
+
+            # Pop out stale workers.
+            for key in self._workers:
+                if key not in workers:
+                    keys_to_pop.append(key)
+            for k in keys_to_pop:
+                self._workers.pop(k)
+
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
-            self._workers.discard(psutil.Process())
+            self._workers.pop(generate_worker_key(self._get_agent_proc()))
             return [
                 w.as_dict(
                     attrs=[
@@ -466,7 +488,7 @@ class ReporterAgent(
                         "memory_full_info",
                     ]
                 )
-                for w in self._workers
+                for w in self._workers.values()
                 if w.status() != psutil.STATUS_ZOMBIE
             ]
 
