@@ -1,13 +1,11 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { GlobalContext } from "../../../App";
 import { getJobDetail } from "../../../service/job";
 import { UnifiedJob } from "../../../type/job";
 
-export const useJobDetail = (props: RouteComponentProps<{ id: string }>) => {
-  const {
-    match: { params },
-  } = props;
+export const useJobDetail = () => {
+  const params = useParams() as { id: string };
   const [job, setJob] = useState<UnifiedJob>();
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);

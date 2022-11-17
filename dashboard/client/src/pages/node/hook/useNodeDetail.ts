@@ -1,13 +1,11 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { GlobalContext } from "../../../App";
 import { getNodeDetail } from "../../../service/node";
 import { NodeDetailExtend } from "../../../type/node";
 
-export const useNodeDetail = (props: RouteComponentProps<{ id: string }>) => {
-  const {
-    match: { params },
-  } = props;
+export const useNodeDetail = () => {
+  const params = useParams() as { id: string };
   const [selectedTab, setTab] = useState("info");
   const [nodeDetail, setNode] = useState<NodeDetailExtend | undefined>();
   const [msg, setMsg] = useState("Loading the node infos...");
