@@ -12,20 +12,27 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KuberayNodeProvider,
     ScaleRequest,
 )
+from ray.autoscaler._private.util import NodeID, NodeType
 from pathlib import Path
 import yaml
 
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
+from typing import Dict, Set, List
 
 SAMPLE_SCALE_REQUEST = ScaleRequest()
 SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
 
 
-def _get_basic_ray_cr_workers_to_delete():
+def _get_basic_ray_cr_workers_to_delete(
+        cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
+):
     """Generate a Ray cluster with non-empty workersToDelete field."""
     raycluster = get_basic_ray_cr()
+    raycluster["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+        "workersToDelete": cpu_workers_to_delete
+    }
     raycluster["spec"]["workerGroupSpecs"][1]["scaleStrategy"] = {
-        "workersToDelete": ["random-worker"]
+        "workersToDelete": gpu_workers_to_delete
     }
     return raycluster
 
@@ -248,6 +255,35 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
             scale_request=scale_request, raycluster=raycluster
         )
         assert patch_payload == expected_patch_payload
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
+def test_safe_to_scale(
+    node_set: Set[NodeID],
+    cpu_workers_to_delete: List[NodeID],
+    gpu_workers_to_delete: List[NodeID],
+    expected_safe: bool,
+):
+    mock_node_data = NodeData("-", "-", "-", "-")
+    node_data_dict = {node_id: mock_node_data for node_id in node_set}
+
+    raycluster = _get_basic_ray_cr_workers_to_delete(cpu_workers_to_delete, gpu_workers_to_delete)
+
+    def mock_patch():
+        pass
+
+    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        kr_node_provider.node_data_dict = node_data_dict
+        kr_node_provider._raycluster = raycluster
+        actual_safe = kr_node_provider.safe_to_scale()
+
+    no_overlap = not any(
+        cpu_worker_to_delete in node_set for cpu_worker_to_delete in cpu_workers_to_delete
+    ) and not any(
+        gpu_worker_to_delete in node_set for gpu_worker_to_delete in gpu_workers_to_delete
+    )
+    assert expected_safe is actual_safe is no_overlap
 
 
 if __name__ == "__main__":
