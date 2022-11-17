@@ -324,9 +324,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
-                target_count = group_max_replicas
+                target_replicas = group_max_replicas
             # Check if we need to change the target count.
-            if target_count == _worker_group_replicas(raycluster, group_index):
+            if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
                 continue
             # Need to patch replica count. Format the patch and add it to the payload.
