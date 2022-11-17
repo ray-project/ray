@@ -4478,8 +4478,7 @@
   frequency: nightly
   team: data
   cluster:
-    # re-enable once https://github.com/ray-project/ray/issues/29294 is fixed
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
+    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
