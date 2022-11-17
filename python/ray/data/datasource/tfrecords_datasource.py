@@ -64,13 +64,10 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[str, Union[bytes, List[bytes], float, List[float], int, List[int]]]:
+) -> Dict[str, Union[List[List[bytes]], List[List[float]], List[List[int]]]]:
     record = {}
     for feature_name, feature in example.features.feature.items():
-        value = _get_feature_value(feature)
-        if len(value) == 1:
-            value = value[0]
-        record[feature_name] = value
+        record[feature_name] = [_get_feature_value(feature)]
     return record
 
 
