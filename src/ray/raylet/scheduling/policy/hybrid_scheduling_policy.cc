@@ -147,13 +147,13 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     // First prioritize available nodes.
     return GetBestNode(available_nodes,
                        !force_spillback && local_node_is_available,
-                       1,
+                       top_k,
                        spread_threshold);
   } else if (!feasible_nodes.empty() && !require_node_available) {
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
     return GetBestNode(
-        feasible_nodes, !force_spillback && local_node_is_feasible, 1, spread_threshold);
+        feasible_nodes, !force_spillback && local_node_is_feasible, top_k, spread_threshold);
   } else {
     return scheduling::NodeID::Nil();
   }
