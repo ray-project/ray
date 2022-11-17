@@ -1,11 +1,11 @@
 import abc
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
-from rllib.catalog.torch.encoders.vector import TorchVectorEncoder
-from rllib.models.specs.specs_dict import ModelSpec
+from typing import TYPE_CHECKING, Tuple
+from ray.rllib.catalog.torch.encoders.vector import TorchVectorEncoder
+from ray.rllib.models.specs.specs_dict import ModelSpec
 
 if TYPE_CHECKING:
-    from rllib.catalog.torch.encoders.vector import Encoder
+    from ray.rllib.catalog.torch.encoders.vector import Encoder
 
 
 @dataclass
@@ -52,7 +52,7 @@ class VectorEncoderConfig(EncoderConfig):
 
     activation: str = "relu"
     final_activation: str = "linear"
-    hidden_layer_sizes: List[int] = [128, 128]
+    hidden_layer_sizes: Tuple[int, ...] = (128, 128)
     output_key: str = "encoding"
 
     def build(self, input_spec: ModelSpec) -> TorchVectorEncoder:
@@ -68,10 +68,9 @@ class VectorEncoderConfig(EncoderConfig):
         assert (
             len(self.hidden_layer_sizes) > 1
         ), "Must have at least a single hidden layer"
-        assert len(input_spec) == 1, "Multiple inputs not yet supported"
         for k in input_spec.shallow_keys():
             assert isinstance(
-                input_spec[k].shape()[-1], int
+                input_spec[k].shape[-1], int
             ), "Input spec {k} does not define the size of the feature (last) dimension"
 
         if self.framework == "torch":

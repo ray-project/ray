@@ -8,7 +8,7 @@ from torch import nn
 import torch
 
 if TYPE_CHECKING:
-    from rllib.catalog.configs.encoder import VectorEncoderConfig
+    from ray.rllib.catalog.configs.encoder import VectorEncoderConfig
 
 
 def input_to_output_spec(
@@ -30,20 +30,32 @@ def input_to_output_spec(
 
     should return:
     ModelSpec({"foo": "a, b, c, d"}, d=2)
+
+    Args:
+        input_spec: The input spec for the model
+        output_key: The key that the model will place the outputs under in
+            the nested dict
+        feature_dims: A list denoting the features dimensions, e.g. [-1] or [3, 4]
     """
     num_feat_dims = len(feature_dims)
     assert num_feat_dims >= 1, "Must specify at least one feature dim"
-    num_dims = [len(v.shape()) != len for v in input_spec.values()]
+    num_dims = [len(v.shape) != len for v in input_spec.values()]
     assert all(
         [nd == num_dims[0] for nd in num_dims]
     ), "Inputs must all have the same number of dimensions"
 
-    tspec = input_spec.rdrop(len(feature_dims)).append(feature_dims)
+    # All keys in input should have the same numbers of dims
+    # so it doesn't matter which key we use
+    key = list(input_spec.keys())[0]
+    tspec = input_spec[key].rdrop(len(feature_dims)).append(feature_dims)
     return ModelSpec({output_key: tspec})
 
 
 class TorchVectorEncoder(TorchModel):
-    """An MLP encoder"""
+    """An MLP encoder. This encoder concatenates inputs along the last dimension,
+    then pushes them through an MLP.
+
+    """
 
     @property
     def input_spec(self) -> ModelSpec:
@@ -58,36 +70,57 @@ class TorchVectorEncoder(TorchModel):
         input_spec: ModelSpec,
         config: "VectorEncoderConfig",
     ):
-        self.config = config
+        super().__init__(config=config)
+        # Setup input and output specs
         self._input_spec = input_spec
         self._output_spec = input_to_output_spec(
-            input_spec, self.config.output_key, self.config.hidden_layer_sizes[-1]
+            input_spec, config.output_key, config.hidden_layer_sizes[-1:]
         )
         # Returns the size of the feature dimension for the input tensors
-        prev_size = sum([v.shape()[-1] for v in input_spec().values()])
+        prev_size = sum([v.shape[-1] for v in input_spec.values()])
+
+        # Construct layers
         layers = []
         act = (
             None
             if config.activation == "linear"
-            else get_activation_fn(config.activation)()
+            else get_activation_fn(config.activation, framework=config.framework)()
         )
-        for size in self.layer_sizes[:-1]:
+        for size in config.hidden_layer_sizes[:-1]:
             layers += [nn.Linear(prev_size, size)]
             layers += [act] if act is not None else []
             prev_size = size
-        # final layer
-        layers += [
-            nn.Linear(
-                self.config.hidden_layer_sizes[-2], self.config.hidden_layer_sizes[-1]
-            )
-        ]
-        layers += config.final_activation
 
-        self.net = nn.Sequential(layers)
+        # Final layer
+        layers += [
+            nn.Linear(config.hidden_layer_sizes[-2], config.hidden_layer_sizes[-1])
+        ]
+        if config.final_activation != "linear":
+            layers += [
+                get_activation_fn(config.final_activation, framework=config.framework)()
+            ]
+
+        self.net = nn.Sequential(*layers)
 
     def _forward(self, inputs: NestedDict) -> NestedDict:
+        """Runs the forward pass of the MLP. Call this via unroll().
+
+        Args:
+            inputs: The nested dictionary of inputs
+        Returns:
+            The nested dictionary of outputs
+        """
+        # Ensure all inputs have matching dims before concat
+        # so we can emit an informative error message
+        first_key, first_tensor = list(inputs.items())[0]
+        for k, tensor in inputs.items():
+            assert tensor.shape[:-1] == first_tensor.shape[:-1], (
+                "Inputs have mismatching dimensions, all dims but the last should "
+                f"be equal: {first_key}: {first_tensor.shape} != {k}: {tensor.shape}"
+            )
+
         # Concatenate all input along the feature dim
-        x = torch.cat(inputs.values(), dim=-1)
+        x = torch.cat(list(inputs.values()), dim=-1)
         [out_key] = self.output_spec.keys()
         inputs[out_key] = self.net(x)
         return inputs

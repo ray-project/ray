@@ -95,7 +95,7 @@ class TensorSpec(SpecsAbstract):
         """
         self = deepcopy(self)
         self._expected_shape = self.shape[:-n]
-        self.full_shape = self._get_full_shape()
+        self._full_shape = self._get_full_shape()
         return self
 
     def append(self, shape: Tuple[int]) -> "TensorSpec":
@@ -107,7 +107,7 @@ class TensorSpec(SpecsAbstract):
         """
         self = deepcopy(self)
         self._expected_shape = (*self.shape, *shape)
-        self.full_shape = self._get_full_shape()
+        self._full_shape = self._get_full_shape()
         return self
 
     @property
