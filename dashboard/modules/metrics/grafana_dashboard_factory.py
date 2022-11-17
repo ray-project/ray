@@ -295,15 +295,15 @@ GRAFANA_PANELS = [
         unit="nodes",
         targets=[
             Target(
-                expr="ray_cluster_active_nodes{{{global_filters}}}",
+                expr="sum(ray_cluster_active_nodes{{{global_filters}}}) by (node_type)",
                 legend="Active Nodes: {{node_type}}",
             ),
             Target(
-                expr="ray_cluster_failed_nodes{{{global_filters}}}",
+                expr="sum(ray_cluster_failed_nodes{{{global_filters}}}) by (node_type)",
                 legend="Failed Nodes: {{node_type}}",
             ),
             Target(
-                expr="ray_cluster_pending_nodes{{{global_filters}}}",
+                expr="sum(ray_cluster_pending_nodes{{{global_filters}}}) by (node_type)",
                 legend="Pending Nodes: {{node_type}}",
             ),
         ],
