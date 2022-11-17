@@ -189,19 +189,6 @@ class AgentCollector:
         # view requirement does not match init_obs
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
-        if SampleBatch.PREV_REWARDS in self.view_requirements:
-            prev_reward = get_dummy_batch_for_space(
-                    space=self.view_requirements[SampleBatch.REWARDS].space,
-                    batch_size=1,
-                    fill_value=.0
-                )[0]
-        if SampleBatch.PREV_REWARDS in self.view_requirements:
-            prev_action = get_dummy_batch_for_space(
-                space=self.view_requirements[SampleBatch.ACTIONS].space,
-                batch_size=1,
-                fill_value=.0
-            )[0]
-
         if SampleBatch.OBS not in self.buffers:
             single_row = {
                 SampleBatch.OBS: init_obs,
@@ -211,15 +198,24 @@ class AgentCollector:
                 SampleBatch.EPS_ID: self.episode_id,
                 SampleBatch.UNROLL_ID: self.unroll_id,
             }
+
             # Note (Artur): As long as we have these in our default view requirements,
             # we should  build buffers with neutral elements instead of building them
             # on the first AgentCollector.build_for_inference call if present.
             # This prevents us from accidentally building buffers with duplicates of
             # the first incoming value.
             if SampleBatch.PREV_REWARDS in self.view_requirements:
-                single_row[SampleBatch.REWARDS] = prev_reward
+                single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.REWARDS].space,
+                    batch_size=1,
+                    fill_value=.0
+                )[0]
             if SampleBatch.PREV_ACTIONS in self.view_requirements:
-                single_row[SampleBatch.ACTIONS] = prev_action
+                single_row[SampleBatch.ACTIONS] = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.ACTIONS].space,
+                    batch_size=1,
+                    fill_value=.0
+                )[0]
             self._build_buffers(single_row)
 
         # Append data to existing buffers.
@@ -231,23 +227,6 @@ class AgentCollector:
         self.buffers[SampleBatch.T][0].append(t)
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
-        # Note (Artur): As long as we have these in our default view requirements,
-        # we should  build buffers with neutral elements instead of building them
-        # on the first AgentCollector.build_for_inference call if present.
-        # This prevents us from accidentally building buffers with duplicates of
-        # the first incoming value.
-        if SampleBatch.PREV_REWARDS in self.view_requirements:
-            single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
-                space=self.view_requirements[SampleBatch.REWARDS].space,
-                batch_size=1,
-                fill_value=.0
-            )[0]
-        if SampleBatch.PREV_ACTIONS in self.view_requirements:
-            single_row[SampleBatch.ACTIONS] = get_dummy_batch_for_space(
-                space=self.view_requirements[SampleBatch.ACTIONS].space,
-                batch_size=1,
-                fill_value=.0
-            )[0]
 
     def add_action_reward_next_obs(self, input_values: Dict[str, TensorType]) -> None:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
@@ -331,8 +310,6 @@ class AgentCollector:
             A SampleBatch with a batch size of 1.
         """
 
-        print(self.buffers)
-
         batch_data = {}
         np_data = {}
         for view_col, view_req in self.view_requirements.items():
@@ -363,10 +340,7 @@ class AgentCollector:
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
-            try:
-                self._cache_in_np(np_data, data_col)
-            except:
-                a = 10
+            self._cache_in_np(np_data, data_col)
 
             data = []
             for d in np_data[data_col]:
