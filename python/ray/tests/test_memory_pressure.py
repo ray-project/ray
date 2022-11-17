@@ -118,6 +118,7 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
 def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
+
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction - 0.1
     )
@@ -137,12 +138,6 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
         tag="MemoryManager.ActorEviction.Total",
         value=1.0,
     )
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 1
-    )
-
-    with pytest.raises(ray.exceptions.RayActorError) as _:
-        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
 
 @pytest.mark.skipif(
