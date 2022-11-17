@@ -7,7 +7,6 @@ import logging
 import os
 import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
-from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.common import ReplicaName
 from ray.serve.generated.serve_pb2 import (
@@ -236,7 +235,7 @@ class LongPollHost:
         for key in watched_keys:
             # Create a new asyncio event for this key
             event = asyncio.Event()
-            task = get_or_create_event_loop().create_task(event.wait())
+            task = asyncio.get_event_loop().create_task(event.wait())
             async_task_to_watched_keys[task] = key
 
             # Make sure future caller of notify_changed will unblock this
