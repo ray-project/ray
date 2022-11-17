@@ -10,13 +10,22 @@ import ray
 from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
+import pandas as pd
 
 
 def read_images(
-    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
+    root: str,
+    size: Optional[Tuple[int, int]] = None,
+    mode: Optional[str] = None,
+    write_to_object_store: bool = True,
 ) -> Dataset:
 
-    return ray.data.read_images(paths=root, size=size, mode=mode)
+    ds = ray.data.read_images(paths=root, size=size, mode=mode)
+    if not write_to_object_store:
+        # Apply UDF to generate dummy 1-row output from images.
+        # This is to avoid writing images data to object store.
+        ds = ds.map_batches(lambda _: pd.DataFrame({"one": [1]}), batch_size=None)
+    return ds
 
 
 def generate_images(
@@ -88,11 +97,27 @@ def run_images_benchmark(benchmark: Benchmark):
     for root in test_input:
         shutil.rmtree(root)
 
-    # TODO(chengsu): run benchmark on 20G and 100G imagenet data.
+    # Run benchmark on 1G, 20G and 100G imagenet data.
     benchmark.run(
         "images-imagenet-1g",
         read_images,
         root="s3://air-example-data-2/1G-image-data-synthetic-raw",
+    )
+
+    benchmark.run(
+        "images-imagenet-20g",
+        read_images,
+        root="s3://air-example-data-2/20G-image-data-synthetic-raw",
+        # Not write to object store as the images size are too large.
+        write_to_object_store=False,
+    )
+
+    benchmark.run(
+        "images-imagenet-100g",
+        read_images,
+        root="s3://air-example-data-2/100G-image-data-synthetic-raw",
+        # Not write to object store as the images size are too large.
+        write_to_object_store=False,
     )
 
 
