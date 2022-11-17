@@ -575,6 +575,7 @@
 
   alert: default
 
+# Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -594,6 +595,7 @@
     type: sdk_command
     file_manager: sdk
 
+# Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -610,6 +612,29 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
+
+# Test additional CPU nodes for preprocessing.
+- name: ray-data-bulk-ingest-heterogeneity-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+  env: staging
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
+
+  run:
+    wait_for_nodes:
+      num_nodes: 3
+
+    timeout: 1800
+    script: bash heterogeneity_benchmark.sh 2
     type: sdk_command
     file_manager: sdk
 

@@ -9,6 +9,10 @@ import requests
 import shutil
 import sys
 import tensorflow.compat.v1 as tf
+import time
+
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+import ray
 
 DEFAULT_IMAGE_URL = "https://air-example-data-2.s3.us-west-2.amazonaws.com/1G-image-data-synthetic-raw/dog.jpg"  # noqa: E501
 
@@ -39,6 +43,14 @@ def parse_args() -> None:
         help="If --shard-url is not provided, use the image found at this URL to generate a fake dataset.",  # noqa: E501
     )
 
+    parser.add_argument(
+        "--num-nodes",
+        type=int,
+        default=1,
+        help="The total number of nodes to expect in the cluster. "
+        "Files will be generated on each of these nodes.",
+    )
+
     input_data_group = parser.add_mutually_exclusive_group(required=True)
     input_data_group.add_argument(
         "--shard-url",
@@ -56,13 +68,19 @@ def parse_args() -> None:
     return args
 
 
-def main(
+@ray.remote
+def generate_local_files(
     num_shards: int,
     num_images_per_shard: Optional[int],
     shard_url: Optional[str],
     image_url: str,
     output_directory: str,
 ) -> None:
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+    for filename in os.listdir(output_directory):
+        os.remove(os.path.join(output_directory, filename))
+
     print(
         f"Creating a tfrecord dataset with {num_shards} shards, {num_images_per_shard} images per shard, in the output directory {output_directory}"  # noqa: E501
     )
@@ -223,12 +241,33 @@ def _bytes_feature(value: Union[bytes, str]) -> tf.train.Feature:
 if __name__ == "__main__":
     args = parse_args()
 
-    sys.exit(
-        main(
-            args.num_shards,
-            args.num_images_per_shard,
-            args.shard_url,
-            args.single_image_url,
-            args.output_directory,
+    ray.init()
+
+    def get_num_nodes():
+        return len([node for node in ray.nodes() if node["Alive"]])
+
+    num_nodes = get_num_nodes()
+    while num_nodes < args.num_nodes:
+        print(f"Cluster currently has {num_nodes} nodes, expecting {args.num_nodes}")
+        time.sleep(1)
+        num_nodes = get_num_nodes()
+    assert num_nodes == args.num_nodes
+
+    results = []
+    for node in ray.nodes():
+        if not node["Alive"]:
+            continue
+        results.append(
+            generate_local_files.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node["NodeID"], soft=False
+                )
+            ).remote(
+                args.num_shards,
+                args.num_images_per_shard,
+                args.shard_url,
+                args.single_image_url,
+                args.output_directory,
+            )
         )
-    )
+    ray.get(results)
