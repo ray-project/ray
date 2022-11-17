@@ -475,7 +475,7 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     if not head_proc.is_alive():
         # NOTE(rickyyx): call recv() here is safe since the process
         # is guaranteed to be terminated.
-        if head_proc.exicode == 1:
+        if head_proc.exitcode == 1:
             assert False, (
                 "ray start --head --block is failed "
                 "due to unexpected component failures."
@@ -492,7 +492,7 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
         )
 
     if not worker_proc.is_alive():
-        if worker_proc.exicode == 1:
+        if worker_proc.exitcode == 1:
             assert False, (
                 "ray start --address=<head_ip> --block` (worker) is failed "
                 "due to unexpected component failures."
