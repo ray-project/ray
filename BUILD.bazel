@@ -2090,10 +2090,12 @@ cc_library(
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
+        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
+        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
