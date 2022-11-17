@@ -173,6 +173,13 @@ class MockWorker : public WorkerInterface {
     return true;
   }
 
+  size_t GetReuseCount() const override {
+    return reuse_count_;
+  }
+
+  void BumpReuseCount() override {
+    reuse_count_++;
+  }
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
@@ -191,6 +198,7 @@ class MockWorker : public WorkerInterface {
   RayTask task_;
   std::chrono::steady_clock::time_point task_assign_time_;
   int runtime_env_hash_;
+  size_t reuse_count_;
 };
 
 }  // namespace raylet
