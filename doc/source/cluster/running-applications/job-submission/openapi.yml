@@ -125,7 +125,7 @@ paths:
       description: |
         Delete a job that is already in a terminal state.
       parameters:
-        - name: job_id
+        - name: submission_id
           in: path
           description: |
             The ID of the job to cancel.
