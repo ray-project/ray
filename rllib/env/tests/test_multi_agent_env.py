@@ -145,10 +145,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-            )
+            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
             .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
@@ -174,7 +171,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 num_envs_per_worker=4,
                 remote_worker_envs=True,
                 remote_env_batch_wait_ms=99999999,
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={"p0", "p1"},
@@ -341,7 +337,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
             def is_recurrent(self):
-                # TODO(avnishn): automatically infer this.
+                # TODO: avnishn automatically infer this.
                 return True
 
         ev = RolloutWorker(
