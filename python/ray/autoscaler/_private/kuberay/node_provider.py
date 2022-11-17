@@ -229,6 +229,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         In the future, we may consider having the operator clean up workersToDelete
         on it own:
         https://github.com/ray-project/kuberay/issues/733
+        Note (Dmitri): It is slightly stylistically bad that this function has a side effect.
         """
         node_set = set(self.node_data_dict.keys())
         worker_groups = self._raycluster["spec"].get("workerGroupSpecs", [])
