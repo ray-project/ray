@@ -109,6 +109,22 @@ def status_tag(pod: Dict[str, Any]) -> NodeStatus:
     raise ValueError("Unexpected container state.")
 
 
+def worker_delete_patch(group_index: str, workers_to_delete: List[NodeID]):
+    path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy"
+    value = {"workersToDelete": workers_to_delete}
+    return replace_patch(path, value)
+
+
+def worker_replica_patch(group_index: str, target_replicas: int):
+    path = f"/spec/workerGroupSpecs/{group_index}/replicas"
+    value = target_replicas
+    return replace_patch(path, value)
+
+
+def replace_patch(path: str, value: Any) -> Dict[str, Any]:
+    return {"op": "replace", "path": path, "value": value}
+
+
 def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     """
     Loads secrets needed to access K8s resources.
@@ -221,14 +237,13 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest):
-        payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
-        path = "rayclusters/{}".format(self.cluster_name)
+        patch_payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
         logger.info(
             "Autoscaler is submitting the following patch to RayCluster "
             f"{self.cluster_name} in namespace {self.namespace}."
         )
-        logger.info(payload)
-        self._patch(path, payload)
+        logger.info(patch_payload)
+        self._submit_raycluster_patch(patch_payload)
 
     def safe_to_scale(self) -> bool:
         """Returns False iff non_terminated_nodes contains any pods in the RayCluster's
@@ -265,18 +280,12 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         # Clean up workersToDelete otherwise.
         patch_payload = []
         for group_index in non_empty_worker_group_indices:
-            path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy"
-            patch = {
-                "op": "replace",
-                "path": path,
-                "value": {"workersToDelete": []},
-            }
+            patch = worker_delete_patch(group_index, workers_to_delete=[])
             patch_payload.append(patch)
         if patch_payload:
             logger.info("Cleaning up workers to delete.")
             logger.info(f"Submitting patch {patch_payload}.")
-            path = "rayclusters/{}".format(self.cluster_name)
-            self._patch(path, patch_payload)
+            self._submit_raycluster_patch(patch_payload)
 
         return True
 
@@ -286,11 +295,14 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         """Converts autoscaler scale request into a RayCluster CR patch."""
         patch_payload = []
         # Collect patches for replica counts.
-        for node_type, target_count in scale_request.desired_num_workers.items():
+        for node_type, target_replicas in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
             # Cap the replica count to maxReplicas.
-            if group_max_replicas is not None and group_max_replicas < target_count:
+            if (
+                    group_max_replicas is not None
+                    and group_max_replicas < target_replicas
+            ):
                 logger.warning(
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
@@ -299,8 +311,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             if target_count == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
                 continue
-            path = f"/spec/workerGroupSpecs/{group_index}/replicas"
-            patch = {"op": "replace", "path": path, "value": target_count}
+            patch = worker_replica_patch(group_index, target_replicas)
             patch_payload.append(patch)
 
         # Maps node_type to nodes to delete for that group.
@@ -309,14 +320,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             node_type = self.node_tags(worker)[TAG_RAY_USER_NODE_TYPE]
             deletion_groups[node_type].append(worker)
 
-        for node_type, nodes_to_delete in deletion_groups.items():
+        for node_type, workers_to_delete in deletion_groups.items():
             group_index = _worker_group_index(raycluster, node_type)
-            path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy"
-            patch = {
-                "op": "replace",
-                "path": path,
-                "value": {"workersToDelete": nodes_to_delete},
-            }
+            patch = worker_delete_patch(group_index, workers_to_delete)
             patch_payload.append(patch)
 
         return patch_payload
@@ -339,6 +345,10 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             + "/"
             + path
         )
+
+    def _submit_raycluster_patch(self, patch_payload: List[Dict[str, Any]]):
+        path = "rayclusters/{}".format(self.cluster_name)
+        self._patch(path, patch_payload)
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
