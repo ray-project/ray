@@ -33,6 +33,14 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def chdir_tmpdir(tmpdir):
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    yield tmpdir
+    os.chdir(old_cwd)
+
+
 def _train_fn_sometimes_failing(config, checkpoint_dir=None):
     # Fails if failing is set and marker file exists.
     # Hangs if hanging is set and marker file exists.
@@ -495,6 +503,19 @@ def test_retore_retry(ray_start_4_cpus, retry_num):
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
+
+
+def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
+    tuner = Tuner(
+        lambda config: session.report({"score": 1}),
+        run_config=RunConfig(local_dir="relative_dir", name="exp_name"),
+    )
+    tuner.fit()
+
+    tuner = Tuner.restore("relative_dir/exp_name")
+    results = tuner.fit()
+    assert not results.errors
+    assert results[0].metrics["score"] == 1
 
 
 if __name__ == "__main__":
