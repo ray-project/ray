@@ -487,8 +487,8 @@ class TestRolloutWorker(unittest.TestCase):
         # Clipping: True (clip between -1.0 and 1.0).
         config = (
             AlgorithmConfig()
-                .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
-                .environment(clip_rewards=True)
+            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .environment(clip_rewards=True)
         )
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
