@@ -237,7 +237,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest):
-        patch_payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
+        patch_payload = self._scale_request_to_patch_payload(
+            scale_request, self._raycluster
+        )
         logger.info(
             "Autoscaler is submitting the following patch to RayCluster "
             f"{self.cluster_name} in namespace {self.namespace}."
@@ -299,10 +301,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
             # Cap the replica count to maxReplicas.
-            if (
-                    group_max_replicas is not None
-                    and group_max_replicas < target_replicas
-            ):
+            if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
@@ -327,6 +326,10 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         return patch_payload
 
+    def _submit_raycluster_patch(self, patch_payload: List[Dict[str, Any]]):
+        path = "rayclusters/{}".format(self.cluster_name)
+        self._patch(path, patch_payload)
+
     def _url(self, path: str) -> str:
         """Convert resource path to REST URL for Kubernetes API server."""
         if path.startswith("pods"):
@@ -345,10 +348,6 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             + "/"
             + path
         )
-
-    def _submit_raycluster_patch(self, patch_payload: List[Dict[str, Any]]):
-        path = "rayclusters/{}".format(self.cluster_name)
-        self._patch(path, patch_payload)
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
