@@ -480,7 +480,7 @@ TEST_F(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
   usage.insert({2, 222});
   usage.insert({3, 333});
 
-  auto list = MemoryMonitor::GetTopNMemoryUsage(3, usage);
+  auto list = MemoryMonitor::GetTopNMemoryUsage(2, usage);
 
   ASSERT_EQ(list.size(), 2);
   ASSERT_EQ(std::get<0>(list[0]), 3);
@@ -511,7 +511,7 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   boost::filesystem::create_directory(proc_dir + "/2");
   boost::filesystem::create_directory(proc_dir + "/3");
 
-  auto usage = MemoryMonitor::GetProcessMemoryUsage();
+  auto usage = MemoryMonitor::GetProcessMemoryUsage(proc_dir);
 
   ASSERT_EQ(usage.size(), 1);
   ASSERT_TRUE(usage.contains(1));
