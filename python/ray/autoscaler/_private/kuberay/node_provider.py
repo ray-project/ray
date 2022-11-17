@@ -259,6 +259,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if patch_payload:
             logger.info("Cleaning up workers to delete.")
             logger.info(f"Submitting patch {patch_payload}.")
+            path = "rayclusters/{}".format(self.cluster_name)
+            self._patch(path, patch_payload)
 
         return True
 
