@@ -66,7 +66,7 @@ if __name__ == "__main__":
         job_id = client.submit_job(
             entrypoint="python jobs_check_cuda_available.py",
             runtime_env={"working_dir": args.working_dir},
-            num_gpus=num_gpus,
+            entrypoint_num_gpus=num_gpus,
         )
         timeout_s = 10 * 60
         status = wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)
