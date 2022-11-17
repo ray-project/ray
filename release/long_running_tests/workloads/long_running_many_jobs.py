@@ -25,7 +25,7 @@ SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 1 * 60 * 60  # 1 hour
 
 # Stop calling list_jobs after this many batches.
-NUM_INITIAL_BATCHES_TO_CALL_LIST_JOBS_FOR = 500
+NUM_INITIAL_BATCHES_TO_CALL_LIST_JOBS_FOR = 100
 
 
 def wait_until_finish(
