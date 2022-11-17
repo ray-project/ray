@@ -14,11 +14,12 @@ Test owner: architkulkarni
 
 import ray
 import torch
+from ray._private.test_utils import wait_for_condition
 
 ray.init()
 
 # Assert that GPU resources are available in the driver script
-assert torch.cuda.is_available()
+assert torch.cuda.is_available(), "CUDA is not available in the driver script"
 
 
 # For good measure, let's also check that we can use the GPU
@@ -29,3 +30,22 @@ def f():
 
 
 assert ray.get(f.remote()) == [0]
+
+# Also check that non-GPU tasks can be scheduled across all nodes.
+NUM_NODES = 2
+
+
+@ray.remote(num_cpus=1)
+def get_node_id():
+    return ray.get_runtime_context().node_id
+
+
+node_ids = set(ray.get([get_node_id.remote() for _ in range(100)]))
+
+
+def check_num_nodes_and_spawn_tasks():
+    node_ids.update(ray.get([get_node_id.remote() for _ in range(10)]))
+    return len(node_ids) >= NUM_NODES
+
+
+wait_for_condition(check_num_nodes_and_spawn_tasks)

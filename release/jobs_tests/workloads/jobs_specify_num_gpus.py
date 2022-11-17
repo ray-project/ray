@@ -70,13 +70,14 @@ if __name__ == "__main__":
         )
         timeout_s = 10 * 60
         status = wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)
-
-        print("Status message: ", client.get_job_info(job_id=job_id).message)
+        job_info = client.get_job_info(job_id)
+        print("Status message: ", job_info.message)
 
         if num_gpus == 0:
             # We didn't specify any GPUs, so the driver should run on the head node.
             # The head node should not have a GPU, so the job should fail.
             assert status == JobStatus.FAILED
+            assert "CUDA is not available in the driver script" in job_info.message
         else:
             # We specified a GPU, so the driver should run on the worker node
             # with a GPU, so the job should succeed.
