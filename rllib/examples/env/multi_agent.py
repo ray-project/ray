@@ -197,7 +197,9 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         rew, done = {}, {}
         # Step those agents, for which we have actions from RLlib.
         for aid, action in action_dict.items():
-            self._observations[aid], rew[aid], done[aid], _ = self.agents[aid].step(action)
+            self._observations[aid], rew[aid], done[aid], _ = self.agents[aid].step(
+                action
+            )
             if done[aid]:
                 self.dones.add(aid)
         # Must add the __all__ flag.

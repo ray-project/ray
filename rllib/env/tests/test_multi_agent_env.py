@@ -260,9 +260,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(ag0_ts[-1] == ag1_ts[-1])
 
     def test_multi_agent_with_flex_agents(self):
-        register_env(
-            "flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent()
-        )
+        register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
         config = (
             PGConfig()
             .environment("flex_agents_multi_agent")
