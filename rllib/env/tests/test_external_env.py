@@ -132,6 +132,7 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -145,6 +146,7 @@ class TestExternalEnv(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -159,6 +161,7 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -176,6 +179,7 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
                 sample_async=True,
+                enable_connectors=False,
             ),
         )
         self.assertRaises(Exception, lambda: ev.sample())
@@ -254,6 +258,7 @@ class TestExternalEnv(unittest.TestCase):
                 horizon=20,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         self.assertRaises(ValueError, lambda: ev.sample())

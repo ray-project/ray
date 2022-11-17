@@ -7,6 +7,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
+from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
@@ -239,6 +240,10 @@ class EnvRunnerV2:
                 step.
         """
         self._worker = worker
+        if isinstance(base_env, ExternalEnvWrapper):
+            raise ValueError(
+                "Policies using the new Connector API do not support ExternalEnv."
+            )
         self._base_env = base_env
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
         self._callbacks = callbacks
