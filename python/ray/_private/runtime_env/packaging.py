@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import logging
 import os
@@ -50,24 +49,6 @@ MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
-
-
-class _AsyncFileLock:
-    """Asyncio version used to prevent blocking event loop."""
-
-    def __init__(self, lock_file: str):
-        self.file = FileLock(lock_file)
-
-    async def __aenter__(self):
-        while True:
-            acquired = self.file.acquire(blocking=False)
-            if acquired:
-                return
-            else:
-                await asyncio.sleep(0.1)
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.file.release()
 
 
 class Protocol(Enum):
@@ -647,7 +628,7 @@ async def download_and_unpack_package(
         raise IOError("Failed to download package. (Simulated failure for testing)")
 
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    async with _AsyncFileLock(str(pkg_file) + ".lock"):
+    with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
 
