@@ -22,7 +22,7 @@ class TFRecordDatasource(FileBasedDatasource):
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         from google.protobuf.message import DecodeError
-        import pandas as pd
+        import pyarrow as pa
         import tensorflow as tf
 
         for record in _read_records(f):
@@ -36,7 +36,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pd.DataFrame([_convert_example_to_dict(example)])
+            yield pa.Table.from_pydict(_convert_example_to_dict(example))
 
     def _write_block(
         self,
