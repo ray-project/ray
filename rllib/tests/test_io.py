@@ -26,7 +26,7 @@ from ray.rllib.offline import (
     DatasetWriter,
 )
 from ray.rllib.offline.json_reader import from_json_data
-from ray.rllib.offline.json_writer import _to_json
+from ray.rllib.offline.json_writer import _to_json_dict, _to_json
 from ray.rllib.policy.sample_batch import SampleBatch, convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -150,8 +150,7 @@ class AgentIOTest(unittest.TestCase):
                         del data["advantages"]
                         if "value_targets" in data:
                             del data["value_targets"]
-                        data = _to_json(data, [])
-                        out.append(json.loads(data))
+                        out.append(_to_json_dict(data, []))
                 with open(path, "w") as f:
                     for data in out:
                         f.write(json.dumps(data))

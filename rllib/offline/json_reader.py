@@ -308,10 +308,7 @@ class JsonReader(InputReader):
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
 
-        if isinstance(batch, MultiAgentBatch) and set(batch.policy_batches.keys()) == {
-            DEFAULT_POLICY_ID
-        }:
-            batch = convert_ma_batch_to_sample_batch(batch)
+        batch = convert_ma_batch_to_sample_batch(batch)
 
         if isinstance(batch, SampleBatch):
             out = []
