@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-PYTHON="3.9"
+PYTHON="${PYTHON:-"3.9"}"
 
 # Push caller's shell options (quietly)
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
