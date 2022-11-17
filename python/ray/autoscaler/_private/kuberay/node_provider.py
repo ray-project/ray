@@ -46,8 +46,12 @@ KUBERAY_TYPE_HEAD = "head-group"
 # Scale Request object which is submitted at the end of autoscaler update.
 # KubeRay node provider converts the ScaleRequest into a RayCluster CR patch
 # and applies the patch in the submit_scale_request method.
+
 # To reduce potential for race conditions, KuberayNodeProvider
-# skips submitting the patch if the operator has not yet processed workersToDelete.
+# aborts the autoscaler update if the operator has not yet processed workersToDelete -
+# see KuberayNodeProvider.safe_to_scale().
+# Once it is confirmed that workersToDelete have been cleaned up, KuberayNodeProvider
+# clears the workersToDelete list.
 
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
