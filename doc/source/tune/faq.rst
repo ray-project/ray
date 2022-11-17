@@ -610,7 +610,11 @@ You can customize synchronization behavior by implementing your own Syncer:
     :start-after: __log_2_start__
     :end-before: __log_2_end__
 
-By default, syncing occurs every 300 seconds.
+By default, syncing occurs whenever one of the following conditions are met:
+
+* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
+* a ``sync_period`` of seconds (default 300) has passed since last sync.
+
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is

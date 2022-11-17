@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.air import CheckpointConfig
@@ -804,6 +805,71 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Run one step, this will trigger checkpointing
 
         self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period, 38.0)
+
+    @patch.dict(
+        os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
+    )
+    def testCloudCheckpointForceWithNumToKeep(self):
+        """Test that cloud syncing is forced if one of the trials has made more
+        than num_to_keep checkpoints since last sync."""
+        ray.init(num_cpus=3)
+
+        class CustomSyncer(Syncer):
+            def __init__(self, sync_period: float = float("inf")):
+                super(CustomSyncer, self).__init__(sync_period=sync_period)
+                self._sync_status = {}
+                self.sync_up_counter = 0
+
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                self.sync_up_counter += 1
+                return True
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                return True
+
+            def delete(self, remote_dir: str) -> bool:
+                pass
+
+        num_to_keep = 2
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep, checkpoint_frequency=1
+        )
+        syncer = CustomSyncer()
+
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            remote_checkpoint_dir="fake",
+            trial_checkpoint_config=checkpoint_config,
+        )
+
+        class CheckpointingTrial(Trial):
+            def should_checkpoint(self):
+                return True
+
+        trial = CheckpointingTrial(
+            "__fake",
+            checkpoint_config=checkpoint_config,
+            stopping_criterion={"training_iteration": 10},
+        )
+        runner.add_trial(trial)
+
+        # also check if the warning is printed
+        buffer = []
+        from ray.tune.execution.trial_runner import logger
+
+        with patch.object(logger, "warning", lambda x: buffer.append(x)):
+            while not runner.is_finished():
+                runner.step()
+        assert any("syncing has been triggered multiple" in x for x in buffer)
+
+        # we should sync 4 times - every 2 checkpoints, but the last sync will not
+        # happen as the experiment finishes before it is triggered
+        assert syncer.sync_up_counter == 4
 
 
 class SearchAlgorithmTest(unittest.TestCase):
