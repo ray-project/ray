@@ -86,9 +86,15 @@ class RunningStat:
 
     def copy(self):
         other = RunningStat()
-        other.num_pushes = self.num_pushes
-        other.mean_array = np.copy(self.mean_array)
-        other.std_array = np.copy(self.std_array)
+        other.num_pushes = self.num_pushes if hasattr(self, "num_pushes") else self._n
+        other.mean_array = (
+            np.copy(self.mean_array)
+            if hasattr(self, "mean_array")
+            else np.copy(self._M)
+        )
+        other.std_array = (
+            np.copy(self.std_array) if hasattr(self, "std_array") else np.copy(self._S)
+        )
         return other
 
     def push(self, x):
@@ -268,7 +274,8 @@ class MeanStdFilter(Filter):
         self.destd = other.destd
         self.clip = other.clip
         self.running_stats = tree.map_structure(
-            lambda rs: rs.copy(), other.running_stats
+            lambda rs: rs.copy(),
+            other.running_stats if hasattr(other, "running_stats") else other.rs,
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
