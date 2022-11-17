@@ -307,6 +307,7 @@ def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
 FIELDS = [
     "data_loader",
     "train_sleep_time_ms",
+    "num_cpu_nodes",
     "num_epochs",
     "num_images_per_epoch",
     "num_images_per_input_file",
@@ -386,12 +387,13 @@ def append_to_test_output_json(path, metrics):
     num_images_per_file = metrics["num_images_per_input_file"]
     num_files = metrics["num_files"]
     data_loader = metrics["data_loader"]
+    num_cpu_nodes = metrics["num_cpu_nodes"]
 
     # Append select performance metrics to perf_metrics.
     perf_metrics = output_json.get("perf_metrics", [])
     perf_metrics.append(
         {
-            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files_throughput-img-per-second",  # noqa: E501
+            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second",  # noqa: E501
             "perf_metric_value": metrics["tput_images_per_s"],
             "perf_metric_type": "THROUGHPUT",
         }
@@ -450,7 +452,14 @@ if __name__ == "__main__":
     parser.add_argument("--output-file", default="out.csv", type=str)
     parser.add_argument("--use-gpu", action="store_true")
     parser.add_argument("--online-processing", action="store_true")
+    parser.add_argument("--num-cpu-nodes", default=0, type=int)
     args = parser.parse_args()
+
+    ray.init(
+        runtime_env={
+            "working_dir": os.path.dirname(__file__),
+        }
+    )
 
     if args.use_tf_data or args.use_ray_data:
         assert (
