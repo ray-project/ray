@@ -26,8 +26,8 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
-# Whether dynamic block splitting is enabled by default
-DEFAULT_BLOCK_SPLITTING_ENABLED = False
+# Whether block splitting is on by default
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
