@@ -372,6 +372,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
+  const std::string task_name = resource_spec.GetName();
   RAY_LOG(DEBUG) << "Requesting lease from raylet "
                  << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
                  << task_id;
@@ -379,8 +380,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   lease_client->RequestWorkerLease(
       resource_spec.GetMessage(),
       /*grant_or_reject=*/is_spillback,
-      [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
-          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+      [this,
+       scheduling_key,
+       task_id,
+       task_name,
+       is_spillback,
+       raylet_address = *raylet_address](const Status &status,
+                                         const rpc::RequestWorkerLeaseReply &reply) {
         std::deque<TaskSpecification> tasks_to_fail;
         rpc::RayErrorInfo error_info;
         ray::Status error_status;
@@ -476,8 +482,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
-            RAY_LOG(INFO)
-                << "Retrying attempt to schedule task at remote node. Try again "
+            RAY_LOG_EVERY_MS(INFO, 30 * 1000)
+                << "Retrying attempt to schedule task (id: " << task_id
+                << " name: " << task_name
+                << ") at remote node (id: " << raylet_address.raylet_id()
+                << " ip: " << raylet_address.ip_address()
+                << "). Try again "
                    "on a local node. Error: "
                 << status.ToString();
 
