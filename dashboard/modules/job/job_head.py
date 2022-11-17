@@ -144,7 +144,7 @@ class JobAgentSubmissionClient:
 
 class JobHead(dashboard_utils.DashboardHeadModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
-    
+
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
     `doc/source/cluster/running-applications/job-submission/openapi.yml`.
     We currently do not automatically check that the OpenAPI
