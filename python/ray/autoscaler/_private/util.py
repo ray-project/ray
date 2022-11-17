@@ -69,7 +69,9 @@ NodeIP = str
 # Number of nodes to launch
 NodeCount = int
 
-# e.g. "up-to-date"
+# e.g. "up-to-date", "update-failed"
+# See autoscaler/tags.py for other status
+# values used by the autoscaler.
 NodeStatus = str
 
 Usage = Dict[str, Tuple[Number, Number]]
