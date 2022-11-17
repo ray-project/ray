@@ -26,5 +26,5 @@ export type Actor = {
   requiredResources: {
     [key: string]: number;
   };
-  exitDetail: string | null;
+  exitDetail: string;
 };

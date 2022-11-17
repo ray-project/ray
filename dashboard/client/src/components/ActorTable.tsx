@@ -258,15 +258,11 @@ const ActorTable = ({
                 <TableCell align="center">
                   <Tooltip
                     className={classes.OverflowCol}
-                    title={
-                      exitDetail
-                        ? exitDetail
-                        : "Exit Detail column is only available when the actor is dead."
-                    }
+                    title={exitDetail}
                     arrow
                     interactive
                   >
-                    <div>{exitDetail ? exitDetail : "-"}</div>
+                    <div>{exitDetail}</div>
                   </Tooltip>
                 </TableCell>
                 <TableCell align="center">

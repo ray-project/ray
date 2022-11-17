@@ -61,6 +61,7 @@ def actor_table_data_to_dict(message):
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
+    exit_detail = "-"
     if "deathCause" in orig_message:
         context = orig_message["deathCause"]
         if "actorDiedErrorContext" in context:
@@ -73,9 +74,7 @@ def actor_table_data_to_dict(message):
             exit_detail = context["creationTaskFailureContext"][
                 "formattedExceptionString"
             ]  # noqa
-        else:
-            exit_detail = "-"
-        light_message["exitDetail"] = exit_detail
+    light_message["exitDetail"] = exit_detail
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
 
