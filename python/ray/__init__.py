@@ -258,11 +258,14 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+
+from ray import autoscaler  # noqa: E402,F401
+
+
 if sys.version_info < (3, 7):
     # TODO(Clark): Remove this one we drop Python 3.6 support.
     from ray import data  # noqa: F401
     from ray import workflow  # noqa: F401
-    from ray import autoscaler  # noqa: E402,F401
 else:
     # Delay importing of expensive, isolated subpackages.
     def __getattr__(name: str):
