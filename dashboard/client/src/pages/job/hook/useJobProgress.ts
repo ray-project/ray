@@ -1,7 +1,8 @@
 import _ from "lodash";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import useSWR from "swr";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobProgress, getJobProgressByTaskName } from "../../../service/job";
-import { JobProgressByTaskName, TaskProgress } from "../../../type/job";
 
 /**
  * Hook for fetching a job's task progress.
@@ -12,42 +13,30 @@ import { JobProgressByTaskName, TaskProgress } from "../../../type/job";
  *              to fetch all progress for all jobs
  */
 export const useJobProgress = (jobId?: string) => {
-  const [progress, setProgress] = useState<TaskProgress>();
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const refreshRef = useRef(isRefreshing);
-  const tot = useRef<NodeJS.Timeout>();
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);
   };
   refreshRef.current = isRefreshing;
-  const getProgress = useCallback(async () => {
-    if (!refreshRef.current) {
-      return;
-    }
-    const rsp = await getJobProgress(jobId);
+  const { data: progress } = useSWR(
+    "useJobProgress",
+    async () => {
+      const rsp = await getJobProgress(jobId);
 
-    if (rsp) {
+      setMsg(rsp.data.msg);
       if (rsp.data.result) {
-        setProgress(rsp.data.data.detail);
+        return rsp.data.data.detail;
       } else {
         setError(true);
+        setRefresh(false);
       }
-      setMsg(rsp.data.msg);
-    }
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
 
-    tot.current = setTimeout(getProgress, 4000);
-  }, [jobId]);
-
-  useEffect(() => {
-    getProgress();
-    return () => {
-      if (tot.current) {
-        clearTimeout(tot.current);
-      }
-    };
-  }, [getProgress]);
   return {
     progress,
     msg,
@@ -66,43 +55,31 @@ export const useJobProgress = (jobId?: string) => {
  *              to fetch all progress for all jobs
  */
 export const useJobProgressByTaskName = (jobId: string) => {
-  const [progress, setProgress] = useState<JobProgressByTaskName>();
   const [page, setPage] = useState(1);
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const refreshRef = useRef(isRefreshing);
-  const tot = useRef<NodeJS.Timeout>();
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);
   };
   refreshRef.current = isRefreshing;
-  const getProgress = useCallback(async () => {
-    if (!refreshRef.current) {
-      return;
-    }
-    const rsp = await getJobProgressByTaskName(jobId);
 
-    if (rsp) {
+  const { data: progress } = useSWR(
+    "useJobProgressByTaskName",
+    async () => {
+      const rsp = await getJobProgressByTaskName(jobId);
+      setMsg(rsp.data.msg);
+
       if (rsp.data.result) {
-        setProgress(rsp.data.data.detail);
+        return rsp.data.data.detail;
       } else {
         setError(true);
+        setRefresh(false);
       }
-      setMsg(rsp.data.msg);
-    }
-
-    tot.current = setTimeout(getProgress, 4000);
-  }, [jobId]);
-
-  useEffect(() => {
-    getProgress();
-    return () => {
-      if (tot.current) {
-        clearTimeout(tot.current);
-      }
-    };
-  }, [getProgress]);
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
 
   const tasks = progress?.tasks ?? [];
   const tasksWithTotals = tasks.map((task) => {
