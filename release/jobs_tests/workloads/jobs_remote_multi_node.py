@@ -11,13 +11,28 @@ Test owner: architkulkarni
 """
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 ray.init()
 
 NUM_NODES = 5
 
-num_nodes = len(ray.nodes())
+# Spawn tasks that use get_runtime_context() to get their node_id
+# and wait until all of the nodes are seen.
+
+
+@ray.remote(num_cpus=1)
+def get_node_id():
+    return ray.get_runtime_context().node_id
+
+
 # Allow one fewer node in case a node fails to come up.
-assert (
-    num_nodes >= NUM_NODES - 1
-), f"Expected at least {NUM_NODES - 1} nodes, got {num_nodes}"
+num_expected_nodes = NUM_NODES - 1
+
+
+def check_num_nodes():
+    node_ids = set(ray.get([get_node_id.remote() for _ in range(100)]))
+    return len(node_ids) >= num_expected_nodes
+
+
+wait_for_condition(check_num_nodes)
