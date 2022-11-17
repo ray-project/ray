@@ -25,13 +25,13 @@ How do I configure the memory monitor?
 
 The memory monitor is controlled by the following environment variables:
 
-- ``RAY_memory_monitor_interval_ms (int, defaults to 9)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
+- ``RAY_memory_monitor_interval_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
-- ``RAY_memory_usage_threshold_fraction (float, defaults to 0.9)`` is the threshold when the node is beyond the memory
+- ``RAY_memory_usage_threshold_fraction (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this value and the free space is
   below min_memory_free_bytes then it will start killing processes to free up space. Ranges from [0, 1].
 
-- ``RAY_min_memory_free_bytes (int, defaults to 1 GiB)`` is the minimum amount of free space. If the memory usage is above
+- ``RAY_min_memory_free_bytes (int, defaults to -1)`` is the minimum amount of free space. If the memory usage is above
   ``memory_usage_threshold_fraction`` and the free space is below this value then it
   will start killing processes to free up space. This setting is unused if it is set to -1.
 
@@ -78,8 +78,8 @@ Memory usage threshold
 
 The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables:
 
-- ``RAY_memory_usage_threshold_fraction`` (default: 0.9)
-- ``RAY_min_memory_free_bytes`` (default: 1 GiB)
+- ``RAY_memory_usage_threshold_fraction`` (default: 0.95)
+- ``RAY_min_memory_free_bytes`` (default: -1)
 
 When the node starts it computes the usage threshold as follows:
 
