@@ -27,13 +27,11 @@
 namespace ray {
 namespace syncer {
 
-using ray::rpc::syncer::DummyRequest;
-using ray::rpc::syncer::DummyResponse;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
-using ray::rpc::syncer::RaySyncMessages;
-using ray::rpc::syncer::StartSyncRequest;
-using ray::rpc::syncer::StartSyncResponse;
+
+using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
+using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;
 
 static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
@@ -99,14 +97,8 @@ class RaySyncer {
   /// for the connection.
   ///
   /// \param connection The connection to the remote node.
-  void Connect(std::unique_ptr<NodeSyncConnection> connection);
-
-  /// Connect to a node.
-  /// TODO (iycheng): Introduce grpc channel pool and use node_id
-  /// for the connection.
-  ///
-  /// \param connection The connection to the remote node.
-  void Connect(std::shared_ptr<grpc::Channel> channel);
+  void Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel);
+  void Connect(NodeSyncConnection* connection);
 
   void Disconnect(const std::string &node_id);
 
@@ -144,22 +136,10 @@ class RaySyncer {
   void BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
  private:
+  std::shared_ptr<bool> stopped_;
+  
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
-
-  /// Get the SyncConnection of a node.
-  ///
-  /// \param node_id The node id to lookup.
-  ///
-  /// \return nullptr if it doesn't exist, otherwise, the connection associated with the
-  /// node.
-  NodeSyncConnection *GetSyncConnection(const std::string &node_id) const {
-    auto iter = sync_connections_.find(node_id);
-    if (iter == sync_connections_.end()) {
-      return nullptr;
-    }
-    return iter->second.get();
-  }
 
   /// Function to broadcast the messages to other nodes.
   /// A message will be sent to a node if that node doesn't have this message.
@@ -175,28 +155,13 @@ class RaySyncer {
   const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
-  absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
-
-  /// Upward connections. These are connections initialized not by the local node.
-  absl::flat_hash_set<NodeSyncConnection *> upward_connections_;
+  absl::flat_hash_map<std::string, NodeSyncConnection*> sync_connections_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
 
-  /// Context of a rpc call.
-  struct StartSyncCall {
-    StartSyncRequest request;
-    StartSyncResponse response;
-    grpc::ClientContext context;
-    std::promise<void> promise;
-  };
-
-  absl::flat_hash_set<std::unique_ptr<StartSyncCall>> inflight_requests_;
-
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;
-
-  std::shared_ptr<bool> stopped_;
 
   friend class RaySyncerService;
   /// Test purpose
@@ -209,9 +174,6 @@ class RaySyncer {
   FRIEND_TEST(SyncerTest, Reconnect);
 };
 
-class ClientSyncConnection;
-class ServerSyncConnection;
-
 /// RaySyncerService is a service to take care of resource synchronization
 /// related operations.
 /// Right now only raylet needs to setup this service. But in the future,
@@ -223,25 +185,9 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 
   ~RaySyncerService();
 
-  grpc::ServerUnaryReactor *StartSync(grpc::CallbackServerContext *context,
-                                      const StartSyncRequest *request,
-                                      StartSyncResponse *response) override;
-
-  grpc::ServerUnaryReactor *Update(grpc::CallbackServerContext *context,
-                                   const RaySyncMessages *request,
-                                   DummyResponse *) override;
-
-  grpc::ServerUnaryReactor *LongPolling(grpc::CallbackServerContext *context,
-                                        const DummyRequest *,
-                                        RaySyncMessages *response) override;
+  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>* StartSync(grpc::CallbackServerContext* context) override;
 
  private:
-  // This will be created after connection is established.
-  // Ideally this should be owned by RaySyncer, but since we are doing
-  // long-polling right now, we have to put it here so that when
-  // long-polling request comes, we can set it up.
-  std::string remote_node_id_;
-
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
 };
