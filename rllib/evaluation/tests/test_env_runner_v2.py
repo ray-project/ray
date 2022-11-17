@@ -10,6 +10,7 @@ from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
 
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
@@ -60,7 +61,9 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         rollout_worker = algo.workers.local_worker()
         sample_batch = rollout_worker.sample()
+        sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
+        self.assertEqual(sample_batch["t"][0], 0)
         self.assertEqual(sample_batch.env_steps(), 200)
         self.assertEqual(sample_batch.agent_steps(), 200)
 
