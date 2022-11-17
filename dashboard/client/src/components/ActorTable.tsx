@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "@material-ui/core";
 import { orange } from "@material-ui/core/colors";
-import { SearchOutlined, TouchApp } from "@material-ui/icons";
+import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
@@ -237,7 +237,7 @@ const ActorTable = ({
                 </TableCell>
                 <TableCell align="center">
                   <Tooltip
-                    className={classes.idCol}
+                    className={classes.OverflowCol}
                     title={Object.entries(requiredResources || {}).map(
                       ([key, val]) => (
                         <div style={{ margin: 4 }}>
@@ -248,17 +248,25 @@ const ActorTable = ({
                     arrow
                     interactive
                   >
-                    <TouchApp />
+                    <div>
+                      {Object.entries(requiredResources || {}).map(
+                        ([key, val]) => `${key}: ${val}\n`,
+                      )}
+                    </div>
                   </Tooltip>
                 </TableCell>
                 <TableCell align="center">
                   <Tooltip
-                    className={classes.idCol}
-                    title={exitDetail}
+                    className={classes.OverflowCol}
+                    title={
+                      exitDetail
+                        ? exitDetail
+                        : "Exit Detail column is only available when the actor is dead."
+                    }
                     arrow
                     interactive
                   >
-                    <TouchApp />
+                    <div>{exitDetail ? exitDetail : "-"}</div>
                   </Tooltip>
                 </TableCell>
                 <TableCell align="center">

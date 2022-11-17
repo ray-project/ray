@@ -16,7 +16,6 @@ export type Actor = {
   actorId: string;
   jobId: string;
   state: ActorEnum | string; // PENDING, ALIVE, RECONSTRUCTING, DEAD
-  nodeId: string | null;
   pid: number | null;
   address: Address;
   name: string;
@@ -27,5 +26,5 @@ export type Actor = {
   requiredResources: {
     [key: string]: number;
   };
-  exitDetail: string;
+  exitDetail: string | null;
 };

@@ -77,7 +77,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
 
 def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     timeout = 5
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     address_info = ray_start_with_dashboard
 
     sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])

@@ -38,7 +38,6 @@ def actor_table_data_to_dict(message):
             "taskId",
             "parentTaskId",
             "sourceActorId",
-            "nodeId",
         },
         including_default_value_fields=True,
     )
@@ -56,7 +55,6 @@ def actor_table_data_to_dict(message):
         "numRestarts",
         "timestamp",
         "className",
-        "nodeId",
         "requiredResources",
         "startTime",
         "endTime",
@@ -142,15 +140,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             "timestamp",
             "pid",
             "exitDetail",
-            "nodeId",
             "startTime",
             "endTime",
         )
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):
-            logger.info(actor_table_data)
             actor_table_data = actor_table_data_to_dict(actor_table_data)
-            logger.info(actor_table_data)
             # If actor is not new registered but updated, we only update
             # states related fields.
             if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
@@ -160,7 +155,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                         actors[k] = actor_table_data[k]
                 actor_table_data = actors
             actor_id = actor_table_data["actorId"]
-            node_id = actor_table_data.get("nodeId", actor_consts.NIL_NODE_ID)
+            node_id = actor_table_data["address"]["rayletId"]
             if actor_table_data["state"] == "DEAD":
                 self.dead_actors_queue.append(actor_id)
             # Update actors.
