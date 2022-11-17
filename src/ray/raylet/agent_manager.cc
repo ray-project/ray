@@ -129,14 +129,26 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
     RAY_LOG(WARNING) << "Agent process with id " << agent_id << " exited, return value "
-                     << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
-                     << reported_agent_id_;
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the Ray agent failed. "
-           "The raylet fate shares with the agent. This can happen because the "
-           "Ray agent was unexpectedly killed or failed. See "
-           "`dashboard_agent.log` for the root cause.";
-    QuickExit();
+                    << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
+                    << reported_agent_id_;
+
+    if (exit_code == 0) {
+      auto signo = SIGTERM;
+      RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
+                    << ". Signo: " << signo;
+      // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
+      // forcefully.
+      RAY_CHECK(std::raise(signo) == 0)
+          << "There was a failure while sending a sigterm to itself. The process will not "
+            "gracefully shutdown.";
+    } else {
+      RAY_LOG(ERROR)
+          << "The raylet exited immediately because the Ray agent failed. "
+            "The raylet fate shares with the agent. This can happen because the "
+            "Ray agent was unexpectedly killed or failed. See "
+            "`dashboard_agent.log` for the root cause.";
+      QuickExit();
+    }
   });
   monitor_thread.detach();
 }

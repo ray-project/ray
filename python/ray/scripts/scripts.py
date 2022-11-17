@@ -41,7 +41,7 @@ from ray.autoscaler._private.commands import (
     rsync,
     teardown_cluster,
 )
-from ray.autoscaler._private.constants import RAY_PROCESSES_TO_KILL
+from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
@@ -980,7 +980,7 @@ def stop(force, grace_period):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = RAY_PROCESSES_TO_KILL
+    processes_to_kill = RAY_PROCESSES
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):

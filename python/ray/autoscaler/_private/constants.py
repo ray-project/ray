@@ -82,7 +82,7 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 # ray home path in the container image
 RAY_HOME = "/home/ray"
 
-RAY_PROCESSES_TO_KILL = [
+RAY_PROCESSES = [
     # The first element is the substring to filter.
     # The second element, if True, is to filter ps results by command name
     # (only the first 15 charactors of the executable name on Linux);
@@ -108,13 +108,10 @@ RAY_PROCESSES_TO_KILL = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
+    [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
     ["ray_process_reaper.py", False],
 ]
-
-RAY_PROCESSES = RAY_PROCESSES_TO_KILL.append(
-    [os.path.join("dashboard", "agent.py"), False]
-)
 
 # Max Concurrent SSH Calls to stop Docker
 MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS", 50)
