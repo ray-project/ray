@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeType, NodeStatus
 from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
@@ -56,24 +57,39 @@ provider_exists = False
 
 
 def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
-    """Converts a pod into node data useable the autoscaler."""
-    labels = pod["metadata"]["labels"]
+    """Converts a Ray pod extracted from K8s into Ray NodeData.
+    NodeData is processed by BatchingNodeProvider.
+    """
+    kind, type = kind_and_type(pod)
+    status = status_tag(pod)
+    ip = pod_ip(pod)
+    return NodeData(kind=kind, type=type, status=status, ip=ip)
 
-    kind, type = "", ""
+
+def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
+    """Determine Ray node kind (head or workers) and node type (worker group name)
+    from a Ray pod's labels.
+    """
+    labels = pod["metadata"]["labels"]
     if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
         kind = NODE_KIND_HEAD
         type = KUBERAY_TYPE_HEAD
     else:
         kind = NODE_KIND_WORKER
         type = labels[KUBERAY_LABEL_KEY_TYPE]
-
-    status = status_tag(pod)
-    ip = pod["status"].get("podIP", "IP not yet assigned")
-    return NodeData(kind=kind, type=type, status=status, ip=ip)
+    return kind, type
 
 
-def status_tag(pod: Dict[str, Any]) -> str:
-    """Convert pod state to Ray autoscaler status tag."""
+def pod_ip(pod: Dict[str, Any]) -> NodeIP:
+    return pod["status"].get("podIP", "IP not yet assigned")
+
+
+def status_tag(pod: Dict[str, Any]) -> NodeStatus:
+    """Convert pod state to Ray autoscaler node status.
+
+    See the doc string of the class
+    batching_node_provider.NodeData for the semantics of node status.
+    """
     if (
         "containerStatuses" not in pod["status"]
         or not pod["status"]["containerStatuses"]
@@ -182,7 +198,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             self, provider_config, cluster_name, _allow_multiple
         )
 
-    def get_node_data(self):
+    def get_node_data(self) -> Dict[NodeID, NodeData]:
         # Store the raycluster CR
         self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
 

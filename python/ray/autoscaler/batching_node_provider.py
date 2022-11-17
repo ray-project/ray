@@ -8,7 +8,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
 )
-from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeType
+from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeType, NodeStatus
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -20,8 +20,6 @@ from ray.autoscaler.tags import (
 provider_exists = False
 
 logger = logging.getLogger(__name__)
-
-NodeStatus = str
 
 
 @dataclass

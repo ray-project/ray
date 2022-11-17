@@ -69,6 +69,9 @@ NodeIP = str
 # Number of nodes to launch
 NodeCount = int
 
+# e.g. "up-to-date"
+NodeStatus = str
+
 Usage = Dict[str, Tuple[Number, Number]]
 
 logger = logging.getLogger(__name__)
