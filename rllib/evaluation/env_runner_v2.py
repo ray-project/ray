@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -391,9 +391,7 @@ class EnvRunnerV2:
         # Create all upcoming episodes and call `on_episode_created` callbacks for
         # all sub-environments (upcoming episodes).
         if not self._active_episodes:
-            for env_id, sub_env in self._base_env.get_sub_environments(
-                as_dict=True
-            ).items():
+            for env_id, _ in self._base_env.get_sub_environments(as_dict=True).items():
                 self.create_episode(env_id)
 
         self._perf_stats.incr("iters", 1)
@@ -414,7 +412,7 @@ class EnvRunnerV2:
         t1 = time.time()
         # types: Set[EnvID], Dict[PolicyID, List[AgentConnectorDataType]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
-        to_eval, outputs = self._process_observations(
+        active_envs, to_eval, outputs = self._process_observations(
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
             dones=dones,
@@ -433,6 +431,7 @@ class EnvRunnerV2:
         actions_to_send: Dict[
             EnvID, Dict[AgentID, EnvActionType]
         ] = self._process_policy_eval_results(
+            active_envs=active_envs,
             to_eval=to_eval,
             eval_results=eval_results,
             off_policy_actions=off_policy_actions,
@@ -478,6 +477,7 @@ class EnvRunnerV2:
         dones: MultiEnvDict,
         infos: MultiEnvDict,
     ) -> Tuple[
+        Set[EnvID],
         Dict[PolicyID, List[AgentConnectorDataType]],
         List[Union[RolloutMetrics, SampleBatchType]],
     ]:
@@ -493,10 +493,19 @@ class EnvRunnerV2:
 
         Returns:
             A tuple of:
+                A list of envs that were active during this step.
                 AgentConnectorDataType for active agents for policy evaluation.
                 SampleBatches and RolloutMetrics for completed agents for output.
         """
         # Output objects.
+        # Note that we need to track envs that are active during this round explicitly,
+        # just to be confident which envs require us to send at least an empty action
+        # dict to.
+        # We can not get this from the _active_episode or to_eval lists because
+        # 1. All envs are not required to step during every single step. And
+        # 2. to_eval only contains data for the agents that are still active. An env may
+        # be active but all agents are done during the step.
+        active_envs: Set[EnvID] = set()
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]] = defaultdict(list)
         outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
@@ -519,6 +528,7 @@ class EnvRunnerV2:
                     env_obs_or_exception=env_obs,
                     is_done=True,
                     hit_horizon=False,
+                    active_envs=active_envs,
                     to_eval=to_eval,
                     outputs=outputs,
                 )
@@ -544,6 +554,7 @@ class EnvRunnerV2:
             else:
                 hit_horizon = False
                 all_agents_done = False
+                active_envs.add(env_id)
 
             # Special handling of common info dict.
             episode.set_last_info("__common__", infos[env_id].get("__common__", {}))
@@ -683,7 +694,7 @@ class EnvRunnerV2:
                 # the agents that are done during this step of rollout in
                 # the case of _multiple_episodes_in_batch=False.
                 self._handle_done_episode(
-                    env_id, env_obs, is_done, hit_horizon, to_eval, outputs
+                    env_id, env_obs, is_done, hit_horizon, active_envs, to_eval, outputs
                 )
 
             # Try to build something.
@@ -698,7 +709,7 @@ class EnvRunnerV2:
                     # Clean up and delete the batch_builder.
                     del self._batch_builders[env_id]
 
-        return to_eval, outputs
+        return active_envs, to_eval, outputs
 
     def _build_done_episode(
         self,
@@ -751,6 +762,7 @@ class EnvRunnerV2:
         env_obs_or_exception: Union[MultiAgentDict, Exception],
         is_done: bool,
         hit_horizon: bool,
+        active_envs: Set[EnvID],
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
         outputs: List[SampleBatchType],
     ) -> None:
@@ -763,6 +775,7 @@ class EnvRunnerV2:
             env_obs_or_exception: Last per-environment observation or Exception.
             is_done: If all agents are done.
             hit_horizon: Whether the episode ended because it hit horizon.
+            active_envs: Set of active env ids.
             to_eval: Output container for policy eval data.
             outputs: Output container for collected sample batches.
         """
@@ -853,6 +866,7 @@ class EnvRunnerV2:
 
             # Step after adding initial obs. This will give us 0 env and agent step.
             new_episode.step()
+            active_envs.add(env_id)
 
     def create_episode(self, env_id: EnvID) -> EpisodeV2:
         """Creates a new EpisodeV2 instance and returns it.
@@ -1048,6 +1062,7 @@ class EnvRunnerV2:
 
     def _process_policy_eval_results(
         self,
+        active_envs: Set[EnvID],
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
         eval_results: Dict[PolicyID, PolicyOutputType],
         off_policy_actions: MultiEnvDict,
@@ -1058,6 +1073,7 @@ class EnvRunnerV2:
         returns replies to send back to agents in the env.
 
         Args:
+            active_envs: Set of env IDs that are still active.
             to_eval: Mapping of policy IDs to lists of AgentConnectorDataType objects.
             eval_results: Mapping of policy IDs to list of
                 actions, rnn-out states, extra-action-fetches dicts.
@@ -1069,9 +1085,9 @@ class EnvRunnerV2:
             Env (np.ndarrays).
         """
         actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = defaultdict(dict)
-        for eval_data in to_eval.values():
-            for d in eval_data:
-                actions_to_send[d.env_id] = {}  # at minimum send empty dict
+
+        for env_id in active_envs:
+            actions_to_send[env_id] = {}  # at minimum send empty dict
 
         # types: PolicyID, List[AgentConnectorDataType]
         for policy_id, eval_data in to_eval.items():
