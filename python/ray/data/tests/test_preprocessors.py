@@ -132,7 +132,7 @@ def test_standard_scaler():
 @pytest.mark.parametrize(
     "preprocessor",
     [
-        BatchMapper(fn=lambda x: x),
+        BatchMapper(fn=lambda x: x, batch_format="pandas"),
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
@@ -1026,7 +1026,7 @@ def test_chain():
         df["A"] *= 2
         return df
 
-    batch_mapper = BatchMapper(fn=udf)
+    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
@@ -1096,7 +1096,7 @@ def test_nested_chain_state():
         return df
 
     def create_chain():
-        batch_mapper = BatchMapper(fn=udf)
+        batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
         imputer = SimpleImputer(["B"])
         scaler = StandardScaler(["A", "B"])
         encoder = LabelEncoder("C")
@@ -1133,7 +1133,7 @@ def test_nested_chain():
         df["A"] *= 2
         return df
 
-    batch_mapper = BatchMapper(fn=udf)
+    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
