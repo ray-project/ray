@@ -1,6 +1,7 @@
 import _ from "lodash";
 import { useRef, useState } from "react";
 import useSWR from "swr";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobProgress, getJobProgressByTaskName } from "../../../service/job";
 
 /**
@@ -33,7 +34,7 @@ export const useJobProgress = (jobId?: string) => {
         setRefresh(false);
       }
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   return {
@@ -77,7 +78,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
         setRefresh(false);
       }
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const tasks = progress?.tasks ?? [];

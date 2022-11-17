@@ -1,6 +1,7 @@
 import { useContext, useRef, useState } from "react";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobList } from "../../../service/job";
 
 export const useJobList = () => {
@@ -41,7 +42,7 @@ export const useJobList = () => {
         );
       }
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const jobList = data ?? [];

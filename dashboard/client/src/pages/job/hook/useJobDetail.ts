@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { RouteComponentProps } from "react-router-dom";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobDetail } from "../../../service/job";
 
 export const useJobDetail = (props: RouteComponentProps<{ id: string }>) => {
@@ -22,7 +23,7 @@ export const useJobDetail = (props: RouteComponentProps<{ id: string }>) => {
         setRefresh(false);
       }
     },
-    { refreshInterval: refreshing ? 4000 : 0 },
+    { refreshInterval: refreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   return {

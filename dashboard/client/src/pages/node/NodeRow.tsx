@@ -11,6 +11,7 @@ import { sortBy } from "lodash";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
+import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -277,7 +278,7 @@ export const NodeRows = ({
         return sortedWorkers;
       }
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const workers = data ?? [];

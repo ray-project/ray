@@ -1,6 +1,7 @@
 import _ from "lodash";
 import { useState } from "react";
 import useSWR from "swr";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getNodeList } from "../../../service/node";
 import { useSorter } from "../../../util/hook";
 
@@ -37,7 +38,7 @@ export const useNodeList = () => {
       }
       return rspData.summary;
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const nodeList = data ?? [];

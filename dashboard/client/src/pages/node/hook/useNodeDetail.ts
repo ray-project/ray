@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { RouteComponentProps } from "react-router-dom";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getNodeDetail } from "../../../service/node";
 
 export const useNodeDetail = (props: RouteComponentProps<{ id: string }>) => {
@@ -35,7 +36,7 @@ export const useNodeDetail = (props: RouteComponentProps<{ id: string }>) => {
         return rspData.detail;
       }
     },
-    { refreshInterval: isRefreshing ? 4000 : 0 },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const raylet = nodeDetail?.raylet;
