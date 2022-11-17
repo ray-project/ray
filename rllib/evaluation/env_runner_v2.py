@@ -607,7 +607,7 @@ class EnvRunnerV2:
                     obs_space = policy.observation_space
                     obs_space = getattr(obs_space, "original_space", obs_space)
                     values_dict = {
-                        SampleBatch.T: episode.length - 1,
+                        SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                         SampleBatch.REWARDS: 0.0,
@@ -835,7 +835,7 @@ class EnvRunnerV2:
                         agent_id,
                         {
                             SampleBatch.NEXT_OBS: obs,
-                            SampleBatch.T: new_episode.length - 1,
+                            SampleBatch.T: new_episode.length,
                         },
                     )
                     for agent_id, obs in agents_obs
