@@ -13,19 +13,19 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KuberayNodeProvider,
     ScaleRequest,
 )
-from ray.autoscaler._private.util import NodeID, NodeType
+from ray.autoscaler._private.util import NodeID
 from pathlib import Path
 import yaml
 
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
-from typing import Dict, Set, List
+from typing import Set, List
 
 SAMPLE_SCALE_REQUEST = ScaleRequest()
 SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
 
 
 def _get_basic_ray_cr_workers_to_delete(
-        cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
+    cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
 ):
     """Generate a Ray cluster with non-empty workersToDelete field."""
     raycluster = get_basic_ray_cr()
@@ -271,17 +271,17 @@ def test_safe_to_scale(
     mock_node_data = NodeData("-", "-", "-", "-")
     node_data_dict = {node_id: mock_node_data for node_id in node_set}
 
-    raycluster = _get_basic_ray_cr_workers_to_delete(cpu_workers_to_delete, gpu_workers_to_delete)
+    raycluster = _get_basic_ray_cr_workers_to_delete(
+        cpu_workers_to_delete, gpu_workers_to_delete
+    )
 
     def mock_patch(kuberay_provider, path, patch_payload):
         patch = jsonpatch.JsonPatch(patch_payload)
         kuberay_provider._patched_raycluster = patch.apply(kuberay_provider._raycluster)
 
     with mock.patch.object(
-            KuberayNodeProvider, "__init__", return_value=None
-    ), mock.patch.object(
-            KuberayNodeProvider, "_patch", mock_patch
-    ):
+        KuberayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(KuberayNodeProvider, "_patch", mock_patch):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
         kr_node_provider._patched_raycluster = raycluster
@@ -297,10 +297,12 @@ def test_safe_to_scale(
         for gpu_worker_to_delete in gpu_workers_to_delete
     )
     assert expected_safe is actual_safe
-    patched_cpu_workers_to_delete = kr_node_provider._patched_raycluster[
-        "spec"]["workerGroupSpecs"][0]["scaleStrategy"]["workersToDelete"]
-    patched_gpu_workers_to_delete = kr_node_provider._patched_raycluster[
-        "spec"]["workerGroupSpecs"][1]["scaleStrategy"]["workersToDelete"]
+    patched_cpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
+        "workerGroupSpecs"
+    ][0]["scaleStrategy"]["workersToDelete"]
+    patched_gpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
+        "workerGroupSpecs"
+    ][1]["scaleStrategy"]["workersToDelete"]
 
     if expected_safe:
         # Cleaned up workers to delete
