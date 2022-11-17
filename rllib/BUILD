@@ -201,6 +201,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_cartpole_w_1000_policies_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-w-1000-policies-appo.py"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_frozenlake_appo",
 #    main = "tests/run_regression_tests.py",
