@@ -291,7 +291,7 @@ install_pip_packages() {
   alias pip="python -m pip"
 
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+    pip install --no-clean dm-tree==0.1.6  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
   if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
