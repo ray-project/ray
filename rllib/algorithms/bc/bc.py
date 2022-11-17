@@ -56,11 +56,6 @@ class BCConfig(MARWILConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # TODO: Remove this when the off_policy_estimation_methods
-        # default config is removed from MARWIL
-        # No off-policy estimation.
-        self.off_policy_estimation_methods = {}
-
     @override(MARWILConfig)
     def validate(self) -> None:
         super().validate()

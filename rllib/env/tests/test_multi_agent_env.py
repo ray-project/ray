@@ -22,6 +22,9 @@ from ray.rllib.examples.env.multi_agent import (
     RoundRobinMultiAgent,
 )
 from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.policy.sample_batch import (
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -171,7 +174,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
+                policy_mapping_fn=(
+                    lambda agent_id, episode, worker, **kwargs: "p{}".format(
+                        agent_id % 2
+                    )
+                ),
             ),
         )
         batch = ev.sample()
@@ -329,12 +336,17 @@ class TestMultiAgentEnv(unittest.TestCase):
             def get_initial_state(self):
                 return [{}]  # empty dict
 
+            def is_recurrent(self):
+                # TODO: avnishn automatically infer this.
+                return True
+
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=StatefulPolicy,
             config=(
                 AlgorithmConfig().rollouts(
-                    rollout_fragment_length=5, num_rollout_workers=0
+                    rollout_fragment_length=5,
+                    num_rollout_workers=0,
                 )
                 # Force `state_in_0` to be repeated every ts in the collected batch
                 # (even though we don't even have a model that would care about this).
@@ -342,6 +354,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             ),
         )
         batch = ev.sample()
+        batch = convert_ma_batch_to_sample_batch(batch)
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch["state_in_0"][0], {})
         self.assertEqual(batch["state_out_0"][0], h)
@@ -350,6 +363,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             self.assertEqual(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
+        # TODO(avnishn): This test only works with the old api
+
         class ModelBasedPolicy(DQNTFPolicy):
             def compute_actions_from_input_dict(
                 self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
@@ -407,6 +422,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
+                enable_connectors=False,  # only works with old episode API
             )
             .multi_agent(
                 policies={"p0", "p1"},

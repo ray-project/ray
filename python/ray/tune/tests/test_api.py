@@ -1827,6 +1827,7 @@ class ApiTestFast(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 # should be converted from strings at this case
@@ -1847,6 +1848,7 @@ class ApiTestFast(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=True,
                 )
 
@@ -1902,6 +1904,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 capture["search_alg"] = search_alg
@@ -1920,6 +1923,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
                 )
 
