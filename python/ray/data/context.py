@@ -27,7 +27,7 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 # Whether block splitting is on by default
-DEFAULT_BLOCK_SPLITTING_ENABLED = False
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.

@@ -220,9 +220,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             gcs_channel
         )
 
-        ray._private.utils.get_or_create_event_loop().create_task(
-            self._cleanup_actors()
-        )
+        asyncio.get_event_loop().create_task(self._cleanup_actors())
         await asyncio.gather(self._update_actors())
 
     @staticmethod
