@@ -50,7 +50,6 @@ extensions = [
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.openapi",
     "sphinxcontrib.redoc",
 ]
 
