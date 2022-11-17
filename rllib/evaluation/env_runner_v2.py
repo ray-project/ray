@@ -860,12 +860,13 @@ class EnvRunnerV2:
             # Tell the sampler we have got a faulty episode.
             outputs.append(RolloutMetrics(episode_faulty=True))
         else:
-            is_error = False
-            # Output the collected episode.
-            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
+            is_error = False
+            # Output the collected episode after (1) rollout metrics so that we
+            # always fetch metrics with RolloutWorker before we fetch samples
+            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
