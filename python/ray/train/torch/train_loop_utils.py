@@ -2,7 +2,6 @@ import logging
 import os
 import random
 import types
-import warnings
 import collections
 from distutils.version import LooseVersion
 
@@ -55,7 +54,7 @@ def prepare_model(
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
     # Deprecated args.
-    wrap_ddp: bool = True,
+    wrap_ddp: bool = False,
     ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
@@ -76,39 +75,18 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-    if not wrap_ddp and parallel_strategy != "ddp":
-        raise ValueError(
-            "`parallel_strategy` and `wrap_ddp` cannot both be set. "
-            "`wrap_ddp` argument is deprecated as of Ray 2.1. To "
-            "disable DDP wrapping, set `parallel_strategy=None`."
-        )
 
-    if parallel_strategy_kwargs and ddp_kwargs:
-        raise ValueError(
-            "`parallel_strategy_kwargs` and `ddp_kwargs` cannot both be "
-            "set. The `ddp_kwargs` argument is deprecated as of Ray 2.1. "
-            "To provide DDP kwargs, use the "
-            "`parallel_strategy_kwargs` argument."
-        )
-
-    if not wrap_ddp:
-        warnings.warn(
+    if wrap_ddp:
+        raise DeprecationWarning(
             "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy` argument instead.",
-            DeprecationWarning,
-            stacklevel=2,
+            "`parallel_strategy` argument instead."
         )
-        # If wrap_ddp is False, then set parallel_strategy to None.
-        parallel_strategy = None
 
     if ddp_kwargs:
-        warnings.warn(
+        raise DeprecationWarning(
             "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy_kwargs` arg instead.",
-            DeprecationWarning,
-            stacklevel=2,
+            "`parallel_strategy_kwargs` arg instead."
         )
-        parallel_strategy_kwargs = ddp_kwargs
 
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
         raise ImportError(
