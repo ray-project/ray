@@ -331,7 +331,7 @@ class MockProvider(NodeProvider):
         self.cache_stopped = cache_stopped
         self.unique_ips = unique_ips
         self.fail_to_fetch_ip = False
-        self._safe_to_scale_flag = True
+        self.safe_to_scale_flag = True
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
