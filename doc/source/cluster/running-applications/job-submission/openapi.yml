@@ -275,7 +275,10 @@ paths:
     get:
       summary: Tail Job Logs
       description: |
-        WebSocket endpoint for tailing the logs of a job (Not documented in OpenAPI, see `dashboard/modules/job/sdk.py` for example usage).
+        WebSocket endpoint for tailing the logs of a job 
+        (Not documented in OpenAPI, see 
+        https://docs.ray.io/en/latest/_modules/ray/dashboard/modules/job/sdk.html#JobSubmissionClient.tail_job_logs
+        for example usage).
       parameters:
         - name: submission_id
           in: path
