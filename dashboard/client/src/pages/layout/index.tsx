@@ -12,9 +12,9 @@ import {
   WbSunny,
 } from "@material-ui/icons";
 import classnames from "classnames";
-import React, { PropsWithChildren, useContext } from "react";
+import React, { useContext } from "react";
 
-import { RouteComponentProps } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
@@ -63,13 +63,16 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const BasicLayout = (
-  props: PropsWithChildren<
-    { setTheme: (theme: string) => void; theme: string } & RouteComponentProps
-  >,
-) => {
+const BasicLayout = ({
+  setTheme,
+  theme,
+}: {
+  setTheme: (theme: string) => void;
+  theme: string;
+}) => {
   const classes = useStyles();
-  const { location, history, children, setTheme, theme } = props;
+  const location = useLocation();
+  const navigate = useNavigate();
   const { grafanaHost } = useContext(GlobalContext);
 
   return (
@@ -92,7 +95,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("node") && classes.selected,
             )}
-            onClick={() => history.push("/node")}
+            onClick={() => navigate("/node")}
           >
             <ListItemText>NODES</ListItemText>
           </ListItem>
@@ -102,7 +105,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("job") && classes.selected,
             )}
-            onClick={() => history.push("/job")}
+            onClick={() => navigate("/job")}
           >
             <ListItemText>JOBS</ListItemText>
           </ListItem>
@@ -112,7 +115,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("actor") && classes.selected,
             )}
-            onClick={() => history.push("/actors")}
+            onClick={() => navigate("/actors")}
           >
             <ListItemText>ACTORS</ListItemText>
           </ListItem>
@@ -122,7 +125,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("log") && classes.selected,
             )}
-            onClick={() => history.push("/log")}
+            onClick={() => navigate("/log")}
           >
             <ListItemText>LOGS</ListItemText>
           </ListItem>
@@ -132,7 +135,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("events") && classes.selected,
             )}
-            onClick={() => history.push("/events")}
+            onClick={() => navigate("/events")}
           >
             <ListItemText>EVENTS</ListItemText>
           </ListItem>
@@ -143,7 +146,7 @@ const BasicLayout = (
                 classes.menuItem,
                 location.pathname.includes("metrics") && classes.selected,
               )}
-              onClick={() => history.push("/metrics")}
+              onClick={() => navigate("/metrics")}
             >
               <ListItemText>METRICS</ListItemText>
             </ListItem>
@@ -183,7 +186,7 @@ const BasicLayout = (
         </List>
       </Drawer>
       <div className={classes.child}>
-        {children}
+        <Outlet />
         <UsageStatsAlert />
       </div>
     </div>

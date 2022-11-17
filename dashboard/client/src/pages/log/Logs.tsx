@@ -11,7 +11,7 @@ import {
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
 import React, { useEffect, useRef, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
@@ -35,17 +35,15 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-type LogsProps = RouteComponentProps<{ host?: string; path?: string }> & {
+type LogsProps = {
   theme?: "dark" | "light";
 };
 
-const useLogs = (props: LogsProps) => {
-  const {
-    match: { params },
-    location: { search: urlSearch },
-    theme,
-  } = props;
-  const { host, path } = params;
+const useLogs = ({ theme }: LogsProps) => {
+  const { search: urlSearch } = useLocation();
+  const { host, path } = useParams();
+  console.log("Host: " + host);
+  console.log("Path: " + path);
   const searchMap = new URLSearchParams(urlSearch);
   const urlFileName = searchMap.get("fileName");
   const el = useRef<HTMLDivElement>(null);
