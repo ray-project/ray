@@ -191,7 +191,7 @@ class BatchingNodeProviderTester:
         self.node_provider.post_process()
         # Expect a scale request to be submitted iff we called create or terminate
         # at least one.
-        if (create_node_requests or terminate_nodes_requests):
+        if create_node_requests or terminate_nodes_requests:
             self.expected_scale_request_submitted_count += 1
 
     def validate_non_terminated_nodes(self):

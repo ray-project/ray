@@ -1782,7 +1782,6 @@ class AutoscalingTest(unittest.TestCase):
             # There were no successful calls either.
             assert mock_node_info_stub.drain_node_reply_success == 0
 
-
     def _helperDynamicScaling(
         self,
         mock_metrics,

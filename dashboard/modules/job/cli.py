@@ -1,4 +1,3 @@
-import asyncio
 import os
 import pprint
 import time
@@ -9,6 +8,7 @@ import click
 
 import ray._private.ray_constants as ray_constants
 from ray._private.storage import _load_class
+from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -240,7 +240,7 @@ def submit(
             cli_logger.print(
                 "Tailing logs until the job exits " "(disable with --no-wait):"
             )
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
@@ -301,7 +301,7 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
         ray job stop <my_job_id>
     """
     client = _get_sdk_client(address)
-    cli_logger.print(f"Attempting to stop job {job_id}")
+    cli_logger.print(f"Attempting to stop job '{job_id}'")
     client.stop_job(job_id)
 
     if no_wait:
@@ -319,6 +319,37 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
         else:
             cli_logger.print(f"Job has not exited yet. Status: {status}")
             time.sleep(1)
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.argument("job-id", type=str)
+@add_click_logging_options
+@PublicAPI(stability="alpha")
+def delete(address: Optional[str], job_id: str):
+    """Deletes a stopped job and its associated data from memory.
+
+    Only supported for jobs that are already in a terminal state.
+    Fails with exit code 1 if the job is not already stopped.
+    Does not delete job logs from disk.
+    Submitting a job with the same submission ID as a previously
+    deleted job is not supported and may lead to unexpected behavior.
+
+    Example:
+        ray job delete <my_job_id>
+    """
+    client = _get_sdk_client(address)
+    client.delete_job(job_id)
+    cli_logger.print(f"Job '{job_id}' deleted successfully")
 
 
 @job_cli_group.command()
@@ -354,7 +385,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     # sdk version 0 did not have log streaming
     if follow:
         if int(sdk_version) > 0:
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for the Jobs SDK client version "

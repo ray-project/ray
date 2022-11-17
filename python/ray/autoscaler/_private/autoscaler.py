@@ -357,13 +357,7 @@ class StandardAutoscaler:
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
-            # Don't abort the autoscaler if the K8s API server is down.
-            # https://github.com/ray-project/ray/issues/12255
-            is_k8s_connection_error = self.config["provider"][
-                "type"
-            ] == "kubernetes" and isinstance(e, MaxRetryError)
-            if not is_k8s_connection_error:
-                self.num_failures += 1
+            self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
