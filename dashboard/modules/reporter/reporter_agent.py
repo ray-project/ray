@@ -10,7 +10,7 @@ import warnings
 
 import psutil
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import ray
 import ray._private.services
@@ -444,17 +444,17 @@ class ReporterAgent(
         # This method is not necessary, but we have it for mock testing.
         return psutil.Process()
 
+    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+        return (proc.pid, proc.create_time())
+
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
-
-        def generate_worker_key(proc: psutil.Process):
-            return (proc.pid, proc.create_time())
 
         if raylet_proc is None:
             return []
         else:
             workers = {
-                generate_worker_key(proc): proc for proc in raylet_proc.children()
+                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
             }
 
             # We should keep `raylet_proc.children()` in `self` because
@@ -475,7 +475,7 @@ class ReporterAgent(
 
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
-            self._workers.pop(generate_worker_key(self._get_agent_proc()))
+            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             return [
                 w.as_dict(
                     attrs=[

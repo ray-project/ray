@@ -306,6 +306,9 @@ def test_reporter_worker_cpu_percent():
         def _get_agent_proc(self):
             return psutil.Process(agent_mock.pid)
 
+        def _generate_worker_key(self, proc):
+            return (proc.pid, proc.create_time())
+
     obj = ReporterAgentDummy()
 
     try:
