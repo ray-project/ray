@@ -539,6 +539,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    actor_delta->set_start_time(actor.start_time());
+    actor_delta->set_end_time(actor.end_time());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());

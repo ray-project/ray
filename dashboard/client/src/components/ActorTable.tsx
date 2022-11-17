@@ -16,6 +16,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { DurationText } from "../common/DurationText";
 import rowStyles from "../common/RowStyles";
 import { Actor } from "../type/actor";
 import { Worker } from "../type/worker";
@@ -144,15 +145,16 @@ const ActorTable = ({
             {[
               "",
               "ID",
-              "Restart Times",
-              "Name",
               "Class",
-              "Function",
+              "Name",
+              "State",
+              "Uptime",
               "Job Id",
               "Pid",
               "IP",
-              "Port",
-              "State",
+              "Restarted",
+              "Required Resources",
+              "Exit Detail",
               "Log",
             ].map((col) => (
               <TableCell align="center" key={col}>
@@ -165,13 +167,17 @@ const ActorTable = ({
           {list.map(
             ({
               actorId,
-              functionDescriptor,
+              actorClass,
               jobId,
               pid,
               address,
               state,
               name,
               numRestarts,
+              startTime,
+              endTime,
+              exitDetail,
+              requiredResources,
             }) => (
               <ExpandableTableRow
                 length={
@@ -204,6 +210,23 @@ const ActorTable = ({
                     <div>{actorId}</div>
                   </Tooltip>
                 </TableCell>
+                <TableCell align="center">{actorClass}</TableCell>
+                <TableCell align="center">{name ? name : "-"}</TableCell>
+                <TableCell align="center">
+                  <StatusChip type="actor" status={state} />
+                </TableCell>
+                <TableCell align="center">
+                  {startTime && startTime > 0 ? (
+                    <DurationText startTime={startTime} endTime={endTime} />
+                  ) : (
+                    "-"
+                  )}
+                </TableCell>
+                <TableCell align="center">{jobId}</TableCell>
+                <TableCell align="center">{pid ? pid : "-"}</TableCell>
+                <TableCell align="center">
+                  {address?.ipAddress ? address?.ipAddress : "-"}
+                </TableCell>
                 <TableCell
                   align="center"
                   style={{
@@ -212,32 +235,67 @@ const ActorTable = ({
                 >
                   {numRestarts}
                 </TableCell>
-                <TableCell align="center">{name}</TableCell>
                 <TableCell align="center">
-                  {functionDescriptor?.javaFunctionDescriptor?.className}
-                  {functionDescriptor?.pythonFunctionDescriptor?.className}
+                  <Tooltip
+                    className={classes.OverflowCol}
+                    title={Object.entries(requiredResources || {}).map(
+                      ([key, val]) => (
+                        <div style={{ margin: 4 }}>
+                          {key}: {val}
+                        </div>
+                      ),
+                    )}
+                    arrow
+                    interactive
+                  >
+                    <div>
+                      {Object.entries(requiredResources || {}).map(
+                        ([key, val]) => `${key}: ${val}\n`,
+                      )}
+                    </div>
+                  </Tooltip>
                 </TableCell>
                 <TableCell align="center">
-                  {functionDescriptor?.javaFunctionDescriptor?.functionName}
-                  {functionDescriptor?.pythonFunctionDescriptor?.functionName}
-                </TableCell>
-                <TableCell align="center">{jobId}</TableCell>
-                <TableCell align="center">{pid}</TableCell>
-                <TableCell align="center">{address?.ipAddress}</TableCell>
-                <TableCell align="center">{address?.port}</TableCell>
-                <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
+                  <Tooltip
+                    className={classes.OverflowCol}
+                    title={exitDetail}
+                    arrow
+                    interactive
+                  >
+                    <div>{exitDetail}</div>
+                  </Tooltip>
                 </TableCell>
                 <TableCell align="center">
                   {ipLogMap[address?.ipAddress] && (
-                    <Link
-                      target="_blank"
-                      to={`/log/${encodeURIComponent(
-                        ipLogMap[address?.ipAddress],
-                      )}?fileName=${jobId}-${pid}`}
-                    >
-                      Log
-                    </Link>
+                    <React.Fragment>
+                      <Link
+                        target="_blank"
+                        to={`/log/${encodeURIComponent(
+                          ipLogMap[address?.ipAddress],
+                        )}?fileName=${jobId}-${pid}`}
+                      >
+                        Log
+                      </Link>
+                      <br />
+                      <a
+                        href={`/worker/traceback?pid=${pid}&ip=${address?.ipAddress}`}
+                        target="_blank"
+                        title="Sample the current Python stack trace for this worker."
+                        rel="noreferrer"
+                      >
+                        Stack&nbsp;Trace
+                      </a>
+                      <br />
+                      <a
+                        href={`/worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5`}
+                        target="_blank"
+                        title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+                        rel="noreferrer"
+                      >
+                        Flame&nbsp;Graph
+                      </a>
+                      <br />
+                    </React.Fragment>
                   )}
                 </TableCell>
               </ExpandableTableRow>

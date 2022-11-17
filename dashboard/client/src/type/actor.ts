@@ -12,67 +12,19 @@ export type Address = {
   workerId: string;
 };
 
-export type TaskSpec = {
-  actorCreationTaskSpec: {
-    actorId: string;
-    dynamicWorkerOptions: string[];
-    extensionData: string;
-    isAsyncio: boolean;
-    isDetached: boolean;
-    maxActorRestarts: boolean;
-    maxConcurrency: number;
-    name: string;
-  };
-  args: {
-    data: string;
-    metadata: string;
-    nestedInlinedIds: string[];
-    objectIds: string[];
-  }[];
-  callerAddress: {
-    ipAddress: string;
-    port: number;
-    rayletId: string;
-    workerId: string;
-  };
-  callerId: string;
-  jobId: string;
-  language: string;
-  maxRetries: number;
-  numReturns: string;
-  parentCounter: string;
-  parentTaskId: string;
-  requiredPlacementResources: {
-    [key: string]: number;
-  };
-  requiredResources: {
-    [key: string]: number;
-  };
-  sourceActorId: string;
-  taskId: string;
-  type: string;
-};
-
 export type Actor = {
   actorId: string;
   jobId: string;
   state: ActorEnum | string; // PENDING, ALIVE, RECONSTRUCTING, DEAD
-  nodeId: string;
-  pid: number;
+  pid: number | null;
   address: Address;
   name: string;
   numRestarts: string;
-  taskSpec: TaskSpec;
-  functionDescriptor: {
-    javaFunctionDescriptor: {
-      className: string;
-      functionName: string;
-      signature: string;
-    };
-    pythonFunctionDescriptor: {
-      className: string;
-      functionName: string;
-      signature: string;
-    };
+  actorClass: string;
+  startTime: number | null;
+  endTime: number | null;
+  requiredResources: {
+    [key: string]: number;
   };
+  exitDetail: string;
 };
