@@ -6,9 +6,8 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
-from ray.util import log_once
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -39,6 +38,29 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.logger import Logger
+from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRIAL_INFO
+from ray.util import log_once
+
+"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
+under input and input_config keys. E.g.
+input: sample
+input_config {
+env: CartPole-v1
+}
+or:
+input: json_reader
+input_config {
+path: /tmp/
+}
+or:
+input: dataset
+input_config {
+format: parquet
+path: /tmp/
+}
+"""
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -95,23 +117,25 @@ class AlgorithmConfig:
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)
-        ...              .environment(env="CartPole-v1")
-        ...              .resources(num_gpus=0)
-        ...              .rollouts(num_rollout_workers=4)
-        ...              .callbacks(MemoryTrackingCallbacks)
+        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        ...     .environment(env="CartPole-v1")
+        ...     .resources(num_gpus=0)
+        ...     .rollouts(num_rollout_workers=4)
+        ...     .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
-        >>> rllib_algo = config.build()
+        >>> rllib_algo = config.build()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()
-        >>> config.training(lr=tune.grid_search([0.01, 0.001]))
+        >>> config.training(lr=tune.grid_search([0.01, 0.001])) # doctest: +SKIP
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.Tuner().fit()`.
-        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "[registered trainer class]", param_space=config.to_dict()
+        ...     ).fit()
     """
 
     @classmethod
@@ -225,6 +249,7 @@ class AlgorithmConfig:
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
+        self.max_requests_in_flight_per_sampler_worker = 2
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -301,6 +326,7 @@ class AlgorithmConfig:
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        self.worker_cls = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -420,6 +446,11 @@ class AlgorithmConfig:
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
+
+            # Ray Tune saves additional data under this magic keyword.
+            # This should not get treated as AlgorithmConfig field.
+            if key == TRIAL_INFO:
+                continue
 
             # Set our multi-agent settings.
             if key == "multiagent":
@@ -685,7 +716,7 @@ class AlgorithmConfig:
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
-            algo_class = get_algorithm_class(self.algo_class)
+            algo_class = get_trainable_cls(self.algo_class)
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
@@ -761,7 +792,7 @@ class AlgorithmConfig:
                 "PACK": Packs bundles into as few nodes as possible.
                 "SPREAD": Places bundles across distinct nodes as even as possible.
                 "STRICT_PACK": Packs bundles into one node. The group is not allowed
-                    to span multiple nodes.
+                to span multiple nodes.
                 "STRICT_SPREAD": Packs bundles across distinct nodes.
 
         Returns:
@@ -1164,6 +1195,7 @@ class AlgorithmConfig:
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1175,6 +1207,18 @@ class AlgorithmConfig:
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1197,6 +1241,10 @@ class AlgorithmConfig:
             self.model.update(model)
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
 
         return self
 
@@ -1234,7 +1282,7 @@ class AlgorithmConfig:
         """Sets the config's exploration settings.
 
         Args:
-            explore: Default exploration behavior, iff `explore`=None is passed into
+            explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
             exploration_config: A dict specifying the Exploration object's config.
@@ -1421,35 +1469,17 @@ class AlgorithmConfig:
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
-        TODO(jungong, sven): we can potentially unify all input types
-          under input and input_config keys. E.g.
-          input: sample
-          input_config {
-            env: CartPole-v1
-          }
-          or:
-          input: json_reader
-          input_config {
-            path: /tmp/
-          }
-          or:
-          input: dataset
-          input_config {
-            format: parquet
-            path: /tmp/
-          }
-
         Args:
             input_: Specify how to generate experiences:
-             - "sampler": Generate experiences via online (env) simulation (default).
-             - A local directory or file glob expression (e.g., "/tmp/*.json").
-             - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-               "s3://bucket/2.json"]).
-             - A dict with string keys and sampling probabilities as values (e.g.,
-               {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-             - A callable that takes an `IOContext` object as only arg and returns a
-               ray.rllib.offline.InputReader.
-             - A string key that indexes a callable with tune.registry.register_input
+                - "sampler": Generate experiences via online (env) simulation (default).
+                - A local directory or file glob expression (e.g., "/tmp/*.json").
+                - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+                "s3://bucket/2.json"]).
+                - A dict with string keys and sampling probabilities as values (e.g.,
+                {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+                - A callable that takes an `IOContext` object as only arg and returns a
+                ray.rllib.offline.InputReader.
+                - A string key that indexes a callable with tune.registry.register_input
             input_config: Arguments accessible from the IOContext for configuring custom
                 input.
             actions_in_input_normalized: True, if the actions in a given offline "input"
@@ -1545,7 +1575,7 @@ class AlgorithmConfig:
                 Could be a directory (str) or an S3 location. None for using the
                 default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: (agent_id, episode, worker, **kwargs) -> PolicyID.
+                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.
@@ -1766,6 +1796,7 @@ class AlgorithmConfig:
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -1786,6 +1817,7 @@ class AlgorithmConfig:
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1802,6 +1834,8 @@ class AlgorithmConfig:
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if worker_cls is not NotProvided:
+            self.worker_cls = worker_cls
 
         return self
 
@@ -1969,26 +2003,27 @@ class AlgorithmConfig:
             ...   .framework("torch")
             ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
             ... )
-            >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup()
-            >>> is_policy_to_train("pol1")
-            ... True
-            >>> is_policy_to_train("pol2")
-            ... False
-            >>> print(policy_dict)
-            ... {
-            ...   "pol1": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ...   "pol2": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ... }
+            >>> policy_dict, is_policy_to_train = \  # doctest: +SKIP
+            ...     config.get_multi_agent_setup()
+            >>> is_policy_to_train("pol1") # doctest: +SKIP
+            True
+            >>> is_policy_to_train("pol2") # doctest: +SKIP
+            False
+            >>> print(policy_dict) # doctest: +SKIP
+            {
+              "pol1": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+              "pol2": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+            }
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs

@@ -158,6 +158,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     success=True,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
+                    session_name=self._session_name,
                 )
 
         except Exception as e:
@@ -230,6 +231,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 success=False,
                 message=e.message,
             )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
+            )
 
     @routes.get("/api/progress_by_task_name")
     async def get_progress_by_task_name(self, req):
@@ -259,6 +265,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=False,
                 message=e.message,
+            )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
             )
 
     @staticmethod
@@ -358,7 +369,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_info().rss) / 1.0e6)
+        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
@@ -372,8 +383,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def _create_prometheus_query_for_progress(
         self, filters: List[str], sum_by: List[str]
     ) -> str:
-        filter_for_terminal_states = ['State=~"FINISHED|FAILED"'] + filters
-        filter_for_non_terminal_states = ['State!~"FINISHED|FAILED"'] + filters
+        filter_for_terminal_states = [
+            'State=~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ] + filters
+        filter_for_non_terminal_states = [
+            'State!~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ] + filters
 
         filter_for_terminal_states_str = ",".join(filter_for_terminal_states)
         filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)

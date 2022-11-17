@@ -16,6 +16,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.env.mock_env import (
     MockEnv,
     MockEnv2,
@@ -212,14 +213,12 @@ class TestRolloutWorker(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             pg = config.build()
             results = pg.workers.foreach_worker(
-                lambda ev: ev.total_rollout_fragment_length
+                lambda w: w.total_rollout_fragment_length
             )
-            results2 = pg.workers.foreach_worker_with_index(
-                lambda ev, i: (i, ev.total_rollout_fragment_length)
+            results2 = pg.workers.foreach_worker_with_id(
+                lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = pg.workers.foreach_worker(
-                lambda ev: ev.foreach_env(lambda env: 1)
-            )
+            results3 = pg.workers.foreach_worker(lambda w: w.foreach_env(lambda env: 1))
             self.assertEqual(results, [10, 10, 10])
             self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
             self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
@@ -492,8 +491,12 @@ class TestRolloutWorker(unittest.TestCase):
             .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
             .environment(clip_rewards=True),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         self.assertEqual(max(ev.sample()["rewards"]), 1)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
 
@@ -528,8 +531,12 @@ class TestRolloutWorker(unittest.TestCase):
             .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
             .environment(clip_rewards=False),
         )
+        ws2 = WorkerSet._from_existing(
+            local_worker=ev2,
+            remote_workers=[],
+        )
         self.assertEqual(max(ev2.sample()["rewards"]), 100)
-        result2 = collect_metrics(ev2, [])
+        result2 = collect_metrics(ws2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
         ev2.stop()
 
@@ -632,9 +639,13 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[remote_ev],
+        )
         ev.sample()
         ray.get(remote_ev.sample.remote())
-        result = collect_metrics(ev, [remote_ev])
+        result = collect_metrics(ws)
         self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
         ev.stop()
@@ -662,15 +673,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 8)
         indices = []
         for env in ev.async_env.vector_env.envs:
@@ -690,12 +705,16 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         batch = ev.sample()
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 4)
         ev.stop()
 
@@ -711,15 +730,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 8)
         ev.stop()
 
@@ -734,15 +757,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertGreater(result["episodes_this_iter"], 3)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertGreater(result["episodes_this_iter"], 6)
         ev.stop()
 
