@@ -69,13 +69,15 @@ class MemoryMonitor {
   /// \param pid the process id
   /// \param proc_dir the process directory
   ///
-  /// \return the used memory in bytes for the process
+  /// \return the used memory in bytes for the process,
+  /// kNull if the file doesn't exist or it fails to find the fields
   static int64_t GetProcessMemoryBytes(pid_t pid, const std::string proc_dir = kProcDirectory);
 
   /// \param top_n the number of top memory-using processes
   /// \param proc_dir the directory to scan for the processes
   ///
-  /// \return the debug string that contains up to the top N memory-using processes, empty if process directory is invalid
+  /// \return the debug string that contains up to the top N memory-using processes,
+  /// empty if process directory is invalid
   static const std::string TopNMemoryDebugString(uint32_t top_n, const std::string proc_dir = kProcDirectory);
 
  private:
@@ -129,13 +131,15 @@ class MemoryMonitor {
 
   /// \param proc_dir directory to scan for the process ids
   ///
-  /// \return list of process ids found in the directory, or empty list if the directory doesn't exist
+  /// \return list of process ids found in the directory,
+  /// or empty list if the directory doesn't exist
   static const std::vector<pid_t> GetPidsFromDir(const std::string proc_dir = kProcDirectory);
 
-  /// \param proc_dir directory to scan for the process ids
   /// \param pid the process id
+  /// \param proc_dir directory to scan for the process ids
   ///
-  /// \return the command line for the executing process, or empty string if processs doesn't exist
+  /// \return the command line for the executing process,
+  /// or empty string if the processs doesn't exist
   static const std::string GetCommandLineForPid(pid_t pid, const std::string proc_dir = kProcDirectory);
 
   /// \param value the string to truncate

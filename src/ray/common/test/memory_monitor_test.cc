@@ -384,7 +384,7 @@ TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
 
 TEST_F(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
-  mkdir(proc_dir.c_str(), 0777);
+  boost::filesystem::create_directory(proc_dir);
 
   std::string num_filename = proc_dir + "/123";
   std::string non_num_filename = proc_dir + "/123b";
@@ -415,10 +415,8 @@ TEST_F(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty) {
 
 TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
-  mkdir(proc_dir.c_str(), 0777);
-
   std::string pid_dir = proc_dir + "/123";
-  mkdir(pid_dir.c_str(), 0777);
+  boost::filesystem::create_directories(pid_dir);
 
   std::string cmdline_filename = pid_dir + "/" + MemoryMonitor::kCommandlinePath;
 
@@ -444,7 +442,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
 
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
-    mkdir(proc_dir.c_str(), 0777);
+    boost::filesystem::create_directory(proc_dir);
     std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
@@ -452,9 +450,8 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
 
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
-    mkdir(proc_dir.c_str(), 0777);
     std::string pid_dir = proc_dir + "/123";
-    mkdir(pid_dir.c_str(), 0777);
+    boost::filesystem::create_directories(pid_dir);
     std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir=proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");

@@ -118,13 +118,31 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
 def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction - 0.1
+    )
+    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.1
+    )
+    with pytest.raises(ray.exceptions.RayActorError) as _:
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="MemoryManager.ActorEviction.Total",
+        value=1.0,
+    )
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction + 1
     )
 
-    # with pytest.raises(ray.exceptions.RayActorError) as _:
-    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+    with pytest.raises(ray.exceptions.RayActorError) as _:
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
 
 @pytest.mark.skipif(
@@ -162,8 +180,8 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
 ):
     addr = ray_with_memory_monitor
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
-    # with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-    ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))
 
     wait_for_condition(
         has_metric_tagged_with_value,

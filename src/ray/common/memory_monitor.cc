@@ -330,7 +330,7 @@ int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap
   while (std::getline(smap_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value >> unit;
-    RAY_LOG(ERROR) << title << " " << value << " " << unit;
+
     /// Linux reports them as kiB
     RAY_CHECK(unit == "kB");
     value = value * 1024;
@@ -457,7 +457,6 @@ const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::TopNMemoryProcesses
 }
 
 const std::string MemoryMonitor::TruncateString(const std::string value, uint32_t max_length) {
-  RAY_LOG(ERROR) << value.length();
   if (value.length() > max_length) {
     return value.substr(0, max_length) + "...";
   }
