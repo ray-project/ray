@@ -2,6 +2,12 @@ import pytest
 import ray
 import time
 import numpy as np
+import tempfile
+import json
+import os
+
+from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
+from ray._private.test_utils import wait_for_condition
 
 
 # https://github.com/ray-project/ray/issues/19659
@@ -153,9 +159,74 @@ def test_multiple_objects(ray_start_cluster):
     assert ray.get(owner.remote_get_object_refs.remote(borrower), timeout=60)
 
 
+# https://github.com/ray-project/ray/issues/30341
+def test_owner_assign_inner_object(shutdown_only):
+
+    BIG_OBJECT = np.zeros((1024 * 1024, 70)).astype(np.uint8)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_system_object_spilling_config = {
+            "type": "filesystem",
+            "params": {"directory_path": tmpdir},
+        }
+        ray.init(
+            object_store_memory=75 * 1024 * 1024,
+            _system_config={
+                "object_spilling_config": json.dumps(
+                    file_system_object_spilling_config
+                ),
+            },
+        )
+
+        @ray.remote
+        class Owner:
+            def warmup(self):
+                pass
+
+        @ray.remote
+        def get_borrowed_object():
+            ref = ray.put(("test_borrowed", BIG_OBJECT))
+
+            # make sure ref will spill to disk.
+            ray.put(BIG_OBJECT)
+            return [ref]
+
+        owner = Owner.remote()
+        ray.get(owner.warmup.remote())
+
+        class OutObject:
+            def __init__(self, owned_inner_ref, borrowed_inner_ref):
+                self.owned_inner_ref = owned_inner_ref
+                self.borrowed_inner_ref = borrowed_inner_ref
+
+        owned_inner_ref = ray.put(("test_owned", BIG_OBJECT))
+        # make sure owned_inner_ref will spill to disk.
+        ray.put(BIG_OBJECT)
+
+        borrowed_inner_ref = ray.get(get_borrowed_object.remote())[0]
+        out_ref = ray.put(OutObject(owned_inner_ref, borrowed_inner_ref), _owner=owner)
+
+        # wait enough time to delete data when the reference count is lower
+        # than expected
+        del owned_inner_ref, borrowed_inner_ref
+        time.sleep(10)
+
+        assert ray.get(ray.get(out_ref).owned_inner_ref)[0] == "test_owned"
+        assert ray.get(ray.get(out_ref).borrowed_inner_ref)[0] == "test_borrowed"
+
+        # Check that the reference counts of owned_inner_ref
+        # and owned_inner_ref are zero.
+        del out_ref
+        spill_objects_dir = os.path.join(tmpdir, DEFAULT_OBJECT_PREFIX)
+
+        def check_reference_clean():
+            return len(os.listdir(spill_objects_dir)) == 0
+
+        wait_for_condition(check_reference_clean)
+
+
 if __name__ == "__main__":
     import pytest
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
