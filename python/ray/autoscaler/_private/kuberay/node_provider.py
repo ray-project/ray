@@ -230,16 +230,27 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         https://github.com/ray-project/kuberay/issues/733
 
         Note (Dmitri):
-        It is slightly stylistically bad that this function has a side effect.
+        It is stylistically bad that this function has a side effect.
         """
+        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         node_set = set(self.node_data_dict.keys())
+        logger.info("NODESET")
+        logger.info(node_set)
         worker_groups = self._raycluster["spec"].get("workerGroupSpecs", [])
+        logger.info("WORKERGROUPS")
+        logger.info(worker_groups)
         non_empty_worker_group_indices = []
         for group_index, worker_group in enumerate(worker_groups):
+            logger.info("WORKERGROUP")
+            logger.info(worker_group)
             workersToDelete = worker_group.get("scaleStrategy", {}).get(
                 "workersToDelete", []
             )
+            logger.info("workersToDelete")
+            logger.info(workersToDelete)
             if workersToDelete:
+                logger.info("non-empty-index")
+                logger.info(group_index)
                 non_empty_worker_group_indices.append(group_index)
             for worker in workersToDelete:
                 if worker in node_set:
@@ -247,6 +258,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         # Clean up workersToDelete otherwise.
         patch_payload = []
+        logger.info("non_empty_worker_group_indices")
+        logger.info(non_empty_worker_group_indices)
         for group_index in non_empty_worker_group_indices:
             path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy"
             patch = {
@@ -258,6 +271,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if patch_payload:
             logger.info("Cleaning up workers to delete.")
             logger.info(f"Submitting patch {patch_payload}.")
+        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         return True
 
