@@ -46,7 +46,7 @@ class BatchMapper(Preprocessor):
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
         ...     return batch.drop("Y", axis="columns")
         >>>
-        >>> preprocessor = BatchMapper(fn)
+        >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={X: int64})
         >>>
