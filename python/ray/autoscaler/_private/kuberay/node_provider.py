@@ -221,8 +221,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         Explanation:
         If there are any workersToDelete which are non-terminated,
         we should wait for the operator to do its job and delete those
-        pods.
-        Therefore, we back off the autoscaler update.
+        pods. Therefore, we back off the autoscaler update.
 
         If, on the other hand, all of the workersToDelete have already been cleaned up,
         then we patch away the workersToDelete lists and return True.
