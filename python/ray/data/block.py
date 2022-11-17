@@ -61,7 +61,7 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     try:
-        fmt = ds._dataset_format()
+        fmt = ds.dataset_format()
     except ValueError:
         # Dataset is empty/cleared, validation not possible.
         return

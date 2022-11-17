@@ -32,7 +32,6 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.job_submission import JobSubmissionClient
-from pprint import pprint
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +223,7 @@ async def test_monitor_events():
         )
         test_events1 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events1.extend(x), scan_interval_seconds=0.01
+            temp_dir, lambda x: test_events1.extend(x), None, scan_interval_seconds=0.01
         )
         assert not monitor_task.done()
         count = 10
@@ -259,7 +258,7 @@ async def test_monitor_events():
         monitor_task.cancel()
         test_events2 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events2.extend(x), scan_interval_seconds=0.1
+            temp_dir, lambda x: test_events2.extend(x), None, scan_interval_seconds=0.1
         )
 
         await _check_events([str(i) for i in range(count)], read_events=test_events2)
@@ -449,6 +448,37 @@ def test_jobs_cluster_events(shutdown_only):
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
     pprint(list_cluster_events())
+
+
+def test_cluster_events_retention(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", "10")
+        ray.init()
+        address = ray._private.worker._global_node.webui_url
+        address = format_web_url(address)
+        client = JobSubmissionClient(address)
+
+        submission_ids = []
+        for _ in range(12):
+            submission_ids.append(client.submit_job(entrypoint="ls"))
+        print(submission_ids)
+
+        def verify():
+            events = list_cluster_events()
+            assert len(list_cluster_events()) == 10
+
+            messages = [event["message"] for event in events]
+
+            # Make sure the first two has been GC'ed.
+            for m in messages:
+                assert submission_ids[0] not in m
+                assert submission_ids[1] not in m
+            return True
+
+        wait_for_condition(verify)
+        pprint(list_cluster_events())
 
 
 if __name__ == "__main__":

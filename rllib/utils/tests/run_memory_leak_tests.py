@@ -24,11 +24,11 @@ import sys
 import yaml
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -76,9 +76,11 @@ if __name__ == "__main__":
     # Single file given.
     if os.path.isfile(abs_path):
         files = [abs_path]
-    # Path given -> Get all yaml files in there via rglob.
+    # Path given -> Get all py/yaml files in there via rglob.
     elif os.path.isdir(abs_path):
-        files = rllib_dir.rglob(args.dir + "/*.yaml")
+        files = []
+        for type_ in ["yaml", "yml", "py"]:
+            files += list(rllib_dir.rglob(args.dir + f"/*.{type_}"))
         files = sorted(map(lambda path: str(path.absolute()), files), reverse=True)
     # Given path/file does not exist.
     else:
@@ -126,9 +128,9 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            trainer = get_algorithm_class(experiment["run"])(experiment["config"])
+            algo = get_trainable_cls(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
-                trainer,
+                algo,
                 to_check=set(args.to_check),
             )
             if not results:

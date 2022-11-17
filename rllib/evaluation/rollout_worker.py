@@ -53,6 +53,7 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
@@ -63,6 +64,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
@@ -97,6 +99,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -150,7 +153,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -219,7 +222,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus: The number of CPUs to allocate for the remote actor.
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
-            memory: The heap memory request for the remote actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -231,6 +235,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus=num_gpus,
             memory=memory,
             resources=resources,
+            # Automatically restart failed workers.
+            max_restarts=-1,
         )(cls)
 
     @DeveloperAPI
@@ -484,7 +490,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_config = config.to_dict()
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_workers
+            num_workers if num_workers is not None else self.config.num_rollout_workers
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -530,12 +536,25 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
+        # Resolve possible auto-fragment length.
+        configured_rollout_fragment_length = self.config.get_rollout_fragment_length(
+            worker_index=self.worker_index
+        )
         self.total_rollout_fragment_length: int = (
-            self.config.rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
-        self.global_vars: Optional[dict] = None
+        self.global_vars: dict = {
+            # TODO(sven): Make this per-policy!
+            "timesteps": 0,
+            # Counter for performed gradient updates per policy in `self.policy_map`.
+            # Allows for compiling metrics on the off-policy'ness of an update given
+            # that the number of gradient updates of the sampling policies are known
+            # to the learner (and can be compared to the learner version of the same
+            # policy).
+            "num_grad_updates_per_policy": defaultdict(int),
+        }
 
         # If seed is provided, add worker index to it and 10k iff evaluation worker.
         self.seed = (
@@ -752,7 +771,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
         # long.
-        rollout_fragment_length_for_sampler = self.config.rollout_fragment_length
+        rollout_fragment_length_for_sampler = configured_rollout_fragment_length
         if self.config.batch_mode == "truncate_episodes":
             pack = True
         # `complete_episodes`: Never cut episodes and sampler will return
@@ -1097,11 +1116,8 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
-        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
-        # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
-            # SampleBatch -> Calculate gradients for the default policy.
+            samples = convert_ma_batch_to_sample_batch(samples)
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
@@ -1758,10 +1774,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:
-        """Returns the current global_vars dict of this worker.
+        """Returns the current `self.global_vars` dict of this RolloutWorker.
 
         Returns:
-            The current global_vars dict of this worker.
+            The current `self.global_vars` dict of this RolloutWorker.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -1774,60 +1790,63 @@ class RolloutWorker(ParallelIteratorWorker):
         return self.global_vars
 
     @DeveloperAPI
-    def set_global_vars(self, global_vars: dict) -> None:
+    def set_global_vars(
+        self,
+        global_vars: dict,
+        policy_ids: Optional[List[PolicyID]] = None,
+    ) -> None:
         """Updates this worker's and all its policies' global vars.
 
+        Updates are done using the dict's update method.
+
         Args:
-            global_vars: The new global_vars dict.
+            global_vars: The global_vars dict to update the `self.global_vars` dict
+                from.
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
 
         Examples:
             >>> worker = ... # doctest: +SKIP
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        # Only update policies that are being trained in order to avoid superfluous
-        # access of policies which might have been offloaded to disk. This is important
-        # here since global vars are constantly being updated.
-        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
-        self.global_vars = global_vars
+        # Handle per-policy values.
+        global_vars_copy = global_vars.copy()
+        gradient_updates_per_policy = global_vars_copy.pop(
+            "num_grad_updates_per_policy", {}
+        )
+        self.global_vars["num_grad_updates_per_policy"].update(
+            gradient_updates_per_policy
+        )
+        # Only update explicitly provided policies or those that that are being
+        # trained, in order to avoid superfluous access of policies, which might have
+        # been offloaded to the object store.
+        # Important b/c global vars are constantly being updated.
+        for pid in policy_ids if policy_ids is not None else self.policy_map.keys():
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
+                self.policy_map[pid].on_global_var_update(
+                    dict(
+                        global_vars_copy,
+                        # If count is None, Policy won't update the counter.
+                        **{"num_grad_updates": gradient_updates_per_policy.get(pid)},
+                    )
+                )
+
+        # Update all other global vars.
+        self.global_vars.update(global_vars_copy)
 
     @DeveloperAPI
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
-
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
         # Close all policies' sessions (if tf static graph).
-        for policy in self.policy_map.values():
+        for policy in self.policy_map.cache.values():
             sess = policy.get_session()
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
-
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this rollout worker instance.
-
-        Useful for when the RolloutWorker class has been converted into a
-        ActorHandle and the user needs to execute some functionality (e.g.
-        add a property) on the underlying policy object.
-
-        Args:
-            func: The function to call, with this RolloutWorker as first
-                argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
-
-        Returns:
-            The return value of the function call.
-        """
-        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str

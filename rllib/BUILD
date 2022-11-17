@@ -19,7 +19,7 @@
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
-#         they cover the same functionaliy.
+#         they cover the same functionality.
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
@@ -805,7 +805,7 @@ py_test(
 
 py_test(
     name = "test_worker_failures",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
@@ -1418,7 +1418,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
         ]
 )
 
@@ -1431,7 +1431,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 5000, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
         ]
 )
 
@@ -1444,7 +1444,7 @@ py_test(
         "--env", "Pong-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -1716,16 +1716,23 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_worker_set",
+    tags = ["team:rllib", "evaluation", "exclusive"],
+    size = "small",
+    srcs = ["evaluation/tests/test_worker_set.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
-    tags = ["team:rllib", "evaluation"],
-    size = "medium",
+    tags = ["team:rllib", "evaluation", "exclusive"],
+    size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "evaluation/tests/test_trajectory_view_api",
     tags = ["team:rllib", "evaluation"],
-    size = "medium",
+    size = "large",
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
@@ -2297,13 +2304,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_eager_support.py"],
     args = ["TestEagerSupportOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_execution",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
 )
 
 py_test(
@@ -3438,7 +3438,6 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
-    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
@@ -3692,14 +3691,6 @@ py_test(
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
-
-py_test(
-    name = "examples/documentation/rllib_in_60s",
-    main = "examples/documentation/rllib_in_60s.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/rllib_in_60s.py"],
 )
 
 py_test(

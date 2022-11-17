@@ -57,20 +57,30 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
-    """Unpack predictor's return value with TensorArray into numpy.
+def _unpack_dataframe_to_serializable(output_df: "pd.DataFrame") -> "pd.DataFrame":
+    """Unpack predictor's pandas return value to JSON serializable format.
 
     In dl_predictor.py we return a pd.DataFrame that could have multiple
     columns but value of each column is a TensorArray. Flatten the
     TensorArray to list to ensure output is json serializable as http
     response.
+
+    In numpy predictor path, we might return collection of np.ndarrays that also
+    requires flattening to list to ensure output is json serializable as http
+    response.
     """
     from ray.data.extensions import TensorDtype
 
     for col in output_df.columns:
+        # TensorArray requires special handling to numpy array.
         if isinstance(output_df.dtypes[col], TensorDtype):
-            output_df[col] = output_df[col].to_numpy()
-
+            output_df.loc[:, col] = list(output_df[col].to_numpy())
+        # # DL predictor outputs raw ndarray outputs as opaque numpy object.
+        # # ex: output_df = pd.DataFrame({"predictions": [np.array(1)]})
+        elif output_df.dtypes[col] == np.dtype(object) and all(
+            isinstance(v, np.ndarray) for v in output_df[col]
+        ):
+            output_df.loc[:, col] = [v.tolist() for v in output_df[col]]
     return output_df
 
 
@@ -121,7 +131,7 @@ class _BatchingManager:
                 f"but Serve got length {len(output_df)}."
             )
 
-        output_df = _unpack_tensorarray_from_pandas(output_df)
+        output_df = _unpack_dataframe_to_serializable(output_df)
 
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
@@ -285,7 +295,7 @@ class PredictorWrapper(SimpleSchemaIngress):
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 elif pd is not None and isinstance(out, pd.DataFrame):
-                    out = _unpack_tensorarray_from_pandas(out)
+                    out = _unpack_dataframe_to_serializable(out)
                 return out
 
         else:
