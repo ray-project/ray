@@ -7,7 +7,6 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
@@ -126,7 +125,7 @@ async def test_client(serve_instance):
             "key_1": key_1_callback,
             "key_2": key_2_callback,
         },
-        call_in_event_loop=get_or_create_event_loop(),
+        call_in_event_loop=asyncio.get_event_loop(),
     )
 
     while len(client.object_snapshots) == 0:
@@ -163,7 +162,7 @@ async def test_client_threadsafe(serve_instance):
         {
             "key_1": key_1_callback,
         },
-        call_in_event_loop=get_or_create_event_loop(),
+        call_in_event_loop=asyncio.get_event_loop(),
     )
 
     await e.wait()

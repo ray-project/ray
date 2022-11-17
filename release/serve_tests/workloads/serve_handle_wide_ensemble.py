@@ -141,8 +141,9 @@ def main(
         assert ray.get(handle.predict.remote(0)) == expected
     else:
         sanity_check_graph_deployment_with_async_handle(handle, expected)
+    loop = asyncio.get_event_loop()
 
-    throughput_mean_tps, throughput_std_tps = asyncio.run(
+    throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
         benchmark_throughput_tps(
             handle,
             expected,
@@ -150,7 +151,7 @@ def main(
             num_clients=num_clients,
         )
     )
-    latency_mean_ms, latency_std_ms = asyncio.run(
+    latency_mean_ms, latency_std_ms = loop.run_until_complete(
         benchmark_latency_ms(
             handle,
             expected,

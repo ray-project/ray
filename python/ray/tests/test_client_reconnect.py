@@ -1,4 +1,5 @@
 from concurrent import futures
+import asyncio
 import contextlib
 import os
 import threading
@@ -13,7 +14,6 @@ from typing import Any, Callable, Optional
 from unittest.mock import patch
 
 import ray
-from ray._private.utils import get_or_create_event_loop
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
@@ -401,7 +401,8 @@ def test_disconnects_during_large_async_get():
         async def get_large_result():
             return await large_result.remote()
 
-        result = get_or_create_event_loop().run_until_complete(get_large_result())
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(get_large_result())
         assert result.shape == (1024, 1024, 128)
 
 
