@@ -169,6 +169,7 @@ class _ParquetDatasourceReader(Reader):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        local_uri: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
@@ -184,7 +185,6 @@ class _ParquetDatasourceReader(Reader):
         if len(paths) == 1:
             paths = paths[0]
 
-        local_uri = reader_args.pop("local_uri", None)
         self._local_scheduling = None
         if local_uri:
             import ray
