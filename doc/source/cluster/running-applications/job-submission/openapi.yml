@@ -145,7 +145,7 @@ paths:
         500:
           summary: Internal Error
           description: |
-            An internal error occurred when deleting the job.
+            An internal error occurred when deleting the job, or the job was not in a terminal state.
           content:
             text/plain:
               schema:
