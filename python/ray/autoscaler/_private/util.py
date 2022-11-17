@@ -51,6 +51,9 @@ DictCount = Tuple[Dict, Number]
 # e.g., cpu_4_ondemand.
 NodeType = str
 
+# e.g., head, worker, unmanaged
+NodeKind = str
+
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
