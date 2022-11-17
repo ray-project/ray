@@ -90,7 +90,6 @@ if __name__ == "__main__":
     do_link("tune", force=args.yes, skip_list=args.skip)
     do_link("train", force=args.yes, skip_list=args.skip)
     do_link("autoscaler", force=args.yes, skip_list=args.skip)
-    do_link("ray_operator", force=args.yes, skip_list=args.skip)
     do_link("cloudpickle", force=args.yes, skip_list=args.skip)
     do_link("data", force=args.yes, skip_list=args.skip)
     do_link("scripts", force=args.yes, skip_list=args.skip)
