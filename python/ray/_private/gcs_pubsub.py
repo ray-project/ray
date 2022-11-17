@@ -8,7 +8,6 @@ import time
 
 import grpc
 from grpc._channel import _InactiveRpcError
-from ray._private.utils import get_or_create_event_loop
 
 try:
     from grpc import aio as aiogrpc
@@ -512,10 +511,10 @@ class _AioSubscriber(_SubscriberBase):
     async def _poll(self, timeout=None) -> None:
         while len(self._queue) == 0:
             req = self._poll_request()
-            poll = get_or_create_event_loop().create_task(
+            poll = asyncio.get_event_loop().create_task(
                 self._poll_call(req, timeout=timeout)
             )
-            close = get_or_create_event_loop().create_task(self._close.wait())
+            close = asyncio.get_event_loop().create_task(self._close.wait())
             done, others = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
