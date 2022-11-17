@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -2599,16 +2600,16 @@ class Dataset(Generic[T]):
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
         try:
-            dataset_format = self._dataset_format()
+            dataset_format = self.dataset_format()
         except ValueError:
             # Dataset is empty or cleared, so fall back to "default".
             batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
-                if dataset_format == "arrow"
+                if dataset_format == BlockFormat.ARROW
                 else "pandas"
-                if dataset_format == "pandas"
+                if dataset_format == BlockFormat.PANDAS
                 else "default"
             )
         for batch in self.iter_batches(
@@ -3107,7 +3108,7 @@ class Dataset(Generic[T]):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        if self._dataset_format() == "simple":
+        if self.dataset_format() == BlockFormat.SIMPLE:
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
@@ -3446,7 +3447,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
 
-        if self._dataset_format() == "arrow":
+        if self.dataset_format() == BlockFormat.ARROW:
             # Zero-copy path.
             return blocks
 
@@ -4011,9 +4012,9 @@ class Dataset(Generic[T]):
             return False
         return schema.names == [TENSOR_COLUMN_NAME]
 
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
+    def dataset_format(self) -> BlockFormat:
+        """The format of the dataset's underlying data blocks. Possible values
+        are: "arrow", "pandas" and "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -4031,14 +4032,14 @@ class Dataset(Generic[T]):
             import pyarrow as pa
 
             if isinstance(schema, pa.Schema):
-                return "arrow"
+                return BlockFormat.ARROW
         except ModuleNotFoundError:
             pass
         from ray.data._internal.pandas_block import PandasBlockSchema
 
         if isinstance(schema, PandasBlockSchema):
-            return "pandas"
-        return "simple"
+            return BlockFormat.PANDAS
+        return BlockFormat.SIMPLE
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
@@ -4069,11 +4070,11 @@ class Dataset(Generic[T]):
         # Expand None into an aggregation for each column.
         if on is None:
             try:
-                dataset_format = self._dataset_format()
+                dataset_format = self.dataset_format()
             except ValueError:
                 dataset_format = None
-            if dataset_format in ["arrow", "pandas"]:
-                # This should be cached from the ._dataset_format() check, so we
+            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
+                # This should be cached from the .dataset_format() check, so we
                 # don't fetch and we assert that the schema is not None.
                 schema = self.schema(fetch_if_missing=False)
                 assert schema is not None
