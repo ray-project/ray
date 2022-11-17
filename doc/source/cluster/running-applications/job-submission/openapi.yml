@@ -140,7 +140,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JobStatus'
+                description: Whether the job was successfully deleted.
+                type: boolean
         500:
           summary: Internal Error
           description: |
