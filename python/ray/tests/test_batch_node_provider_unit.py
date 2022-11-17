@@ -49,7 +49,7 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
 
         self._add_node(node_type="head", node_kind=NODE_KIND_HEAD)
         # Allow unit test to the control output of safe_to_scale.
-        self._safe_to_scale_test_flag = True
+        self._safe_to_scale_flag = True
         self._scale_request_submitted_count = 0
         # Track non_terminated_nodes_calls for use in test_autoscaler.py
         self.num_non_terminated_nodes_calls = 0
@@ -94,7 +94,7 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         ]
 
     def safe_to_scale(self) -> bool:
-        return self._safe_to_scale_test_flag
+        return self.safe_to_scale_flag
 
     def _assert_worker_counts(
         self, expected_worker_counts: Dict[NodeType, int]
@@ -138,7 +138,7 @@ class BatchingNodeProviderTester:
             safe_to_scale_flag (bool): Passed to the node provider to determine  # noqa
                 where provider.safe_to_scale() evaluates to True or False.
         """
-        self.node_provider._safe_to_scale_test_flag = safe_to_scale_flag
+        self.node_provider.safe_to_scale_flag = safe_to_scale_flag
 
         # Call non_terminated_nodes to refresh internal caches.
         # Also validate node provider state.
