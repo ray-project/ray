@@ -147,8 +147,9 @@ class BatchingNodeProvider(NodeProvider):
         raise NotImplementedError
 
     def post_process(self) -> None:
-        """Submit a scale request if it is safe to do so."""
-        self.submit_scale_request(self.scale_request)
+        """Submit a scale request if it is necessary to do so."""
+        if self.scale_change_needed:
+            self.submit_scale_request(self.scale_request)
         self.scale_change_needed = False
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
