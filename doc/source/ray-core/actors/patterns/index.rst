@@ -13,6 +13,5 @@ You may also be interested in visiting the design patterns section for :ref:`tas
 .. toctree::
     :maxdepth: -1
 
-    tree-of-actors
     concurrent-operations-async-actor
     fault-tolerance-actor-checkpointing
