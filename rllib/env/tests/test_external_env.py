@@ -192,7 +192,7 @@ class TestExternalEnv(unittest.TestCase):
         config = (
             DQNConfig()
             .environment("test3")
-            .rollouts(num_rollout_workers=0,enable_connectors=False)
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
             .exploration(exploration_config={"epsilon_timesteps": 100})
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -213,8 +213,11 @@ class TestExternalEnv(unittest.TestCase):
 
     def test_train_cartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
-        config = PGConfig().environment("test").rollouts(num_rollout_workers=0,
-            enable_connectors=False)
+        config = (
+            PGConfig()
+            .environment("test")
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()
             reached = False
@@ -233,8 +236,11 @@ class TestExternalEnv(unittest.TestCase):
 
     def test_train_cartpole_multi(self):
         register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
-        config = PGConfig().environment("test2").rollouts(num_rollout_workers=0,
-            enable_connectors=False)
+        config = (
+            PGConfig()
+            .environment("test2")
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()
             reached = False
