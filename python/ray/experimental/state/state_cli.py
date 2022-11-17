@@ -682,49 +682,6 @@ def object_summary(ctx, timeout: float, address: str):
     )
 
 
-@click.group("logs", invoke_without_command=True)
-@click.pass_context
-def logs_state_cli_group(ctx):
-    """Get logs based on filename (file) or resource identifiers (actor)
-
-    Example:
-
-        Get all the log files available on a node (ray address could be
-        obtained from `ray start --head` or `ray.init()`).
-
-        ``
-        ray logs --address="localhost:6379"
-        ``
-
-        [ray logs file] Print the last 500 lines of raylet.out on a head node.
-
-        ``
-        ray logs file raylet.out --tail 500
-        ``
-
-        Print the last 500 lines of raylet.out on a worker node id A.
-
-        ``
-        ray logs file raylet.out --tail 500 —-node-id A
-        ``
-
-        [ray logs actor] Follow the log file with an actor id ABC.
-
-        ``
-        ray logs actor --id ABC --follow
-        ``
-
-    """
-    if ctx.invoked_subcommand is None:
-        # Forward to `ray logs file` when no argument provided
-        # TODO(rickyyx): ideally we want to forward `ray logs file` to
-        # `ray logs file xxx` as well. However, this is surprisingly tricky
-        # and I wasn't able to get it working cleanly. The issue is to make
-        # click not to treat `xxxx` as a subcommand and set up the context
-        # properly.
-        ctx.forward(log_file)
-
-
 log_follow_option = click.option(
     "--follow",
     "-f",
@@ -835,7 +792,64 @@ def _print_log(
         print(chunk, end="", flush=True)
 
 
-@logs_state_cli_group.command(name="file")
+LOG_CLI_HELP_MSG = """
+Get logs based on filename (cluster) or resource identifiers (actor)
+
+Example:
+
+    Get all the log files available on a node (ray address could be
+    obtained from `ray start --head` or `ray.init()`).
+
+    ```
+    ray logs --address="localhost:6379"
+    ```
+
+    [ray logs cluster] Print the last 500 lines of raylet.out on a head node.
+
+    ```
+    ray logs cluster raylet.out --tail 500
+    ```
+
+    Or simply, using `ray logs` as an alias for `ray logs cluster`:
+
+    ```
+    ray logs raylet.out --tail 500
+    ```
+
+    Print the last 500 lines of raylet.out on a worker node id A.
+
+    ```
+    ray logs raylet.out --tail 500 —-node-id A
+    ```
+
+    [ray logs actor] Follow the log file with an actor id ABC.
+
+    ```
+    ray logs actor --id ABC --follow
+    ```
+"""
+
+
+class LogCommandGroup(click.Group):
+    def resolve_command(self, ctx, args):
+        """Try resolve the command line args assuming users omitted the subcommand.
+
+        This overrides the default `resolve_command` for the parent class.
+        This will allow command alias of `ray <glob>` to `ray cluster <glob>`.
+        """
+        ctx.resilient_parsing = True
+        res = super().resolve_command(ctx, args)
+        cmd_name, cmd, parsed_args = res
+        if cmd is None:
+            # It could have been `ray logs ...`, forward to `ray logs cluster ...`
+            return super().resolve_command(ctx, ["cluster"] + args)
+        return cmd_name, cmd, parsed_args
+
+
+logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
+
+
+@logs_state_cli_group.command(name="cluster")
 @click.argument(
     "glob_filter",
     required=False,
@@ -850,7 +864,7 @@ def _print_log(
 @log_timeout_option
 @click.pass_context
 @PublicAPI(stability="alpha")
-def log_file(
+def log_cluster(
     ctx,
     glob_filter: str,
     address: Optional[str],
@@ -871,30 +885,30 @@ def log_file(
         Print the last 500 lines of raylet.out on a head node.
 
         ```
-        ray logs file raylet.out --tail 500
+        ray logs [cluster] raylet.out --tail 500
         ```
 
         Print the last 500 lines of raylet.out on a worker node id A.
 
         ```
-        ray logs file raylet.out --tail 500 —-node-id A
+        ray logs [cluster] raylet.out --tail 500 —-node-id A
         ```
 
         Download the gcs_server.txt file to the local machine.
 
         ```
-        ray logs file gcs_server.out --tail -1 > gcs_server.txt
+        ray logs [cluster] gcs_server.out --tail -1 > gcs_server.txt
         ```
 
         Follow the log files from the last 100 lines.
 
         ```
-        ray logs file raylet.out --tail 100 -f
+        ray logs [cluster] raylet.out --tail 100 -f
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
-            if the CLI is failed to query the data.
+        :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            is failed to query the data.
     """
 
     if node_id is None and node_ip is None:
@@ -1072,70 +1086,4 @@ def log_worker(
         follow=follow,
         interval=interval,
         timeout=timeout,
-    )
-
-
-@logs_state_cli_group.command(name="cluster", hidden=True)
-@click.argument(
-    "glob_filter",
-    required=False,
-    default="*",
-)
-@address_option
-@log_node_id_option
-@log_node_ip_option
-@log_follow_option
-@log_tail_option
-@log_interval_option
-@log_timeout_option
-@click.pass_context
-def log_cluster(
-    ctx,
-    glob_filter: str,
-    address: Optional[str],
-    node_id: Optional[str],
-    node_ip: Optional[str],
-    follow: bool,
-    tail: int,
-    interval: float,
-    timeout: int,
-):
-    """Get/List logs that matches the GLOB_FILTER in the cluster.
-    By default, it prints a list of log files that match the filter.
-    By default, it prints the head node logs.
-    If there's only 1 match, it will print the log file.
-
-    Example:
-
-        Print the last 500 lines of raylet.out on a head node.
-
-        ```
-        ray logs cluster raylet.out --tail 500
-        ```
-
-        Print the last 500 lines of raylet.out on a worker node id A.
-
-        ```
-        ray logs cluster raylet.out --tail 500 —-node-id A
-        ```
-
-        Download the gcs_server.txt file to the local machine.
-
-        ```
-        ray logs cluster gcs_server.out --tail -1 > gcs_server.txt
-        ```
-
-        Follow the log files from the last 100 lines.
-
-        ```
-        ray logs cluster raylet.out --tail 100 -f
-        ```
-
-    Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
-            if the CLI is failed to query the data.
-    """
-
-    log_file(
-        ctx, glob_filter, address, node_id, node_ip, follow, tail, interval, timeout
     )

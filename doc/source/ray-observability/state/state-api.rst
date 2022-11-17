@@ -422,14 +422,14 @@ Logs
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
-E.g., Get all retrievable log file names from a head node
+E.g., Get all retrievable log file names from a head node in a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: CLI
 
     .. code-block:: bash
 
-        ray logs 
+        ray logs cluster
 
 .. tabbed:: Python SDK
 
@@ -450,7 +450,7 @@ E.g., Get a particular log file from a node
     .. code-block:: bash
 
         # You could get the node id / node ip from `ray list nodes` 
-        ray logs file gcs_server.out --node-id <NODE_ID> 
+        ray logs gcs_server.out --node-id <NODE_ID> 
 
 .. tabbed:: Python SDK
 
@@ -470,7 +470,7 @@ E.g., Stream a log file from a node
     .. code-block:: bash
 
         # You could get the node id / node ip from `ray list nodes` 
-        ray logs file raylet.out --node-ip <NODE_IP> --follow
+        ray logs raylet.out --node-ip <NODE_IP> --follow
 
 .. tabbed:: Python SDK
 

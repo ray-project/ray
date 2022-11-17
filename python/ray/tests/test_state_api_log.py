@@ -10,7 +10,6 @@ import requests
 from click.testing import CliRunner
 
 import ray
-import ray.scripts.scripts as scripts
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -685,7 +684,7 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(logs_state_cli_group)
+        result = runner.invoke(logs_state_cli_group, ["cluster"])
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -698,7 +697,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(logs_state_cli_group, ["file", "raylet.out"])
+        result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -713,7 +712,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(logs_state_cli_group, ["file", "raylet.*"])
+        result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
@@ -761,6 +760,19 @@ def test_log_cli(shutdown_only):
         assert result.exit_code == 0
         print(result.output)
         assert WORKER_LOG_LINE in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test `ray logs raylet.*` forwarding to `ray logs cluster raylet.*`
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["raylet.*"])
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
         return True
 
     wait_for_condition(verify)
