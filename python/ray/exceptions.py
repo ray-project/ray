@@ -6,7 +6,6 @@ import colorama
 
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
-from ray._private import memory_monitor
 from ray._raylet import ActorID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import (
     PYTHON,
@@ -379,12 +378,8 @@ class OutOfMemoryError(RayError):
 
     # TODO: (clarng) expose the error message string here and format it with proto
     def __init__(self, message):
-        top_n = (
-            "\nThe top 10 memory consumers are:\n"
-            f"{memory_monitor.get_top_n_memory_usage(10)}"
-        )
-        self.message = message + top_n
-        
+        self.message = message
+
     def __str__(self):
         return self.message
 
