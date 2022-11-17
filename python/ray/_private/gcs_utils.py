@@ -121,6 +121,8 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     except grpc.RpcError:
         traceback.print_exc()
         return False
+    finally:
+        channel.close()
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
 
