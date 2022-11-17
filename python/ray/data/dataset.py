@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -40,7 +41,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -67,7 +68,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
-    BlockPartitionMetadata,
     KeyFn,
     RowUDF,
     T,
@@ -88,6 +88,7 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
+    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -95,13 +96,15 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_and_register_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
+from ray.widgets.util import ensure_notebook_deps
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -322,7 +325,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -334,9 +337,9 @@ class Dataset(Generic[T]):
         """Apply the given function to batches of data.
 
         This applies the ``fn`` in parallel with map tasks, with each task handling
-        a block or a bundle of blocks (if ``batch_size`` larger than block size) of
-        the dataset. Each batch is executed serially at Ray level (at lower level,
-        the processing of the batch is usually vectorized).
+        a block or a bundle of blocks of the dataset. Each batch is executed serially
+        at Ray level (at lower level, the processing of the batch is usually
+        vectorized).
 
         Batches are represented as dataframes, ndarrays, or lists. The default batch
         type is determined by your dataset's schema. To determine the default batch
@@ -365,10 +368,10 @@ class Dataset(Generic[T]):
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
             ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
-            a given map task. Each map task will be sent a single block if the block is
-            equal to or larger than ``batch_size``, and will be sent a bundle of blocks
-            up to (but not exceeding) ``batch_size`` if blocks are smaller than
-            ``batch_size``.
+            a given map task. When ``batch_size`` is specified, each map task will be
+            sent a single block if the block is equal to or larger than ``batch_size``,
+            and will be sent a bundle of blocks up to (but not exceeding)
+            ``batch_size`` if blocks are smaller than ``batch_size``.
 
         Examples:
 
@@ -447,7 +450,7 @@ class Dataset(Generic[T]):
                 blocks as batches (blocks may contain different number of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Defaults to 4096.
+                to a given map task. Default batch_size is 4096 with "default".
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
@@ -489,8 +492,14 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("Batch size cannot be negative or 0")
+        target_block_size = None
+        if batch_size == "default":
+            batch_size = DEFAULT_BATCH_SIZE
+        elif batch_size is not None:
+            if batch_size < 1:
+                raise ValueError("Batch size cannot be negative or 0")
+            # Enable blocks bundling when batch_size is specified by caller.
+            target_block_size = batch_size
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -539,27 +548,35 @@ class Dataset(Generic[T]):
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
 
+            def validate_batch(batch: Block) -> None:
+                if not isinstance(
+                    batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                ):
+                    raise ValueError(
+                        "The `fn` you passed to `map_batches` returned a value of type "
+                        f"{type(batch)}. This isn't allowed -- `map_batches` expects "
+                        "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
+                        "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+                    )
+
+                if isinstance(batch, dict):
+                    for key, value in batch.items():
+                        if not isinstance(value, np.ndarray):
+                            raise ValueError(
+                                "The `fn` you passed to `map_batches` returned a "
+                                f"`dict`. `map_batches` expects all `dict` values "
+                                f"to be of type `numpy.ndarray`, but the value "
+                                f"corresponding to key {key!r} is of type "
+                                f"{type(value)}. To fix this issue, convert "
+                                f"the {type(value)} to a `numpy.ndarray`."
+                            )
+
             def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
-                if not (
-                    isinstance(batch, list)
-                    or isinstance(batch, pa.Table)
-                    or isinstance(batch, np.ndarray)
-                    or (
-                        isinstance(batch, dict)
-                        and all(isinstance(col, np.ndarray) for col in batch.values())
-                    )
-                    or isinstance(batch, pd.core.frame.DataFrame)
-                ):
-                    raise ValueError(
-                        "The map batches UDF returned the value "
-                        f"{batch} of type {type(batch)}, "
-                        "which is not allowed. "
-                        f"The return type must be one of: {BatchType}"
-                    )
+                validate_batch(batch)
                 # Add output batch to output buffer.
                 output_buffer.add_batch(batch)
                 if output_buffer.has_next():
@@ -590,7 +607,7 @@ class Dataset(Generic[T]):
                 compute,
                 ray_remote_args,
                 # TODO(Clark): Add a strict cap here.
-                target_block_size=batch_size,
+                target_block_size=target_block_size,
                 fn=fn,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
@@ -702,7 +719,7 @@ class Dataset(Generic[T]):
             >>> # Select only "col1" and "col2" columns.
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=1, num_rows=10, schema={col1: int64, col2: int64})
+            Dataset(num_blocks=..., num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -1424,7 +1441,7 @@ class Dataset(Generic[T]):
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
+            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
             for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
@@ -2431,6 +2448,60 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
+    def write_mongo(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a MongoDB datasource.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Notes:
+        - Currently, this supports only a subset of the pyarrow's types, due to the
+          limitation of pymongoarrow which is used underneath. Writing unsupported
+          types will fail on type checking. See all the supported types at:
+          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+        - The records will be inserted into MongoDB as new documents. If a record has
+          the _id field, this _id must be non-existent in MongoDB, otherwise the write
+          will be rejected and fail (hence preexisting documents are protected from
+          being mutated). It's fine to not have _id field in record and MongoDB will
+          auto generate one at insertion.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_mongo( # doctest: +SKIP
+            >>>     MongoDatasource(),
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+            >>>     database="my_db",
+            >>>     collection="my_collection",
+            >>> )
+
+        Args:
+            uri: The URI to the destination MongoDB where the dataset will be
+                written to. For the URI format, see details in
+                https://www.mongodb.com/docs/manual/reference/connection-string/.
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            collection: The name of the collection in the database. This collection
+                must exist otherwise ValueError will be raised.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+        self.write_datasource(
+            MongoDatasource(),
+            ray_remote_args=ray_remote_args,
+            uri=uri,
+            database=database,
+            collection=collection,
+        )
+
     def write_datasource(
         self,
         datasource: Datasource[T],
@@ -2458,6 +2529,19 @@ class Dataset(Generic[T]):
         """
 
         ctx = DatasetContext.get_current()
+        if ray_remote_args is None:
+            ray_remote_args = {}
+        path = write_args.get("path", None)
+        if path and _is_local_scheme(path):
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    f"The local scheme paths {path} are not supported in Ray Client."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
         blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.
@@ -2476,7 +2560,7 @@ class Dataset(Generic[T]):
                     blocks,
                     metadata,
                     ray_remote_args,
-                    _wrap_and_register_arrow_serialization_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2515,16 +2599,16 @@ class Dataset(Generic[T]):
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
         try:
-            dataset_format = self._dataset_format()
+            dataset_format = self.dataset_format()
         except ValueError:
             # Dataset is empty or cleared, so fall back to "default".
             batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
-                if dataset_format == "arrow"
+                if dataset_format == BlockFormat.ARROW
                 else "pandas"
-                if dataset_format == "pandas"
+                if dataset_format == BlockFormat.PANDAS
                 else "default"
             )
         for batch in self.iter_batches(
@@ -2689,10 +2773,12 @@ class Dataset(Generic[T]):
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
-        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
-        casting dtypes) or the batch format, try using `.to_tf`, which has a
-        declarative API for tensor casting and batch formatting, or use `.iter_batches`
-        directly, which is a lower-level API.
+        column-tensors.
+
+        .. tip::
+            If you don't need the additional flexibility provided by this method,
+            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier
+            to use.
 
         Examples:
             >>> import ray
@@ -2945,20 +3031,38 @@ class Dataset(Generic[T]):
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
-        The TF Dataset will be created from the generator returned by the
-        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
-        arguments will be passed to that method.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        It is recommended to call ``.split()`` on this dataset if
-        there are to be multiple TensorFlow workers consuming the data.
-
         .. warning::
-
-            If your dataset contains ragged tensors, this method will error. To prevent
+            If your dataset contains ragged tensors, this method errors. To prevent
             errors, resize tensors or
             :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> ds
+            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+
+            If your model accepts a single tensor as input, specify a single feature column.
+
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your model accepts a dictionary as input, specify a list of feature columns.
+
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your dataset contains multiple features but your model accepts a single
+            tensor as input, combine features with
+            :class:`~ray.data.preprocessors.Concatenator`.
+
+            >>> from ray.data.preprocessors import Concatenator
+            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> ds = preprocessor.transform(ds)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
+            >>> ds.to_tf("features", "target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
@@ -2986,15 +3090,24 @@ class Dataset(Generic[T]):
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
-        """
-        from ray.air._internal.tensorflow_utils import get_type_spec
+
+        .. seealso::
+
+            :meth:`~ray.data.Dataset.iter_tf_batches`
+                Call this method if you need more flexibility.
+
+        """  # noqa: E501
+        from ray.air._internal.tensorflow_utils import (
+            get_type_spec,
+            convert_ndarray_to_tf_tensor,
+        )
 
         try:
             import tensorflow as tf
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        if self._dataset_format() == "simple":
+        if self.dataset_format() == BlockFormat.SIMPLE:
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
@@ -3028,24 +3141,35 @@ class Dataset(Generic[T]):
         validate_columns(feature_columns)
         validate_columns(label_columns)
 
-        def get_columns_from_batch(
-            batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
+        def convert_batch_to_tensors(
+            batch: Dict[str, np.ndarray],
+            *,
+            columns: Union[str, List[str]],
+            type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
             if isinstance(columns, str):
-                return batch[columns]
-            return {column: batch[column] for column in columns}
+                return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
+            return {
+                convert_ndarray_to_tf_tensor(batch[column], type_spec=type_spec[column])
+                for column in columns
+            }
 
         def generator():
-            for batch in self.iter_tf_batches(
+            for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
+                batch_format="numpy",
             ):
                 assert isinstance(batch, dict)
-                features = get_columns_from_batch(batch, columns=feature_columns)
-                labels = get_columns_from_batch(batch, columns=label_columns)
+                features = convert_batch_to_tensors(
+                    batch, columns=feature_columns, type_spec=feature_type_spec
+                )
+                labels = convert_batch_to_tensors(
+                    batch, columns=label_columns, type_spec=label_type_spec
+                )
                 yield features, labels
 
         feature_type_spec = get_type_spec(schema, columns=feature_columns)
@@ -3322,7 +3446,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
 
-        if self._dataset_format() == "arrow":
+        if self.dataset_format() == BlockFormat.ARROW:
             # Zero-copy path.
             return blocks
 
@@ -3887,9 +4011,9 @@ class Dataset(Generic[T]):
             return False
         return schema.names == [TENSOR_COLUMN_NAME]
 
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
+    def dataset_format(self) -> BlockFormat:
+        """The format of the dataset's underlying data blocks. Possible values
+        are: "arrow", "pandas" and "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -3907,14 +4031,14 @@ class Dataset(Generic[T]):
             import pyarrow as pa
 
             if isinstance(schema, pa.Schema):
-                return "arrow"
+                return BlockFormat.ARROW
         except ModuleNotFoundError:
             pass
         from ray.data._internal.pandas_block import PandasBlockSchema
 
         if isinstance(schema, PandasBlockSchema):
-            return "pandas"
-        return "simple"
+            return BlockFormat.PANDAS
+        return BlockFormat.SIMPLE
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
@@ -3945,11 +4069,11 @@ class Dataset(Generic[T]):
         # Expand None into an aggregation for each column.
         if on is None:
             try:
-                dataset_format = self._dataset_format()
+                dataset_format = self.dataset_format()
             except ValueError:
                 dataset_format = None
-            if dataset_format in ["arrow", "pandas"]:
-                # This should be cached from the ._dataset_format() check, so we
+            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
+                # This should be cached from the .dataset_format() check, so we
                 # don't fetch and we assert that the schema is not None.
                 schema = self.schema(fetch_if_missing=False)
                 assert schema is not None
@@ -3974,31 +4098,26 @@ class Dataset(Generic[T]):
         else:
             return result
 
+    @ensure_notebook_deps(
+        ["ipywidgets", "8"],
+    )
     def _ipython_display_(self):
-        try:
-            from ipywidgets import HTML, VBox, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
-
+        from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
-        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+        tab = self._tab_repr_()
 
+        if tab:
+            display(VBox([title, tab], layout=Layout(width="100%")))
+
+    @ensure_notebook_deps(
+        ["tabulate", None],
+        ["ipywidgets", "8"],
+    )
     def _tab_repr_(self):
-        try:
-            from tabulate import tabulate
-            from ipywidgets import Tab, HTML
-        except ImportError:
-            logger.info(
-                "For rich Dataset reprs in notebooks, run "
-                "`pip install tabulate ipywidgets`."
-            )
-            return ""
+        from tabulate import tabulate
+        from ipywidgets import Tab, HTML
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -4029,27 +4148,22 @@ class Dataset(Generic[T]):
                 max_height="300px",
             )
 
-        tab = Tab()
         children = []
-
-        tab.set_title(0, "Metadata")
         children.append(
-            Template("scrollableTable.html.j2").render(
-                table=tabulate(
-                    tabular_data=metadata.items(),
-                    tablefmt="html",
-                    showindex=False,
-                    headers=["Field", "Value"],
-                ),
-                max_height="300px",
+            HTML(
+                Template("scrollableTable.html.j2").render(
+                    table=tabulate(
+                        tabular_data=metadata.items(),
+                        tablefmt="html",
+                        showindex=False,
+                        headers=["Field", "Value"],
+                    ),
+                    max_height="300px",
+                )
             )
         )
-
-        tab.set_title(1, "Schema")
-        children.append(schema_repr)
-
-        tab.children = [HTML(child) for child in children]
-        return tab
+        children.append(HTML(schema_repr))
+        return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
         schema = self.schema()

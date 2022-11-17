@@ -47,6 +47,15 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
         <MetadataSection
           metadataList={[
             {
+              label: "Entrypoint",
+              content: job.entrypoint
+                ? {
+                    value: job.entrypoint,
+                    copyableValue: job.entrypoint,
+                  }
+                : { value: "-" },
+            },
+            {
               label: "Status",
               content: <StatusChip type="job" status={job.status} />,
             },
@@ -71,6 +80,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   },
             },
             {
+              label: "Duration",
+              content: job.start_time ? (
+                <DurationText
+                  startTime={job.start_time}
+                  endTime={job.end_time}
+                />
+              ) : (
+                <React.Fragment>-</React.Fragment>
+              ),
+            },
+            {
               label: "Started at",
               content: {
                 value: job.start_time
@@ -85,17 +105,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
                   : "-",
               },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
             },
           ]}
         />
