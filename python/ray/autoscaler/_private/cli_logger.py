@@ -856,7 +856,7 @@ def get_cli_logger():
     return _cli_logger
 
 
-cli_logger = get_cli_logger
+cli_logger = get_cli_logger()
 
 CLICK_LOGGING_OPTIONS = [
     click.option(
