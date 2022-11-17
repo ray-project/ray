@@ -202,7 +202,10 @@ try:
                 namespace="autoscaler",
                 registry=self.registry,
             )
-            self.cluster_resources: Counter = Gauge(
+            # This represents the autoscaler's view of essentially
+            # `ray.cluster_resources()`, it may be slightly different from the
+            # core metric from an eventual consistency perspective.
+            self.cluster_resources: Gauge = Gauge(
                 "cluster_resources",
                 "Total logical resources in the cluster.",
                 unit="resources",
@@ -210,7 +213,9 @@ try:
                 registry=self.registry,
                 labelnames=["resource"],
             )
-            self.pending_resources: Counter = Gauge(
+            # This represents the pending launches + nodes being set up for the
+            # autoscaler.
+            self.pending_resources: Gauge = Gauge(
                 "pending_resources",
                 "Pending logical resources in the cluster.",
                 unit="resources",

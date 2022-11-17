@@ -4,7 +4,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 import ray
 from ray._private.test_utils import (
     wait_for_condition,
-    metric_check_condition,
+    get_metric_check_condition,
 )
 from ray.cluster_utils import AutoscalingCluster
 
@@ -88,21 +88,23 @@ def test_metrics(shutdown_only):
             def ping(self):
                 return True
 
-        wait_for_condition(
-            metric_check_condition(
+        zero_reported_condition = get_metric_check_condition(
                 {"autoscaler_cluster_resources": 0, "autoscaler_pending_resources": 0},
                 export_addr=autoscaler_export_addr,
             )
+        wait_for_condition(
+            zero_reported_condition
         )
 
         actors = [Foo.remote() for _ in range(2)]
         ray.get([actor.ping.remote() for actor in actors])
 
-        wait_for_condition(
-            metric_check_condition(
+        two_cpu_no_pending_condition = get_metric_check_condition(
                 {"autoscaler_cluster_resources": 2, "autoscaler_pending_resources": 0},
                 export_addr=autoscaler_export_addr,
             )
+        wait_for_condition(
+            two_cpu_no_pending_condition
         )
         # TODO (Alex): Ideally we'd also assert that pending_resources
         # eventually became 1 or 2, but it's difficult to do that in a

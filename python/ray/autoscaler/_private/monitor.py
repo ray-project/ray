@@ -395,7 +395,6 @@ class Monitor:
                             self.prom_metrics.pending_resources.labels(
                                 resource=resource_name
                             ).set(pending)
-                            print("EMITTED METRIC")
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to

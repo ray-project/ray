@@ -542,7 +542,7 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
-def metric_check_condition(
+def get_metric_check_condition(
     metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
