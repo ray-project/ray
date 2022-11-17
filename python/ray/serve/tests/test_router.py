@@ -7,7 +7,6 @@ import asyncio
 import pytest
 
 import ray
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import RunningReplicaInfo
 from ray.serve._private.router import Query, ReplicaSet, RequestMetadata
 from ray._private.test_utils import SignalActor
@@ -80,7 +79,7 @@ async def test_replica_set(ray_instance):
     # We will test a scenario with two replicas in the replica set.
     rs = ReplicaSet(
         "my_deployment",
-        get_or_create_event_loop(),
+        asyncio.get_event_loop(),
     )
     replicas = [
         RunningReplicaInfo(
@@ -110,7 +109,7 @@ async def test_replica_set(ray_instance):
             await asyncio.sleep(1)
 
     # Let's try to send another query.
-    third_ref_pending_task = get_or_create_event_loop().create_task(
+    third_ref_pending_task = asyncio.get_event_loop().create_task(
         rs.assign_replica(query)
     )
     # We should fail to assign a replica, so this coroutine should still be
