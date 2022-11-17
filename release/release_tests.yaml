@@ -1084,7 +1084,7 @@
     timeout: 1200
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
-      num_nodes: 2
+      num_nodes: 4
     type: client
 
   alert: default
@@ -1110,7 +1110,7 @@
     timeout: 1200
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
-      num_nodes: 2
+      num_nodes: 4
     type: client
 
   alert: default
@@ -1290,7 +1290,7 @@
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
     wait_for_nodes:
-      num_nodes: 11
+      num_nodes: 9
     type: client
 
   alert: default
