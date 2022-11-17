@@ -1,6 +1,6 @@
-import itertools
 import os
 
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import pytest
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -8,8 +8,8 @@ import numpy as np
 
 import ray
 import ray.cloudpickle as pickle
+from ray._private.utils import _get_pyarrow_version
 from ray.tests.conftest import *  # noqa
-from ray.data._internal.arrow_serialization import _get_arrow_array_types
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,
@@ -168,53 +168,22 @@ pytest_custom_serialization_arrays = [
 pytest_custom_serialization_data = []
 for arr, cap in pytest_custom_serialization_arrays:
     if len(arr) == 0:
-        pytest_custom_serialization_data.extend(
-            [
-                (arr, cap),
-                (pa.chunked_array([arr]), cap),
-                (
-                    pa.record_batch([arr], schema=pa.schema([pa.field("a", arr.type)])),
-                    cap,
-                ),
-                (pa.table({"a": []}), cap),
-            ]
-        )
+        pytest_custom_serialization_data.append((pa.table({"a": []}), cap))
     else:
-        pytest_custom_serialization_data.extend(
-            zip(
-                [
-                    arr,
-                    pa.chunked_array(
+        pytest_custom_serialization_data.append(
+            (
+                pa.Table.from_arrays(
+                    [arr, arr, pa.array(range(1000), type=pa.int32())],
+                    schema=pa.schema(
                         [
-                            arr.slice(i * (len(arr) // 10), (i + 1) * (len(arr) // 10))
-                            for i in range(10)
+                            pa.field("arr1", arr.type),
+                            pa.field("arr2", arr.type),
+                            pa.field("arr3", pa.int32()),
                         ],
-                        type=arr.type,
+                        metadata={b"foo": b"bar"},
                     ),
-                    pa.record_batch(
-                        [arr, arr, pa.array(range(len(arr)), type=pa.int32())],
-                        schema=pa.schema(
-                            [
-                                pa.field("arr1", arr.type),
-                                pa.field("arr2", arr.type),
-                                pa.field("arr3", pa.int32()),
-                            ],
-                            metadata={b"foo": b"bar"},
-                        ),
-                    ),
-                    pa.Table.from_arrays(
-                        [arr, arr, pa.array(range(1000), type=pa.int32())],
-                        schema=pa.schema(
-                            [
-                                pa.field("arr1", arr.type),
-                                pa.field("arr2", arr.type),
-                                pa.field("arr3", pa.int32()),
-                            ],
-                            metadata={b"foo": b"bar"},
-                        ),
-                    ),
-                ],
-                itertools.repeat(cap),
+                ),
+                cap,
             )
         )
 
@@ -223,7 +192,10 @@ for arr, cap in pytest_custom_serialization_arrays:
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    buf_size = data.get_total_buffer_size()
+    pyarrow_version = parse_version(_get_pyarrow_version())
+    if pyarrow_version >= parse_version("7.0.0"):
+        # get_total_buffer_size API was added in Arrow 7.0.0.
+        buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
     view = data.slice(10, 10)
     s_arr = pickle.dumps(data)
@@ -235,22 +207,14 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
     # Check that the slice view was truncated upon serialization.
     assert len(s_view) <= cap_mult * len(s_arr)
     # Check that offset was reset on slice.
-    if isinstance(post_slice, pa.RecordBatch):
-        for column in post_slice.columns:
-            assert column.offset == 0
-    elif isinstance(post_slice, pa.Table):
-        for column in post_slice.columns:
-            if column.num_chunks > 0:
-                assert column.chunk(0).offset == 0
-    elif isinstance(post_slice, pa.ChunkedArray):
-        if post_slice.num_chunks > 0:
-            assert post_slice.chunk(0).offset == 0
-    else:
-        assert post_slice.offset == 0
-    # Check that slice buffer only contains slice data.
-    slice_buf_size = post_slice.get_total_buffer_size()
-    if buf_size > 0:
-        assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+    for column in post_slice.columns:
+        if column.num_chunks > 0:
+            assert column.chunk(0).offset == 0
+    if pyarrow_version >= parse_version("7.0.0"):
+        # Check that slice buffer only contains slice data.
+        slice_buf_size = post_slice.get_total_buffer_size()
+        if buf_size > 0:
+            assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(
@@ -271,18 +235,17 @@ def test_custom_arrow_data_serializer_parquet_roundtrip(
 def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
     context = ray.worker.global_worker.get_serialization_context()
-    for array_type in _get_arrow_array_types():
-        context._unregister_cloudpickle_reducer(array_type)
+    context._unregister_cloudpickle_reducer(pa.Table)
     # Disable custom Arrow array serialization.
     os.environ["RAY_DISABLE_CUSTOM_ARROW_ARRAY_SERIALIZATION"] = "1"
     ray.init()
-    # Create a zero-copy slice view of arr.
-    arr = pa.array(list(range(100)))
-    view = arr.slice(10, 10)
-    s_arr = pickle.dumps(arr)
+    # Create a zero-copy slice view of table.
+    t = pa.table({"a": list(range(10000000))})
+    view = t.slice(10, 10)
+    s_t = pickle.dumps(t)
     s_view = pickle.dumps(view)
     # Check that the slice view contains the full buffer of the underlying array.
     d_view = pickle.loads(s_view)
-    assert d_view.buffers()[1].size == arr.buffers()[1].size
+    assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
-    assert len(s_view) > 0.8 * len(s_arr)
+    assert len(s_view) > 0.8 * len(s_t)

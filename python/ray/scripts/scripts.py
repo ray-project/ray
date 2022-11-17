@@ -10,8 +10,8 @@ import traceback
 import urllib
 import urllib.parse
 import warnings
+import shutil
 from datetime import datetime
-from distutils.dir_util import copy_tree
 from typing import Optional, Set
 
 import click
@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray._private.utils
+from ray._private.utils import parse_resources_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -586,21 +586,7 @@ def start(
         include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
-    try:
-        resources = json.loads(resources)
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold("--resources"))
-        cli_logger.abort(
-            "Valid values look like this: `{}`",
-            cf.bold('--resources=\'{"CustomResource3": 1, ' '"CustomResource2": 2}\''),
-        )
-
-        raise Exception(
-            "Unable to parse the --resources argument using "
-            "json.loads. Try using a format like\n\n"
-            '    --resources=\'{"CustomResource1": 3, '
-            '"CustomReseource2": 2}\''
-        )
+    resources = parse_resources_json(resources, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -812,6 +798,17 @@ def start(
                     cf.yellow(
                         "'ray://<head_node_ip_address>:" f"{ray_client_server_port}'"
                     ),
+                )
+            cli_logger.newline()
+            cli_logger.print("To see the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+            dashboard_url = node.address_info["webui_url"]
+            if dashboard_url:
+                cli_logger.print("To monitor and debug Ray, view the dashboard at ")
+                cli_logger.print(
+                    "  {}".format(
+                        cf.bold(dashboard_url),
+                    )
                 )
             cli_logger.newline()
             cli_logger.print(
@@ -2302,22 +2299,21 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-        if not os.path.isdir(generate_bazel_project_template_to):
-            cli_logger.abort(
-                "The provided directory "
-                f"{generate_bazel_project_template_to} doesn't exist."
-            )
-        copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
+        # copytree expects that the dst dir doesn't exist
+        # so we manually delete it if it exists.
+        if os.path.exists(generate_bazel_project_template_to):
+            shutil.rmtree(generate_bazel_project_template_to)
+        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
         out_include_dir = os.path.join(
             generate_bazel_project_template_to, "thirdparty/include"
         )
-        if not os.path.exists(out_include_dir):
-            os.makedirs(out_include_dir)
-        copy_tree(include_dir, out_include_dir)
+        if os.path.exists(out_include_dir):
+            shutil.rmtree(out_include_dir)
+        shutil.copytree(include_dir, out_include_dir)
         out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if not os.path.exists(out_lib_dir):
-            os.makedirs(out_lib_dir)
-        copy_tree(lib_dir, out_lib_dir)
+        if os.path.exists(out_lib_dir):
+            shutil.rmtree(out_lib_dir)
+        shutil.copytree(lib_dir, out_lib_dir)
 
         cli_logger.print(
             "Project template generated to {}",

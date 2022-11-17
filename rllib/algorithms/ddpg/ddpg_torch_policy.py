@@ -15,6 +15,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -64,43 +65,6 @@ class ComputeTDErrorMixin:
             return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    """Mixin class adding a method for (soft) target net(s) synchronizations.
-
-    - Adds the `update_target` method to the policy.
-      Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
-    """
-
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
-
-    def update_target(self: TorchPolicyV2, tau=None):
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        tau = tau or self.config.get("tau")
-        model_state_dict = self.model.state_dict()
-        # Support partial (soft) synching.
-        # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = next(iter(self.target_models.values())).state_dict()
-        model_state_dict = {
-            k: tau * model_state_dict[k] + (1 - tau) * v
-            for k, v in target_state_dict.items()
-        }
-
-        for target in self.target_models.values():
-            target.load_state_dict(model_state_dict)
-
-    @override(TorchPolicyV2)
-    def set_weights(self: TorchPolicyV2, weights):
-        # Makes sure that whenever we restore weights for this policy's
-        # model, we sync the target network (from the main model)
-        # at the same time.
-        TorchPolicyV2.set_weights(self, weights)
-        self.update_target()
 
 
 class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
@@ -306,7 +270,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
 
         # Compute RHS of bellman equation.
         q_t_selected_target = (
-            train_batch[SampleBatch.REWARDS] + gamma ** n_step * q_tp1_best_masked
+            train_batch[SampleBatch.REWARDS] + gamma**n_step * q_tp1_best_masked
         ).detach()
 
         # Compute the error (potentially clipped).

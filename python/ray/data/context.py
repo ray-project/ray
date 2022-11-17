@@ -27,7 +27,7 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 # Whether block splitting is on by default
-DEFAULT_BLOCK_SPLITTING_ENABLED = False
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -71,11 +71,18 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 # extension columns.
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+# Whether to automatically print Dataset stats after execution.
+# If disabled, users can still manually print stats with Dataset.stats().
+DEFAULT_AUTO_LOG_STATS = False
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
+
+# Default batch size for batch transformations.
+DEFAULT_BATCH_SIZE = 4096
 
 
 @DeveloperAPI
@@ -105,6 +112,7 @@ class DatasetContext:
         decoding_size_estimation: bool,
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
+        enable_auto_log_stats: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -126,6 +134,7 @@ class DatasetContext:
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
+        self.enable_auto_log_stats = enable_auto_log_stats
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -162,6 +171,7 @@ class DatasetContext:
                     enable_tensor_extension_casting=(
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
+                    enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                 )
 
             return _default_context

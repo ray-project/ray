@@ -3,6 +3,8 @@ This module is intended for implementing internal serializers for some
 site packages.
 """
 
+import sys
+
 from ray.util.annotations import DeveloperAPI
 
 
@@ -56,8 +58,9 @@ def apply(serialization_context):
     register_pydantic_serializer(serialization_context)
     register_starlette_serializer(serialization_context)
 
-    from ray.data._internal.arrow_serialization import (
-        _register_custom_datasets_serializers,
-    )
+    if sys.platform != "win32":
+        from ray.data._internal.arrow_serialization import (
+            _register_custom_datasets_serializers,
+        )
 
-    _register_custom_datasets_serializers(serialization_context)
+        _register_custom_datasets_serializers(serialization_context)

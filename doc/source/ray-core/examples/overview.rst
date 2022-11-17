@@ -1,3 +1,5 @@
+.. _ray-core-examples-tutorial:
+
 Ray Tutorials and Examples
 ==========================
 

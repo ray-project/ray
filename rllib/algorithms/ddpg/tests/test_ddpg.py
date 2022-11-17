@@ -38,9 +38,8 @@ class TestDDPG(unittest.TestCase):
             ddpg.DDPGConfig()
             .training(num_steps_sampled_before_learning_starts=0)
             .rollouts(num_rollout_workers=0, num_envs_per_worker=2)
+            .exploration(exploration_config={"random_timesteps": 100})
         )
-        explore = config.exploration_config.update({"random_timesteps": 100})
-        config.exploration(exploration_config=explore)
 
         num_iterations = 1
 
@@ -66,6 +65,7 @@ class TestDDPG(unittest.TestCase):
 
         core_config = (
             ddpg.DDPGConfig()
+            .environment("Pendulum-v1")
             .rollouts(num_rollout_workers=0)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -76,7 +76,7 @@ class TestDDPG(unittest.TestCase):
         for _ in framework_iterator(core_config):
             config = copy.deepcopy(core_config)
             # Default OUNoise setup.
-            algo = config.build(env="Pendulum-v1")
+            algo = config.build()
             # Setting explore=False should always return the same action.
             a_ = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)
@@ -93,8 +93,8 @@ class TestDDPG(unittest.TestCase):
             algo.stop()
 
             # Check randomness at beginning.
-            config.exploration_config.update(
-                {
+            config.exploration(
+                exploration_config={
                     # Act randomly at beginning ...
                     "random_timesteps": 50,
                     # Then act very closely to deterministic actions thereafter.
@@ -103,8 +103,7 @@ class TestDDPG(unittest.TestCase):
                     "final_scale": 0.001,
                 }
             )
-
-            algo = ddpg.DDPG(config=config, env="Pendulum-v1")
+            algo = config.build()
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)
@@ -135,7 +134,7 @@ class TestDDPG(unittest.TestCase):
 
         # Run locally.
         config.seed = 42
-        config.num_workers = 0
+        config.num_rollout_workers = 0
         config.twin_q = True
         config.use_huber = True
         config.huber_threshold = 1.0
@@ -235,7 +234,14 @@ class TestDDPG(unittest.TestCase):
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
                 assert fw == "tf"  # Start with the tf vars-dict.
-                weights_dict = policy.get_weights()
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                with p_sess.graph.as_default():
+                    collector = ray.experimental.tf_utils.TensorFlowVariables(
+                        [], p_sess, weights_dict_list
+                    )
+                    weights_dict = collector.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)

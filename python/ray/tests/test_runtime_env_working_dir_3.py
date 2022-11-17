@@ -88,6 +88,7 @@ def get_local_file_whitelist(cluster, option):
 
 
 class TestGC:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -397,7 +398,7 @@ class TestGC:
                 print("Created local_dir path.")
 
                 def local_dir_size_near_4mb():
-                    return 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                    return 3 < get_directory_size_bytes(local_dir) / (1024**2) < 5
 
                 wait_for_condition(local_dir_size_near_4mb)
 

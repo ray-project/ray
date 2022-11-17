@@ -25,6 +25,8 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. _ray-options-ref:
+
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
 .. autofunction:: ray.actor.ActorClass.options
@@ -242,3 +244,62 @@ Debugging APIs
     cli.rst
     ../ray-observability/state/cli.rst
     ../ray-observability/state/ray-state-api-reference.rst
+
+.. _ray-core-exceptions:
+
+Exceptions
+----------
+
+.. autoclass:: ray.exceptions.RayError
+   :members:
+
+.. _ray-core-exceptions-ray-task-error:
+.. autoclass:: ray.exceptions.RayTaskError
+   :members:
+.. autoclass:: ray.exceptions.TaskCancelledError
+   :members:
+.. autoclass:: ray.exceptions.GetTimeoutError
+   :members:
+.. _ray-core-exceptions-ray-actor-error:
+.. autoclass:: ray.exceptions.RayActorError
+   :members:
+.. _ray-core-exceptions-runtime-env-setup-error:
+.. autoclass:: ray.exceptions.RuntimeEnvSetupError
+   :members:
+.. autoclass:: ray.exceptions.TaskUnschedulableError
+   :members:
+.. autoclass:: ray.exceptions.ActorUnschedulableError
+   :members:
+.. autoclass:: ray.exceptions.TaskPlacementGroupRemoved
+   :members:
+.. autoclass:: ray.exceptions.ActorPlacementGroupRemoved
+   :members:
+.. autoclass:: ray.exceptions.LocalRayletDiedError
+   :members:
+.. autoclass:: ray.exceptions.WorkerCrashedError
+   :members:
+.. autoclass:: ray.exceptions.RaySystemError
+   :members:
+.. autoclass:: ray.exceptions.ObjectStoreFullError
+   :members:
+.. autoclass:: ray.exceptions.OutOfDiskError
+   :members:
+.. _ray-core-exceptions-object-lost-error:
+.. autoclass:: ray.exceptions.ObjectLostError
+   :members:
+.. autoclass:: ray.exceptions.ObjectFetchTimedOutError
+   :members:
+.. autoclass:: ray.exceptions.OwnerDiedError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedLineageEvictedError
+   :members:
+.. autoclass:: ray.exceptions.PlasmaObjectNotAvailable
+   :members:
+.. autoclass:: ray.exceptions.AsyncioActorExit
+   :members:
+.. autoclass:: ray.exceptions.CrossLanguageError
+   :members:

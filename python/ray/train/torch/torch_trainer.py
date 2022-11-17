@@ -142,7 +142,7 @@ class TorchTrainer(DataParallelTrainer):
                     session.report(
                         {},
                         checkpoint=Checkpoint.from_dict(
-                            dict(epoch=epoch, model=model.state_dict())
+                            dict(epoch=epoch, model=model.state_dict()
                         ),
                     )
 

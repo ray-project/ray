@@ -78,7 +78,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 
 .. _ray-object-refs:
 
-Passing object refs to Ray tasks 
+Passing object refs to Ray tasks
 ---------------------------------------
 
 In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
@@ -211,10 +211,7 @@ More about Ray Tasks
 .. toctree::
     :maxdepth: 1
 
-    tasks/resources.rst
-    tasks/using-ray-with-gpus.rst
     tasks/nested-tasks.rst
     tasks/generators.rst
     tasks/fault-tolerance.rst
     tasks/scheduling.rst
-    tasks/patterns/index.rst

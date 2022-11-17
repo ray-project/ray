@@ -240,6 +240,26 @@ def _upload_to_uri_with_exclude(
             )
 
 
+def list_at_uri(uri: str) -> List[str]:
+    _assert_pyarrow_installed()
+
+    fs, bucket_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not upload to URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    selector = pyarrow.fs.FileSelector(
+        bucket_path, allow_not_found=True, recursive=False
+    )
+    return [
+        os.path.relpath(file_info.path.lstrip("/"), start=bucket_path.lstrip("/"))
+        for file_info in fs.get_file_info(selector)
+    ]
+
+
 def _ensure_directory(uri: str):
     """Create directory at remote URI.
 

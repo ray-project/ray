@@ -26,6 +26,9 @@ message Event {
     CORE_WORKER = 1;
     GCS = 2;
     RAYLET = 3;
+    CLUSTER_LIFECYCLE = 4;
+    AUTOSCALER = 5;
+    JOBS = 6;
   }
 
   enum Severity {

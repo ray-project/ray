@@ -152,9 +152,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             success=False,
             error_message=(
                 "Max number of in-progress requests="
-                f"{self.max_num_call_} reached."
+                f"{self.max_num_call_} reached. "
                 "To set a higher limit, set environment variable: "
-                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'."
+                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'. "
                 f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
             ),
             result=None,
@@ -307,6 +307,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
+
+    @routes.get("/api/v0/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_cluster_events(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls

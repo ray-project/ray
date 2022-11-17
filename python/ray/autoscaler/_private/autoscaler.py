@@ -357,13 +357,7 @@ class StandardAutoscaler:
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
-            # Don't abort the autoscaler if the K8s API server is down.
-            # https://github.com/ray-project/ray/issues/12255
-            is_k8s_connection_error = self.config["provider"][
-                "type"
-            ] == "kubernetes" and isinstance(e, MaxRetryError)
-            if not is_k8s_connection_error:
-                self.num_failures += 1
+            self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
@@ -383,6 +377,14 @@ class StandardAutoscaler:
 
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
+
+        # Back off the update if the provider says it's not safe to proceed.
+        if not self.provider.safe_to_scale():
+            logger.info(
+                "Backing off of autoscaler update."
+                f" Will try again in {self.update_interval_s} seconds."
+            )
+            return
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
@@ -429,11 +431,16 @@ class StandardAutoscaler:
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
+            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
         self._report_pending_infeasible(unfulfilled)
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
+
+        # Execute optional end-of-update logic.
+        # Keep this method call at the end of autoscaler._update().
+        self.provider.post_process()
 
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
