@@ -451,6 +451,7 @@ def show_usage_stats_prompt(cli: bool) -> None:
         # This shouldn't be imported unless it is not a cli
         # because it changes the user's global logging config.
         from ray.autoscaler._private.cli_logger import cli_logger
+
         prompt_print = cli_logger.print
 
     usage_stats_enabledness = _usage_stats_enabledness()

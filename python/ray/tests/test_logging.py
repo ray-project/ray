@@ -750,6 +750,114 @@ def test_repr_inheritance():
         assert "ThisIsMyCustomActorName" in f2 and "MySubclass" not in f2
 
 
+def test_cli_logger_not_imported(shutdown_only, tmp_path):
+    # `cli_logger.py`` monkey patches the python default logger.
+    # We should make sure this is not imported for the driver.
+    ray.init()
+
+    driver = """
+import ray
+import logging
+
+ray.init(address="auto")
+
+print(logging.Logger.makeRecord.__name__)
+"""
+
+    output = run_string_as_driver(driver)
+    assert "_patched_makeRecord" not in output
+
+    # https://github.com/ray-project/ray/issues/22312
+    driver = """
+import os
+import logging
+import logging.config
+
+
+def initialise_logger(config):
+    logging.config.fileConfig(fname=config, disable_existing_loggers=False)
+
+    old_factory = logging.getLogRecordFactory()
+
+    def my_record_factory(*args, **kwargs):
+        record = old_factory(*args, **kwargs)
+
+        # project and any other keys that may be used in index creation in elasticsearch
+        # must be lowercase ( in scenario where kafka logging is used )
+        record.project = "alex"
+        record.microservice = "alex"
+        record.hostname = "alex"
+        record.local_ip = "alex"
+
+        # all Mesos containers in production have this environment variable.
+        # if it is not present, then we are not in production
+        record.mesos_task_id = "alex"
+
+        return record
+
+    logging.setLogRecordFactory(my_record_factory)
+
+
+def main():
+    text = \"""[loggers]
+    keys=root,test_logger,Test_Class
+
+    [handlers]
+    keys=consoleHandler
+
+    [formatters]
+    keys=consoleFormatter
+
+    [logger_root]
+    level=INFO
+    handlers=consoleHandler
+
+    [logger_test_logger]
+    level=INFO
+    handlers=consoleHandler
+    qualname=test_logger
+    propagate=0
+
+    [logger_Test_Class]
+    level=INFO
+    handlers=consoleHandler
+    qualname=Test_Class
+    propagate=0
+
+    [handler_consoleHandler]
+    class=StreamHandler
+    level=INFO
+    formatter=consoleFormatter
+    args=(sys.stdout,)
+
+    [formatter_consoleFormatter]
+    format = %(asctime)s.%(msecs)03d %(project)s %(microservice)s %(levelname)s %(hostname)s %(local_ip)s %(name)s %(filename)s %(lineno)d %(funcName)s %(module)s %(processName)s %(process)d %(threadName)s %(thread)d  %(message)s # noqa
+    datefmt= %Y-%m-%d %H:%M:%S
+    \"""
+
+    with open(os.path.join("{tmp}", "config.ini"), "w") as conffile:
+        conffile.write(text)
+
+    initialise_logger(config=os.path.join("{tmp}", "config.ini"))
+
+    logging.info("RAY NOT IMPORTED")
+
+    import ray
+
+    logging.info("RAY IMPORTED")
+
+
+if __name__ == '__main__':
+    main()
+""".format(
+        tmp=tmp_path
+    )
+
+    # If the global logging config is screwed up, this won't pass.
+    output = run_string_as_driver(driver)
+    print(output)
+
+
 if __name__ == "__main__":
     import sys
 
