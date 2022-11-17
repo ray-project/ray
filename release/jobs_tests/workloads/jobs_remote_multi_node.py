@@ -31,6 +31,7 @@ num_expected_nodes = NUM_NODES - 1
 
 node_ids = set(ray.get([get_node_id.remote() for _ in range(100)]))
 
+
 def check_num_nodes_and_spawn_tasks():
     node_ids.update(ray.get([get_node_id.remote() for _ in range(10)]))
     return len(node_ids) >= num_expected_nodes
