@@ -1,5 +1,4 @@
 import argparse
-import asyncio
 import logging
 import logging.handlers
 import platform
@@ -186,6 +185,12 @@ if __name__ == "__main__":
             # None == default.
             modules_to_load = None
 
+        # NOTE: Creating and attaching the event loop to the main OS thread be called
+        # before initializing Dashboard, which will initialize the grpc aio server,
+        # which assumes a working event loop. Ref:
+        # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
+        loop = ray._private.utils.get_or_create_event_loop()
+
         dashboard = Dashboard(
             args.host,
             args.port,
@@ -197,7 +202,6 @@ if __name__ == "__main__":
             minimal=args.minimal,
             modules_to_load=modules_to_load,
         )
-        loop = asyncio.get_event_loop()
 
         def sigterm_handler():
             logger.warn("Exiting with SIGTERM immediately...")
