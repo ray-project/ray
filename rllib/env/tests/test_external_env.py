@@ -8,6 +8,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
@@ -162,6 +163,7 @@ class TestExternalEnv(unittest.TestCase):
         )
         for _ in range(3):
             batch = ev.sample()
+            batch = convert_ma_batch_to_sample_batch(batch)
             self.assertEqual(batch.count, 50)
             self.assertEqual(batch["actions"][0], 42)
             self.assertEqual(batch["actions"][-1], 42)
