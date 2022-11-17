@@ -270,12 +270,6 @@ class DDPGConfig(SimpleQConfig):
                 f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
             )
 
-        if self.model["custom_model"]:
-            raise ValueError(
-                "Try setting config.training(use_state_preprocessor=True) "
-                "since a custom model was specified."
-            )
-
         if self.grad_clip is not None and self.grad_clip <= 0.0:
             raise ValueError("`grad_clip` value must be > 0.0!")
 

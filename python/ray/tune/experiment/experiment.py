@@ -431,6 +431,10 @@ class Experiment:
         return self.spec.get("local_dir")
 
     @property
+    def checkpoint_config(self):
+        return self.spec.get("checkpoint_config")
+
+    @property
     def checkpoint_dir(self):
         # Provided when initializing Experiment, if so, return directly.
         if self._experiment_checkpoint_dir:
