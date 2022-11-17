@@ -347,8 +347,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return patch_payload
 
     def _submit_raycluster_patch(self, patch_payload: List[Dict[str, Any]]):
-        """Submits a patch to modify a RayCluster CR.
-        """
+        """Submits a patch to modify a RayCluster CR."""
         path = "rayclusters/{}".format(self.cluster_name)
         self._patch(path, patch_payload)
 
