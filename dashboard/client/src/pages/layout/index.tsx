@@ -18,7 +18,6 @@ import { RouteComponentProps } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
-import SpeedTools from "../../components/SpeedTools";
 import Logo from "../../logo.svg";
 
 const drawerWidth = 200;
@@ -179,7 +178,6 @@ const BasicLayout = (
               </Tooltip>
             </IconButton>
           </ListItem>
-          <SpeedTools />
         </List>
       </Drawer>
       <div className={classes.child}>
