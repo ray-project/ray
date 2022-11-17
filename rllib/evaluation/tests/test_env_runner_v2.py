@@ -344,6 +344,37 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertTrue(isinstance(outputs[0], RolloutMetrics))
 
+    def test_soft_horizon_works(self):
+        config = (
+            PPOConfig()
+            .framework("torch")
+            .training(
+                # Specifically ask for a batch of 200 samples.
+                train_batch_size=200,
+            )
+            .rollouts(
+                num_rollout_workers=0,
+                num_envs_per_worker=1,
+                batch_mode="complete_episodes",
+                rollout_fragment_length=10,
+                horizon=4,
+                soft_horizon=True,
+                # Enable EnvRunnerV2.
+                enable_connectors=True,
+            )
+        )
+
+        algo = PPO(config, env=DebugCounterEnv)
+
+        rollout_worker = algo.workers.local_worker()
+        sample_batch = rollout_worker.sample()
+        sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
+
+        # three logical episodes
+        self.assertEqual(len(set(sample_batch["eps_id"])), 3)
+        # no real done bits.
+        self.assertEqual(sum(sample_batch["dones"]), 0)
+
 
 if __name__ == "__main__":
     import sys
