@@ -145,11 +145,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                enable_connectors=True,
-            )
+            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
             .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
@@ -175,11 +171,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 num_envs_per_worker=4,
                 remote_worker_envs=True,
                 remote_env_batch_wait_ms=99999999,
-                enable_connectors=True
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda agent_id, episode, worker, **kwargs: "p{}".format(agent_id % 2)),
+                policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
             ),
         )
         batch = ev.sample()
@@ -364,9 +359,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             self.assertEqual(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
-        """NOTE: This test only works with the old api
-        TODO: avnishn gjoliver
-        """
+        #TODO(avnishn): This test only works with the old api
 
         class ModelBasedPolicy(DQNTFPolicy):
             def compute_actions_from_input_dict(
@@ -425,7 +418,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
-                enable_connectors=False,  # only works with old episode API
+                enable_connectors=False  # only works with old episode API
             )
             .multi_agent(
                 policies={"p0", "p1"},
