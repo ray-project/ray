@@ -120,31 +120,28 @@ def custom_eval_function(algorithm, eval_workers):
     """
 
     # We configured 2 eval workers in the training config.
-    worker_1, worker_2 = eval_workers.remote_workers()
+    funcs = [
+        lambda w: w.foreach_env(lambda env: env.set_corridor_length(4)),
+        lambda w: w.foreach_env(lambda env: env.set_corridor_length(7)),
+    ]
 
     # Set different env settings for each worker. Here we use a fixed config,
     # which also could have been computed in each worker by looking at
     # env_config.worker_index (printed in SimpleCorridor class above).
-    worker_1.foreach_env.remote(lambda env: env.set_corridor_length(4))
-    worker_2.foreach_env.remote(lambda env: env.set_corridor_length(7))
+    eval_workers.foreach_worker(func=funcs)
 
     for i in range(5):
         print("Custom evaluation round", i)
         # Calling .sample() runs exactly one episode per worker due to how the
         # eval workers are configured.
-        ray.get([w.sample.remote() for w in eval_workers.remote_workers()])
+        eval_workers.foreach_worker(func=lambda w: w.sample())
 
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.
-    episodes, _ = collect_episodes(
-        remote_workers=eval_workers.remote_workers(), timeout_seconds=99999
-    )
+    episodes = collect_episodes(workers=eval_workers, timeout_seconds=99999)
     # You can compute metrics from the episodes manually, or use the
     # convenient `summarize_episodes()` utility:
     metrics = summarize_episodes(episodes)
-    # Note that the above two statements are the equivalent of:
-    # metrics = collect_metrics(eval_workers.local_worker(),
-    #                           eval_workers.remote_workers())
 
     # You can also put custom values in the metrics dict.
     metrics["foo"] = 1

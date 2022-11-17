@@ -1,0 +1,1 @@
+export const API_REFRESH_INTERVAL_MS = 4000;

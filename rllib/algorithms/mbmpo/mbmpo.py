@@ -388,7 +388,7 @@ def post_process_metrics(prefix, workers, metrics):
         workers: Set of workers
         metrics: Current metrics dictionary
     """
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
     return metrics
@@ -529,9 +529,7 @@ class MBMPO(Algorithm):
         sync_stats(workers)
 
         # Dropping metrics from the first iteration
-        _, _ = collect_episodes(
-            workers.local_worker(), workers.remote_workers(), [], timeout_seconds=9999
-        )
+        _ = collect_episodes(workers=workers, timeout_seconds=9999)
 
         # Metrics Collector.
         metric_collect = CollectMetrics(

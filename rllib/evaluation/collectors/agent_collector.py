@@ -250,8 +250,14 @@ class AgentCollector:
             self._check_view_requirement(k, v)
 
             if k not in self.buffers:
-                self._build_buffers(single_row=values)
-
+                if self.training and k.startswith("state_out_"):
+                    vr = self.view_requirements[k]
+                    data_col = vr.data_col or k
+                    self._fill_buffer_with_initial_values(
+                        data_col, vr, build_for_inference=False
+                    )
+                else:
+                    self._build_buffers({k: v})
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
@@ -359,7 +365,6 @@ class AgentCollector:
             SampleBatch: The built SampleBatch for this agent, ready to go into
             postprocessing.
         """
-
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
