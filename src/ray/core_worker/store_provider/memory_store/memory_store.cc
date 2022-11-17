@@ -317,7 +317,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
         count += 1;
       } else {
         remaining_ids.insert(object_id);
-        auto has_owner = ObjectHasOwner(object_id);
+        // If reference counting is turned off we can't rely on it to
+        // look up ownership, so we mark this true and take no extra action
+        // based on it.
+        auto has_owner = ref_counter_ == nullptr || ObjectHasOwner(object_id);
         if (!has_owner) {
           objects_without_owner += 1;
         }
