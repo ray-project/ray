@@ -235,9 +235,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         worker_groups = self._raycluster["spec"].get("workerGroupSpecs", [])
         non_empty_worker_group_indices = []
         for worker_group, group_index in enumerate(worker_groups):
-            workersToDelete = worker_group.get(
-                "scaleStrategy", {}
-            ).get(
+            workersToDelete = worker_group.get("scaleStrategy", {}).get(
                 "workersToDelete", []
             )
             if workersToDelete:

@@ -13,7 +13,6 @@ from ray.autoscaler._private.kuberay.node_provider import (
     ScaleRequest,
 )
 from pathlib import Path
-from typing import Any, Dict
 import yaml
 
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
