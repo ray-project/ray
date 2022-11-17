@@ -1,10 +1,10 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
+import useSWR from "swr";
 import { GlobalContext } from "../../../App";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobList } from "../../../service/job";
-import { UnifiedJob } from "../../../type/job";
 
 export const useJobList = () => {
-  const [jobList, setList] = useState<UnifiedJob[]>([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [msg, setMsg] = useState("Loading the job list...");
   const [isRefreshing, setRefresh] = useState(true);
@@ -16,7 +16,6 @@ export const useJobList = () => {
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
-  const tot = useRef<NodeJS.Timeout>();
   const changeFilter = (key: "job_id" | "status", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
@@ -30,30 +29,24 @@ export const useJobList = () => {
     setRefresh(event.target.checked);
   };
   refreshRef.current = isRefreshing;
-  const getJob = useCallback(async () => {
-    if (!refreshRef.current) {
-      return;
-    }
-    const rsp = await getJobList();
 
-    if (rsp) {
-      setList(
-        rsp.data.sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0)),
-      );
-      setMsg("Fetched jobs");
-    }
+  const { data } = useSWR(
+    "useJobList",
+    async () => {
+      const rsp = await getJobList();
 
-    tot.current = setTimeout(getJob, 4000);
-  }, []);
-
-  useEffect(() => {
-    getJob();
-    return () => {
-      if (tot.current) {
-        clearTimeout(tot.current);
+      if (rsp) {
+        setMsg("Fetched jobs");
+        return rsp.data.sort(
+          (a, b) => (b.start_time ?? 0) - (a.start_time ?? 0),
+        );
       }
-    };
-  }, [getJob]);
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
+
+  const jobList = data ?? [];
+
   return {
     jobList: jobList.filter((node) =>
       filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),

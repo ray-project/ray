@@ -193,7 +193,6 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
@@ -250,7 +249,7 @@ test_cpp() {
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
-  rm -rf ray-template && mkdir ray-template
+  rm -rf ray-template
   ray cpp --generate-bazel-project-template-to ray-template
   pushd ray-template && bash run.sh
 }
@@ -275,8 +274,7 @@ install_npm_project() {
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
-    npm i -g yarn
-    yarn
+    npm ci
   fi
 }
 
@@ -296,7 +294,7 @@ build_dashboard_front_end() {
         nvm use --silent $NODE_VERSION
       fi
       install_npm_project
-      yarn build
+      npm run build
     )
   fi
 }
@@ -574,6 +572,17 @@ lint_web() {
   )
 }
 
+check_python_test_directories_contain_init_file() {
+  cd "${WORKSPACE_DIR}"
+  while IFS= read -r -d '' test_directory
+  do
+    if [ ! -e "$test_directory"/__init__.py ]; then
+      echo "Add '__init__.py' to '$test_directory'"
+      exit 1
+    fi
+  done <   <(find python -name "tests" -type d -print0)
+}
+
 lint_copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
@@ -610,6 +619,9 @@ _lint() {
 
   # Run annotations check.
   lint_annotations
+
+  # Check Python test directories contain `__init__.py` file.
+  check_python_test_directories_contain_init_file
 
   # Make sure that the README is formatted properly.
   lint_readme

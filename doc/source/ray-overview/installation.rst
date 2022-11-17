@@ -175,7 +175,7 @@ You can install and use Ray C++ API as follows.
   pip install -U ray[cpp]
 
   # Create a Ray C++ project template to start with.
-  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
 
 .. note::
 

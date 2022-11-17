@@ -40,6 +40,7 @@ parts:
         - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
         - file: ray-air/examples/automl_with_ray_air
+        - file: ray-air/examples/batch_tuning
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
@@ -55,6 +56,8 @@ parts:
             sections:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
+              - file: data/examples/batch_training
+                title: Batch training on the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
@@ -211,12 +214,13 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/core-concepts
           - file: rllib/rllib-training
+          - file: rllib/core-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
             sections:
+              - file: rllib/rllib-advanced-api
               - file: rllib/rllib-models
               - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
