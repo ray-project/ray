@@ -570,11 +570,12 @@ converts it into a Ray Dataset directly.
 From MongoDB
 ------------
 
-The Dataset can also be created from MongoDB with :py:class:`~ray.data.read_mongo`.
-This interacts with MongoDB in a way similar to filesystems, except here you will
+A Dataset can also be created from `MongoDB <https://www.mongodb.com/>`__ with
+:py:class:`~ray.data.read_mongo`.
+This interacts with MongoDB similar to external filesystems, except here you will
 need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
 `database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
-and specify `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
+and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
 the collection. The execution results are then used to create a Dataset.
 
 .. code-block:: python
