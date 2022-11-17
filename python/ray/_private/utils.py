@@ -1735,3 +1735,4 @@ def _get_pyarrow_version() -> Optional[str]:
             if hasattr(pyarrow, "__version__"):
                 _PYARROW_VERSION = pyarrow.__version__
     return _PYARROW_VERSION
+    
