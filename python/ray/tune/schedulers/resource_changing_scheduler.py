@@ -451,7 +451,12 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(
+            new_bundles,
+            strategy=base_trial_resource.strategy,
+            *base_trial_resource._args,
+            **base_trial_resource._kwargs,
+        )
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 

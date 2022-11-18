@@ -55,6 +55,8 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
         tr = session.get_trial_resources()
+        # Ensure that strategy attribute didn't get dropped.
+        assert pgf.strategy == "SPREAD"
         assert pgf == tr, (pgf, tr)
         return super().training_loop()
 
@@ -72,7 +74,10 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
 def test_data_parallel_trainer(ray_start_8_cpus):
     num_workers = 2
     trainer = AssertingDataParallelTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=num_workers)
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers, placement_strategy="SPREAD"
+        ),
     )
     tuner = Tuner(
         trainer,
