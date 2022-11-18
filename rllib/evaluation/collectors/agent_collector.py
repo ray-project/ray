@@ -10,7 +10,10 @@ from typing import Any, Dict, List, Optional
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.spaces.space_utils import (
+    flatten_to_single_ndarray,
+    get_dummy_batch_for_space,
+)
 from ray.rllib.utils.typing import (
     EpisodeID,
     EnvID,
@@ -266,6 +269,8 @@ class AgentCollector:
                 or k.startswith("state_out_")
                 or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
+                if k == SampleBatch.ACTIONS and not self.disable_action_flattening:
+                    v = flatten_to_single_ndarray(v)
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -511,6 +516,8 @@ class AgentCollector:
                 or col.startswith("state_out_")
                 or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
+                if col == SampleBatch.ACTIONS and not self.disable_action_flattening:
+                    data = flatten_to_single_ndarray(data)
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [
