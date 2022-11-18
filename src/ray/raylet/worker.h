@@ -140,104 +140,102 @@ class Worker : public WorkerInterface {
          StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
-  rpc::WorkerType GetWorkerType() const override;
-  void MarkDead() override;
-  bool IsDead() const override;
-  void MarkBlocked() override;
-  void MarkUnblocked() override;
-  bool IsBlocked() const override;
+  rpc::WorkerType GetWorkerType() const;
+  void MarkDead();
+  bool IsDead() const;
+  void MarkBlocked();
+  void MarkUnblocked();
+  bool IsBlocked() const;
   /// Return the worker's ID.
-  WorkerID WorkerId() const override;
+  WorkerID WorkerId() const;
   /// Return the worker process.
-  Process GetProcess() const override;
+  Process GetProcess() const;
   /// Return the worker process's startup token
-  StartupToken GetStartupToken() const override;
-  void SetProcess(Process proc) override;
-  Language GetLanguage() const override;
-  const std::string IpAddress() const override;
-  void AsyncNotifyGCSRestart() override;
+  StartupToken GetStartupToken() const;
+  void SetProcess(Process proc);
+  Language GetLanguage() const;
+  const std::string IpAddress() const;
+  void AsyncNotifyGCSRestart();
   /// Connect this worker's gRPC client.
-  void Connect(int port) override;
+  void Connect(int port);
   /// Testing-only
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override;
-  int Port() const override;
-  int AssignedPort() const override;
-  void SetAssignedPort(int port) override;
-  void AssignTaskId(const TaskID &task_id) override;
-  const TaskID &GetAssignedTaskId() const override;
-  bool AddBlockedTaskId(const TaskID &task_id) override;
-  bool RemoveBlockedTaskId(const TaskID &task_id) override;
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const override;
-  const JobID &GetAssignedJobId() const override;
-  int GetRuntimeEnvHash() const override;
-  void AssignActorId(const ActorID &actor_id) override;
-  const ActorID &GetActorId() const override;
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
+  int Port() const;
+  int AssignedPort() const;
+  void SetAssignedPort(int port);
+  void AssignTaskId(const TaskID &task_id);
+  const TaskID &GetAssignedTaskId() const;
+  bool AddBlockedTaskId(const TaskID &task_id);
+  bool RemoveBlockedTaskId(const TaskID &task_id);
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
+  const JobID &GetAssignedJobId() const;
+  int GetRuntimeEnvHash() const;
+  void AssignActorId(const ActorID &actor_id);
+  const ActorID &GetActorId() const;
   // Creates the debug string for the ID of the task or actor depending on which is
   // running.
-  const std::string GetTaskOrActorIdAsDebugString() const override;
-  void MarkDetachedActor() override;
-  bool IsDetachedActor() const override;
-  const std::shared_ptr<ClientConnection> Connection() const override;
-  void SetOwnerAddress(const rpc::Address &address) override;
-  const rpc::Address &GetOwnerAddress() const override;
+  const std::string GetTaskOrActorIdAsDebugString() const;
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
+  const std::shared_ptr<ClientConnection> Connection() const;
+  void SetOwnerAddress(const rpc::Address &address);
+  const rpc::Address &GetOwnerAddress() const;
 
-  void DirectActorCallArgWaitComplete(int64_t tag) override;
+  void DirectActorCallArgWaitComplete(int64_t tag);
 
-  const BundleID &GetBundleId() const override;
-  void SetBundleId(const BundleID &bundle_id) override;
+  const BundleID &GetBundleId() const;
+  void SetBundleId(const BundleID &bundle_id);
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
     return allocated_instances_;
   };
 
-  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; }
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
 
-  void ClearLifetimeAllocatedInstances() override {
-    lifetime_allocated_instances_ = nullptr;
-  };
+  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  RayTask &GetAssignedTask() override { return assigned_task_; };
+  RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const RayTask &assigned_task) override {
+  void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
     task_assign_time_ = std::chrono::steady_clock::now();
   };
 
-  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const override {
+  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const {
     return task_assign_time_;
   };
 
-  bool IsRegistered() override { return rpc_client_ != nullptr; }
+  bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  bool IsAvailableForScheduling() const override {
+  bool IsAvailableForScheduling() const {
     return !IsDead()                        // Not dead
            && !GetAssignedTaskId().IsNil()  // No assigned task
            && !IsBlocked()                  // Not blocked
            && GetActorId().IsNil();         // No assigned actor
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
+  rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
 
  protected:
-  void SetStartupToken(StartupToken startup_token) override;
+  void SetStartupToken(StartupToken startup_token);
 
  private:
   /// The worker's ID.
