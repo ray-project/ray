@@ -210,7 +210,6 @@ class Node:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
             storage_uri = ray_params.storage
-
             if storage_uri is None:
                 storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
 

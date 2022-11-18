@@ -29,7 +29,8 @@ def stop_gcs_server():
     os.kill(pid, signal.SIGCONT)
 
 
-def test_kv_basic(ray_start_regular):
+def test_kv_basic(ray_start_regular, monkeypatch):
+    monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
     # Wait until all other calls finished
