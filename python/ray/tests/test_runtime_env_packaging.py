@@ -479,21 +479,21 @@ class TestParseUri:
             (
                 "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.GS,
-                "gs_fake_2022-10-21T13_11_35+00_00_package.zip",
+                "gs_fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
             (
                 "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.S3,
-                "s3_fake_2022-10-21T13_11_35+00_00_package.zip",
+                "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
             (
-                "file://fake/2022-10-21T13:11:35+00:00/package.zip",
+                "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
-                "file__2022-10-21T13_11_35+00_00_package.zip",
+                "file__fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
         ],
     )
-    def test_parse_uris_with_colons(self, parsing_tuple):
+    def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
         raw_uri, protocol, parsed_uri = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(raw_uri)
         assert parsed_protocol == protocol

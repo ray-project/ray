@@ -174,9 +174,12 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     if protocol in Protocol.remote_protocols():
         package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-    disallowed_chars = ["/", ":", "@"]
+    disallowed_chars = ["/", ":", "@", "+"]
     for disallowed_char in disallowed_chars:
         package_name = package_name.replace(disallowed_char, "_")
+
+    # Remove all periods except the last one, which is used for the file extension
+    package_name = package_name.replace(".", "_", package_name.count(".") - 1)
 
     return (protocol, package_name)
 
