@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 import ray
 
@@ -6,7 +6,6 @@ from ray.air.config import RunConfig
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal, TrainableTypeOrTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
@@ -16,8 +15,6 @@ from ray.tune.progress_reporter import (
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 
-if TYPE_CHECKING:
-    from ray.train.trainer import BaseTrainer
 
 ClientActorHandle = Any
 
