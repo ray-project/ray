@@ -1049,13 +1049,13 @@ app = f.bind()
 
     ref = send_request.remote()
 
-    def check_one_replicas():
+    def check_num_replicas(num: int):
         actors = state_api.list_actors(
             filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
         )
-        return len(actors) == 1
+        return len(actors) == num
 
-    wait_for_condition(check_one_replicas, retry_interval_ms=1000, timeout=20)
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
     signal.send.remote()
     existing_pid = ray.get(ref)
@@ -1064,12 +1064,26 @@ app = f.bind()
     payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
     client.deploy_application(payload)
     wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
-    wait_for_condition(check_one_replicas, retry_interval_ms=1000, timeout=20)
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
     # Step 5: Make sure it is the same replica (lightweight change).
     for _ in range(10):
         other_pid = ray.get(send_request.remote())
         assert other_pid == existing_pid
+
+    # Step 6: Make sure initial_replicas overrides previous replicas
+    payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 5
+    payload["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
+    payload["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
+
+    # Step 7: Make sure original replica is still running (lightweight change)
+    pids = set()
+    for _ in range(15):
+        pids.add(ray.get(send_request.remote()))
+    assert existing_pid in pids
 
 
 if __name__ == "__main__":
