@@ -323,12 +323,13 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         """
         if not RAY_HEAD_POD_NAME:
             return ""
+        # Patch the head pod.
         resource_path = f"pods/{RAY_HEAD_POD_NAME}"
         # Patch the annotation "ray.io/autoscaler-update-timestamp"
         patch_path = "/metadata/annotations/ray.io~1autoscaler-update-timestamp"
         # Mimic the timestamp format used by K8s.
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        payload = [replace_patch(patch_path, timestamp)]
+        value = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = [replace_patch(patch_path, value)]
         pod_resp = self._patch(resource_path, payload)
         # The response carries the pod resource version at which the patch
         # was accepted.
