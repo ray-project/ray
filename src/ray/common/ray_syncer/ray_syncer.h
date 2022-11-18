@@ -97,8 +97,8 @@ class RaySyncer {
   /// for the connection.
   ///
   /// \param connection The connection to the remote node.
-  void Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel);
-  void Connect(NodeSyncConnection* connection);
+  void Connect(const std::string &node_id, std::shared_ptr<grpc::Channel> channel);
+  void Connect(NodeSyncConnection *connection);
 
   void Disconnect(const std::string &node_id);
 
@@ -135,9 +135,11 @@ class RaySyncer {
   /// \param message The message to be broadcasted.
   void BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
+  std::vector<std::string> GetAllConnectedNodeIDs() const;
+
  private:
   std::shared_ptr<bool> stopped_;
-  
+
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
 
@@ -155,7 +157,7 @@ class RaySyncer {
   const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
-  absl::flat_hash_map<std::string, NodeSyncConnection*> sync_connections_;
+  absl::flat_hash_map<std::string, NodeSyncConnection *> sync_connections_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
@@ -185,7 +187,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 
   ~RaySyncerService();
 
-  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>* StartSync(grpc::CallbackServerContext* context) override;
+  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
+      grpc::CallbackServerContext *context) override;
 
  private:
   // The ray syncer this RPC wrappers of.

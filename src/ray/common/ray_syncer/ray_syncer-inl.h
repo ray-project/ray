@@ -83,8 +83,9 @@ class NodeSyncConnection {
  public:
   NodeSyncConnection(
       instrumented_io_context &io_context,
+      const std::string &remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string&, bool)> cleanup_cb);
+      std::function<void(const std::string &, bool)> cleanup_cb);
 
   /// Push a message to the sending queue to be sent later. Some message
   /// might be dropped if the module think the target node has already got the
@@ -96,9 +97,6 @@ class NodeSyncConnection {
   /// \return true if push to queue successfully.
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
-  /// Flush the streaming buffer
-  void Flush();
-
   virtual ~NodeSyncConnection() {}
 
   /// Return the remote node id of this connection.
@@ -109,10 +107,24 @@ class NodeSyncConnection {
   /// \param messages The message received.
   void ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message);
 
+  virtual void Disconnect() = 0;
+
  protected:
+  std::shared_ptr<std::atomic<bool>> stopped_ =
+      std::make_shared<std::atomic<bool>>(false);
+
+  /// The io context
+  instrumented_io_context &io_context_;
+
+  /// Handler of a message update.
+  const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
+  void OnSendDone(bool success, std::shared_ptr<const RaySyncMessage> message);
+
+ private:
   void StartSend();
-  
-  virtual void Send(std::shared_ptr<const RaySyncMessage> message) = 0;
+
+  virtual void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) = 0;
 
   // For testing
   FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
@@ -121,15 +133,8 @@ class NodeSyncConnection {
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
 
-  /// The io context
-  instrumented_io_context &io_context_;
-
   /// The remote node id.
-  std::string remote_node_id_;
-
-  /// Handler of a message update.
-  std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
-  std::function<void(const std::string&, bool)> cleanup_cb_;
+  const std::string remote_node_id_;
 
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
@@ -145,67 +150,72 @@ class NodeSyncConnection {
   bool sending_ = false;
 };
 
-extern RaySyncMessage _empty_msg;
-
-template<typename T>
+template <typename T>
 class BidiReactor : public T, public NodeSyncConnection {
  public:
   BidiReactor(
       instrumented_io_context &io_context,
+      const std::string &remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string&, bool)> cleanup_cb)
-      : NodeSyncConnection(io_context, std::move(message_processor), std::move(cleanup_cb)) {}
+      std::function<void(const std::string &, bool)> cleanup_cb)
+      : NodeSyncConnection(io_context,
+                           remote_node_id,
+                           std::move(message_processor),
+                           std::move(cleanup_cb)) {}
 
-  using T::StartWrite;
   using T::StartRead;
-  
-  void Send(std::shared_ptr<const RaySyncMessage> message) {
+  using T::StartWrite;
+
+  void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) override {
     sending_message_ = std::move(message);
-    if(sending_message_ != nullptr) {
-      grpc::WriteOptions opts;
-      opts.set_corked();
-      StartWrite(message.get(), opts);
+    grpc::WriteOptions opts;
+    if (flush) {
+      opts.clear_buffer_hint();
     } else {
-      grpc::WriteOptions opts;
-      opts.clear_corked();
-      StartWrite(&_empty_msg, opts);
+      opts.set_buffer_hint();
     }
+    RAY_LOG(DEBUG) << "[BidiReactor] Sending message to "
+                   << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
+                   << NodeID::FromBinary(sending_message_->node_id());
+    StartWrite(sending_message_.get(), opts);
   }
 
   void StartPull() {
+    if (*stopped_) {
+      return;
+    }
     receiving_message_ = std::make_shared<RaySyncMessage>();
     RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
     StartRead(receiving_message_.get());
   }
-  
+
   void OnWriteDone(bool ok) {
-    io_context_.dispatch([this, ok]() {
-      if(ok) {
-        sending_message_.reset();
-      } else {
-        RAY_LOG(ERROR) << "Failed to send the message to: " << NodeID::FromBinary(remote_node_id_);
-        if(sending_message_ == nullptr) {
-          // This is a flush message
-          sending_ = true;
-        } else {
-          // Resend the message
-          PushToSendingQueue(std::move(sending_message_));
-        }
-      }
-      StartSend();
-    }, "");
+    io_context_.dispatch(
+        [this, stopped = stopped_, ok]() {
+          if (stopped->load()) {
+            return;
+          }
+          OnSendDone(ok, std::move(sending_message_));
+        },
+        "");
   }
 
   void OnReadDone(bool ok) {
-    RAY_LOG(DEBUG) << "Receive messages: " << ok << ", node_id=" << NodeID::FromBinary(receiving_message_->node_id());
-    if(ok && !receiving_message_->node_id().empty()) {
-      io_context_.dispatch([this, msg = std::move(receiving_message_)]() mutable {
-        ReceiveUpdate(std::move(msg));
-      }, "");
+    if (!ok) {
+      return;
     }
-    StartPull();
+    io_context_.dispatch(
+        [this, stopped = stopped_, msg = std::move(receiving_message_)]() mutable {
+          if (stopped->load()) {
+            return;
+          }
+          RAY_CHECK(!msg->node_id().empty());
+          ReceiveUpdate(std::move(msg));
+          StartPull();
+        },
+        "");
   }
-  
+
  protected:
   /// grpc requests for sending and receiving
   std::shared_ptr<const RaySyncMessage> sending_message_;
@@ -216,40 +226,42 @@ class BidiReactor : public T, public NodeSyncConnection {
 class RayServerBidiReactor : public BidiReactor<ServerBidiReactor> {
  public:
   RayServerBidiReactor(
-      grpc::CallbackServerContext* server_context,
+      grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
       const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string&, bool)> cleanup_cb);
+      std::function<void(const std::string &, bool)> cleanup_cb);
 
   ~RayServerBidiReactor() override = default;
-  
- protected:
-  void OnDone()  override;
-  
-  /// grpc callback context
-  grpc::CallbackServerContext* server_context_;
 
+  void Disconnect() override;
+
+ protected:
+  void OnCancel() override;
+  void OnDone() override;
+
+  /// grpc callback context
+  grpc::CallbackServerContext *server_context_;
 };
 
 /// SyncConnection for gRPC client side. It has customized logic for sending.
 class RayClientBidiReactor : public BidiReactor<ClientBidiReactor> {
  public:
   RayClientBidiReactor(
-      const std::string& remote_node_id,
-      const std::string& local_node_id,
+      const std::string &remote_node_id,
+      const std::string &local_node_id,
       instrumented_io_context &io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string&, bool)> cleanup_cb,
+      std::function<void(const std::string &, bool)> cleanup_cb,
       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
   ~RayClientBidiReactor() override = default;
+
+  void Disconnect() override;
+
  protected:
-
-  void Send(std::shared_ptr<const RaySyncMessage> message) override;
-
   /// Callback from gRPC
-  void OnDone(const grpc::Status& status) override;
+  void OnDone(const grpc::Status &status) override;
 
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
 
@@ -259,7 +271,6 @@ class RayClientBidiReactor : public BidiReactor<ClientBidiReactor> {
   /// grpc requests for sending and receiving
   std::shared_ptr<const RaySyncMessage> sending_message_;
   std::shared_ptr<RaySyncMessage> receiving_message_;
-
 };
 
 }  // namespace syncer

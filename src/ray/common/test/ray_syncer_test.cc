@@ -44,6 +44,9 @@ namespace syncer {
 
 constexpr size_t kTestComponents = 1;
 
+using work_guard_type =
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
+
 RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
   auto msg = RaySyncMessage();
   msg.set_version(version);
@@ -55,6 +58,7 @@ RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
 class RaySyncerTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
     local_versions_.fill(0);
     for (size_t cid = 0; cid < reporters_.size(); ++cid) {
       receivers_[cid] = std::make_unique<MockReceiverInterface>();
@@ -74,10 +78,7 @@ class RaySyncerTest : public ::testing::Test {
       ON_CALL(*reporter, CreateSyncMessage(_, _))
           .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
     }
-    thread_ = std::make_unique<std::thread>([this]() {
-      boost::asio::io_context::work work(io_context_);
-      io_context_.run();
-    });
+    thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
     syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary());
   }
@@ -95,7 +96,7 @@ class RaySyncerTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    io_context_.stop();
+    work_guard_->reset();
     thread_->join();
   }
 
@@ -106,6 +107,7 @@ class RaySyncerTest : public ::testing::Test {
       nullptr};
 
   instrumented_io_context io_context_;
+  std::unique_ptr<work_guard_type> work_guard_;
   std::unique_ptr<std::thread> thread_;
 
   std::unique_ptr<RaySyncer> syncer_;
@@ -178,7 +180,7 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
 // }
 
 struct SyncerServerTest {
-  SyncerServerTest(std::string port) {
+  SyncerServerTest(std::string port) : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
     auto node_id = NodeID::FromRandom();
@@ -187,10 +189,7 @@ struct SyncerServerTest {
     }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
-    thread = std::make_unique<std::thread>([this] {
-      boost::asio::io_context::work work(io_context);
-      io_context.run();
-    });
+    thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = std::string("0.0.0.0:") + port;
     grpc::ServerBuilder builder;
@@ -200,9 +199,10 @@ struct SyncerServerTest {
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
-      auto snapshot_received = [this, node_id](std::shared_ptr<const RaySyncMessage> message) {
-        RAY_LOG(DEBUG) << "Message received: from " << NodeID::FromBinary(message->node_id())
-                       << " to " << node_id;
+      auto snapshot_received = [this,
+                                node_id](std::shared_ptr<const RaySyncMessage> message) {
+        RAY_LOG(DEBUG) << "Message received: from "
+                       << NodeID::FromBinary(message->node_id()) << " to " << node_id;
         auto iter = received_versions.find(message->node_id());
         if (iter == received_versions.end()) {
           for (auto &v : received_versions[message->node_id()]) {
@@ -214,7 +214,8 @@ struct SyncerServerTest {
         received_versions[message->node_id()][message->message_type()] =
             message->version();
         message_consumed[message->node_id()]++;
-        RAY_LOG(DEBUG) << "Message consumed from " << NodeID::FromBinary(message->node_id())
+        RAY_LOG(DEBUG) << "Message consumed from "
+                       << NodeID::FromBinary(message->node_id())
                        << ", local_id=" << node_id;
       };
       receivers[cid] = std::make_unique<MockReceiverInterface>();
@@ -285,11 +286,19 @@ struct SyncerServerTest {
     return false;
   }
 
-  ~SyncerServerTest() {
-    service.reset();
-    server.reset();
+  void Stop() {
+    for (auto node_id : syncer->GetAllConnectedNodeIDs()) {
+      syncer->Disconnect(node_id);
+    }
+
+    server->Shutdown();
+
     io_context.stop();
     thread->join();
+
+    server.reset();
+    service.reset();
+
     syncer.reset();
   }
 
@@ -318,7 +327,9 @@ struct SyncerServerTest {
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
+
   instrumented_io_context io_context;
+  work_guard_type work_guard;
   std::string server_port;
   std::array<std::atomic<int64_t>, kTestComponents> local_versions;
   std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters = {
@@ -371,10 +382,29 @@ using TClusterView = absl::flat_hash_map<
     std::string,
     std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>;
 
-TEST(SyncerTest, Test1To1) {
-  auto s1 = SyncerServerTest("19990");
+class SyncerTest : public ::testing::Test {
+ public:
+  SyncerServerTest &MakeServer(std::string port) {
+    servers.emplace_back(std::make_unique<SyncerServerTest>(port));
+    return *servers.back();
+  }
 
-  auto s2 = SyncerServerTest("19991");
+ protected:
+  void TearDown() override {
+    // Drain all grpc requests.
+    for (auto &s : servers) {
+      s->Stop();
+    }
+
+    std::this_thread::sleep_for(1s);
+  }
+  std::vector<std::unique_ptr<SyncerServerTest>> servers;
+};
+
+TEST_F(SyncerTest, Test1To1) {
+  auto &s1 = MakeServer("19990");
+
+  auto &s2 = MakeServer("19991");
 
   // Make sure the setup is correct
   ASSERT_NE(nullptr, s1.receivers[MessageType::RESOURCE_VIEW]);
@@ -383,6 +413,7 @@ TEST(SyncerTest, Test1To1) {
   ASSERT_NE(nullptr, s2.reporters[MessageType::RESOURCE_VIEW]);
   RAY_LOG(DEBUG) << "s1: " << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
   RAY_LOG(DEBUG) << "s2: " << NodeID::FromBinary(s2.syncer->GetLocalNodeID());
+
   auto channel_to_s2 = MakeChannel("19991");
 
   s1.syncer->Connect(s2.syncer->GetLocalNodeID(), channel_to_s2);
@@ -404,7 +435,8 @@ TEST(SyncerTest, Test1To1) {
   // s1 will only send 1 message to s2 because it only has one reporter
   ASSERT_TRUE(s2.WaitUntil(
       [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
-        RAY_LOG(DEBUG) << NodeID::FromBinary(node_id) << " - " << s2.GetNumConsumedMessages(node_id);
+        RAY_LOG(DEBUG) << NodeID::FromBinary(node_id) << " - "
+                       << s2.GetNumConsumedMessages(node_id);
         return s2.GetNumConsumedMessages(node_id) == 1;
       },
       5));
@@ -412,7 +444,9 @@ TEST(SyncerTest, Test1To1) {
   // s2 will send 2 messages to s1 because it has two reporters.
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() {
-        RAY_LOG(DEBUG) << "Num of messages from " << NodeID::FromBinary(node_id) << " to " << NodeID::FromBinary(s1.syncer->GetLocalNodeID()) << " is " << s1.GetNumConsumedMessages(node_id);
+        RAY_LOG(DEBUG) << "Num of messages from " << NodeID::FromBinary(node_id) << " to "
+                       << NodeID::FromBinary(s1.syncer->GetLocalNodeID()) << " is "
+                       << s1.GetNumConsumedMessages(node_id);
         return s1.GetNumConsumedMessages(node_id) == 1;
       },
       5));
@@ -482,7 +516,7 @@ TEST(SyncerTest, Test1To1) {
   ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 }
 
-TEST(SyncerTest, Reconnect) {
+TEST_F(SyncerTest, Reconnect) {
   // This test is to check reconnect works.
   // Firstly
   //    s1 -> s3
@@ -490,9 +524,9 @@ TEST(SyncerTest, Reconnect) {
   //    s2 -> s3
   // And we need to ensure s3 is connecting to s2
 
-  auto s1 = SyncerServerTest("19990");
-  auto s2 = SyncerServerTest("19991");
-  auto s3 = SyncerServerTest("19992");
+  auto &s1 = MakeServer("19990");
+  auto &s2 = MakeServer("19991");
+  auto &s3 = MakeServer("19992");
 
   s1.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
 
@@ -517,11 +551,11 @@ TEST(SyncerTest, Reconnect) {
       5));
 }
 
-TEST(SyncerTest, Broadcast) {
+TEST_F(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
-  auto s1 = SyncerServerTest("19990");
-  auto s2 = SyncerServerTest("19991");
-  auto s3 = SyncerServerTest("19992");
+  auto &s1 = MakeServer("19990");
+  auto &s2 = MakeServer("19991");
+  auto &s3 = MakeServer("19992");
   // We need to make sure s1 is sending data to s3 for s2
   s1.syncer->Connect(s2.syncer->GetLocalNodeID(), MakeChannel("19991"));
   s1.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
@@ -561,7 +595,7 @@ TEST(SyncerTest, Broadcast) {
       5));
 }
 
-bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
+bool CompareViews(const std::vector<SyncerServerTest *> &servers,
                   const std::vector<TClusterView> &views,
                   const std::vector<std::set<size_t>> &g) {
   // Check broadcasting is working
@@ -602,7 +636,7 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
 }
 
 bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
-                     std::vector<std::unique_ptr<SyncerServerTest>> &servers,
+                     std::vector<SyncerServerTest *> &servers,
                      const std::vector<std::set<size_t>> &g) {
   auto check = [&servers, get_cluster_view, &g]() {
     std::vector<TClusterView> views;
@@ -663,15 +697,16 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
   return check();
 }
 
-TEST(SyncerTest, Test1ToN) {
+TEST_F(SyncerTest, Test1ToN) {
   size_t base_port = 18990;
-  std::vector<std::unique_ptr<SyncerServerTest>> servers;
+  std::vector<SyncerServerTest *> servers;
   for (int i = 0; i < 20; ++i) {
-    servers.push_back(std::make_unique<SyncerServerTest>(std::to_string(i + base_port)));
+    servers.push_back(&MakeServer(std::to_string(i + base_port)));
   }
   std::vector<std::set<size_t>> g(servers.size());
   for (size_t i = 1; i < servers.size(); ++i) {
-    servers[0]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(), MakeChannel(servers[i]->server_port));
+    servers[0]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(),
+                                MakeChannel(servers[i]->server_port));
     g[0].insert(i);
   }
 
@@ -687,11 +722,11 @@ TEST(SyncerTest, Test1ToN) {
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
-TEST(SyncerTest, TestMToN) {
+TEST_F(SyncerTest, TestMToN) {
   size_t base_port = 18990;
-  std::vector<std::unique_ptr<SyncerServerTest>> servers;
+  std::vector<SyncerServerTest *> servers;
   for (int i = 0; i < 20; ++i) {
-    servers.push_back(std::make_unique<SyncerServerTest>(std::to_string(i + base_port)));
+    servers.push_back(&MakeServer(std::to_string(i + base_port)));
   }
   std::vector<std::set<size_t>> g(servers.size());
   // Try to construct a tree based structure
@@ -700,7 +735,8 @@ TEST(SyncerTest, TestMToN) {
   while (i < servers.size()) {
     // try to connect to 2 servers per node.
     for (int k = 0; k < 2 && i < servers.size(); ++k, ++i) {
-      servers[curr]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(), MakeChannel(servers[i]->server_port));
+      servers[curr]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(),
+                                     MakeChannel(servers[i]->server_port));
       g[curr].insert(i);
     }
     ++curr;
@@ -730,5 +766,8 @@ int main(int argc, char **argv) {
   ray::RayLog::InstallTerminateHandler();
 
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  auto ret = RUN_ALL_TESTS();
+  // Sleep for gRPC to gracefully shutdown.
+  std::this_thread::sleep_for(2s);
+  return ret;
 }
