@@ -183,9 +183,7 @@ RayServerBidiReactor::RayServerBidiReactor(
   StartPull();
 }
 
-void RayServerBidiReactor::Disconnect() {
-  Finish(grpc::Status::OK);
-}
+void RayServerBidiReactor::Disconnect() { Finish(grpc::Status::OK); }
 
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
 
@@ -224,9 +222,7 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
   delete this;
 }
 
-void RayClientBidiReactor::Disconnect() {
-  StartWritesDone();
-}
+void RayClientBidiReactor::Disconnect() { StartWritesDone(); }
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id)

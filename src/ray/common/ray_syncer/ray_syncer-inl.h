@@ -110,7 +110,6 @@ class NodeSyncConnection {
   virtual void Disconnect() = 0;
 
  protected:
-
   /// The io context
   instrumented_io_context &io_context_;
 
@@ -185,11 +184,8 @@ class BidiReactor : public T, public NodeSyncConnection {
   }
 
   void OnWriteDone(bool ok) {
-    io_context_.dispatch(
-        [this, ok]() {
-          OnSendDone(ok, std::move(sending_message_));
-        },
-        "");
+    io_context_.dispatch([this, ok]() { OnSendDone(ok, std::move(sending_message_)); },
+                         "");
   }
 
   void OnReadDone(bool ok) {
