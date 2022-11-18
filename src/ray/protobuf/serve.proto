@@ -27,8 +27,9 @@ option java_multiple_files = true;
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
   uint32 min_replicas = 1;
-  // Initial number of replicas deployment should start with.
-  uint32 initial_replicas = 2;
+  // Initial number of replicas deployment should start with. Must be greater
+  // than or equal to -1. -1 means no initial_replicas was set.
+  int32 initial_replicas = 2;
   // Maximal number of replicas, must be a non-negative integer and greater or equals
   // to min_replicas.
   uint32 max_replicas = 3;

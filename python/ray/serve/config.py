@@ -42,7 +42,7 @@ class AutoscalingConfig(BaseModel):
 
     # Publicly exposed options
     min_replicas: NonNegativeInt = 1
-    initial_replicas: NonNegativeInt = None
+    initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
     target_num_ongoing_requests_per_replica: NonNegativeInt = 1
 
@@ -66,13 +66,6 @@ class AutoscalingConfig(BaseModel):
     downscale_delay_s: NonNegativeFloat = 600.0
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
-
-    @validator("initial_replicas", pre=True, always=True)
-    def set_initial_replicas_to_min_by_default(cls, v, values):
-        if v is None:
-            return values["min_replicas"]
-        else:
-            return v
 
     @validator("max_replicas")
     def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
@@ -198,6 +191,8 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
+            if data["autoscaling_config"] is None:
+                data["autoscaling_config"] = -1
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -236,6 +231,8 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
+            if data["autoscaling_config"]["initial_replicas"] == -1:
+                data["autoscaling_config"]["initial_replicas"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
