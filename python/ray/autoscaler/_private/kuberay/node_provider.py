@@ -241,16 +241,15 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
             f" at pods resource version >= {resource_version}."
         )
         resource_path = (
-            "pods" +
-            f"?labelSelector={label_selector}" +
-            f"&resourceVersion={resource_version}"
+            "pods"
+            + f"?labelSelector={label_selector}"
+            + f"&resourceVersion={resource_version}"
         )
 
         pod_list = self._get(resource_path)
         fetched_resource_version = pod_list["metadata"]["resourceVersion"]
         logger.info(
-            f"Fetched pod data at resource version"
-            f" {fetched_resource_version}."
+            f"Fetched pod data at resource version" f" {fetched_resource_version}."
         )
 
         # Extract node data from the pod list.
