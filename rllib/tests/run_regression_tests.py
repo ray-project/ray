@@ -98,6 +98,8 @@ if __name__ == "__main__":
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
+            if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
+                continue
             experiments = load_experiments_from_file(file, SupportedFileType.python)
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
