@@ -169,6 +169,7 @@ class _ParquetDatasourceReader(Reader):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        local_uri: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
@@ -183,6 +184,15 @@ class _ParquetDatasourceReader(Reader):
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         if len(paths) == 1:
             paths = paths[0]
+
+        self._local_scheduling = None
+        if local_uri:
+            import ray
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+            self._local_scheduling = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
@@ -215,7 +225,15 @@ class _ParquetDatasourceReader(Reader):
             inferred_schema = schema
 
         try:
-            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+            prefetch_remote_args = {}
+            if self._local_scheduling:
+                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            self._metadata = (
+                meta_provider.prefetch_file_metadata(
+                    pq_ds.pieces, **prefetch_remote_args
+                )
+                or []
+            )
         except OSError as e:
             _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
@@ -309,13 +327,14 @@ class _ParquetDatasourceReader(Reader):
 
         sample_piece = cached_remote_fn(_sample_piece)
         futures = []
+        scheduling = self._local_scheduling or "SPREAD"
         for sample in file_samples:
             # Sample the first rows batch in i-th file.
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             serialized_sample = _SerializedPiece(sample)
             futures.append(
-                sample_piece.options(scheduling_strategy="SPREAD").remote(
+                sample_piece.options(scheduling_strategy=scheduling).remote(
                     self._reader_args,
                     self._columns,
                     self._schema,
@@ -385,6 +404,7 @@ def _read_pieces(
 
 def _fetch_metadata_remotely(
     pieces: List["pyarrow._dataset.ParquetFileFragment"],
+    **ray_remote_args,
 ) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
 
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
@@ -394,7 +414,11 @@ def _fetch_metadata_remotely(
     for pcs in np.array_split(pieces, parallelism):
         if len(pcs) == 0:
             continue
-        metas.append(remote_fetch_metadata.remote([_SerializedPiece(p) for p in pcs]))
+        metas.append(
+            remote_fetch_metadata.options(**ray_remote_args).remote(
+                [_SerializedPiece(p) for p in pcs]
+            )
+        )
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
