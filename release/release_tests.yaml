@@ -2291,7 +2291,8 @@
   run:
     timeout: 600
     script: python workloads/jobs_check_cuda_available.py
-
+    wait_for_nodes:
+      num_nodes: 2
     type: job
     file_manager: job
 
