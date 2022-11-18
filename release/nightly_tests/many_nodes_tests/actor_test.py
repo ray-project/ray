@@ -47,7 +47,9 @@ def main():
     total_actors = len(actors)
     while len(actors) != 0:
         actors = test_actor_ready(actors, 10)
-        print(f"Status: {total_actors - len(actors)}/{len(total_actors)}, {perf_counter() - actor_ready_start}")
+        print(
+            f"Status: {total_actors - len(actors)}/{len(total_actors)}, {perf_counter() - actor_ready_start}"
+        )
     actor_ready_end = perf_counter()
     actor_ready_time = actor_ready_end - actor_ready_start
 
