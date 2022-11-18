@@ -129,9 +129,6 @@ bool NodeSyncConnection::PushToSendingQueue(
 }
 
 void NodeSyncConnection::StartSend() {
-  if (*stopped_) {
-    return;
-  }
   if (sending_) {
     return;
   }
@@ -187,7 +184,6 @@ RayServerBidiReactor::RayServerBidiReactor(
 }
 
 void RayServerBidiReactor::Disconnect() {
-  stopped_->store(true);
   Finish(grpc::Status::OK);
 }
 
@@ -229,7 +225,6 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
 }
 
 void RayClientBidiReactor::Disconnect() {
-  stopped_->store(true);
   StartWritesDone();
 }
 

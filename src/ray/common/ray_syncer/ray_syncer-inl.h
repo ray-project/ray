@@ -110,8 +110,6 @@ class NodeSyncConnection {
   virtual void Disconnect() = 0;
 
  protected:
-  std::shared_ptr<std::atomic<bool>> stopped_ =
-      std::make_shared<std::atomic<bool>>(false);
 
   /// The io context
   instrumented_io_context &io_context_;
@@ -181,9 +179,6 @@ class BidiReactor : public T, public NodeSyncConnection {
   }
 
   void StartPull() {
-    if (*stopped_) {
-      return;
-    }
     receiving_message_ = std::make_shared<RaySyncMessage>();
     RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
     StartRead(receiving_message_.get());
@@ -191,10 +186,7 @@ class BidiReactor : public T, public NodeSyncConnection {
 
   void OnWriteDone(bool ok) {
     io_context_.dispatch(
-        [this, stopped = stopped_, ok]() {
-          if (stopped->load()) {
-            return;
-          }
+        [this, ok]() {
           OnSendDone(ok, std::move(sending_message_));
         },
         "");
@@ -205,10 +197,7 @@ class BidiReactor : public T, public NodeSyncConnection {
       return;
     }
     io_context_.dispatch(
-        [this, stopped = stopped_, msg = std::move(receiving_message_)]() mutable {
-          if (stopped->load()) {
-            return;
-          }
+        [this, msg = std::move(receiving_message_)]() mutable {
           RAY_CHECK(!msg->node_id().empty());
           ReceiveUpdate(std::move(msg));
           StartPull();
