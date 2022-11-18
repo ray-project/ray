@@ -86,7 +86,7 @@ This section shows how to create single and multi-column tensor datasets.
 
   For tensors stored in other formats (e.g., pickled), you can specify a deserializer
   :ref:`user-defined function <transform_datasets_writing_udfs>` that returns
-  :class:`~ray.data.extensions.tensor_extensions.TensorArray` columns:
+  :class:`~ray.data.extensions.tensor_extension.TensorArray` columns:
 
   .. literalinclude:: ./doc_code/tensor.py
     :language: python

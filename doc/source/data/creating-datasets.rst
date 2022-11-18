@@ -504,7 +504,7 @@ From Torch and TensorFlow
     :class:`~ray.data.from_torch`.
 
     .. warning::
-        :py:class:`~ray.data.datasource.from_torch` doesn't support parallel
+        :class:`~ray.data.from_torch` doesn't support parallel
         reads. You should only use this datasource for small datasets like MNIST or
         CIFAR.
 

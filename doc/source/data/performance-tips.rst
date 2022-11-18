@@ -6,7 +6,7 @@ Performance Tips and Tuning
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
-You can view debug stats for your Dataset and DatasetPipeline executions via ``ds.stats()``.
+You can view debug stats for your Dataset and DatasetPipeline executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
 These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
 .. code-block:: python
@@ -75,8 +75,8 @@ These stats can be used to understand the performance of your Dataset workload a
 Batching Transforms
 ~~~~~~~~~~~~~~~~~~~
 
-Mapping individual records using ``.map(fn)`` can be quite slow.
-Instead, consider using ``.map_batches(batch_fn, batch_format="pandas")`` and writing your ``batch_fn`` to
+Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
+Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
 perform vectorized pandas operations.
 
 Parquet Column Pruning
@@ -84,15 +84,15 @@ Parquet Column Pruning
 
 Current Datasets will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling ``ray.data.read_parquet()`` to avoid loading unnecessary
-data (projection pushdown).
+explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
+avoid loading unnecessary data (projection pushdown).
 For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
 just two of the five columns of Iris dataset.
 
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 
-Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (filter pushdown)
+Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
 For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
@@ -116,14 +116,15 @@ Enabling Push-Based Shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
-These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
+These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
 Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
 
 Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 We recommend trying this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
-To get an idea of the performance you can expect, here are some run time results for ``Dataset.random_shuffle`` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
+To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
    :align: center
