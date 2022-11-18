@@ -99,7 +99,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     } else if (request.worker_failure().exit_type() ==
                rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
       worker_crash_oom_count_ += 1;
-      key = "extra_usage_tag_worker_crash_oom_error";
+      key = "extra_usage_tag_worker_crash_oom";
       count = worker_crash_oom_count_;
     }
     /// TODO(clarng): migrate to usage lib client once it doesn't hang

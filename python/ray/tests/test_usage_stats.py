@@ -221,8 +221,8 @@ def test_worker_crash_increment_stats():
         assert "worker_crash_system_error" in result
         assert result["worker_crash_system_error"] == "2"
 
-        assert "crash_oom_error" in result
-        assert result["crash_oom_error"] == "1"
+        assert "worker_crash_oom" in result
+        assert result["worker_crash_oom"] == "1"
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
