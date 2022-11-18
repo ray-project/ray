@@ -568,9 +568,12 @@ def get_metric_check_condition(
             found_metric = False
             if metric_name in metric_names:
                 for sample in metric_samples:
-                    if sample.name == metric_name and (
-                        metric_value is None or metric_value == sample.value
-                    ):
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
                         found_metric = True
             if not found_metric:
                 print(
