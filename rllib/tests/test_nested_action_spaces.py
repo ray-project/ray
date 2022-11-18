@@ -77,7 +77,6 @@ class NestedActionSpacesTest(unittest.TestCase):
 
         # Remove lr schedule from config, not needed here, and not supported by BC.
         del config["lr_schedule"]
-        config["enable_connectors"] = True
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
