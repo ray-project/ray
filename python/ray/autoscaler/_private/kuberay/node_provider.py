@@ -229,9 +229,29 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         # Store the raycluster CR
         self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
 
-        # Get pods filtered by cluster_name.
+        # Get the pods resource version
+        # Specifying a resource version in list requests is important for scalability:
+        # https://kubernetes.io/docs/reference/using-api/api-concepts/#semantics-for-get-and-list
+        resource_version = self._get_pods_resource_version()
+        # Filter pods by cluster_name.
         label_selector = requests.utils.quote(f"ray.io/cluster={self.cluster_name}")
-        pod_list = self._get("pods?labelSelector=" + label_selector)
+        logger.info(
+            f"Listing pods for RayCluster {self.cluster_name}"
+            f" in namespace {self.namespace}"
+            f" at pods resource version >= {resource_version}."
+        )
+        resource_path = (
+            "pods" +
+            f"?labelSelector={label_selector}" +
+            f"&resourceVersion={resource_version}"
+        )
+
+        pod_list = self._get(resource_path)
+        fetched_resource_version = pod_list["metadata"]["resourceVersion"]
+        logger.info(
+            f"Fetched pod data at resource version"
+            f" {fetched_resource_version}."
+        )
 
         # Extract node data from the pod list.
         node_data_dict = {}
