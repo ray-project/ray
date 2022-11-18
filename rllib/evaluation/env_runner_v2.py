@@ -553,6 +553,7 @@ class EnvRunnerV2:
                     to_eval=to_eval,
                     outputs=outputs,
                 )
+
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
@@ -855,8 +856,9 @@ class EnvRunnerV2:
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
             is_error = False
-            # Output the collected episode after (1) rollout metrics so that we
-            # always fetch metrics with RolloutWorker before we fetch samples
+            # Output the collected episode after adding rollout metrics so that we
+            # always fetch metrics with RolloutWorker before we fetch samples.
+            # This is because we need to behave like env_runner() for now.
             self._build_done_episode(env_id, is_done, hit_horizon, outputs)
 
         # Clean up and deleted the post-processed episode now that we have collected
