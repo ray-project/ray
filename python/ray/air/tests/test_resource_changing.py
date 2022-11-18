@@ -55,6 +55,7 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
         tr = session.get_trial_resources()
+        # Ensure that strategy attribute didn't get dropped.
         assert pgf.strategy == "SPREAD"
         assert pgf == tr, (pgf, tr)
         return super().training_loop()
