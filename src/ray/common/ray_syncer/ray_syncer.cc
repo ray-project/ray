@@ -102,9 +102,9 @@ void NodeSyncConnection::OnSendDone(bool success,
                    << NodeID::FromBinary(GetRemoteNodeID());
     // Resend the message
     PushToSendingQueue(std::move(message));
+    sending_ = false;
+    StartSend();
   }
-  sending_ = false;
-  StartSend();
 }
 
 bool NodeSyncConnection::PushToSendingQueue(
@@ -270,7 +270,7 @@ void RaySyncer::Connect(const std::string &node_id,
         sync_connections_.erase(node_id);
         if (restart) {
           RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
-                        << NodeID::FromHex(node_id);
+                        << NodeID::FromBinary(node_id);
           Connect(node_id, channel);
         }
       },
