@@ -426,7 +426,8 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status NodeInfoAccessor::DrainSelf() {
-  if (!local_node_id_.IsNil()) {
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already drained.";
     // This node is already drained.
     return Status::OK();
   }
