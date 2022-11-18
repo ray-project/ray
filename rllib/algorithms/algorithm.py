@@ -1520,7 +1520,7 @@ class Algorithm(Trainable):
                             "provided as an argument.".format(old_kwarg)
                         )
             if input_dict is not None:
-                input_dict[SampleBatch.OBS] = [np.array(observation)]
+                input_dict[SampleBatch.OBS] = [convert_to_numpy(observation)]
                 action, state, extra = policy.compute_actions_from_raw_input_dict(
                     input_dict=input_dict,
                     explore=explore,
@@ -1531,6 +1531,13 @@ class Algorithm(Trainable):
                 action = action[0]
                 state = state[0] if len(state) else state
                 extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
+
+                # NOTE: (Artur) Action connectors normalize actions already,
+                # squash here again until this API is removed
+                if not unsquash_action:
+                    action = space_utils.normalize_action(
+                        action, policy.action_space_struct
+                    )
             else:
                 action, state, extra = policy.compute_actions_from_raw_input(
                     next_obs_batch=[convert_to_numpy(observation)],
@@ -1545,6 +1552,13 @@ class Algorithm(Trainable):
                 action = action[0]
                 state = state[0] if len(state) else state
                 extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
+
+                # NOTE: (Artur) Action connectors normalize actions already,
+                # squash here again until this API is removed
+                if not unsquash_action:
+                    action = space_utils.normalize_action(
+                        action, policy.action_space_struct
+                    )
 
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
