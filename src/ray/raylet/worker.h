@@ -111,12 +111,6 @@ class WorkerInterface {
   /// Time when the last task was assigned to this worker.
   virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
 
-  /// Number of successful reuse of this worker.
-  virtual size_t GetReuseCount() const = 0;
-
-  /// Bump the reuse count of the worker.
-  virtual void BumpReuseCount() = 0;
-
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -242,10 +236,6 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
-  size_t GetReuseCount() const override { return num_reuses_; }
-
-  void BumpReuseCount() override { num_reuses_++; }
-
  protected:
   void SetStartupToken(StartupToken startup_token) override;
 
@@ -313,8 +303,6 @@ class Worker : public WorkerInterface {
   std::chrono::steady_clock::time_point task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
-  /// number of successful reuses of this worker.
-  size_t num_reuses_ = 0;
 };
 
 }  // namespace raylet

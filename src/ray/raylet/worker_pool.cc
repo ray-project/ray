@@ -960,9 +960,6 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
-    if (*worker_used) {
-      worker->BumpReuseCount();
-    }
     starting_workers_to_tasks.erase(it);
   }
 }
@@ -1242,7 +1239,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     // Start a new worker process.
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
-      RAY_LOG(DEBUG) << "Creating runtime env for task/ " << task_spec.TaskId();
+      RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
       GetOrCreateRuntimeEnv(
           task_spec.SerializedRuntimeEnv(),
           task_spec.RuntimeEnvConfig(),
