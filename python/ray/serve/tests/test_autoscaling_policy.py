@@ -881,6 +881,38 @@ def test_e2e_raise_min_replicas(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_initial_replicas(serve_instance):
+    @serve.deployment(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            initial_replicas=2,
+            max_replicas=5,
+            downscale_delay_s=3,
+        ),
+    )
+    def f():
+        return os.getpid()
+
+    serve.run(f.bind())
+
+    # f should start with initial_replicas (2) deployments
+    actors = state_api.list_actors(
+        filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+    )
+    print(actors)
+    assert len(actors) == 2
+
+    # f should scale down to min_replicas (1) deployments
+    def check_one_replica():
+        actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 1
+
+    wait_for_condition(check_one_replica, timeout=20)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_preserve_prev_replicas(serve_instance):
     signal = SignalActor.remote()
 
@@ -914,18 +946,18 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     wait_for_condition(check_two_replicas, retry_interval_ms=1000, timeout=20)
 
-    signal.send.remote()
+    ray.get(signal.send.remote())
 
-    old_pids = set(ray.get(refs))
-    assert len(old_pids) == 2
+    pids = set(ray.get(refs))
+    assert len(pids) == 2
 
     # Now re-deploy the application, make sure it is still 2 replicas and it shouldn't
     # be scaled down.
     handle = serve.run(f.bind())
-    new_pids = set(ray.get([handle.remote() for _ in range(10)]))
-    assert len(new_pids) == 2
+    pids = set(ray.get([handle.remote() for _ in range(10)]))
+    assert len(pids) == 2
 
-    def check_two_new_replicas_two_old():
+    def check_num_replicas(live: int, dead: int):
         live_actors = state_api.list_actors(
             filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
         )
@@ -933,10 +965,32 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "DEAD")]
         )
 
-        return len(live_actors) == 2 and len(dead_actors) == 2
+        return len(live_actors) == live and len(dead_actors) == dead
 
     wait_for_condition(
-        check_two_new_replicas_two_old, retry_interval_ms=1000, timeout=20
+        check_num_replicas, retry_interval_ms=1000, timeout=20, live=2, dead=2
+    )
+    ray.get(signal.send.remote())
+
+    # re-deploy the application with initial_replicas. This should override the
+    # previous number of replicas.
+    f = f.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            initial_replicas=3,
+            max_replicas=5,
+            downscale_delay_s=600,
+            upscale_delay_s=600,
+            metrics_interval_s=1,
+            look_back_period_s=1,
+        )
+    )
+    handle = serve.run(f.bind())
+    new_pids = set(ray.get([handle.remote() for _ in range(15)]))
+    assert len(new_pids) == 3
+
+    wait_for_condition(
+        check_num_replicas, retry_interval_ms=1000, timeout=20, live=3, dead=4
     )
 
 
