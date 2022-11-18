@@ -102,7 +102,7 @@ class WorkerContext {
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
-  const JobID current_job_id_;
+  JobID current_job_id_;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;

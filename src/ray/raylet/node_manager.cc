@@ -1338,7 +1338,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
         worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
-    RAY_CHECK(!job_id.IsNil());
+    // RAY_CHECK(!job_id.IsNil());
   } else {
     RAY_CHECK(job_id.IsNil());
   }

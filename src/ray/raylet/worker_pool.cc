@@ -139,7 +139,6 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
-  PrestartWorkers(Language::PYTHON, num_workers_soft_limit_);
 }
 
 WorkerPool::~WorkerPool() {
@@ -160,6 +159,7 @@ WorkerPool::~WorkerPool() {
 // grpc server is started after the WorkerPool instance is constructed.
 void WorkerPool::SetNodeManagerPort(int node_manager_port) {
   node_manager_port_ = node_manager_port;
+  PrestartWorkers(Language::PYTHON, num_workers_soft_limit_);
 }
 
 void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
@@ -417,10 +417,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      *status = PopWorkerStatus::JobConfigMissing;
-      process_failed_job_config_missing_++;
-      return {Process(), (StartupToken)-1};
+      // // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      // *status = PopWorkerStatus::JobConfigMissing;
+      // process_failed_job_config_missing_++;
+      // return {Process(), (StartupToken)-1};
     }
     job_config = &it->second;
   }
@@ -1236,8 +1236,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
       continue;
     }
+
     // Skip if the runtime env doesn't match.
     if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
+      RAY_LOG(DEBUG) << "runtime env mismatch:" << runtime_env_hash << ":"
+                     << it->first->GetRuntimeEnvHash();
       continue;
     }
 
@@ -1295,7 +1298,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 
   if (worker) {
-    RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
+    RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+              worker->GetAssignedJobId() == task_spec.JobId());
     PopWorkerCallbackAsync(callback, worker);
   }
 }
@@ -1325,15 +1329,31 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-  PrestartWorkers(task_spec.GetLanguage(), num_needed);
+    PrestartWorkers(task_spec.GetLanguage(), num_needed);
   }
 }
 
 void WorkerPool::PrestartWorkers(ray::Language language, int64_t num_needed) {
   RAY_LOG(INFO) << "Prestarting " << num_needed << " workers!";
+  static int default_runtime_env_hash = []() {
+    absl::flat_hash_map<std::string, double> required_resource;
+    if (RayConfig::instance().worker_resource_limits_enabled()) {
+      required_resource = {{"CPU", 1}};
+    }
+    WorkerCacheKey env{"",
+                       required_resource,
+                       /*is_actor*/ false,
+                       /*is_gpu*/ false};
+    return env.IntHash();
+  }();
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;
-    StartWorkerProcess(language, rpc::WorkerType::WORKER, JobID::Nil(), &status);
+    StartWorkerProcess(language,
+                       rpc::WorkerType::WORKER,
+                       JobID::Nil(),
+                       &status,
+                       {},
+                       default_runtime_env_hash);
   }
 }
 
