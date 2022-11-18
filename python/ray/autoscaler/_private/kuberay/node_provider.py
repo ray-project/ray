@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -32,6 +34,8 @@ KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 KUBERAY_KIND_HEAD = "head"
 # Group name (node type) to use for the  head.
 KUBERAY_TYPE_HEAD = "head-group"
+
+RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
 # Design:
 
@@ -312,6 +316,19 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         # It's safe to proceed with the autoscaler update.
         return True
+
+    def _get_pods_resource_version(self) -> str:
+        """Extract a recent pods resource version by patching the head pod's annotations
+        and reading metadata.resourceVersion of the response.
+        """
+        if not RAY_HEAD_POD_NAME:
+            return ""
+        path = f"pods/{RAY_HEAD_POD_NAME}/metadata/annotations"
+        # Mimic timestamp format used by K8s.
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = replace_patch(path, {"ray.io/autoscaler-update-timestamp": timestamp})
+        pods_resp = self._patch(path, payload)
+        return pods_resp["metadata"]["resourceVersion"]
 
     def _scale_request_to_patch_payload(
         self, scale_request: ScaleRequest, raycluster: Dict[str, Any]

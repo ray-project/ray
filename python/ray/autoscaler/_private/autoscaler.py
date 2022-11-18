@@ -449,8 +449,10 @@ class StandardAutoscaler:
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
         update_time = time.time() - self.last_update_time
-        logger.info(f"The autoscaler took {round(update_time, 3)}"
-                    " seconds to complete the update iteration.")
+        logger.info(
+            f"The autoscaler took {round(update_time, 3)}"
+            " seconds to complete the update iteration."
+        )
         self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
