@@ -197,6 +197,43 @@ Here is an overview of the available batch formats:
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
 
+Converting between the underlying Datasets data representations (Arrow, Pandas, and
+Python lists) and the requested batch format (``"default"``, ``"pandas"``,
+``"pyarrow"``, ``"numpy"``) may incur data copies; which conversions cause data copying
+is given in the below table:
+
+
+.. list-table:: Data Format Conversion Costs
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Dataset Format x Batch Format
+     - ``"default"``
+     - ``"pandas"``
+     - ``"numpy"``
+     - ``"pyarrow"``
+   * - ``"pandas"``
+     - Zero-copy
+     - Zero-copy
+     - Copy*
+     - Copy*
+   * - ``"arrow"``
+     - Copy*
+     - Copy*
+     - Zero-copy*
+     - Zero-copy
+   * - ``"simple"``
+     - Zero-copy
+     - Copy
+     - Copy
+     - Copy
+
+.. note::
+  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
+  represented in our tensor extension type (unless data is boolean). Copies **always**
+  occur when converting boolean data from/to Arrow to/from Pandas/NumPy, since Arrow
+  bitpacks boolean data while Pandas/NumPy does not.
+
 .. tip::
 
    Prefer using vectorized operations on the ``pandas.DataFrame``,

@@ -479,7 +479,9 @@ class Dataset(Generic[T]):
                 will be writable, which will require an extra copy to guarantee.
                 If ``fn`` mutates its input, this will need to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is ``False``.
+                read-only" errors. Default is ``False``. See
+                :ref:`batch format docs <transform_datasets_batch_formats>` for details
+                on which format conversion always require a copy.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
