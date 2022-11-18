@@ -4941,19 +4941,16 @@ def test_read_write_local_node(ray_start_cluster):
     # Plain read.
     ds = ray.data.read_parquet(local_path).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
     ).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # With fusion.
     ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # Write back to local scheme.
     output = os.path.join(local_path, "test_read_write_local_node")
