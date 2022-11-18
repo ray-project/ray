@@ -20,14 +20,6 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test(
-  name = "test_k8s_cluster_launcher",
-  srcs = ["test_k8s_cluster_launcher.py"],
-  tags = ["exclusive", "manual", "team:serverless"],
-  deps = ["//:ray_lib", ":conftest"],
-  data = ["test_cli_patterns/test_k8s_cluster_launcher.yaml"]
-)
-
 py_test_module_list(
   files = [
     "test_actor_pool.py",
@@ -114,6 +106,7 @@ py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
+    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_metrics.py",
@@ -207,6 +200,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_e2e.py",
@@ -216,7 +211,6 @@ py_test_module_list(
     "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",
-    "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",

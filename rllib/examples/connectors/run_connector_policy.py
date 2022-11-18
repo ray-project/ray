@@ -52,7 +52,7 @@ def run(checkpoint_path):
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
-        obs, _, done, _ = env.step(action[0])
+        obs, _, done, _ = env.step(action)
     # __sphinx_doc_end__
 
 

@@ -1,20 +1,19 @@
+import abc
+import os
 import logging
 from typing import Dict, Any
 
+from ray.data import Dataset
+
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class OfflineEvaluator:
+class OfflineEvaluator(abc.ABC):
     """Interface for an offline evaluator of a policy"""
 
     @DeveloperAPI
@@ -27,6 +26,7 @@ class OfflineEvaluator:
         """
         self.policy = policy
 
+    @abc.abstractmethod
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Returns the evaluation results for the given batch of episodes.
@@ -55,29 +55,23 @@ class OfflineEvaluator:
         """
         return {}
 
-    @DeveloperAPI
-    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> SampleBatch:
-        """Converts a MultiAgentBatch to a SampleBatch if neccessary.
+    @ExperimentalAPI
+    def estimate_on_dataset(
+        self,
+        dataset: Dataset,
+        *,
+        n_parallelism: int = os.cpu_count(),
+    ) -> Dict[str, Any]:
+
+        """Calculates the estimate of the metrics based on the given offline dataset.
+
+        Typically, the dataset is passed through only once via n_parallel tasks in
+        mini-batches to improve the run-time of metric estimation.
 
         Args:
-            batch: The SampleBatchType to convert.
+            dataset: The ray dataset object to do offline evaluation on.
+            n_parallelism: The number of parallelism to use for the computation.
 
         Returns:
-            batch: the converted SampleBatch
-
-        Raises:
-            ValueError if the MultiAgentBatch has more than one policy_id
-            or if the policy_id is not `DEFAULT_POLICY_ID`
+            Dict[str, Any]: A dictionary of the estimated values.
         """
-        # TODO: Make this a util to sample_batch.py
-        if isinstance(batch, MultiAgentBatch):
-            policy_keys = batch.policy_batches.keys()
-            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
-                batch = batch.policy_batches[DEFAULT_POLICY_ID]
-            else:
-                raise ValueError(
-                    "Off-Policy Estimation is not implemented for "
-                    "multi-agent batches. You can set "
-                    "`off_policy_estimation_methods: {}` to resolve this."
-                )
-        return batch
