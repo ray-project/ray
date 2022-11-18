@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+import time
 
 from unittest.mock import patch
 import pytest
@@ -9,6 +10,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.air import session
 from ray import tune
 
@@ -305,6 +307,32 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
 
     worker_group.execute(assert_env_var_set)
+
+
+def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
+    """Tests that TorchTrainer raises exception on NCCL timeouts."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Rank 0 worker will never reach the collective operation.
+        # NCCL should timeout.
+        if session.get_world_rank() == 0:
+            while True:
+                time.sleep(100)
+
+        torch.distributed.barrier()
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        torch_config=TorchConfig(timeout_s=5),
+    )
+
+    # Training should fail and not hang.
+    with pytest.raises(RayTaskError):
+        trainer.fit()
 
 
 if __name__ == "__main__":
