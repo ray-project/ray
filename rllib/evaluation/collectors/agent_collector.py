@@ -553,9 +553,9 @@ class AgentCollector:
             return data[0]
         if key == SampleBatch.ACTIONS and not self.disable_action_flattening:
             from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
-            
+
             actions = None
-            # for 
+            # for
             for shards in data:
                 if actions is None:
                     actions = [[] for _ in range(len(shards))]
@@ -563,7 +563,6 @@ class AgentCollector:
                     action.append(shard)
             actions = [flatten_to_single_ndarray(a) for a in actions]
             return actions
-
 
         return tree.unflatten_as(self.buffer_structs[key], data)
 
