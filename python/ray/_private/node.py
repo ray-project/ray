@@ -212,7 +212,8 @@ class Node:
             storage_uri = ray_params.storage
             if storage_uri is None:
                 storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
-
+            elif storage_uri == "":
+                storage_uri = None
             storage._init_storage(storage_uri, is_head=False)
 
         # If it is a head node, try validating if
