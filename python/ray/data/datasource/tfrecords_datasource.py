@@ -83,7 +83,7 @@ def _convert_example_to_dict(
         # these single-value lists.
         if len(value) == 1:
             value = value[0]
-        record[feature_name] = [_get_feature_value(feature)]
+        record[feature_name] = [value]
     return record
 
 
