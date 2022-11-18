@@ -88,7 +88,8 @@ def run_images_benchmark(benchmark: Benchmark):
     for root in test_input:
         shutil.rmtree(root)
 
-    # TODO(chengsu): run benchmark on 20G and 100G imagenet data.
+    # TODO(chengsu): run benchmark on 20G and 100G imagenet data in multi-nodes
+    # cluster.
     benchmark.run(
         "images-imagenet-1g",
         read_images,
