@@ -701,6 +701,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
 
+  const WorkerProcessInfo *LookupWorkerProcessInfo(StartupToken token) const;
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.

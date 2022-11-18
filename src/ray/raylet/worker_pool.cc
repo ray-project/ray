@@ -1211,7 +1211,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       continue;
     }
 
-    // Skip if the dynamic_options doesn't match.
     if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
       continue;
     }
@@ -1633,16 +1632,27 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
   }
 }
 
+<<<<<<< HEAD
 const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
+=======
+const WorkerPool::WorkerProcessInfo *WorkerPool::LookupWorkerProcessInfo(
+>>>>>>> bb289ffc6a (add)
     StartupToken token) const {
   for (const auto &[lang, state] : states_by_lang_) {
     auto it = state.worker_processes.find(token);
     if (it != state.worker_processes.end()) {
+<<<<<<< HEAD
       return it->second.dynamic_options;
     }
   }
   static std::vector<std::string> kNoDynamicOptions;
   return kNoDynamicOptions;
+=======
+      return &(it->second);
+    }
+  }
+  return nullptr;
+>>>>>>> bb289ffc6a (add)
 }
 
 }  // namespace raylet
