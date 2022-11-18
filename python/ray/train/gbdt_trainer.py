@@ -12,7 +12,6 @@ from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 if TYPE_CHECKING:
     import xgboost_ray
@@ -299,25 +298,8 @@ class GBDTTrainer(BaseTrainer):
                 validated_scaling_config = trainer_cls._validate_scaling_config(
                     updated_scaling_config
                 )
-                # RayParams PGF drops strategy, args and kwargs so we have to get them
-                # from ScalingConfig PGF and then create a new PGF combining it
-                # all together.
-                pgf_from_scaling_config = (
-                    validated_scaling_config.as_placement_group_factory()
-                )
-                pgf_from_ray_params = _convert_scaling_config_to_ray_params(
+                return _convert_scaling_config_to_ray_params(
                     validated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
-                new_bundles = pgf_from_ray_params.bundles
-                final_pgf = PlacementGroupFactory(
-                    new_bundles,
-                    strategy=pgf_from_scaling_config.strategy,
-                    *pgf_from_scaling_config._args,
-                    **pgf_from_scaling_config._kwargs,
-                )
-                final_pgf._head_bundle_is_empty = (
-                    pgf_from_ray_params._head_bundle_is_empty
-                )
-                return final_pgf
 
         return GBDTTrainable
