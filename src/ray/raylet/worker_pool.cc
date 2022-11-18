@@ -139,6 +139,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
+  PrestartWorkers(Language::PYTHON, num_workers_soft_limit_);
 }
 
 WorkerPool::~WorkerPool() {
@@ -989,10 +990,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::ResizeIdleWorkers() {
-  auto running_size = TryKillingIdleWorkers();
-  if (running_size < static_cast<size_t>(num_workers_soft_limit_)) {
-    PrestartWorkers(ray::Language::PYTHON, num_workers_soft_limit_ - running_size);
-  }
+  TryKillingIdleWorkers();
+  // if (running_size < static_cast<size_t>(num_workers_soft_limit_)) {
+  //   PrestartWorkers(ray::Language::PYTHON, num_workers_soft_limit_ - running_size);
+  // }
 }
 
 size_t WorkerPool::TryKillingIdleWorkers() {
