@@ -175,17 +175,21 @@ def run_release_test(
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
         if autosuspend_mins:
             cluster_manager.autosuspend_minutes = autosuspend_mins
+            autosuspend_base = autosuspend_mins
         else:
             cluster_manager.autosuspend_minutes = min(
                 DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
             )
+            # Maximum uptime should be based on the command timeout, not the
+            # DEFAULT_AUTOSUSPEND_MINS
+            autosuspend_base = int(command_timeout / 60) + 10
 
         maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
         if maximum_uptime_minutes:
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                cluster_manager.autosuspend_minutes + wait_timeout + 10
+                autosuspend_base + wait_timeout + 10
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
@@ -266,6 +270,8 @@ def run_release_test(
 
         is_long_running = test["run"].get("long_running", False)
 
+        start_time_unix = time.time()
+
         try:
             command_runner.run_command(
                 command, env=command_env, timeout=command_timeout
@@ -285,6 +291,13 @@ def run_release_test(
             logger.exception(e)
             command_results = {}
 
+        try:
+            command_runner.save_metrics(start_time_unix)
+            metrics = command_runner.fetch_metrics()
+        except Exception as e:
+            logger.exception(f"Could not fetch metrics for test command: {e}")
+            metrics = {}
+
         # Postprocess result:
         if "last_update" in command_results:
             command_results["last_update_diff"] = time.time() - command_results.get(
@@ -300,6 +313,7 @@ def run_release_test(
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
+        metrics = {}
 
     try:
         last_logs = command_runner.get_last_logs()
@@ -318,6 +332,7 @@ def run_release_test(
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken
+    result.prometheus_metrics = metrics
 
     os.chdir(old_wd)
 

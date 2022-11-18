@@ -136,13 +136,13 @@ class Resources(
         )
         if self.memory or self.extra_memory:
             summary += ", {} GiB heap".format(
-                round((self.memory + self.extra_memory) / (1024 ** 3), 2)
+                round((self.memory + self.extra_memory) / (1024**3), 2)
             )
         if self.object_store_memory or self.extra_object_store_memory:
             summary += ", {} GiB objects".format(
                 round(
                     (self.object_store_memory + self.extra_object_store_memory)
-                    / (1024 ** 3),
+                    / (1024**3),
                     2,
                 )
             )

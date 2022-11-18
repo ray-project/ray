@@ -682,7 +682,7 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(
@@ -814,13 +814,6 @@ available_node_types:
         tmp_path / "does_not_exist.yaml"
     )
     assert cluster_config_to_report.cloud_provider == "kuberay"
-
-    monkeypatch.delenv("RAY_USAGE_STATS_KUBERAY_IN_USE")
-    monkeypatch.setenv("RAY_USAGE_STATS_LEGACY_OPERATOR_IN_USE", "1")
-    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
-        tmp_path / "does_not_exist.yaml"
-    )
-    assert cluster_config_to_report.cloud_provider == "legacy_ray_operator"
 
 
 @pytest.mark.skipif(

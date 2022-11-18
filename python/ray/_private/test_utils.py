@@ -547,6 +547,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
     by a function contains the provided list of strings.
     Raises an exception if the stdout doesn't have the expected output in time.
 
+    Note: The decorated function should not block!
+    (It should return soon after being called.)
+
     Args:
         strings_to_match: Wait until stdout contains all of these string.
         timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
@@ -560,7 +563,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Redirect stdout to an in-memory stream.
                 out_stream = io.StringIO()
                 sys.stdout = out_stream
-                # Execute the func.
+                # Execute the func. (Make sure the function doesn't block!)
                 out = func(*args, **kwargs)
                 # Check out_stream once a second until the timeout.
                 # Raise a RuntimeError if we timeout.
@@ -575,6 +578,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # out_stream has the expected strings
                 success = True
                 return out
+            # Exception raised on failure.
             finally:
                 sys.stdout = sys.__stdout__
                 if success:
@@ -909,22 +913,29 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_prometheus(prom_addresses):
+def fetch_raw_prometheus(prom_addresses):
     # Local import so minimal dependency tests can run without requests
     import requests
 
-    components_dict = {}
-    metric_names = set()
-    metric_samples = []
     for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
         try:
             response = requests.get(f"http://{address}/metrics")
+            yield address, response.text
         except requests.exceptions.ConnectionError:
             continue
 
-        for line in response.text.split("\n"):
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses):
+        for line in response.split("\n"):
             for family in text_string_to_metric_families(line):
                 for sample in family.samples:
                     metric_names.add(sample.name)

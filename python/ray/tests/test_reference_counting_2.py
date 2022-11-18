@@ -360,7 +360,13 @@ def test_object_unpin(ray_start_cluster):
     head_node = cluster.add_node(
         num_cpus=0,
         object_store_memory=100 * 1024 * 1024,
-        _system_config={"num_heartbeats_timeout": 10, "subscriber_timeout_ms": 100},
+        _system_config={
+            "num_heartbeats_timeout": 5,
+            "subscriber_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 1000,
+            "health_check_failure_threshold": 5,
+        },
     )
     ray.init(address=cluster.address)
 

@@ -1,9 +1,9 @@
 # To generate training data, first run:
-# $ ./train.py --run=PPO --env=CartPole-v0 \
+# $ ./train.py --run=PPO --env=CartPole-v1 \
 #      --stop='{"timesteps_total": 50000}' \
 #      --config='{"output": "dataset", "output_config": {"format": "json", "path": "/tmp/out", "max_num_samples_per_file": 1}, "batch_mode": "complete_episodes"}'
 cartpole-bc:
-    env: CartPole-v0
+    env: CartPole-v1
     run: BC
     stop:
         timesteps_total: 500000
