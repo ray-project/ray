@@ -2282,6 +2282,64 @@
 
   alert: default
 
+- name: jobs_remote_multi_node
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_remote_multi_node
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_remote_multi_node.py
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: job
+    file_manager: job
+
+- name: jobs_check_cuda_available
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_check_cuda_available
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gpu_node.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_check_cuda_available.py
+    wait_for_nodes:
+      num_nodes: 2
+    type: job
+    file_manager: job
+
+- name: jobs_specify_num_gpus
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_specify_num_gpus
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gpu_worker.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
+    wait_for_nodes:
+      num_nodes: 2
+
+    type: sdk_command
+    file_manager: job
 
 ########################
 # Runtime env tests
