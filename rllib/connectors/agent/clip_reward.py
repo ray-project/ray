@@ -28,7 +28,10 @@ class ClipRewardAgentConnector(AgentConnector):
             type(d) == dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
 
-        assert SampleBatch.REWARDS in d, "input data does not have reward column."
+        if SampleBatch.REWARDS not in d:
+            # Nothing to clip. May happen for initial obs.
+            return ac_data
+
         if self.sign:
             d[SampleBatch.REWARDS] = np.sign(d[SampleBatch.REWARDS])
         elif self.limit:

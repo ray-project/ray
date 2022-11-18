@@ -415,31 +415,6 @@
 
   alert: default
 
-- name: air_benchmark_tune_torch_mnist_large_gpu
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: weekly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_8_g4_12xl.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --disable-strict-pack
-
-    wait_for_nodes:
-      num_nodes: 8
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
   group: AIR tests
@@ -600,6 +575,7 @@
 
   alert: default
 
+# Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -619,6 +595,7 @@
     type: sdk_command
     file_manager: sdk
 
+# Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -635,6 +612,29 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
+
+# Test additional CPU nodes for preprocessing.
+- name: ray-data-bulk-ingest-heterogeneity-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+  env: staging
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
+
+  run:
+    wait_for_nodes:
+      num_nodes: 3
+
+    timeout: 1800
+    script: bash heterogeneity_benchmark.sh 2
     type: sdk_command
     file_manager: sdk
 
@@ -1108,6 +1108,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1132,6 +1134,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1156,6 +1160,8 @@
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1180,6 +1186,8 @@
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1203,6 +1211,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1226,6 +1236,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1250,6 +1262,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1274,6 +1288,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1298,6 +1314,8 @@
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
+    wait_for_nodes:
+      num_nodes: 11
     type: client
 
   alert: default
@@ -4380,7 +4398,7 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: python read_benchmark.py
 
     type: sdk_command
@@ -4485,8 +4503,7 @@
   frequency: nightly
   team: data
   cluster:
-    # re-enable once https://github.com/ray-project/ray/issues/29294 is fixed
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
+    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
