@@ -197,6 +197,34 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         }
 
 
+def test_worker_crash_increment_stats():
+    @ray.remote
+    def crasher():
+        exit(1)
+
+    @ray.remote
+    def oomer():
+        mem = []
+        while True:
+            mem.append([0] * 1000000000)
+
+    with ray.init() as ctx:
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(crasher.options(max_retries=1).remote())
+
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(oomer.options(max_retries=0).remote())
+
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
+
+        assert "worker_crash_system_error" in result
+        assert result["worker_crash_system_error"] == "2"
+
+        assert "crash_oom_error" in result
+        assert result["crash_oom_error"] == "1"
+
+
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")

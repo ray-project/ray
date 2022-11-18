@@ -262,6 +262,12 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
+    # Worker crash with exit type 'system error'
+    WORKER_CRASH_SYSTEM_ERROR = auto()
+
+    # Worker crash with exit type 'OOM'
+    WORKER_CRASH_OOM = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
