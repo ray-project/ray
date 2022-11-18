@@ -262,10 +262,12 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
-    # Worker crash with exit type 'system error'
+    # The count(int) of worker crash with exit type 'system error' since
+    # the cluster started
     WORKER_CRASH_SYSTEM_ERROR = auto()
 
-    # Worker crash with exit type 'OOM'
+    # The count(int) of worker crash with exit type 'out-of-memory' since
+    # the cluster started
     WORKER_CRASH_OOM = auto()
 
 
