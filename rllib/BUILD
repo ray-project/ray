@@ -584,7 +584,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo/tuned_examples/ppo/multi_agent_pendulum_ppo.py"]
 )
 
 py_test(
