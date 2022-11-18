@@ -684,10 +684,14 @@ class EnvRunnerV2:
                             d.agent_id, d.data.raw_dict
                         )
 
-                    # If all agents are done but only some agents' data is contained
-                    # in multi-agent data, the other agents' dones will not be added
-                    # above so we should default to done=True in agent_dones.get().
-                    if self.__needs_policy_eval(agent_dones.get(d.agent_id, True), hit_horizon):
+                    if self.__needs_policy_eval(
+                        (
+                            all_agents_done
+                            or agent_dones.get(d.agent_id, False)
+                            or episode.is_done(d.agent_id)
+                        ),
+                        hit_horizon,
+                    ):
                         # Add to eval set if env is not done and this particular agent
                         # is also not done.
                         item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
