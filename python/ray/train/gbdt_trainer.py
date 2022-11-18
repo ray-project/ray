@@ -9,6 +9,7 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
@@ -59,9 +60,38 @@ def _convert_scaling_config_to_ray_params(
             "num_actors": int(num_actors),
         }
     )
-    ray_params = ray_params_cls(
+
+    # This should be upstreamed to xgboost_ray,
+    # but also left here for backwards compatibility.
+    if not hasattr(ray_params_cls, "placement_strategy"):
+
+        class RayParamsFromScalingConfig(ray_params_cls):
+            placement_strategy: Optional[str] = None
+            pgf_args: Optional[Tuple[Any]] = None
+            pgf_kwargs: Optional[Dict[str, Any]] = None
+
+            def get_tune_resources(self) -> PlacementGroupFactory:
+                pgf = super().get_tune_resources()
+                extended_pgf = PlacementGroupFactory(
+                    pgf.bundles,
+                    strategy=self.placement_strategy,
+                    *(self.pgf_args or []),
+                    **(self.pgf_kwargs or {}),
+                )
+                extended_pgf._head_bundle_is_empty = pgf._head_bundle_is_empty
+                return extended_pgf
+
+        ray_params_cls_extended = RayParamsFromScalingConfig
+    else:
+        ray_params_cls_extended = ray_params_cls
+
+    ray_params = ray_params_cls_extended(
         **ray_params_kwargs,
     )
+    scaling_config_pgf = scaling_config.as_placement_group_factory()
+    ray_params.placement_strategy = scaling_config.placement_strategy
+    ray_params.pgf_args = scaling_config_pgf._args
+    ray_params.pgf_kwargs = scaling_config_pgf._kwargs
 
     return ray_params
 
