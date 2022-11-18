@@ -386,7 +386,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             lambda: config.build(),
         )
 
-    def do_test_nested_dict(self, make_env, test_lstm=False):
+    def do_test_nested_dict(self, make_env, test_lstm=False, disable_connectors=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         config = (
@@ -399,6 +399,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
                 train_batch_size=5,
             )
         )
+        if disable_connectors:
+            # manually disable the connectors
+            # TODO(avnishn): remove this after deprecating external_env
+            config = config.rollouts(enable_connectors=False)
         pg = config.build()
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
@@ -417,7 +421,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
 
-    def do_test_nested_tuple(self, make_env):
+    def do_test_nested_tuple(self, make_env, disable_connectors=False):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
         config = (
@@ -427,6 +431,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
             .framework("tf")
             .training(model={"custom_model": "composite2"}, train_batch_size=5)
         )
+        if disable_connectors:
+            # manually disable the connectors
+            # TODO(avnishn): remove this after deprecating external_env
+            config = config.rollouts(enable_connectors=False)
 
         pg = config.build()
         # Skip first passes as they came from the TorchPolicy loss
@@ -458,7 +466,9 @@ class TestNestedObservationSpaces(unittest.TestCase):
         )
 
     def test_nested_dict_serving(self):
-        self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
+        self.do_test_nested_dict(
+            lambda _: SimpleServing(NestedDictEnv()), disable_connectors=True
+        )
 
     def test_nested_dict_async(self):
         self.do_test_nested_dict(lambda _: convert_to_base_env(NestedDictEnv()))
@@ -472,7 +482,9 @@ class TestNestedObservationSpaces(unittest.TestCase):
         )
 
     def test_nested_tuple_serving(self):
-        self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
+        self.do_test_nested_tuple(
+            lambda _: SimpleServing(NestedTupleEnv()), disable_connectors=True
+        )
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))

@@ -31,6 +31,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -46,6 +47,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -63,6 +65,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
+                enable_connectors=False,
             )
             .multi_agent(
                 policies={"p0", "p1"},
