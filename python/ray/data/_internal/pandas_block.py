@@ -98,7 +98,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     @staticmethod
     def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        from ray.data._internal.util import (
+        from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
         )
 
@@ -184,7 +184,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.data._internal.util import _cast_tensor_columns_to_ndarrays
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         ctx = DatasetContext.get_current()
         table = self._table

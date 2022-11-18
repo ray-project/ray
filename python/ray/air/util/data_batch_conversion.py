@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Dict, Union, List, TYPE_CHECKING
+import warnings
 
 import numpy as np
 
@@ -223,29 +224,9 @@ def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def _cast_tensor_columns_to_ndarrays(df: "pandas.DataFrame") -> "pandas.DataFrame":
-    """Cast all tensor extension columns in df to NumPy ndarrays."""
-    from ray.air.util.tensor_extensions.pandas import TensorDtype
-
-    import pandas as pd
-
-    with pd.option_context("chained_assignment", None):
-        # Try to convert any tensor extension columns to ndarray columns.
-        for col_name, col in df.items():
-            if isinstance(col.dtype, TensorDtype):
-                # Suppress Pandas warnings:
-                # https://github.com/ray-project/ray/issues/29270
-                # We actually want in-place operations so we surpress this warning.
-                # https://stackoverflow.com/a/74193599
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=FutureWarning)
-                    df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
-        return df
-
-
 def _cast_ndarray_columns_to_tensor_extension(
-    df: "pandas.DataFrame",
-) -> "pandas.DataFrame":
+    df: "pd.DataFrame",
+) -> "pd.DataFrame":
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
@@ -254,7 +235,7 @@ def _cast_ndarray_columns_to_tensor_extension(
         column_needs_tensor_extension,
     )
 
-    import pandas as pd
+    pd = _lazy_import_pandas()
 
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
@@ -280,3 +261,22 @@ def _cast_ndarray_columns_to_tensor_extension(
                         "ctx.enable_tensor_extension_casting = False."
                     ) from e
     return df
+
+
+def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Cast all tensor extension columns in df to NumPy ndarrays."""
+    pd = _lazy_import_pandas()
+    from ray.air.util.tensor_extensions.pandas import TensorDtype
+
+    with pd.option_context("chained_assignment", None):
+        # Try to convert any tensor extension columns to ndarray columns.
+        for col_name, col in df.items():
+            if isinstance(col.dtype, TensorDtype):
+                # Suppress Pandas warnings:
+                # https://github.com/ray-project/ray/issues/29270
+                # We actually want in-place operations so we surpress this warning.
+                # https://stackoverflow.com/a/74193599
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=FutureWarning)
+                    df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+        return df

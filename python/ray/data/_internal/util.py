@@ -4,7 +4,6 @@ import os
 from typing import List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
-import warnings
 
 import numpy as np
 
@@ -15,8 +14,6 @@ from ray._private.utils import _get_pyarrow_version
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
-
-    import pandas
 
 logger = logging.getLogger(__name__)
 

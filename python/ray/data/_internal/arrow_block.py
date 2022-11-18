@@ -220,7 +220,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.data._internal.util import _cast_tensor_columns_to_ndarrays
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         df = self._table.to_pandas()
         ctx = DatasetContext.get_current()
