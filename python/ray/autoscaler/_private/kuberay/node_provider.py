@@ -178,7 +178,7 @@ def url_from_resource(namespace: str, path: str) -> str:
 
 def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
     """Extract worker group index from RayCluster."""
-    group_names = [spec["groupName"] for spec in raycluster["spec"]["workerGroupSpecs"]]
+    group_names = [spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])]
     return group_names.index(group_name)
 
 
@@ -229,22 +229,23 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         # Store the raycluster CR
         self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
 
-        # Get the pods resource version
+        # Get the pods resource version.
         # Specifying a resource version in list requests is important for scalability:
         # https://kubernetes.io/docs/reference/using-api/api-concepts/#semantics-for-get-and-list
         resource_version = self._get_pods_resource_version()
+        if resource_version:
+            logger.info(
+                f"Listing pods for RayCluster {self.cluster_name}"
+                f" in namespace {self.namespace}"
+                f" at pods resource version >= {resource_version}."
+            )
+
         # Filter pods by cluster_name.
         label_selector = requests.utils.quote(f"ray.io/cluster={self.cluster_name}")
-        logger.info(
-            f"Listing pods for RayCluster {self.cluster_name}"
-            f" in namespace {self.namespace}"
-            f" at pods resource version >= {resource_version}."
-        )
-        resource_path = (
-            "pods"
-            + f"?labelSelector={label_selector}"
-            + f"&resourceVersion={resource_version}"
-        )
+
+        resource_path = f"pods?labelSelector={label_selector}"
+        if resource_version:
+            resource_path += f"&resourceVersion={resource_version}"
 
         pod_list = self._get(resource_path)
         fetched_resource_version = pod_list["metadata"]["resourceVersion"]
@@ -341,7 +342,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         and reading the metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
-            return ""
+            return None
         # Patch the head pod.
         resource_path = f"pods/{RAY_HEAD_POD_NAME}"
         # Patch the annotation "ray.io/autoscaler-update-timestamp"
