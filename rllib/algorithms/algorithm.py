@@ -1519,7 +1519,7 @@ class Algorithm(Trainable):
                             "provided as an argument.".format(old_kwarg)
                         )
             if input_dict is not None:
-                input_dict[SampleBatch.OBS] = observation
+                input_dict[SampleBatch.OBS] = [np.array(observation)]
                 action, state, extra = policy.compute_actions_from_raw_input_dict(
                     input_dict=input_dict,
                     explore=explore,
@@ -1532,9 +1532,9 @@ class Algorithm(Trainable):
                 extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
             else:
                 action, state, extra = policy.compute_actions_from_raw_input(
-                    next_obs_batch=[observation],
-                    reward_batch=[prev_reward],
-                    dones_batch=[False],
+                    next_obs_batch=[np.array(observation)],
+                    reward_batch=[np.array(prev_reward)],
+                    dones_batch=[np.array(False)],
                     info_batch=[{}],
                     explore=explore,
                     timestep=timestep,
