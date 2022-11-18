@@ -57,7 +57,11 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   std::shared_ptr<InternalKVInterface> kv_instance_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
+
+  /// Tracks the number of occurences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;
+
+  /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
 };
 
