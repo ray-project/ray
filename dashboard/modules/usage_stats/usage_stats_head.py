@@ -57,9 +57,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         if self._grafana_ran_before:
             return
     
+        grafana_running = False
         try:
             resp = requests.get(f"{self._dashboard_url_base}/api/grafana_health")
-            grafana_running = False
             if resp.status_code == 200:
                 json = resp.json()
                 grafana_running = (
@@ -83,10 +83,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         if self._prometheus_ran_before:
             return
 
+        prometheus_running = False
         try:
             resp = requests.get(f"{self._dashboard_url_base}/api/prometheus_health")
-            prometheus_running = False
-        
             if resp.status_code == 200:
                 json = resp.json()
                 prometheus_running = json["result"] is True
