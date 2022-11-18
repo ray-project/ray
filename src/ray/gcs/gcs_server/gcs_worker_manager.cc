@@ -89,24 +89,21 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   }
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
       request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    const char *key;
     if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
       worker_crash_system_error_count_ += 1;
-      /// TODO(clarng): migrate to usage lib client once it doesn't crash
-      kv_instance_->Put("usage_stats",
-                        "extra_usage_tag_worker_crash_system_error",
-                        std::to_string(worker_crash_system_error_count_),
-                        true,
-                        [](bool newly_added) {});
+      key = "extra_usage_tag_worker_crash_system_error";
     } else if (request.worker_failure().exit_type() ==
                rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
       worker_crash_oom_count_ += 1;
-      /// TODO(clarng): migrate to usage lib client once it doesn't crash
-      kv_instance_->Put("usage_stats",
-                        "extra_usage_tag_worker_crash_oom_error",
-                        std::to_string(worker_crash_oom_count_),
-                        true,
-                        [](bool newly_added) {});
+      key = "extra_usage_tag_worker_crash_oom_error";
     }
+    /// TODO(clarng): migrate to usage lib client once it doesn't hang
+    kv_instance_->Put("usage_stats",
+                      key,
+                      std::to_string(worker_crash_oom_count_),
+                      true,
+                      [](bool newly_added) {});
   }
 }
 
