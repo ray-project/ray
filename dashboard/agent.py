@@ -487,7 +487,7 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
-        setup_component_logger(**logging_params)
+        logger = setup_component_logger(**logging_params)
 
         agent = DashboardAgent(
             args.node_ip_address,
@@ -510,18 +510,21 @@ if __name__ == "__main__":
         )
 
         loop = asyncio.get_event_loop()
+
         def sigterm_handler():
-            logger.warn("Exiting with SIGTERM immediately...")
+            logger.warning("Exiting with SIGTERM immediately...")
+            # Exit code 0 will be considered as an expected shutdown
             os._exit(0)
 
         if sys.platform != "win32":
             # TODO(rickyyx): we currently do not have any logic for actual
-            # graceful termination in the dashboard. Most of the underlying
-            # async tasks run by the dashboard head doesn't handle CancelledError.
+            # graceful termination in the agent. Most of the underlying
+            # async tasks run by the agent head doesn't handle CancelledError.
             # So a truly graceful shutdown is not trivial w/o much refactoring.
             # Re-open the issue: https://github.com/ray-project/ray/issues/25518
             # if a truly graceful shutdown is required.
             loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
         loop.run_until_complete(agent.run())
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")

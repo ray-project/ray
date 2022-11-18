@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include <csignal>
 #include <string>
 #include <utility>
 #include <vector>
-#include <csignal>
 
 #include "ray/common/id.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"

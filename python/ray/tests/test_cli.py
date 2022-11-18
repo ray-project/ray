@@ -44,6 +44,7 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
+from ray.experimental.state.api import list_nodes
 
 import psutil
 
@@ -463,10 +464,9 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     head_proc.start()
     worker_proc.start()
 
-    # Give it some time to start various subprocesses and `ray stop`
-    # A smaller interval seems to cause occasional failure as the head process
-    # was stopped too early before spawning all the subprocesses.
-    time.sleep(5)
+    # Wait until all nodes are registered and started.
+    wait_for_condition(lambda: len(list_nodes()) == 2)
+
     stop_result = runner.invoke(scripts.stop)
     _die_on_error(stop_result)
 
@@ -511,21 +511,26 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     # Stop both worker and head with SIGTERM
     head_proc.terminate()
     worker_proc.terminate()
+    worker_output = "cannot poll"
+    head_output = "cannot poll"
 
-    if head_parent_conn.poll(3):
+    if head_parent_conn.poll(10):
         head_output = head_parent_conn.recv()
-    if worker_parent_conn.poll(3):
+    if worker_parent_conn.poll(10):
         worker_output = worker_parent_conn.recv()
 
-    head_proc.join(5)
-    worker_proc.join(5)
+    head_proc.join(10)
+    worker_proc.join(10)
+
+    assert not head_proc.is_alive(), "head node is not killed."
+    assert not worker_proc.is_alive(), "worker node is not killed."
 
     _fail_if_false(
         head_proc.exitcode == 0,
         head_output,
         f"Head process failed unexpectedly({head_proc.exitcode})",
     )
-
+    print(worker_proc.exitcode)
     _fail_if_false(
         worker_proc.exitcode == 0,
         worker_output,
