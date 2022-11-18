@@ -327,6 +327,7 @@ def test_batching_node_provider_basic():
         safe_to_scale_flag=True,
     )
     tester.assert_worker_counts({"type-1": 5})
+    assert tester.node_provider._scale_request_submitted_count == 1
 
     tester.update(
         create_node_requests=[("type-2", 5), ("type-2", 5)],
@@ -334,6 +335,7 @@ def test_batching_node_provider_basic():
         safe_to_scale_flag=True,
     )
     tester.assert_worker_counts({"type-1": 3, "type-2": 10})
+    assert tester.node_provider._scale_request_submitted_count == 2
 
     tester.update(
         create_node_requests=[],
@@ -341,6 +343,16 @@ def test_batching_node_provider_basic():
         safe_to_scale_flag=True,
     )
     tester.assert_worker_counts({"type-1": 1, "type-2": 8})
+    assert tester.node_provider._scale_request_submitted_count == 3
+
+    tester.update(
+        create_node_requests=[],
+        terminate_nodes_requests=[],
+        safe_to_scale_flag=True,
+    )
+    tester.assert_worker_counts({"type-1": 1, "type-2": 8})
+    # No scale request submitted, since there were no create/terminate calls.
+    assert tester.node_provider._scale_request_submitted_count == 3
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
