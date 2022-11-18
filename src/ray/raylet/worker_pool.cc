@@ -1324,11 +1324,12 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    PrestartWorkers(task_spec.GetLanguage(), num_needed);
+  PrestartWorkers(task_spec.GetLanguage(), num_needed);
   }
 }
 
 void WorkerPool::PrestartWorkers(ray::Language language, int64_t num_needed) {
+  RAY_LOG(INFO) << "Prestarting " << num_needed << " workers!";
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;
     StartWorkerProcess(language, rpc::WorkerType::WORKER, JobID::Nil(), &status);
