@@ -991,7 +991,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 void WorkerPool::ResizeIdleWorkers() {
   auto running_size = TryKillingIdleWorkers();
   if (running_size < static_cast<size_t>(num_workers_soft_limit_)) {
-    PrestartWorkers(ray::Language::PYTHON, running_size);
+    PrestartWorkers(ray::Language::PYTHON, num_workers_soft_limit_ - running_size);
   }
 }
 
