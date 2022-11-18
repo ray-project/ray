@@ -13,7 +13,7 @@ from ray.tune import run, Trainable, sample_from, ExperimentAnalysis, grid_searc
 from ray.tune.result import DEBUG_METRICS
 from ray.tune.experiment import Trial
 from ray.tune.utils.mock_trainable import MyTrainableClass
-from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
@@ -81,28 +81,14 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         self.assertTrue(experiment_analysis.trials)
 
     def testInit(self):
-        experiment_checkpoint_path = os.path.join(
-            self.test_dir, "experiment_state.json"
+        trial = Trial(
+            "MockTrainable", stub=True, trial_id="abcd1234", local_dir=self.test_dir
         )
-        checkpoint_data = {
-            "checkpoints": [
-                json.dumps(
-                    {
-                        "trial_id": "abcd1234",
-                        "status": Trial.TERMINATED,
-                        "trainable_name": "MockTrainable",
-                        "local_dir": self.test_dir,
-                        "relative_logdir": "MockTrainable_0_id=3_2020-07-12",
-                    },
-                    cls=TuneFunctionEncoder,
-                )
-            ]
-        }
+        trial.status = Trial.TERMINATED
+        trial.relative_logdir = "MockTrainable_0_id=3_2020-07-12"
+        create_tune_experiment_checkpoint([trial], local_checkpoint_dir=self.test_dir)
 
-        with open(experiment_checkpoint_path, "w") as f:
-            f.write(json.dumps(checkpoint_data))
-
-        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+        experiment_analysis = ExperimentAnalysis(self.test_dir)
         self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
         self.assertTrue(experiment_analysis.trials)
 
