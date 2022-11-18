@@ -121,7 +121,7 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.0 or higher or downgrade the client Ray version.",
             )
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def submit_job(
         self,
         *,
@@ -225,7 +225,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def stop_job(
         self,
         job_id: str,
@@ -294,7 +294,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_info(
         self,
         job_id: str,
@@ -328,7 +328,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def list_jobs(self) -> List[JobDetails]:
         """List all jobs along with their status and other information.
 
@@ -369,7 +369,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_status(self, job_id: str) -> JobStatus:
         """Get the most recent status of a job.
 
@@ -393,7 +393,7 @@ class JobSubmissionClient(SubmissionClient):
         """
         return self.get_job_info(job_id).status
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job.
 
@@ -422,7 +422,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Get an iterator that follows the logs of a job.
 

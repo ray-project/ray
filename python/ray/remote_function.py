@@ -174,8 +174,7 @@ class RemoteFunction:
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             retry_exceptions: This specifies whether application-level errors
                 should be retried up to max_retries times.
             scheduling_strategy: Strategy about how to
