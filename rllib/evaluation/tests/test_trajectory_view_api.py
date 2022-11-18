@@ -249,7 +249,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"
         ] = ViewRequirement()
-        batch = rollout_worker_w_api.sample()
+        batch = convert_ma_batch_to_sample_batch(rollout_worker_w_api.sample())
         self.assertTrue("next_actions" in batch)
         self.assertTrue("2nd_next_actions" in batch)
         expected_a_ = None  # expected next action
