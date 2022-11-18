@@ -1,4 +1,6 @@
+import os
 import random
+import signal
 import sys
 import time
 
@@ -12,6 +14,7 @@ from ray.exceptions import (
     WorkerCrashedError,
     ObjectLostError,
 )
+from ray._private.utils import DeferSigint
 from ray._private.test_utils import SignalActor
 
 
@@ -88,6 +91,122 @@ def test_cancel_during_arg_deser(ray_start_regular, use_force):
     assert len(ray.wait([obj], timeout=0.1)[0]) == 0
     # Cancel task.
     ray.cancel(obj, force=use_force)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(obj)
+
+
+def test_defer_sigint():
+    # Tests a helper context manager for deferring SIGINT signals until after the
+    # context is left. This is used by Ray's task cancellation to defer cancellation
+    # interrupts during problematic areas, e.g. task argument deserialization.
+    signal_was_deferred = False
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+    try:
+        with DeferSigint():
+            # Send singal to current process.
+            os.kill(os.getpid(), signal.SIGINT)
+            # Wait for signal to be delivered.
+            time.sleep(1)
+            # Signal should have been delivered by here, so we consider it deferred if
+            # this is reached.
+            signal_was_deferred = True
+    except KeyboardInterrupt:
+        # Check that SIGINT was deferred until the end of the context.
+        assert signal_was_deferred
+        # Check that original SIGINT handler was restored.
+        assert signal.getsignal(signal.SIGINT) is orig_sigint_handler
+
+
+def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):
+    # This test ensures that task argument deserialization properly defers task
+    # cancellation interrupts until after deserialization completes, in order to ensure
+    # that non-reentrant imports that happen during both task argument deserialization
+    # and during error storage are not interrupted.
+
+    # We test this by doing the following:
+    #  - register a custom serializer for (a) a task argument that triggers
+    #  non-reentrant imports on deserialization, and (b) RayTaskError that triggers
+    #  non-reentrant imports on serialization; in our case, we chose pandas and Torch
+    #  since they are both non-reentrant and expensive, with a cumulative import time of
+    #  0.8-1.2 seconds, giving us a wide cancellation target,
+    #  - wait until those serializers are registered on all workers,
+    #  - launch the task and wait until we are confident that the cancellation signal
+    #  will be received by the workers during task argument deserialization (currently a
+    #  200 ms wait).
+    #  - check that a graceful task cancellation error is raised, not a
+    # WorkerCrashedError.
+    def non_reentrant_import():
+        # NOTE: Both pandas and Torch have non-reentrant imports and should cumulatively
+        # take 0.8-1.2 seconds to import, giving us a wide cancellation target.
+        import pandas  # noqa
+        import torch  # noqa
+
+    def non_reentrant_import_and_delegate(obj):
+        # Custom serializer for task argument and task error resulting in non-reentrant
+        # imports being imported on both serialization and deserialization. We use the
+        # same custom serializer for both, doing non-reentrant imports on both
+        # serialization and deserialization, for the sake of simplicity/reuse.
+
+        # Import on serialization.
+        non_reentrant_import()
+
+        reduced = obj.__reduce__()
+        func = reduced[0]
+        args = reduced[1]
+        others = reduced[2:]
+
+        def non_reentrant_import_on_reconstruction(*args, **kwargs):
+            # Import on deserialization.
+            non_reentrant_import()
+
+            return func(*args, **kwargs)
+
+        out = (non_reentrant_import_on_reconstruction, args) + others
+        return out
+
+    # Dummy task argument for which we register a serializer that will trigger
+    # non-reentrant imports on deserialization.
+    class DummyArg:
+        pass
+
+    def register_non_reentrant_import_and_delegate_reducer(worker_info):
+        from ray.exceptions import RayTaskError
+
+        context = ray._private.worker.global_worker.get_serialization_context()
+        # Register non-reentrant import serializer for task argument.
+        context._register_cloudpickle_reducer(
+            DummyArg, non_reentrant_import_and_delegate
+        )
+        # Register non-reentrant import serializer for RayTaskError.
+        context._register_cloudpickle_reducer(
+            RayTaskError, non_reentrant_import_and_delegate
+        )
+
+    ray._private.worker.global_worker.run_function_on_all_workers(
+        register_non_reentrant_import_and_delegate_reducer,
+    )
+
+    # Wait for function to run on all workers.
+    time.sleep(3)
+
+    @ray.remote
+    def run_and_fail(a: DummyArg):
+        # Should never be reached.
+        assert False
+
+    arg = DummyArg()
+    obj = run_and_fail.remote(arg)
+    # Check that task isn't done.
+    # NOTE: This timeout was finely tuned to ensure that task cancellation happens while
+    # we are deserializing task arguments (10/10 runs when this comment was added).
+    timeout_to_reach_arg_deserialization = 0.2
+    assert len(ray.wait([obj], timeout=timeout_to_reach_arg_deserialization)[0]) == 0
+
+    # Cancel task.
+    use_force = False
+    ray.cancel(obj, force=use_force)
+
+    # Should raise RayTaskError or TaskCancelledError, NOT WorkerCrashedError.
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(obj)
 
@@ -336,8 +455,6 @@ def test_recursive_cancel(shutdown_only, use_force):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

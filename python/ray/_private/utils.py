@@ -1775,3 +1775,39 @@ def _get_pyarrow_version() -> Optional[str]:
             if hasattr(pyarrow, "__version__"):
                 _PYARROW_VERSION = pyarrow.__version__
     return _PYARROW_VERSION
+
+
+class DeferSigint:
+    """Context manager that defers SIGINT signals until the the context is left."""
+
+    # This is used by Ray's task cancellation to defer cancellation interrupts during
+    # problematic areas, e.g. task argument deserialization.
+    def __init__(self):
+        # Whether the task has been cancelled while in the context.
+        self.task_cancelled = False
+        # The original SIGINT handler.
+        self.orig_sigint_handler = None
+
+    def _set_task_cancelled(self, signum, frame):
+        """SIGINT handler that defers the signal."""
+        self.task_cancelled = True
+
+    def __enter__(self):
+        # Save original SIGINT handler for later restoration.
+        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        # Set SIGINT signal handler that defers the signal.
+        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        assert self.orig_sigint_handler is not None
+        # Restore original SIGINT handler.
+        signal.signal(signal.SIGINT, self.orig_sigint_handler)
+        if exc_type is None and self.task_cancelled:
+            # No exception raised in context but task has been cancelled, so we raise
+            # KeyboardInterrupt to go through the task cancellation path.
+            raise KeyboardInterrupt
+        else:
+            # If exception was raised in context, returning False will cause it to be
+            # reraised.
+            return False
