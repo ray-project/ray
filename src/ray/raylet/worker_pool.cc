@@ -413,7 +413,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const rpc::RuntimeEnvInfo &runtime_env_info) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!job_id.IsNil());
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
