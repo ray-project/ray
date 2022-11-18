@@ -42,6 +42,7 @@ class AutoscalingConfig(BaseModel):
 
     # Publicly exposed options
     min_replicas: NonNegativeInt = 1
+    initial_replicas: NonNegativeInt = None
     max_replicas: PositiveInt = 1
     target_num_ongoing_requests_per_replica: NonNegativeInt = 1
 
@@ -66,6 +67,13 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
+    @validator("initial_replicas", pre=True, always=True)
+    def set_initial_replicas_to_min_by_default(cls, v, values):
+        if v is None:
+            return values["min_replicas"]
+        else:
+            return v
+
     @validator("max_replicas")
     def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
         if "min_replicas" in values and v < values["min_replicas"]:
@@ -77,8 +85,6 @@ class AutoscalingConfig(BaseModel):
         return v
 
     # TODO(architkulkarni): implement below
-    # The number of replicas to start with when creating the deployment
-    # initial_replicas: int = 1
     # The num_ongoing_requests_per_replica error ratio (desired / current)
     # threshold for overriding `upscale_delay_s`
     # panic_mode_threshold: float = 2.0
