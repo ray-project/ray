@@ -7,7 +7,6 @@ import asyncio
 import itertools
 import collections
 import logging.handlers
-from ray._private.utils import get_or_create_event_loop
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -124,7 +123,7 @@ def monitor_events(
             event_pb2.Event.SourceType.keys(). Monitor all source types if the
             value is None.
     """
-    loop = get_or_create_event_loop()
+    loop = asyncio.get_event_loop()
     if monitor_files is None:
         monitor_files = {}
 

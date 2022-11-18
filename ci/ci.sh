@@ -200,6 +200,8 @@ test_python() {
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
+      -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -801,8 +803,6 @@ run_minimal_test() {
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
   # Todo: Make compatible with python 3.9/3.10
   if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
