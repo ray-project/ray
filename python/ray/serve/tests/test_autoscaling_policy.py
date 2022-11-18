@@ -886,8 +886,8 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     @serve.deployment(
         max_concurrent_queries=5,
-        # The config will trigger scale up really quickly and then
-        # wait close to forever to downscale.
+        # The config makes the deployment scale up really quickly and then
+        # wait nearly forever to downscale.
         autoscaling_config=AutoscalingConfig(
             min_replicas=1,
             max_replicas=2,
