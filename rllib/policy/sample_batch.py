@@ -56,10 +56,10 @@ def attempt_count_timesteps(tensor_dict: dict):
         and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
         and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
     ):
-            if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
-                return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
-            else:
-                return sum(tensor_dict[SampleBatch.SEQ_LENS])
+        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
+            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        else:
+            return sum(tensor_dict[SampleBatch.SEQ_LENS])
 
     for k, v in copy_.items():
         assert isinstance(k, str), tensor_dict
