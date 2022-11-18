@@ -134,7 +134,7 @@ void AgentManager::StartAgent() {
 
     if (exit_code == 0) {
       RAY_LOG(INFO) << "Agent is terminated gracefully (exit code 0). "
-      << "Raylet will shutdown gracefully.";
+                    << "Raylet will shutdown gracefully.";
       // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
       RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
                                              "sigterm to itself. The process will not "
