@@ -428,7 +428,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
   cmdline_file << "/my/very/custom/command --test passes!     ";
   cmdline_file.close();
 
-  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
+  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
 
   boost::filesystem::remove_all(proc_dir);
 
@@ -439,7 +439,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     std::string commandline =
-        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -448,7 +448,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     boost::filesystem::create_directory(proc_dir);
     std::string commandline =
-        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -458,7 +458,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
     std::string pid_dir = proc_dir + "/123";
     boost::filesystem::create_directories(pid_dir);
     std::string commandline =
-        MemoryMonitor::GetCommandLineForPid(123, proc_dir = proc_dir);
+        MemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
