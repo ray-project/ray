@@ -34,6 +34,9 @@ _EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
 
 logger = logging.getLogger(__name__)
 
+TrainableType = Union[str, Callable, Type[Trainable]]
+TrainableTypeOrTrainer = Union[TrainableType, "BaseTrainer"]
+
 
 class TunerInternal:
     """The real implementation behind external facing ``Tuner``.
@@ -68,14 +71,7 @@ class TunerInternal:
         self,
         restore_path: str = None,
         resume_config: Optional[_ResumeConfig] = None,
-        trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
-        ] = None,
+        trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -199,7 +195,11 @@ class TunerInternal:
                 stacklevel=4,
             )
 
-    def _validate_overwrite_trainable(self, original_trainable, overwrite_trainable):
+    def _validate_overwrite_trainable(
+        self,
+        original_trainable: TrainableTypeOrTrainer,
+        overwrite_trainable: Optional[TrainableTypeOrTrainer],
+    ):
         """Determines whether the re-specified overwrite_trainable is compatible
         with the restored experiment with some basic sanity checks
         (ensuring same type and name as the original trainable).
@@ -264,14 +264,7 @@ class TunerInternal:
         self,
         path_or_uri: str,
         resume_config: Optional[_ResumeConfig],
-        overwrite_trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
-        ],
+        overwrite_trainable: Optional[TrainableTypeOrTrainer],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -384,19 +377,19 @@ class TunerInternal:
         return self._experiment_checkpoint_dir
 
     @property
-    def trainable(self):
+    def trainable(self) -> TrainableTypeOrTrainer:
         return self._trainable
 
     @property
-    def converted_trainable(self):
+    def converted_trainable(self) -> TrainableType:
         return self._converted_trainable
 
     @trainable.setter
-    def trainable(self, trainable):
+    def trainable(self, trainable: TrainableTypeOrTrainer):
         self._trainable = trainable
         self._converted_trainable = self._convert_trainable(trainable)
 
-    def _convert_trainable(self, trainable) -> Union[str, Callable, Type[Trainable]]:
+    def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
         """Converts an AIR Trainer to a Tune trainable and saves the converted
         trainable. If not using an AIR Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
@@ -428,7 +421,7 @@ class TunerInternal:
             )
         return ResultGrid(self._experiment_analysis)
 
-    def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
+    def _get_tune_run_arguments(self, trainable: TrainableType) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
         checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
         checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
@@ -507,7 +500,9 @@ class TunerInternal:
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
-    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
+    def _fit_internal(
+        self, trainable: TrainableType, param_space
+    ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
             **self._get_tune_run_arguments(trainable),
@@ -528,7 +523,7 @@ class TunerInternal:
         self.clear_remote_string_queue()
         return analysis
 
-    def _fit_resume(self, trainable) -> ExperimentAnalysis:
+    def _fit_resume(self, trainable: TrainableType) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         if self._missing_params_error_message:
             raise ValueError(self._missing_params_error_message)

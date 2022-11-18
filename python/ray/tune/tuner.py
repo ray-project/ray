@@ -7,7 +7,7 @@ from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.impl.tuner_internal import TunerInternal
+from ray.tune.impl.tuner_internal import TunerInternal, TrainableTypeOrTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
@@ -122,14 +122,7 @@ class Tuner:
 
     def __init__(
         self,
-        trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
-        ] = None,
+        trainable: Optional[TrainableTypeOrTrainer] = None,
         *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
@@ -167,14 +160,7 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        overwrite_trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
-        ] = None,
+        overwrite_trainable: Optional[TrainableTypeOrTrainer] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
