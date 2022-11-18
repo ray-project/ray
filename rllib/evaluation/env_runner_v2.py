@@ -684,7 +684,14 @@ class EnvRunnerV2:
                             d.agent_id, d.data.raw_dict
                         )
 
-                    if self.__needs_policy_eval(agent_dones[d.agent_id], hit_horizon):
+                    if self.__needs_policy_eval(
+                        (
+                            all_agents_done
+                            or agent_dones.get(d.agent_id, False)
+                            or episode.is_done(d.agent_id)
+                        ),
+                        hit_horizon,
+                    ):
                         # Add to eval set if env is not done and this particular agent
                         # is also not done.
                         item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)

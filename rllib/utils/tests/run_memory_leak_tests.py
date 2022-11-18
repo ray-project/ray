@@ -19,7 +19,6 @@
 import argparse
 import os
 from pathlib import Path
-import re
 import sys
 import yaml
 
@@ -95,7 +94,6 @@ if __name__ == "__main__":
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
-            file = re.sub("^.*/ray/rllib/", "ray/rllib/", file)
             experiments = load_experiments_from_file(file, SupportedFileType.python)
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
