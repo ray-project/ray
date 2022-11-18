@@ -6,7 +6,7 @@ Performance Tips and Tuning
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
-You can view debug stats for your Dataset and DatasetPipeline executions via :meth:`ds.stats() <ray.data.Eataset.stats>`.
+You can view debug stats for your Dataset and DatasetPipeline executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
 These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
 .. code-block:: python
