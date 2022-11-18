@@ -711,7 +711,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
