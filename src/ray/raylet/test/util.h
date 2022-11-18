@@ -191,7 +191,6 @@ class MockWorker : public WorkerInterface {
   RayTask task_;
   std::chrono::steady_clock::time_point task_assign_time_;
   int runtime_env_hash_;
-  size_t reuse_count_;
 };
 
 }  // namespace raylet
