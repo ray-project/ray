@@ -20,7 +20,6 @@ import argparse
 import os
 from pathlib import Path
 import sys
-import re
 import yaml
 
 import ray
