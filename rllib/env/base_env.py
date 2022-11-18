@@ -364,7 +364,7 @@ class BaseEnv:
 
 
 # Fixed agent identifier when there is only the single agent in the env
-_DUMMY_AGENT_ID = "agent0"
+_DUMMY_AGENT_ID = -1
 
 
 @PublicAPI
