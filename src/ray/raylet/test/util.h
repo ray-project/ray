@@ -173,10 +173,6 @@ class MockWorker : public WorkerInterface {
     return true;
   }
 
-  size_t GetReuseCount() const override { return reuse_count_; }
-
-  void BumpReuseCount() override { reuse_count_++; }
-
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
