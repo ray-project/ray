@@ -423,7 +423,7 @@ State API also allows you to conveniently access ray logs. Note that you cannot 
 By default, the API prints log from a head node.
 
 E.g., Get all retrievable log file names from a head node in a cluster
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: CLI
 
