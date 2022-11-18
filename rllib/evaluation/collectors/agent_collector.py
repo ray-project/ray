@@ -206,15 +206,15 @@ class AgentCollector:
             # the first incoming value.
             if SampleBatch.PREV_REWARDS in self.view_requirements:
                 single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
-                        space=self.view_requirements[SampleBatch.REWARDS].space,
-                        batch_size=0,
-                        fill_value=.0
-                    )
+                    space=self.view_requirements[SampleBatch.REWARDS].space,
+                    batch_size=0,
+                    fill_value=0.0,
+                )
             if SampleBatch.PREV_ACTIONS in self.view_requirements:
                 single_row[SampleBatch.ACTIONS] = get_dummy_batch_for_space(
                     space=self.view_requirements[SampleBatch.ACTIONS].space,
                     batch_size=0,
-                    fill_value=.0
+                    fill_value=0.0,
                 )
             self._build_buffers(single_row)
 
