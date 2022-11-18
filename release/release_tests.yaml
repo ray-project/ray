@@ -304,7 +304,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_1.yaml
+    cluster_compute: compute_gpu_1_g4_8xl.yaml
 
   run:
     timeout: 3600
@@ -316,30 +316,28 @@
   alert: default
 
 
-# TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
-# workspaces, re-enabled it once inline conversions are fixed
-# - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
-#   group: AIR tests
-#   working_dir: air_tests/air_benchmarks
+- name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
 
-#   frequency: nightly
-#   team: ml
-#   env: staging
+  frequency: nightly
+  team: ml
+  env: staging
 
-#   stable: false
+  stable: false
 
-#   cluster:
-#     cluster_env: app_config.yaml
-#     cluster_compute: compute_gpu_16.yaml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4_g4_12xl.yaml
 
-#   run:
-#     timeout: 10800
-#     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+  run:
+    timeout: 10800
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
 
-#     type: sdk_command
-#     file_manager: job
+    type: sdk_command
+    file_manager: job
 
-#   alert: default
+  alert: default
 
 
 - name: air_benchmark_torch_mnist_cpu_4x4
@@ -1821,7 +1819,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
@@ -1911,7 +1909,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
@@ -1940,7 +1938,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
@@ -2003,7 +2001,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
@@ -2032,7 +2030,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
@@ -2061,7 +2059,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
@@ -2152,7 +2150,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/serve_failure.py
     long_running: true
     type: sdk_command
@@ -4861,7 +4859,7 @@
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
-  working_dir: cluster_tests 
+  working_dir: cluster_tests
   legacy:
     test_name: aws_cluster_launcher
     test_suite: cluster-launcher-test
