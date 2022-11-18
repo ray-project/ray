@@ -84,7 +84,7 @@ class TorchVectorEncoder(TorchModel):
         act = (
             None
             if config.activation == "linear"
-            else get_activation_fn(config.activation, framework=config.framework)()
+            else get_activation_fn(config.activation, framework=config.framework_str)()
         )
         for size in config.hidden_layer_sizes[:-1]:
             layers += [nn.Linear(prev_size, size)]
@@ -97,7 +97,9 @@ class TorchVectorEncoder(TorchModel):
         ]
         if config.final_activation != "linear":
             layers += [
-                get_activation_fn(config.final_activation, framework=config.framework)()
+                get_activation_fn(
+                    config.final_activation, framework=config.framework_str
+                )()
             ]
 
         self.net = nn.Sequential(*layers)

@@ -10,11 +10,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class EncoderConfig:
-    """The base config for encoder models. Each config should define a `build` method
-    that builds a model from the config.
+    """The base config for encoder models.
 
-    All parameters known before runtime (e.g. framework, activation, num layers, etc.)
-    should be defined as attributes.
+    Each config should define a `build` method that builds a model from the config.
+
+    All user-configurable parameters known before runtime
+    (e.g. framework, activation, num layers, etc.) should be defined as attributes.
 
     Parameters unknown before runtime (e.g. the output size of the module providing
     input for this model) should be passed as arguments to `build`. This should be
@@ -23,21 +24,20 @@ class EncoderConfig:
     `build` should return an instance of the encoder associated with the config.
 
     Attributes:
-        framework: The tensor framework to construct a model for.
+        framework_str: The tensor framework to construct a model for.
             This can be 'torch', 'tf2', or 'jax'.
     """
 
-    framework: str = "torch"
+    framework_str: str = "torch"
 
     @abc.abstractmethod
     def build(self, input_spec: ModelSpec, **kwargs) -> "Encoder":
-        """Builds the config into a model instance"""
+        """Builds the EncoderConfig into an Encoder instance"""
 
 
 @dataclass
 class VectorEncoderConfig(EncoderConfig):
-    """A basic MLP encoder that maps input tensors with shape [..., feature]
-    to [..., output].
+    """An MLP encoder mappings tensors with shape [..., feature] to [..., output].
 
     Attributes:
         activation: The type of activation function to use between hidden layers.
@@ -60,7 +60,7 @@ class VectorEncoderConfig(EncoderConfig):
 
         Args:
             input_spec: The output spec of the previous module(s) that will feed
-            inputs to this encoder.
+                inputs to this encoder.
 
         Returns:
             A VectorEncoder of the specified framework.
@@ -73,7 +73,7 @@ class VectorEncoderConfig(EncoderConfig):
                 input_spec[k].shape[-1], int
             ), "Input spec {k} does not define the size of the feature (last) dimension"
 
-        if self.framework == "torch":
+        if self.framework_str == "torch":
             return TorchVectorEncoder(input_spec, self)
         else:
             raise NotImplementedError(
