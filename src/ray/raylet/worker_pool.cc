@@ -200,14 +200,16 @@ void WorkerPool::AddWorkerProcess(
     const rpc::WorkerType worker_type,
     const Process &proc,
     const std::chrono::high_resolution_clock::time_point &start,
-    const rpc::RuntimeEnvInfo &runtime_env_info) {
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    const std::vector<std::string> &dynamic_options) {
   state.worker_processes.emplace(worker_startup_token_counter_,
                                  WorkerProcessInfo{/*is_pending_registration=*/true,
                                                    {},
                                                    worker_type,
                                                    proc,
                                                    start,
-                                                   runtime_env_info});
+                                                   runtime_env_info,
+                                                   dynamic_options});
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -473,7 +475,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   }
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);
+  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info, dynamic_options);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -1209,8 +1211,10 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       continue;
     }
 
-    // Actor worker can't be reused.
-    if (is_actor_creation && it->first->GetReuseCount() > 0) {
+    // Skip if the dynamic_options doesn't match.
+    auto worker_process_ptr = LookupWorkerProcessInfo(it->first->GetStartupToken());
+    if (worker_process_ptr == nullptr ||
+        worker_process_ptr->dynamic_options != dynamic_options) {
       continue;
     }
 
@@ -1624,6 +1628,17 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
           }
         });
   }
+}
+
+const WorkerPool::WorkerProcessInfo *WorkerPool::LookupWorkerProcessInfo(
+    StartupToken token) const {
+  for (const auto &[lang, state] : states_by_lang_) {
+    auto it = state.worker_processes.find(token);
+    if (it != state.worker_processes.end()) {
+      return &(it->second);
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace raylet
