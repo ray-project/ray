@@ -460,7 +460,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_nested_dict_serving(self):
         # TODO: (Artur) Enable this test again for connectors if discrepancies
         #  between EnvRunnerV2 and ExternalEnv are resolved
-        if PGConfig().enable_connectors is True:
+        if PGConfig().enable_connectors:
             return
         self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
 
@@ -478,7 +478,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_nested_tuple_serving(self):
         # TODO: (Artur) Enable this test again for connectors if discrepancies
         #  between EnvRunnerV2 and ExternalEnv are resolved
-        if PGConfig().enable_connectors is True:
+        if PGConfig().enable_connectors:
             return
         self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
