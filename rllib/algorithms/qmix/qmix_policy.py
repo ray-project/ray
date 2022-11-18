@@ -26,6 +26,13 @@ torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
 
+def build_td_lambda_targets(rewards, terminated, mask, target_qs, gamma, td_lambda):
+    ret = target_qs.new_zeros(*target_qs.shape)
+    ret[:, -1] = target_qs[:, -1] * (1 - torch.sum(terminated, dim=1))
+    for t in range(ret.shape[1] - 2, -1,  -1):
+        ret[:, t] = td_lambda * gamma * ret[:, t + 1] + mask[:, t] \
+                    * (rewards[:, t] + (1 - td_lambda) * gamma * target_qs[:, t + 1] * (1 - terminated[:, t]))
+    return ret
 
 class QMixLoss(nn.Module):
     def __init__(
@@ -65,10 +72,10 @@ class QMixLoss(nn.Module):
         """Forward pass of the loss.
 
         Args:
-            rewards: Tensor of shape [B, T, n_agents]
+            rewards: Tensor of shape [B, T, 1]
             actions: Tensor of shape [B, T, n_agents]
-            terminated: Tensor of shape [B, T, n_agents]
-            mask: Tensor of shape [B, T, n_agents]
+            terminated: Tensor of shape [B, T, 1]
+            mask: Tensor of shape [B, T, 1]
             obs: Tensor of shape [B, T, n_agents, obs_size]
             next_obs: Tensor of shape [B, T, n_agents, obs_size]
             action_mask: Tensor of shape [B, T, n_agents, n_actions]
@@ -96,61 +103,61 @@ class QMixLoss(nn.Module):
             mac_out, dim=3, index=actions.unsqueeze(3)
         ).squeeze(3)
 
-        # Calculate the Q-Values necessary for the target
-        target_mac_out = _unroll_mac(self.target_model, next_obs)
+        with torch.no_grad():
+            # Calculate the Q-Values necessary for the target
+            target_mac_out = _unroll_mac(self.target_model, next_obs)
 
-        # Mask out unavailable actions for the t+1 step
-        ignore_action_tp1 = (next_action_mask == 0) & (mask == 1).unsqueeze(-1)
-        target_mac_out[ignore_action_tp1] = -np.inf
+            # Mask out unavailable actions for the t+1 step
+            ignore_action_tp1 = (next_action_mask == 0) & (mask == 1).unsqueeze(-1)
 
-        # Max over target Q-Values
-        if self.double_q:
-            # Double Q learning computes the target Q values by selecting the
-            # t+1 timestep action according to the "policy" neural network and
-            # then estimating the Q-value of that action with the "target"
-            # neural network
+            # Max over target Q-Values
+            if self.double_q:
+                # Double Q learning computes the target Q values by selecting the
+                # t+1 timestep action according to the "policy" neural network and
+                # then estimating the Q-value of that action with the "target"
+                # neural network
 
-            # Compute the t+1 Q-values to be used in action selection
-            # using next_obs
-            mac_out_tp1 = _unroll_mac(self.model, next_obs)
+                # Compute the t+1 Q-values to be used in action selection
+                # using next_obs
+                mac_out_tp1 = _unroll_mac(self.model, next_obs)
 
-            # mask out unallowed actions
-            mac_out_tp1[ignore_action_tp1] = -np.inf
+                # mask out unallowed actions
+                mac_out_tp1[ignore_action_tp1] = -np.inf
 
-            # obtain best actions at t+1 according to policy NN
-            cur_max_actions = mac_out_tp1.argmax(dim=3, keepdim=True)
+                # obtain best actions at t+1 according to policy NN
+                cur_max_actions = mac_out_tp1.argmax(dim=3, keepdim=True)
 
-            # use the target network to estimate the Q-values of policy
-            # network's selected actions
-            target_max_qvals = torch.gather(target_mac_out, 3, cur_max_actions).squeeze(
-                3
-            )
-        else:
-            target_max_qvals = target_mac_out.max(dim=3)[0]
+                # use the target network to estimate the Q-values of policy
+                # network's selected actions
+                target_max_qvals = torch.gather(target_mac_out, 3, cur_max_actions).squeeze(
+                    3
+                )
+            else:
+                target_max_qvals = target_mac_out.max(dim=3)[0]
 
-        assert (
-            target_max_qvals.min().item() != -np.inf
-        ), "target_max_qvals contains a masked action; \
-            there may be a state with no valid actions."
+            assert (
+                target_max_qvals.min().item() != -np.inf
+            ), "target_max_qvals contains a masked action; \
+                there may be a state with no valid actions."
+            
+            target_max_qvals = self.target_mixer(target_max_qvals, next_state)
+            # Calculate 1-step Q-Learning targets
+            targets = build_td_lambda_targets(rewards, terminated, mask, target_max_qvals, 
+                                                gamma=self.gamma, td_lambda=0.6)
 
         # Mix
-        if self.mixer is not None:
-            chosen_action_qvals = self.mixer(chosen_action_qvals, state)
-            target_max_qvals = self.target_mixer(target_max_qvals, next_state)
-
-        # Calculate 1-step Q-Learning targets
-        targets = rewards + self.gamma * (1 - terminated) * target_max_qvals
-
+        chosen_action_qvals = self.mixer(chosen_action_qvals, state)
+            
         # Td-error
         td_error = chosen_action_qvals - targets.detach()
-
-        mask = mask.expand_as(td_error)
+        td_error2 = 0.5 * td_error.pow(2)
+        mask = mask.expand_as(td_error2)
 
         # 0-out the targets that came from padded data
-        masked_td_error = td_error * mask
+        masked_td_error = td_error2 * mask
 
         # Normal L2 loss, take mean over actual data
-        loss = (masked_td_error**2).sum() / mask.sum()
+        loss = masked_td_error.sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
@@ -265,14 +272,20 @@ class QMixTorchPolicy(TorchPolicy):
             self.config["double_q"],
             self.config["gamma"],
         )
-        from torch.optim import RMSprop
+        from torch.optim import RMSprop, Adam
 
-        self.rmsprop_optimizer = RMSprop(
-            params=self.params,
-            lr=config["lr"],
-            alpha=config["optim_alpha"],
-            eps=config["optim_eps"],
-        )
+        if config["optimizer"]  == 'adam':
+            self.optimizer = Adam(
+                params=self.params,
+                lr=config["lr"],
+            )
+        else:
+            self.optimizer = RMSprop(
+                params=self.params,
+                lr=config["lr"],
+                alpha=config["optim_alpha"],
+                eps=config["optim_eps"],
+            )
 
     @override(TorchPolicy)
     def compute_actions_from_input_dict(
@@ -349,10 +362,9 @@ class QMixTorchPolicy(TorchPolicy):
             next_action_mask,
             next_env_global_state,
         ) = self._unpack_observation(samples[SampleBatch.NEXT_OBS])
-        group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
         input_list = [
-            group_rewards,
+            samples[SampleBatch.REWARDS],
             action_mask,
             next_action_mask,
             samples[SampleBatch.ACTIONS],
@@ -403,7 +415,7 @@ class QMixTorchPolicy(TorchPolicy):
                 np.reshape(arr, new_shape), dtype=dtype, device=self.device
             )
 
-        rewards = to_batches(rew, torch.float)
+        rewards = to_batches(rew, torch.float).unsqueeze(2)
         actions = to_batches(act, torch.long)
         obs = to_batches(obs, torch.float).reshape([B, T, self.n_agents, self.obs_size])
         action_mask = to_batches(action_mask, torch.float)
@@ -415,11 +427,7 @@ class QMixTorchPolicy(TorchPolicy):
             env_global_state = to_batches(env_global_state, torch.float)
             next_env_global_state = to_batches(next_env_global_state, torch.float)
 
-        # TODO(ekl) this treats group termination as individual termination
-        terminated = (
-            to_batches(dones, torch.float).unsqueeze(2).expand(B, T, self.n_agents)
-        )
-
+        terminated = to_batches(dones, torch.float).unsqueeze(2)
         # Create mask for where index is < unpadded sequence length
         filled = np.reshape(
             np.tile(np.arange(T, dtype=np.float32), B), [B, T]
@@ -427,8 +435,8 @@ class QMixTorchPolicy(TorchPolicy):
         mask = (
             torch.as_tensor(filled, dtype=torch.float, device=self.device)
             .unsqueeze(2)
-            .expand(B, T, self.n_agents)
         )
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1]) 
 
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = self.loss(
@@ -445,10 +453,10 @@ class QMixTorchPolicy(TorchPolicy):
         )
 
         # Optimise
-        self.rmsprop_optimizer.zero_grad()
+        self.optimizer.zero_grad()
         loss_out.backward()
-        grad_norm_info = apply_grad_clipping(self, self.rmsprop_optimizer, loss_out)
-        self.rmsprop_optimizer.step()
+        grad_norm_info = apply_grad_clipping(self, self.optimizer, loss_out)
+        self.optimizer.step()
 
         mask_elems = mask.sum().item()
         stats = {
