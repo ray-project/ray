@@ -145,6 +145,7 @@ if __name__ == "__main__":
                 ioctx,
                 SERVER_ADDRESS,
                 args.port + ioctx.worker_index - (1 if ioctx.worker_index > 0 else 0),
+                use_json=True,
             )
         # No InputReader (PolicyServerInput) needed.
         else:

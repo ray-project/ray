@@ -1,4 +1,5 @@
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+import json
 import logging
 import queue
 from socketserver import ThreadingMixIn
@@ -64,7 +65,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ioctx, address, port, idle_timeout=3.0):
+    def __init__(self, ioctx, address, port, idle_timeout=3.0, use_json=False):
         """Create a PolicyServerInput.
 
         This class implements rllib.offline.InputReader, and can be used with
@@ -81,12 +82,14 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             ioctx: IOContext provided by RLlib.
             address: Server addr (e.g., "localhost").
             port: Server port (e.g., 9900).
+            use_json: Whether to use JSON messages (instead of pickle).
         """
 
         self.rollout_worker = ioctx.worker
         self.samples_queue = queue.Queue()
         self.metrics_queue = queue.Queue()
         self.idle_timeout = idle_timeout
+        self.use_json = use_json
 
         # Forwards client-reported metrics directly into the local rollout
         # worker.
@@ -140,7 +143,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             # Create a request handler that receives commands from the clients
         # and sends data and metrics into the queues.
         handler = _make_handler(
-            self.rollout_worker, self.samples_queue, self.metrics_queue
+            self.rollout_worker, self.samples_queue, self.metrics_queue, self.use_json
         )
         try:
             import time
@@ -188,7 +191,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             self.samples_queue.put(SampleBatch())
 
 
-def _make_handler(rollout_worker, samples_queue, metrics_queue):
+def _make_handler(rollout_worker, samples_queue, metrics_queue, use_json):
     # Only used in remote inference mode. We must create a new rollout worker
     # then since the original worker doesn't have the env properly wrapped in
     # an ExternalEnv interface.
@@ -233,12 +236,15 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def do_POST(self):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
-            parsed_input = pickle.loads(raw_body)
+            if use_json:
+                parsed_input = json.loads(raw_body)
+            else:
+                parsed_input = pickle.loads(raw_body)
             try:
                 response = self.execute_command(parsed_input)
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(pickle.dumps(response))
+                self.wfile.write(pickle.dumps(response) if not use_json else json.dumps(response).encode("utf-8"))
             except Exception:
                 self.send_error(500, traceback.format_exc())
 
@@ -263,23 +269,35 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                 report_data(args)
 
             # Remote inference commands:
-            elif command == Commands.START_EPISODE:
+            elif (
+                command == Commands.START_EPISODE
+                or str(command) == Commands.START_EPISODE.value
+            ):
                 setup_child_rollout_worker()
                 assert inference_thread.is_alive()
                 response["episode_id"] = child_rollout_worker.env.start_episode(
                     args["episode_id"], args["training_enabled"]
                 )
-            elif command == Commands.GET_ACTION:
+            elif (
+                command == Commands.GET_ACTION
+                or str(command) == Commands.GET_ACTION.value
+            ):
                 assert inference_thread.is_alive()
                 response["action"] = child_rollout_worker.env.get_action(
                     args["episode_id"], args["observation"]
                 )
-            elif command == Commands.LOG_ACTION:
+            elif (
+                command == Commands.LOG_ACTION
+                or str(command) == Commands.LOG_ACTION.value
+            ):
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.log_action(
                     args["episode_id"], args["observation"], args["action"]
                 )
-            elif command == Commands.LOG_RETURNS:
+            elif (
+                command == Commands.LOG_RETURNS
+                or str(command) == Commands.LOG_RETURNS.value
+            ):
                 assert inference_thread.is_alive()
                 if args["done"]:
                     child_rollout_worker.env.log_returns(
@@ -289,7 +307,10 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                     child_rollout_worker.env.log_returns(
                         args["episode_id"], args["reward"], args["info"]
                     )
-            elif command == Commands.END_EPISODE:
+            elif (
+                command == Commands.END_EPISODE
+                or str(command) == Commands.END_EPISODE.value
+            ):
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(
                     args["episode_id"], args["observation"]
