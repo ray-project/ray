@@ -4,6 +4,7 @@ import os
 from typing import List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
+import warnings
 
 import numpy as np
 
@@ -242,9 +243,12 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
         )
     return num == len(paths)
 
+
 def _cast_tensor_columns_to_ndarrays(df: "pandas.DataFrame") -> "pandas.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     from ray.air.util.tensor_extensions.pandas import TensorDtype
+
+    import pandas as pd
 
     with pd.option_context("chained_assignment", None):
         # Try to convert any tensor extension columns to ndarray columns.
@@ -259,7 +263,10 @@ def _cast_tensor_columns_to_ndarrays(df: "pandas.DataFrame") -> "pandas.DataFram
                     df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
         return df
 
-def _cast_ndarray_columns_to_tensor_extension(df: "pandas.DataFrame") -> "pandas.DataFrame":
+
+def _cast_ndarray_columns_to_tensor_extension(
+    df: "pandas.DataFrame",
+) -> "pandas.DataFrame":
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
@@ -267,6 +274,8 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pandas.DataFrame") -> "pandas
         TensorArray,
         column_needs_tensor_extension,
     )
+
+    import pandas as pd
 
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
