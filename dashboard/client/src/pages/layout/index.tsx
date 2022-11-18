@@ -6,6 +6,7 @@ import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
 import {
+  Feedback,
   Help,
   NightsStay,
   VerticalAlignTop,
@@ -179,6 +180,15 @@ const BasicLayout = ({
             >
               <Tooltip title="Doc">
                 <Help />
+              </Tooltip>
+            </IconButton>
+            <IconButton
+              href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Tooltip title="Give us feedback!">
+                <Feedback />
               </Tooltip>
             </IconButton>
           </ListItem>
