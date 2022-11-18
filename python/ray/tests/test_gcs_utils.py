@@ -1,5 +1,6 @@
 import contextlib
 import os
+import time
 import signal
 import sys
 
@@ -31,7 +32,10 @@ def stop_gcs_server():
 def test_kv_basic(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
-
+    # Wait until all other calls finished
+    time.sleep(2)
+    # reset the counter
+    gcs_utils._called_freq = {}
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"
@@ -48,6 +52,8 @@ def test_kv_basic(ray_start_regular):
     assert gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
+    assert gcs_utils._called_freq["internal_kv_get"] == 4
+    assert gcs_utils._called_freq["internal_kv_put"] == 5
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
