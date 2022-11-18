@@ -2654,20 +2654,21 @@ class Algorithm(Trainable):
         else:
             eval_results = eval_func_to_use()
 
-        # After evaluation, do a round of health check to see if any of
-        # the failed workers are back.
-        self.restore_workers(self.evaluation_workers)
+        if self.evaluation_workers is not None:
+            # After evaluation, do a round of health check to see if any of
+            # the failed workers are back.
+            self.restore_workers(self.evaluation_workers)
 
-        # Add number of healthy evaluation workers after this iteration.
-        eval_results["evaluation"][
-            "num_healthy_workers"
-        ] = self.evaluation_workers.num_healthy_remote_workers()
-        eval_results["evaluation"][
-            "num_in_flight_async_reqs"
-        ] = self.evaluation_workers.num_in_flight_async_reqs()
-        eval_results["evaluation"][
-            "num_remote_worker_restarts"
-        ] = self.evaluation_workers.num_remote_worker_restarts()
+            # Add number of healthy evaluation workers after this iteration.
+            eval_results["evaluation"][
+                "num_healthy_workers"
+            ] = self.evaluation_workers.num_healthy_remote_workers()
+            eval_results["evaluation"][
+                "num_in_flight_async_reqs"
+            ] = self.evaluation_workers.num_in_flight_async_reqs()
+            eval_results["evaluation"][
+                "num_remote_worker_restarts"
+            ] = self.evaluation_workers.num_remote_worker_restarts()
 
         return eval_results
 
