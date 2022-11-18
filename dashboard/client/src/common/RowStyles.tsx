@@ -14,6 +14,13 @@ const rowStyles = makeStyles((theme) =>
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
     },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
   }),
 );
 

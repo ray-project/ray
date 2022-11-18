@@ -553,7 +553,6 @@ class EnvRunnerV2:
                     to_eval=to_eval,
                     outputs=outputs,
                 )
-
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
