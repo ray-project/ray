@@ -106,19 +106,23 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_state(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
         to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
+            String should match the name used to register the connector,
+            while state can be any single data structure that contains the
+            serialized state of the connector. If a connector is stateless,
+            state can simply be None.
         """
         # Must implement by each connector.
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.
@@ -441,7 +445,11 @@ class ConnectorPipeline(abc.ABC):
             elif isinstance(key, int):
                 return [self.connectors[key]]
             elif isinstance(key, type):
-                key = key.__name__
+                results = []
+                for c in self.connectors:
+                    if issubclass(c.__class__, key):
+                        results.append(c)
+                return results
             else:
                 raise NotImplementedError(
                     "Indexing by {} is currently not supported.".format(type(key))
@@ -451,9 +459,6 @@ class ConnectorPipeline(abc.ABC):
         for c in self.connectors:
             if c.__class__.__name__ == key:
                 results.append(c)
-
-        if len(results) == 0:
-            return []
 
         return results
 

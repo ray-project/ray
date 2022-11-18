@@ -121,8 +121,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
+         bool *is_application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-         const std::string name_of_concurrency_group_to_execute) {
+         const std::string name_of_concurrency_group_to_execute,
+         bool is_reattempt) {
         // These 2 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -169,6 +171,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = env->ExceptionOccurred();
         if (throwable) {
+          *is_application_error = true;
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {

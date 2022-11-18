@@ -14,7 +14,7 @@ atari-ddppo:
         num_gpus_per_worker: 1
         # Each worker will sample 100 * 5 envs per worker steps = 500 steps
         # per optimization round. This is 5000 steps summed across workers.
-        rollout_fragment_length: 100
+        train_batch_size: 500
         num_envs_per_worker: 5
         # Each worker will take a minibatch of 50. There are 10 workers total,
         # so the effective minibatch size will be 500.

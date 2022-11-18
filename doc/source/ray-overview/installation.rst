@@ -3,13 +3,16 @@
 Installing Ray
 ==============
 
-Ray currently supports Linux, MacOS and Windows.
+Ray currently officially supports x86_64 and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows.
+From Wheels
+~~~~~~~~~~~
+You can install the latest official version of Ray from PyPI on linux, windows
+and macos as follows:
 
 .. code-block:: bash
 
@@ -55,10 +58,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 `Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
 `Linux Python 3.6`_   `MacOS Python 3.6`_
 ====================  ====================  =======================
-
-.. note::
-
-  Python 3.9/3.10 support is currently experimental.
 
 .. note::
 
@@ -179,7 +178,7 @@ You can install and use Ray C++ API as follows.
   pip install -U ray[cpp]
 
   # Create a Ray C++ project template to start with.
-  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
 
 .. note::
 
@@ -198,7 +197,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
    * ``bash Miniforge3-MacOSX-arm64.sh``
 
-   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
 
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
 
@@ -253,29 +252,39 @@ on the AUR page of ``python-ray`` `here`_.
 
 .. _ray_anaconda:
 
-Installing Ray with Anaconda
-----------------------------
-
-If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+Installing From conda-forge
+---------------------------
+Ray can also be installed as a conda package on linux and windows
 
 .. code-block:: bash
 
-  conda config --env --add channels conda-forge
-  conda create -n ray  # works with mamba too
+  # also works with mamba
+  conda create -c conda-forge python=3.9 -n ray
   conda activate ray
-  pip install ray  # or `conda install ray-core`
+
+  # Install Ray with support for the dashboard + cluster launcher
+  conda install -c conda-forge "ray-default"
+
+  # Install Ray with minimal dependencies
+  # conda install -c conda-forge ray
+
+To install Ray libraries, you can use ``pip`` as above or ``conda``/``mamba``
+
+.. code-block:: bash
+
+  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
+  conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
 
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
-at: https://github.com/conda-forge/ray-packages-feedstock
+at https://anaconda.org/conda-forge/ray-default
 
 .. note::
 
   Ray conda packages are maintained by the community, not the Ray team. While
   using a conda environment, it is recommended to install Ray from PyPi using
   `pip install ray` in the newly created environment.
-
-.. _`Anaconda`: https://www.anaconda.com/
-.. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
 
 Building Ray from Source
 ------------------------

@@ -1,17 +1,16 @@
+import gym
 import numpy as np
 import tree
 from typing import Dict, Any, List
 
 import logging
-from ray.rllib.policy.sample_batch import (
-    MultiAgentBatch,
-    DEFAULT_POLICY_ID,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
+    ExperimentalAPI,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.deprecation import Deprecated
@@ -27,15 +26,25 @@ class OffPolicyEstimator(OfflineEvaluator):
     """Interface for an off policy estimator for counterfactual evaluation."""
 
     @DeveloperAPI
-    def __init__(self, policy: Policy, gamma: float = 0.0):
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float = 0.0,
+        epsilon_greedy: float = 0.0,
+    ):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
+            epsilon_greedy: The probability by which we act acording to a fully random
+            policy during deployment. With 1-epsilon_greedy we act according the target
+            policy.
+            # TODO (kourosh): convert the input parameters to a config dict.
         """
-        self.policy = policy
+        super().__init__(policy)
         self.gamma = gamma
+        self.epsilon_greedy = epsilon_greedy
 
     @DeveloperAPI
     def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
@@ -142,7 +151,7 @@ class OffPolicyEstimator(OfflineEvaluator):
             - v_gain: v_target / max(v_behavior, 1e-8)
             - v_delta: The difference between v_target and v_behavior.
         """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
+        batch = convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = []
         if split_batch_by_episode:
@@ -182,33 +191,6 @@ class OffPolicyEstimator(OfflineEvaluator):
         return estimates
 
     @DeveloperAPI
-    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> SampleBatch:
-        """Converts a MultiAgentBatch to a SampleBatch if neccessary.
-
-        Args:
-            batch: The SampleBatchType to convert.
-
-        Returns:
-            batch: the converted SampleBatch
-
-        Raises:
-            ValueError if the MultiAgentBatch has more than one policy_id
-            or if the policy_id is not `DEFAULT_POLICY_ID`
-        """
-        # TODO: Make this a util to sample_batch.py
-        if isinstance(batch, MultiAgentBatch):
-            policy_keys = batch.policy_batches.keys()
-            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
-                batch = batch.policy_batches[DEFAULT_POLICY_ID]
-            else:
-                raise ValueError(
-                    "Off-Policy Estimation is not implemented for "
-                    "multi-agent batches. You can set "
-                    "`off_policy_estimation_methods: {}` to resolve this."
-                )
-        return batch
-
-    @DeveloperAPI
     def check_action_prob_in_batch(self, batch: SampleBatchType) -> None:
         """Checks if we support off policy estimation (OPE) on given batch.
 
@@ -227,6 +209,22 @@ class OffPolicyEstimator(OfflineEvaluator):
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
+
+    @ExperimentalAPI
+    def compute_action_probs(self, batch: SampleBatch):
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+
+        if self.epsilon_greedy > 0.0:
+            if not isinstance(self.policy.action_space, gym.spaces.Discrete):
+                raise ValueError(
+                    "Evaluation with epsilon-greedy exploration is only supported "
+                    "with discrete action spaces."
+                )
+            eps = self.epsilon_greedy
+            new_prob = new_prob * (1 - eps) + eps / self.policy.action_space.n
+
+        return new_prob
 
     @DeveloperAPI
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:

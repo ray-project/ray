@@ -15,7 +15,7 @@ General Examples
 PyTorch
 ~~~~~~~
 
-* :doc:`/train/examples/torch_fashion_mnist_example`:
+* :doc:`/train/examples/pytorch/torch_fashion_mnist_example`:
   End-to-end example for PyTorch.
 
 * :doc:`/train/examples/transformers/transformers_example`:
@@ -24,7 +24,7 @@ PyTorch
 TensorFlow
 ~~~~~~~~~~
 
-* :doc:`/train/examples/tensorflow_mnist_example`:
+* :doc:`/train/examples/tf/tensorflow_mnist_example`:
   End-to-end example for TensorFlow
 
 Horovod
@@ -43,10 +43,10 @@ Logger/Callback Examples
 Ray Tune Integration Examples
 -----------------------------
 
-* :doc:`/train/examples/tune_tensorflow_mnist_example`:
+* :doc:`/train/examples/tf/tune_tensorflow_mnist_example`:
   End-to-end example for tuning a TensorFlow model.
 
-* :doc:`/train/examples/tune_cifar_torch_pbt_example`:
+* :doc:`/train/examples/pytorch/tune_cifar_torch_pbt_example`:
   End-to-end example for tuning a PyTorch model with PBT.
 
 ..
@@ -66,6 +66,6 @@ Ray Tune Integration Examples
 Benchmarks
 ----------
 
-* :doc:`/train/examples/torch_data_prefetch_benchmark/benchmark_example`:
+* :doc:`/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example`:
   Benchmark example for the PyTorch data transfer auto pipeline.
 

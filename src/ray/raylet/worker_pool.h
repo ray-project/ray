@@ -113,7 +113,10 @@ class WorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_io_workers whether or not if this method will filter io workers
+  /// non-retriable workers that are still registered.
+  ///
+  /// \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
@@ -360,14 +363,19 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_io_workers whether or not if this method will filter io workers
+  /// non-retriable workers that are still registered.
+  ///
+  /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const;
 
   /// Get all the registered drivers.
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
-  /// that are still registered. \return A list containing all the drivers.
+  /// that are still registered.
+  ///
+  /// \return A list containing all the drivers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
@@ -683,6 +691,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.
   void AdjustWorkerOomScore(pid_t pid) const;
+
+  std::pair<std::vector<std::string>, ProcessEnvironment> BuildProcessCommandArgs(
+      const Language &language,
+      rpc::JobConfig *job_config,
+      const rpc::WorkerType worker_type,
+      const JobID &job_id,
+      const std::vector<std::string> &dynamic_options,
+      const int runtime_env_hash,
+      const std::string &serialized_runtime_env_context,
+      const WorkerPool::State &state) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

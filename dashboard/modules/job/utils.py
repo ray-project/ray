@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Any, Dict, Tuple
+from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
 
 try:
     # package `aiohttp` is not in ray's minimal dependencies
@@ -20,7 +20,9 @@ from ray.dashboard.modules.job.common import (
     validate_request_type,
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobInfoStorageClient,
 )
+from ray.core.generated import gcs_service_pb2
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -44,6 +46,11 @@ logger = logging.getLogger(__name__)
 
 MAX_CHUNK_LINE_LENGTH = 10
 MAX_CHUNK_CHAR_LENGTH = 20000
+
+
+def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip keys with value None from a dictionary."""
+    return {k: v for k, v in d.items() if v is not None}
 
 
 def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
@@ -104,14 +111,28 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 curr_line = None
 
 
-async def parse_and_validate_request(req: Request, request_type: dataclass) -> Any:
-    """Parse request and cast to request type. If parsing failed, return a
-    Response object with status 400 and stacktrace instead.
+async def parse_and_validate_request(
+    req: Request, request_type: dataclass
+) -> Union[dataclass, Response]:
+    """Parse request and cast to request type.
+
+    Remove keys with value None to allow newer client versions with new optional fields
+    to work with older servers.
+
+    If parsing failed, return a Response object with status 400 and stacktrace instead.
+
+    Args:
+        req: aiohttp request object.
+        request_type: dataclass type to cast request to.
+
+    Returns:
+        Parsed request object or Response object with status 400 and stacktrace.
     """
     import aiohttp
 
+    json_data = strip_keys_with_value_none(await req.json())
     try:
-        return validate_request_type(await req.json(), request_type)
+        return validate_request_type(json_data, request_type)
     except Exception as e:
         logger.info(f"Got invalid request type: {e}")
         return Response(
@@ -155,7 +176,7 @@ async def get_driver_jobs(
                 status=JobStatus.SUCCEEDED
                 if job_table_entry.is_dead
                 else JobStatus.RUNNING,
-                entrypoint="",
+                entrypoint=job_table_entry.entrypoint,
                 start_time=job_table_entry.start_time,
                 end_time=job_table_entry.end_time,
                 metadata=metadata,
@@ -178,7 +199,7 @@ async def get_driver_jobs(
 
 async def find_job_by_ids(
     gcs_aio_client: GcsAioClient,
-    job_manager: "JobManager",  # noqa: F821
+    job_info_client: JobInfoStorageClient,
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
     """
@@ -204,7 +225,7 @@ async def find_job_by_ids(
         # then lets try to search for a submission with given id
         submission_id = job_or_submission_id
 
-    job_info = await job_manager.get_job_info(submission_id)
+    job_info = await job_info_client.get_info(submission_id)
     if job_info:
         driver = submission_job_drivers.get(submission_id)
         job = JobDetails(
@@ -221,7 +242,7 @@ async def find_job_by_ids(
 
 async def get_supervisor_actor_into(
     gcs_aio_client: GcsAioClient, job_submission_id: str
-):
+) -> gcs_service_pb2.GetNamedActorInfoReply:
     actor_info = await gcs_aio_client.get_named_actor_info(
         JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id),
         SUPERVISOR_ACTOR_RAY_NAMESPACE,

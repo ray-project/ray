@@ -1,5 +1,6 @@
 from typing import Dict, Optional, Union
 import logging
+import os
 
 import ray
 from ray._private.usage import usage_lib
@@ -10,6 +11,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
+    SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
@@ -28,6 +30,10 @@ from ray.serve.context import (
 
 
 logger = logging.getLogger(__file__)
+
+FLAG_DISABLE_HTTP_PROXY = (
+    os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1"
+)
 
 
 def get_deployment(name: str):
@@ -156,13 +162,6 @@ def serve_start(
     """
     usage_lib.record_library_usage("serve")
 
-    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-    for key in http_deprecated_args:
-        if key in kwargs:
-            raise ValueError(
-                f"{key} is deprecated, please use serve.start(http_options="
-                f'{{"{key}": {kwargs[key]}}}) instead.'
-            )
     # Initialize ray if needed.
     ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
@@ -171,11 +170,11 @@ def serve_start(
     try:
         client = get_global_client(_health_check_controller=True)
         logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".',
-            " New http options will not be applied.",
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
+            " New http options will not be applied."
         )
-
-        _check_http_options(client, http_options)
+        if http_options:
+            _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -185,46 +184,66 @@ def serve_start(
     else:
         controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
 
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
-    if http_options is None:
-        http_options = HTTPOptions()
-
     # Used for scheduling things to the head node explicitly.
     # Assumes that `serve.start` runs on the head node.
     head_node_id = ray.get_runtime_context().node_id.hex()
-    controller = ServeController.options(
-        num_cpus=1 if dedicated_cpu else 0,
-        name=controller_name,
-        lifetime="detached" if detached else None,
-        max_restarts=-1,
-        max_task_retries=-1,
+    controller_actor_options = {
+        "num_cpus": 1 if dedicated_cpu else 0,
+        "name": controller_name,
+        "lifetime": "detached" if detached else None,
+        "max_restarts": -1,
+        "max_task_retries": -1,
         # Schedule the controller on the head node with a soft constraint. This
         # prefers it to run on the head node in most cases, but allows it to be
         # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True)
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(head_node_id, soft=True)
         if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
         else None,
-        namespace=SERVE_NAMESPACE,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-    ).remote(
-        controller_name,
-        http_config=http_options,
-        head_node_id=head_node_id,
-        detached=detached,
-    )
+        "namespace": SERVE_NAMESPACE,
+        "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
+    }
 
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
+    if FLAG_DISABLE_HTTP_PROXY:
+        controller = ServeController.options(**controller_actor_options).remote(
+            controller_name,
+            http_config=http_options,
+            head_node_id=head_node_id,
+            detached=detached,
+            _disable_http_proxy=True,
+        )
+    else:
+        # Legacy http proxy actor check
+        http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
+        for key in http_deprecated_args:
+            if key in kwargs:
+                raise ValueError(
+                    f"{key} is deprecated, please use serve.start(http_options="
+                    f'{{"{key}": {kwargs[key]}}}) instead.'
+                )
+
+        if isinstance(http_options, dict):
+            http_options = HTTPOptions.parse_obj(http_options)
+        if http_options is None:
+            http_options = HTTPOptions()
+
+        controller = ServeController.options(**controller_actor_options).remote(
+            controller_name,
+            http_config=http_options,
+            head_node_id=head_node_id,
+            detached=detached,
+        )
+
+        proxy_handles = ray.get(controller.get_http_proxies.remote())
+        if len(proxy_handles) > 0:
+            try:
+                ray.get(
+                    [handle.ready.remote() for handle in proxy_handles.values()],
+                    timeout=HTTP_PROXY_TIMEOUT,
+                )
+            except ray.exceptions.GetTimeoutError:
+                raise TimeoutError(
+                    f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+                )
 
     client = ServeControllerClient(
         controller,

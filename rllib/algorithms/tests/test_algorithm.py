@@ -9,7 +9,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BC, BCConfig
+from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -42,7 +42,7 @@ class TestAlgorithm(unittest.TestCase):
         ).multi_agent(
             # Start with a single policy.
             policies={"p0"},
-            policy_mapping_fn=lambda aid, eps, worker, **kwargs: "p0",
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             # And only two policies that can be stored in memory at a
             # time.
             policy_map_capacity=2,
@@ -101,28 +101,24 @@ class TestAlgorithm(unittest.TestCase):
                 else:
                     new_pol = algo.add_policy(
                         pid,
-                        algo.get_default_policy_class(config.to_dict()),
+                        algo.get_default_policy_class(config),
                         # Test changing the mapping fn.
                         policy_mapping_fn=new_mapping_fn,
                         # Change the list of policies to train.
                         policies_to_train=[f"p{i}", f"p{i-1}"],
                     )
+
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)[0]
                 )
-                assert pid in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid in w.policy_map
+                    )[0]
                 )
+
                 # Assert new policy is part of local worker (eval worker set does NOT
                 # have a local worker, only the main WorkerSet does).
                 pol_map = algo.workers.local_worker().policy_map
@@ -135,8 +131,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PG(config=config)
-                test.restore(checkpoint)
+                test = pg.PG.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w):
@@ -158,6 +153,43 @@ class TestAlgorithm(unittest.TestCase):
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
+                # After having added 2 policies, try to restore the Algorithm,
+                # but only with 1 of the originally added policies (plus the initial
+                # p0).
+                if i == 2:
+
+                    def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                        return f"p{choice([0, 2])}"
+
+                    test2 = pg.PG.from_checkpoint(
+                        checkpoint=checkpoint,
+                        policy_ids=["p0", "p2"],
+                        policy_mapping_fn=new_mapping_fn,
+                        policies_to_train=["p0"],
+                    )
+
+                    # Make sure evaluation workers have the same policies.
+                    def _has_policies(w):
+                        return (
+                            w.get_policy("p0") is not None
+                            and w.get_policy("p2") is not None
+                            and w.get_policy("p1") is None
+                        )
+
+                    self.assertTrue(
+                        all(test2.evaluation_workers.foreach_worker(_has_policies))
+                    )
+
+                    # Make sure algorithm can continue training the restored policy.
+                    pol2 = test2.get_policy("p2")
+                    test2.train()
+                    # Test creating an action with the added (and restored) policy.
+                    a = test2.compute_single_action(
+                        np.zeros_like(pol2.observation_space.sample()), policy_id=pid
+                    )
+                    self.assertTrue(pol2.action_space.contains(a))
+                    test2.stop()
+
             # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):
                 pid = f"p{i}"
@@ -173,19 +205,15 @@ class TestAlgorithm(unittest.TestCase):
                 )
                 # Make sure removed policy is no longer part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid not in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid not in w.policy_map)[
+                        0
+                    ]
                 )
-                assert pid not in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid not in w.policy_map
+                    )[0]
                 )
                 # Assert removed policy is no longer part of local worker
                 # (eval worker set does NOT have a local worker, only the main WorkerSet
@@ -201,7 +229,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
@@ -239,7 +267,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
@@ -273,7 +301,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             a3c.A3CConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
 
@@ -303,12 +331,12 @@ class TestAlgorithm(unittest.TestCase):
     def test_space_inference_from_remote_workers(self):
         # Expect to not do space inference if the learner has an env.
 
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
 
         config = (
             pg.PGConfig()
             .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
         )
 
         # No env on driver -> expect longer build time due to space
@@ -331,7 +359,7 @@ class TestAlgorithm(unittest.TestCase):
 
         # Spaces given -> expect shorter build time due to no space
         # lookup required from remote worker.
-        config.create_env_on_driver = False
+        config.create_env_on_local_worker = False
         config.environment(
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -345,19 +373,19 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
-        config = pg.PGConfig().environment(env="CartPole-v0")
+        config = pg.PGConfig().environment(env="CartPole-v1")
         config.validate_workers_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
-        config.num_workers = 1
+        config.num_rollout_workers = 1
         t0 = time.time()
         algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         algo.stop()
 
-        config.num_workers = 5
+        config.num_rollout_workers = 5
         t0 = time.time()
         algo = config.build()
         total_time_5 = time.time() - t0
@@ -373,7 +401,7 @@ class TestAlgorithm(unittest.TestCase):
             script_path.parent.parent.parent, "tests/data/cartpole/small.json"
         )
 
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
 
         offline_rl_config = (
             BCConfig()
@@ -384,7 +412,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=1,
                 evaluation_num_workers=1,
                 evaluation_config={
-                    "env": "CartPole-v0",
+                    "env": "CartPole-v1",
                     "input": "sampler",
                     "observation_space": None,  # Test, whether this is inferred.
                     "action_space": None,  # Test, whether this is inferred.
@@ -393,9 +421,28 @@ class TestAlgorithm(unittest.TestCase):
             .offline_data(input_=[input_file])
         )
 
-        bc = BC(config=offline_rl_config)
+        bc = offline_rl_config.build()
         bc.train()
         bc.stop()
+
+    def test_counters_after_checkpoint(self):
+        # We expect algorithm to no start counters from zero after loading a
+        # checkpoint on a fresh Algorithm instance
+        config = pg.PGConfig().environment(env="CartPole-v1")
+        algo = config.build()
+
+        self.assertTrue(all(c == 0 for c in algo._counters.values()))
+        algo.step()
+        self.assertTrue((all(c != 0 for c in algo._counters.values())))
+        counter_values = list(algo._counters.values())
+        state = algo.__getstate__()
+        algo.stop()
+
+        algo2 = config.build()
+        self.assertTrue(all(c == 0 for c in algo2._counters.values()))
+        algo2.__setstate__(state)
+        counter_values2 = list(algo2._counters.values())
+        self.assertEqual(counter_values, counter_values2)
 
 
 if __name__ == "__main__":

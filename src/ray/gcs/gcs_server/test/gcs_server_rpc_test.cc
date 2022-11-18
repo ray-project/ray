@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -319,10 +320,12 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
-  // Report heartbeat
-  rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    // Report heartbeat
+    rpc::ReportHeartbeatRequest report_heartbeat_request;
+    report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+    ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  }
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
@@ -336,6 +339,9 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 }
 
 TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  if (RayConfig::instance().pull_based_healthcheck()) {
+    GTEST_SKIP();
+  }
   // Create gcs node info
   auto gcs_node_info = Mocker::GenNodeInfo();
 
@@ -357,9 +363,9 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  ASSERT_EQ(1, node_info_list.size());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE,
+            node_info_list[0].state());
 
   // Report heartbeat
   report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
@@ -371,9 +377,9 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   draining_request->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  ASSERT_EQ(1, node_info_list.size());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD,
+            node_info_list[0].state());
 }
 
 TEST_F(GcsServerTest, TestStats) {

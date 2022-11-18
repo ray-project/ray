@@ -12,14 +12,16 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import train
+from ray.air import session
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.data.aggregate import Mean, Std
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
-from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.tune.logger import TBXLoggerCallback  # TODO move this to AIR
 
 
 def read_dataset(path: str) -> ray.data.Dataset:
@@ -312,14 +314,16 @@ def train_func(config):
 
     # Setup device.
     device = torch.device(
-        f"cuda:{train.local_rank()}" if use_gpu and torch.cuda.is_available() else "cpu"
+        f"cuda:{session.get_local_rank()}"
+        if use_gpu and torch.cuda.is_available()
+        else "cpu"
     )
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_pipeline = train.get_dataset_shard("train_dataset")
+    train_dataset_pipeline = session.get_dataset_shard("train")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = train.get_dataset_shard("test_dataset")
+    test_dataset = session.get_dataset_shard("test")
     test_torch_dataset = test_dataset.to_torch(
         label_column="label", batch_size=batch_size
     )
@@ -364,20 +368,20 @@ def train_func(config):
             f"{test_num_correct} / {test_num_total} = {test_acc:.4f}"
         )
 
+        checkpoint = None
+        if epoch == num_epochs - 1:
+            checkpoint = TorchCheckpoint.from_model(net)
+
         # Record and log stats.
-        train.report(
-            train_acc=train_acc,
-            train_loss=train_running_loss,
-            test_acc=test_acc,
-            test_loss=test_running_loss,
+        session.report(
+            dict(
+                train_acc=train_acc,
+                train_loss=train_running_loss,
+                test_acc=test_acc,
+                test_loss=test_running_loss,
+            ),
+            checkpoint=checkpoint,
         )
-
-        # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        train.save_checkpoint(model_state_dict=module.state_dict())
-
-    if train.world_rank() == 0:
-        return module.cpu()
 
 
 @ray.remote
@@ -563,11 +567,7 @@ if __name__ == "__main__":
             f.write(json.dumps({"time": total_time, "success": 1}))
         exit()
 
-    # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
-    del train_dataset
-
-    datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
+    datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
         "use_gpu": use_gpu,
@@ -582,13 +582,9 @@ if __name__ == "__main__":
 
     # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
     # logging. Pass these into Trainer, and all results that are
-    # reported by ``train.report()`` will be logged to these 2 places.
-    # TODO: TBXLoggerCallback should create nonexistent logdir
-    #       and should also create 1 directory per file.
-    tbx_runs_dir = os.path.join(dir_path, "runs")
-    os.makedirs(tbx_runs_dir, exist_ok=True)
+    # reported by ``session.report()`` will be logged to these 2 places.
     callbacks = [
-        TBXLoggerCallback(logdir=tbx_runs_dir),
+        TBXLoggerCallback(),
         MLflowLoggerCallback(
             experiment_name="cuj-big-data-training", save_artifact=True
         ),
@@ -597,18 +593,24 @@ if __name__ == "__main__":
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
 
-    trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker,
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        datasets=datasets,
+        dataset_config={
+            "train": DatasetConfig(
+                use_stream_api=True, stream_window_size=-1, global_shuffle=True
+            )
+        },
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker=resources_per_worker,
+        ),
+        run_config=RunConfig(callbacks=callbacks),
     )
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config=config, callbacks=callbacks, dataset=datasets
-    )
-    model = results[0]
-    trainer.shutdown()
+    results = trainer.fit()
+    model = results.checkpoint.get_model()
 
     training_end_time = timeit.default_timer()
     print("Training time (s): ", training_end_time - preprocessing_end_time)

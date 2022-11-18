@@ -66,8 +66,8 @@ def test_iter_batches_no_spilling_upon_post_transformation(shutdown_only):
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
     # Repeat, with transformation post the pipeline creation.
-    check_no_spill(ctx, ds.repeat().map_batches(lambda x: x))
-    check_no_spill(ctx, ds.repeat().map_batches(lambda x: x), 5)
+    check_no_spill(ctx, ds.repeat().map_batches(lambda x: x, batch_size=5))
+    check_no_spill(ctx, ds.repeat().map_batches(lambda x: x, batch_size=5), 5)
 
     # Window, with transformation post the pipeline creation.
     check_no_spill(ctx, ds.window(blocks_per_window=20).map_batches(lambda x: x))
@@ -81,9 +81,18 @@ def test_iter_batches_no_spilling_upon_transformations(shutdown_only):
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
     # Repeat, with transformation before and post the pipeline.
-    check_no_spill(ctx, ds.map_batches(lambda x: x).repeat().map_batches(lambda x: x))
     check_no_spill(
-        ctx, ds.map_batches(lambda x: x).repeat().map_batches(lambda x: x), 5
+        ctx,
+        ds.map_batches(lambda x: x, batch_size=5)
+        .repeat()
+        .map_batches(lambda x: x, batch_size=5),
+    )
+    check_no_spill(
+        ctx,
+        ds.map_batches(lambda x: x, batch_size=5)
+        .repeat()
+        .map_batches(lambda x: x, batch_size=5),
+        5,
     )
 
     # Window, with transformation before and post the pipeline.

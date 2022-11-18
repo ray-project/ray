@@ -24,6 +24,7 @@ from ray.rllib.policy.torch_mixins import (
     LearningRateSchedule,
     TargetNetworkMixin,
 )
+
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -68,7 +69,7 @@ class QLoss:
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = torch.unsqueeze(rewards, -1) + gamma ** n_step * torch.unsqueeze(
+            r_tau = torch.unsqueeze(rewards, -1) + gamma**n_step * torch.unsqueeze(
                 1.0 - done_mask, -1
             ) * torch.unsqueeze(z, 0)
             r_tau = torch.clamp(r_tau, v_min, v_max)
@@ -104,7 +105,7 @@ class QLoss:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()

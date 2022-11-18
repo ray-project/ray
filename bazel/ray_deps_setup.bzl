@@ -98,11 +98,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
-        url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
-        sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
+        patch_args = ["-p1"],
+        url = "https://github.com/redis/redis/archive/refs/tags/7.0.5.tar.gz",
+        sha256 = "40827fcaf188456ad9b3be8e27a4f403c43672b6bb6201192dc15756af6f1eae",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
+        workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
     )
 
     auto_http_archive(
@@ -179,8 +181,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz",
-        sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
+        url = "https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz",
+        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
     )
 
     auto_http_archive(
@@ -242,6 +244,36 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
+    )
+    
+    http_archive(
+        name = "openssl",
+        strip_prefix = "openssl-1.1.1f",
+        sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
+        urls = [
+            "https://www.openssl.org/source/openssl-1.1.1f.tar.gz",
+        ],
+        build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
+    )
+    
+    http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
+        strip_prefix = "rules_foreign_cc-0.9.0",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
+    )
+
+    git_repository(
+        name = "rules_perl",
+        remote = "https://github.com/bazelbuild/rules_perl.git",
+        commit = "022b8daf2bb4836ac7a50e4a1d8ea056a3e1e403",
+    )
+
+    http_archive(
+        name = "rules_foreign_cc_thirdparty",
+        sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
+        strip_prefix = "rules_foreign_cc-0.9.0/examples/third_party",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
     http_archive(

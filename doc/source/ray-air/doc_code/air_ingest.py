@@ -14,8 +14,8 @@ dataset = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
 
 # An example preprocessor chain that just scales all values by 4.0 in two stages.
 preprocessor = Chain(
-    BatchMapper(lambda df: df * 2),
-    BatchMapper(lambda df: df * 2),
+    BatchMapper(lambda df: df * 2, batch_format="pandas"),
+    BatchMapper(lambda df: df * 2, batch_format="pandas"),
 )
 # __check_ingest_1_end__
 
@@ -93,7 +93,7 @@ from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 # A simple preprocessor that just scales all values by 2.0.
-preprocessor = BatchMapper(lambda df: df * 2)
+preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
@@ -128,7 +128,7 @@ from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig, DatasetConfig
 
 # A simple preprocessor that just scales all values by 2.0.
-preprocessor = BatchMapper(lambda df: df * 2)
+preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
@@ -163,14 +163,14 @@ my_trainer.fit()
 
 # __global_shuffling_start__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):
@@ -196,14 +196,14 @@ my_trainer.fit()
 
 # __local_shuffling_start__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):
@@ -253,7 +253,7 @@ def train_loop_per_worker():
 
 
 # A simple preprocessor that just scales all values by 2.0.
-preprocessor = BatchMapper(lambda df: df * 2)
+preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
@@ -290,7 +290,7 @@ def train_loop_per_worker():
 
 
 # A simple preprocessor that just scales all values by 2.0.
-preprocessor = BatchMapper(lambda df: df * 2)
+preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,

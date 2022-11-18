@@ -76,7 +76,7 @@ def get_simple_q_tf_policy(
             # happen after all the MixIns are initialized.
             self.maybe_initialize_optimizer_and_loss()
 
-            TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+            TargetNetworkMixin.__init__(self)
 
         @override(base)
         def make_model(self) -> ModelV2:
