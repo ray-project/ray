@@ -8,6 +8,7 @@ from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -20,6 +21,7 @@ from ray.rllib.examples.env.multi_agent import (
     EarlyDoneMultiAgent,
     FlexAgentsMultiAgent,
     RoundRobinMultiAgent,
+    SometimesZeroAgentsMultiAgent,
 )
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import (
@@ -258,23 +260,42 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(ag0_ts[-1] == ag1_ts[-1])
 
     def test_multi_agent_with_flex_agents(self):
-        register_env(
-            "flex_agents_multi_agent_cartpole", lambda _: FlexAgentsMultiAgent()
-        )
+        register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
         config = (
             PGConfig()
-            .environment("flex_agents_multi_agent_cartpole")
+            .environment("flex_agents_multi_agent")
             .rollouts(num_rollout_workers=0)
             .framework("tf")
         )
-        pg = config.build()
+        algo = config.build()
         for i in range(10):
-            result = pg.train()
+            result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
                     i, result["episode_reward_mean"], result["timesteps_total"]
                 )
             )
+        algo.stop()
+
+    def test_multi_agent_with_sometimes_zero_agents_observing(self):
+        register_env(
+            "sometimes_zero_agents", lambda _: SometimesZeroAgentsMultiAgent(num=4)
+        )
+        config = (
+            PPOConfig()
+            .environment("sometimes_zero_agents")
+            .rollouts(num_rollout_workers=0, enable_connectors=True)
+            .framework("tf")
+        )
+        algo = config.build()
+        for i in range(4):
+            result = algo.train()
+            print(
+                "Iteration {}, reward {}, timesteps {}".format(
+                    i, result["episode_reward_mean"], result["timesteps_total"]
+                )
+            )
+        algo.stop()
 
     def test_multi_agent_sample_round_robin(self):
         ev = RolloutWorker(
