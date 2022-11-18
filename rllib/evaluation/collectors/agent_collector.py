@@ -264,7 +264,7 @@ class AgentCollector:
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
-                or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or (k == SampleBatch.ACTIONS and self.disable_action_flattening)
             ):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
@@ -474,7 +474,6 @@ class AgentCollector:
 
         # Reset our unroll_id.
         self.unroll_id = None
-
         return batch
 
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
@@ -509,7 +508,7 @@ class AgentCollector:
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
-                or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or (col == SampleBatch.ACTIONS and self.disable_action_flattening)
             ):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
@@ -552,6 +551,19 @@ class AgentCollector:
         """Unflattens the given to match the buffer struct format for that key."""
         if key not in self.buffer_structs:
             return data[0]
+        if key == SampleBatch.ACTIONS and not self.disable_action_flattening:
+            from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
+            
+            actions = None
+            # for 
+            for shards in data:
+                if actions is None:
+                    actions = [[] for _ in range(len(shards))]
+                for action, shard in zip(actions, shards):
+                    action.append(shard)
+            actions = [flatten_to_single_ndarray(a) for a in actions]
+            return actions
+
 
         return tree.unflatten_as(self.buffer_structs[key], data)
 

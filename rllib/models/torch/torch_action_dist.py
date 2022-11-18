@@ -518,6 +518,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
     @override(ActionDistribution)
     def logp(self, x):
         if isinstance(x, np.ndarray):
+            import ipdb; ipdb.set_trace()
             x = torch.Tensor(x)
         # Single tensor input (all merged).
         if isinstance(x, torch.Tensor):
