@@ -98,7 +98,7 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
     # 0
     # 3
 
-You can also apply arbitrary transformations to each window using :meth:`DatasetPipeline.foreach_window() <>ray.data.DatasetPipeline.foreach_window>`:
+You can also apply arbitrary transformations to each window using :meth:`DatasetPipeline.foreach_window() <ray.data.DatasetPipeline.foreach_window>`:
 
 .. code-block:: python
 
