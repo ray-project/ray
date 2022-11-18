@@ -90,8 +90,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
 
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
       request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
-    const char *key;
-    int count;
+    const char *key = "";
+    int count = 0;
     if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
       worker_crash_system_error_count_ += 1;
       key = "extra_usage_tag_worker_crash_system_error";
