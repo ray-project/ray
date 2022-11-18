@@ -29,6 +29,8 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             return ray.get_runtime_context().get_node_id()
 
         def get_pid(self):
+            import os
+
             return os.getpid()
 
     @ray.remote(num_gpus=1)
