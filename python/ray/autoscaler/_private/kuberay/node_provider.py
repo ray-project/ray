@@ -178,7 +178,9 @@ def url_from_resource(namespace: str, path: str) -> str:
 
 def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
     """Extract worker group index from RayCluster."""
-    group_names = [spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])]
+    group_names = [
+        spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])
+    ]
     return group_names.index(group_name)
 
 
