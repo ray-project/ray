@@ -3,17 +3,19 @@ import math
 from pathlib import Path
 import re
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
 
 import ray.data
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
@@ -66,7 +68,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfig, num_workers: int = 0
+    config: "AlgorithmConfig", num_workers: int = 0
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
