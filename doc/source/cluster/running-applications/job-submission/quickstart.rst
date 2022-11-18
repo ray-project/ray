@@ -190,14 +190,15 @@ Finally, if we want to cancel the job, we can use ``ray job stop``:
     # Job submission server address: http://127.0.0.1:8265
     # Job 'raysubmit_tUAuCKubPAEXh6CW' was stopped
 
-.. _jobs-remote-cluster
+
+.. _jobs-remote-cluster:
 
 Using a Remote Cluster
 ----------------------
 
 The example above was for a local Ray cluster.  When connecting to a `remote` cluster, you need to be able to access the dashboard port of the cluster over HTTP.
 
-One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <cluster-index>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
 
 To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
 
