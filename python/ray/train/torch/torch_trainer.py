@@ -22,13 +22,14 @@ class TorchTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
+        from typing import Dict
         def train_loop_per_worker(config: Dict):
             ...
 
@@ -45,32 +46,33 @@ class TorchTrainer(DataParallelTrainer):
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
+            #
             session.report(...)
 
-            # Returns dict of last saved checkpoint.
+            # Session returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Session returns the Ray Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
-            # Returns the total number of workers executing training.
+            # Session returns the total number of workers executing training.
             session.get_world_size()
 
-            # Returns the rank of this worker.
+            # Session returns the rank of this worker.
             session.get_world_rank()
 
-            # Returns the rank of the worker on the current node.
+            # Sessionb returns the rank of the worker on the current node.
             session.get_local_rank()
 
     You can also use any of the Torch specific function utils,
     such as :func:`ray.train.torch.get_device` and :func:`ray.train.torch.prepare_model`
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Prepares model for distribted training by wrapping in
@@ -93,7 +95,8 @@ class TorchTrainer(DataParallelTrainer):
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
-        .. code-block:: python
+
+        .. testcode::
 
             import torch
             import torch.nn as nn
@@ -103,65 +106,106 @@ class TorchTrainer(DataParallelTrainer):
             from ray.air import session, Checkpoint
             from ray.train.torch import TorchTrainer
             from ray.air.config import ScalingConfig
+            from ray.air.config import RunConfig
+            from ray.air.config import CheckpointConfig
 
+            # Define NN layers archicture, epochs, and number of workers
             input_size = 1
-            layer_size = 15
+            layer_size = 32
             output_size = 1
-            num_epochs = 3
+            num_epochs = 180
+            num_workers = 3
 
+            # Define your network structure
             class NeuralNetwork(nn.Module):
                 def __init__(self):
                     super(NeuralNetwork, self).__init__()
                     self.layer1 = nn.Linear(input_size, layer_size)
-                    self.relu = nn.ReLU()
                     self.layer2 = nn.Linear(layer_size, output_size)
 
                 def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
+                    return self.layer2(self.layer1(input))
 
+            # Define your train worker loop
             def train_loop_per_worker():
+
+                # Fetch training set from the session
                 dataset_shard = session.get_dataset_shard("train")
                 model = NeuralNetwork()
-                loss_fn = nn.MSELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
+                # Loss function, optimizer, prepare model for training.
+                # This moves the data and prepares model for distributed
+                # execution
+                loss_fn = nn.MSELoss()
+                optimizer = torch.optim.Adam(model.parameters(),
+                            lr=0.01,
+                            weight_decay=0.01)
                 model = train.torch.prepare_model(model)
 
+                # Iterate over epochs and batches
                 for epoch in range(num_epochs):
-                    for batches in dataset_shard.iter_torch_batches(
-                        batch_size=32, dtypes=torch.float
-                    ):
+                    for batches in dataset_shard.iter_torch_batches(batch_size=32,
+                                dtypes=torch.float):
+
+                        # Add batch or unsqueeze as an additional dimension [32, x]
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
                         output = model(inputs)
-                        loss = loss_fn(output, labels)
+
+                        # Get outputs as the same dimension as labels
+                        loss = loss_fn(output.squeeze(), labels)
+
+                        # Zero out grads, do backward, and update optimizer
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                        print(f"epoch: {epoch}, loss: {loss.item()}")
 
-                    session.report(
-                        {},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(epoch=epoch, model=model.state_dict()
-                        ),
+                        # Print what's happening with loss per 30 epochs
+                        if epoch % 30 == 0:
+                            print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
+
+                    # Report and record metrics, checkpoint model at end of each
+                    # epoch
+                    session.report({"loss": loss.item(), "epoch": epoch},
+                                         checkpoint=Checkpoint.from_dict(
+                                         dict(epoch=epoch, model=model.state_dict()))
                     )
 
+            torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                     [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
-            scaling_config = ScalingConfig(num_workers=3)
+
+            # Define scaling and run configs
             # If using GPUs, use the below scaling config instead.
             # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+            scaling_config = ScalingConfig(num_workers=num_workers)
+            run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
+
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config=scaling_config,
+                run_config=run_config,
                 datasets={"train": train_dataset})
+
             result = trainer.fit()
 
+            # Get the loss metric from TorchCheckpoint tuple data dictionary
+            best_checkpoint_loss = result.metrics['loss']
+            # print(f"best loss: {best_checkpoint_loss:.4f}")
+
+
+            # Assert loss is less 0.09
+            assert best_checkpoint_loss <= 0.09
+
+    .. testoutput::
+    
+        ...
+
     Args:
+
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        train_loop_config: Configurations to pass into
+            train_loop_config: Configurations to pass into
             ``train_loop_per_worker`` if it accepts an argument.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
