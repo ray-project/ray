@@ -5,7 +5,7 @@ import threading
 import time
 import traceback
 from collections import namedtuple, defaultdict
-from typing import List, Tuple, Any, List, Dict
+from typing import List, Tuple, Any, Dict
 
 from prometheus_client.core import (
     CounterMetricFamily,
@@ -103,19 +103,19 @@ class ProxyedMetric:
         self._columns = columns
         # tuple of label values -> data (OpenCesnsus Aggregation data)
         self._data = {}
-    
+
     @property
     def name(self):
         return self._name
-    
+
     @property
     def desc(self):
         return self._desc
-    
+
     @property
     def unit(self):
         return self._unit
-    
+
     @property
     def columns(self):
         return self._columns
@@ -142,9 +142,7 @@ class ProxyedMetric:
                     data = LastValueAggregationData(ValueDouble, point.double_value)
                 elif point.HasField("distribution_value"):
                     dist_value = point.distribution_value
-                    counts_per_bucket = [
-                        bucket.count for bucket in dist_value.buckets
-                    ]
+                    counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
                     bucket_bounds = dist_value.bucket_options.explicit.bounds
                     data = DistributionAggregationData(
                         dist_value.sum / dist_value.count,
@@ -183,15 +181,13 @@ class Component:
 
             if name not in self._metrics:
                 self._metrics[name] = ProxyedMetric(
-                    name,
-                    descriptor.description,
-                    descriptor.unit,
-                    columns
+                    name, descriptor.description, descriptor.unit, columns
                 )
             self._metrics[name].record(metric)
 
     def _update_last_reported_time(self):
         self._last_reported_time = time.monotonic()
+
 
 class OpenCensusProxyCollector:
     def __init__(self, namespace: str):
@@ -213,20 +209,27 @@ class OpenCensusProxyCollector:
         stale_component_ids = []
         for id, component in self._components.items():
             elapsed = time.monotonic() - component.last_reported_time
-            if  elapsed > timeout:
+            if elapsed > timeout:
                 stale_component_ids.append(id)
                 logger.info(
                     "Metrics from a worker ({}) is cleaned up due to "
-                    "timeout. Time since last report {}s".format(
-                        id, elapsed
-                    )
+                    "timeout. Time since last report {}s".format(id, elapsed)
                 )
         for id in stale_component_ids:
             stale_components.append(self._components.pop(id))
         return stale_components
 
     # TODO: add start and end timestamp
-    def to_metric(self, metric_name, metric_description, label_keys, metric_units, tag_values, agg_data, metrics_map):
+    def to_metric(
+        self,
+        metric_name,
+        metric_description,
+        label_keys,
+        metric_units,
+        tag_values,
+        agg_data,
+        metrics_map,
+    ):
         """to_metric translate the data that OpenCensus create
         to Prometheus format, using Prometheus Metric object
         :type desc: dict
@@ -330,7 +333,7 @@ class OpenCensusProxyCollector:
                         metric.unit,
                         label_values,
                         data,
-                        metrics_map
+                        metrics_map,
                     )
 
         for metric in metrics_map.values():
@@ -453,7 +456,7 @@ class MetricsAgent:
         with self._lock:
             if not self.view_manager:
                 return
-            
+
             self.c.clean_stale_components(self.worker_timeout_s)
 
 
