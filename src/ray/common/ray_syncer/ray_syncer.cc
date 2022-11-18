@@ -95,18 +95,6 @@ void NodeSyncConnection::ReceiveUpdate(std::shared_ptr<const RaySyncMessage> mes
   }
 }
 
-void NodeSyncConnection::OnSendDone(bool success,
-                                    std::shared_ptr<const RaySyncMessage> message) {
-  if (!success) {
-    RAY_LOG(ERROR) << "Failed to send the message to: "
-                   << NodeID::FromBinary(GetRemoteNodeID());
-    // Resend the message
-    PushToSendingQueue(std::move(message));
-    sending_ = false;
-    StartSend();
-  }
-}
-
 bool NodeSyncConnection::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
   // Try to filter out the messages the target node already has.
@@ -140,6 +128,11 @@ void NodeSyncConnection::StartSend() {
     Send(std::move(msg), sending_buffer_.empty());
     sending_ = true;
   }
+}
+
+void NodeSyncConnection::SendNext() {
+  sending_ = false;
+  StartSend();
 }
 
 std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(

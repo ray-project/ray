@@ -116,7 +116,7 @@ class NodeSyncConnection {
   /// Handler of a message update.
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
   const std::function<void(const std::string &, bool)> cleanup_cb_;
-  void OnSendDone(bool success, std::shared_ptr<const RaySyncMessage> message);
+  void SendNext();
 
  private:
   void StartSend();
@@ -184,8 +184,12 @@ class BidiReactor : public T, public NodeSyncConnection {
   }
 
   void OnWriteDone(bool ok) {
-    io_context_.dispatch([this, ok]() { OnSendDone(ok, std::move(sending_message_)); },
-                         "");
+    if (ok) {
+      io_context_.dispatch([this]() { SendNext();}, "");
+    } else {
+      RAY_LOG(ERROR) << "Failed to send the message to: "
+                     << NodeID::FromBinary(GetRemoteNodeID());
+    }
   }
 
   void OnReadDone(bool ok) {
