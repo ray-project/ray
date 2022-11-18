@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
 import React from "react";
-import { RouteComponentProps } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -22,10 +21,10 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const JobDetailPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail(props);
-  const jobId = props.match.params.id;
+  const { job, msg, params } = useJobDetail();
+  const jobId = params.id;
   const { progress } = useJobProgress(jobId);
 
   if (!job) {

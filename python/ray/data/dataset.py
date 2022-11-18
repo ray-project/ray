@@ -68,7 +68,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
-    BlockPartitionMetadata,
     KeyFn,
     RowUDF,
     T,
@@ -1442,7 +1441,7 @@ class Dataset(Generic[T]):
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
+            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
             for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
