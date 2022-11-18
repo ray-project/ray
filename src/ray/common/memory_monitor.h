@@ -36,8 +36,6 @@ struct MemorySnapshot {
                                   const MemorySnapshot &memory_snapshot);
 };
 
-using pid_t = int32_t;
-
 /// Callback that runs at each monitoring interval.
 ///
 /// \param is_usage_above_threshold true if memory usage is above the threshold
