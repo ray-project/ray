@@ -104,6 +104,7 @@ class Preprocessor:
             OneHotPreprocessor,
             RepeatedValuesPreprocessor,
             TupleFlatteningPreprocessor,
+            AtariRamPreprocessor
         )
         if isinstance(self, classes):
             obs_space.original_space = self._obs_space
