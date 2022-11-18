@@ -323,9 +323,6 @@ def check_compute_single_action(
 
     action_space = pol.action_space
 
-    policy_with_connectors_times = []
-    algo_times = []
-
     def _test_compute_actions(
         what, method_to_test, full_fetch, explore, timestep, unsquash, clip
     ):
@@ -397,7 +394,6 @@ def check_compute_single_action(
             except TypeError:
                 pass
         else:
-            t0 = time.time_ns()
             action = what.compute_single_action(
                 obs,
                 state_in,
@@ -409,8 +405,6 @@ def check_compute_single_action(
                 clip_action=clip,
                 **call_kwargs,
             )
-            if what is algorithm:
-                algo_times.append(time.time_ns() - t0)
 
         state_out = None
         if state_in or full_fetch or what is pol:
@@ -482,7 +476,6 @@ def check_compute_single_action(
             action = tree.map_structure(lambda s: s[0], action)
             assert action_space.contains(action)
         else:
-            t0 = time.time_ns()
             action = what.compute_actions_from_raw_input(
                 next_obs_batch=[obs],
                 reward_batch=[0],
@@ -494,7 +487,6 @@ def check_compute_single_action(
                 clip_action=clip,
                 clip=clip,
             )[0][0]
-            policy_with_connectors_times.append(time.time_ns() - t0)
             assert action_space.contains(action)
 
     # Loop through: Policy vs Algorithm; Different API methods to calculate
@@ -525,14 +517,6 @@ def check_compute_single_action(
                             unsquash,
                             clip,
                         )
-    print(
-        f"Average t/ns to compute action (Algorithm: {algorithm}):"
-        f" {np.average(algo_times)}"
-    )
-    print(
-        f"AAverage t/ns to compute action ({pol} + connectors):"
-        f" {np.average(policy_with_connectors_times)}"
-    )
 
 
 def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
