@@ -4,6 +4,7 @@ import shutil
 import time
 import unittest
 from pathlib import Path
+import logging
 
 import pytest
 
@@ -518,7 +519,7 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 2
 
 
-def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir):
+def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
     """Test validation for trainable compatibility, when re-specifying a trainable
     on restore."""
 
@@ -535,8 +536,6 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir):
     tuner.fit()
 
     del tuner
-    ray.shutdown()
-    ray.init(num_cpus=4)
 
     # Can't overwrite with a different Trainable type
     with pytest.raises(ValueError):
@@ -563,11 +562,15 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir):
         checkpoint = session.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
-    tuner = Tuner.restore(
-        str(tmpdir / "overwrite_trainable"),
-        overwrite_trainable=train_func_1,
-        resume_errored=True,
-    )
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable=train_func_1,
+            resume_errored=True,
+        )
+        assert "The trainable has been overwritten" in caplog.text
+
     results = tuner.fit()
     assert not results.errors
 
