@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import json
 
 from ray import cloudpickle
@@ -10,7 +11,6 @@ from dataclasses import dataclass
 
 import ray
 from ray import ObjectRef
-from ray._private.utils import get_or_create_event_loop
 from ray.util.annotations import PublicAPI
 
 # Alias types
@@ -26,7 +26,12 @@ WORKFLOW_OPTIONS = "workflow.io/options"
 
 
 def asyncio_run(coro):
-    return get_or_create_event_loop().run_until_complete(coro)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def validate_user_metadata(metadata):
