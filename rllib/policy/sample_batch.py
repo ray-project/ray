@@ -1586,8 +1586,13 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
             batch = batch.policy_batches[DEFAULT_POLICY_ID]
         else:
             raise ValueError(
-                "Off-Policy Estimation is not implemented for "
-                "multi-agent batches. You can set "
-                "`off_policy_estimation_methods: {}` to resolve this."
+                "RLlib tried to convert a multi agent-batch with data from more "
+                "than one policy to a single-agent batch. This is not supported and "
+                "may be due to a number of issues. Here are two possible ones:"
+                "1) Off-Policy Estimation is not implemented for "
+                "multi-agent batches. You can set `off_policy_estimation_methods: {}` "
+                "to resolve this."
+                "2) Loading multi-agent data for offline training is not implemented."
+                "Load single-agent data instead to resolve this."
             )
     return batch
