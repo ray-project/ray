@@ -118,8 +118,6 @@ parts:
           - file: tune/examples/index
             sections:
               - file: tune/examples/ml-frameworks
-              - file: tune/examples/experiment-tracking
-              - file: tune/examples/hpo-frameworks
                 sections:
                   - file: tune/examples/tune-sklearn
                     title: "Scikit-Learn Example"
@@ -143,10 +141,16 @@ parts:
                     title: "Horovod Example"
                   - file: tune/examples/pbt_transformers
                     title: "Huggingface Example"
+              - file: tune/examples/experiment-tracking
+                sections:
                   - file: tune/examples/tune-comet
                     title: "Comet Example"
                   - file: tune/examples/tune-wandb
                     title: "Weights & Biases Example"
+                  - file: tune/examples/tune-mlflow
+                    title: "MLflow Example"
+              - file: tune/examples/hpo-frameworks
+                sections:
                   - file: tune/examples/ax_example
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example

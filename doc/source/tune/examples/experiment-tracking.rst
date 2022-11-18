@@ -28,3 +28,12 @@ to use Ray Tune with Tensorboard, you can find more information in our
         :type: ref
         :text: Tracking Your Experiment Process Weights & Biases
         :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/mlflow.png
+
+    +++
+    .. link-button:: tune-mlflow-ref
+        :type: ref
+        :text: Using MLflow Tracking & AutoLogging with Tune
+        :classes: btn-link btn-block stretched-link
