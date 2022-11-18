@@ -100,8 +100,10 @@ def get_agent(request, monkeypatch):
             )
         )
         agent = MetricsAgent(view_manager, stats_recorder, stats_exporter)
+        REGISTRY.register(agent.c)
         yield agent, agent_port
         REGISTRY.unregister(agent.stats_exporter.collector)
+        REGISTRY.unregister(agent.c)
         execution_context.set_measure_to_view_map({})
 
 
