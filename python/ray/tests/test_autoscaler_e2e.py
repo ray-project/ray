@@ -114,6 +114,7 @@ def test_metrics(shutdown_only):
 if __name__ == "__main__":
     import sys
     import os
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
