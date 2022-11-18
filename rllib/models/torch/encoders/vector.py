@@ -1,14 +1,15 @@
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.torch.model import TorchModel
-from ray.rllib.models.specs.specs_dict import ModelSpec
-from ray.rllib.models.utils import get_activation_fn
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
-from torch import nn
 import torch
+from torch import nn
+
+from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.nested_dict import NestedDict
 
 if TYPE_CHECKING:
-    from ray.rllib.catalog.configs.encoder import VectorEncoderConfig
+    from ray.rllib.models.configs.encoder import VectorEncoderConfig
 
 
 def input_to_output_spec(

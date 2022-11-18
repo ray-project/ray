@@ -1,11 +1,12 @@
 import abc
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Tuple
-from ray.rllib.catalog.torch.encoders.vector import TorchVectorEncoder
+
 from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.torch.encoders.vector import TorchVectorEncoder
 
 if TYPE_CHECKING:
-    from ray.rllib.catalog.torch.encoders.vector import Encoder
+    from ray.rllib.models.torch.encoders.vector import Encoder
 
 
 @dataclass

@@ -1,10 +1,10 @@
-from ray.rllib.catalog.configs.encoder import VectorEncoderConfig
 import unittest
-from ray.rllib.models.specs.specs_dict import ModelSpec
 
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 import torch
 
+from ray.rllib.models.configs.encoder import VectorEncoderConfig
+from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.nested_dict import NestedDict
 
 
