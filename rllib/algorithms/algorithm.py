@@ -91,6 +91,7 @@ from ray.rllib.utils.metrics import (
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
@@ -1532,9 +1533,7 @@ class Algorithm(Trainable):
                 extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
             else:
                 action, state, extra = policy.compute_actions_from_raw_input(
-                    next_obs_batch=[
-                        tree.map_structure(lambda x: np.array(x), observation)
-                    ],
+                    next_obs_batch=[convert_to_numpy(observation)],
                     reward_batch=[np.array(prev_reward)],
                     dones_batch=[np.array(False)],
                     info_batch=[{}],
