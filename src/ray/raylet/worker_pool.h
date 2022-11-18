@@ -470,6 +470,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::chrono::high_resolution_clock::time_point start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
+    /// The dynamic_options.
+    std::vector<std::string> dynamic_options;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -676,7 +678,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
-                        const rpc::RuntimeEnvInfo &runtime_env_info);
+                        const rpc::RuntimeEnvInfo &runtime_env_info,
+                        const std::vector<std::string> &dynamic_options);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
@@ -693,6 +696,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const int runtime_env_hash,
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
+
+  const WorkerProcessInfo *LookupWorkerProcessInfo(StartupToken token) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
