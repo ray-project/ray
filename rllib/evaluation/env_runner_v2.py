@@ -521,8 +521,13 @@ class EnvRunnerV2:
                     f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
                     "as observation, the dones[__all__] flag must also be set to True!"
                 )
+                # Tell the sampler we have got a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
+                # Output the collected episode after adding rollout metrics so that we
+                # always fetch metrics with RolloutWorker before we fetch samples.
+                # This is because we need to behave like env_runner() for now.
                 self._handle_done_episode(
                     env_id=env_id,
                     env_obs_or_exception=env_obs,
@@ -532,8 +537,7 @@ class EnvRunnerV2:
                     to_eval=to_eval,
                     outputs=outputs,
                 )
-                # Tell the sampler we have got a faulty episode.
-                outputs.append(RolloutMetrics(episode_faulty=True))
+
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
@@ -789,8 +793,9 @@ class EnvRunnerV2:
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
             is_error = False
-            # Output the collected episode after (1) rollout metrics so that we
-            # always fetch metrics with RolloutWorker before we fetch samples
+            # Output the collected episode after adding rollout metrics so that we
+            # always fetch metrics with RolloutWorker before we fetch samples.
+            # This is because we need to behave like env_runner() for now.
             self._build_done_episode(env_id, is_done, hit_horizon, outputs)
 
         # Clean up and deleted the post-processed episode now that we have collected
