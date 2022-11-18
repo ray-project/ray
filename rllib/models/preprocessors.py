@@ -105,6 +105,7 @@ class Preprocessor:
             RepeatedValuesPreprocessor,
             TupleFlatteningPreprocessor,
             AtariRamPreprocessor,
+            GenericPixelPreprocessor
         )
         if isinstance(self, classes):
             obs_space.original_space = self._obs_space
