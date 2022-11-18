@@ -578,6 +578,11 @@ need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/man
 and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
 the collection. The execution results are then used to create a Dataset.
 
+.. note::
+
+  This example is not runnable as-is; you'll need to point it at your MongoDB
+  instance.
+
 .. literalinclude:: ./doc_code/creating_datasets.py
    :language: python
    :start-after: __from_mongo_begin__
