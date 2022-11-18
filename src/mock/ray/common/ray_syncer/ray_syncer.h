@@ -47,7 +47,8 @@ class MockNodeSyncConnection : public NodeSyncConnection {
  public:
   using NodeSyncConnection::NodeSyncConnection;
 
- protected:
+  MOCK_METHOD(void, Disconnect, (), (override));
+
   MOCK_METHOD(void, Send, (std::shared_ptr<const RaySyncMessage>, bool), (override));
 };
 

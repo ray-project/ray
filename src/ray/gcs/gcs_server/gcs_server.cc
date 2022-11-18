@@ -523,7 +523,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
         address.set_port(pair.second.node_manager_port());
 
         auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
-        ray_syncer_->Connect(raylet_client->GetChannel());
+        ray_syncer_->Connect(pair.second.node_id(), raylet_client->GetChannel());
       }
     }
   } else {
@@ -652,7 +652,7 @@ void GcsServer::InstallEventListeners() {
     cluster_task_manager_->ScheduleAndDispatchTasks();
 
     if (RayConfig::instance().use_ray_syncer()) {
-      ray_syncer_->Connect(raylet_client->GetChannel());
+      ray_syncer_->Connect(node->node_id(), raylet_client->GetChannel());
     } else {
       gcs_ray_syncer_->AddNode(*node);
     }

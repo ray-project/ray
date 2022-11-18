@@ -147,37 +147,49 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
-// TEST_F(RaySyncerTest, NodeSyncConnection) {
-//   auto node_id = NodeID::FromRandom();
+TEST_F(RaySyncerTest, NodeSyncConnection) {
+  auto node_id = NodeID::FromRandom();
 
-//   MockNodeSyncConnection sync_connection(
-//       io_context_,
-//       node_id.Binary(),
-//       [](std::shared_ptr<ray::rpc::syncer::RaySyncMessage>) {});
-//   auto from_node_id = NodeID::FromRandom();
-//   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  MockNodeSyncConnection sync_connection(
+      io_context_,
+      node_id.Binary(),
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+      [](auto, auto) {});
 
-//   // First push will succeed and the second one will be deduplicated.
-//   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
-//   ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
-//   ASSERT_EQ(1, sync_connection.sending_buffer_.size());
-//   ASSERT_EQ(0, sync_connection.sending_buffer_.begin()->second->version());
-//   ASSERT_EQ(1, sync_connection.node_versions_.size());
-//   ASSERT_EQ(
-//       0,
-//       sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+  auto from_node_id = NodeID::FromRandom();
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
+  msg.set_version(2);
+  auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg);
+  msg.set_version(3);
+  auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
 
-//   msg.set_version(2);
-//   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
-//   ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
-//   // The previous message is deleted.
-//   ASSERT_EQ(1, sync_connection.sending_buffer_.size());
-//   ASSERT_EQ(1, sync_connection.node_versions_.size());
-//   ASSERT_EQ(2, sync_connection.sending_buffer_.begin()->second->version());
-//   ASSERT_EQ(
-//       2,
-//       sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
-// }
+  // First push will succeed and the second one will be deduplicated.
+  EXPECT_CALL(sync_connection, Send(Eq(msg_ptr1), Eq(true)));
+  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr1));
+  ASSERT_FALSE(sync_connection.PushToSendingQueue(msg_ptr1));
+  ASSERT_EQ(0, sync_connection.sending_buffer_.size());
+
+  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
+  ASSERT_EQ(1, sync_connection.node_versions_.size());
+  ASSERT_EQ(2, sync_connection.sending_buffer_.begin()->second->version());
+  ASSERT_EQ(
+      2,
+      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+
+  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr3));
+  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
+  ASSERT_EQ(1, sync_connection.node_versions_.size());
+  ASSERT_EQ(3, sync_connection.sending_buffer_.begin()->second->version());
+  ASSERT_EQ(
+      3,
+      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+
+  // First message got sent
+  EXPECT_CALL(sync_connection, Send(Eq(msg_ptr3), Eq(true)));
+  sync_connection.OnSendDone(true, msg_ptr1);
+}
 
 struct SyncerServerTest {
   SyncerServerTest(std::string port) : work_guard(io_context.get_executor()) {
