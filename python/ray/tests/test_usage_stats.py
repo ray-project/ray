@@ -815,13 +815,6 @@ available_node_types:
     )
     assert cluster_config_to_report.cloud_provider == "kuberay"
 
-    monkeypatch.delenv("RAY_USAGE_STATS_KUBERAY_IN_USE")
-    monkeypatch.setenv("RAY_USAGE_STATS_LEGACY_OPERATOR_IN_USE", "1")
-    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
-        tmp_path / "does_not_exist.yaml"
-    )
-    assert cluster_config_to_report.cloud_provider == "legacy_ray_operator"
-
 
 @pytest.mark.skipif(
     sys.platform == "win32",
