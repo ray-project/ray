@@ -77,13 +77,12 @@ class NestedActionSpacesTest(unittest.TestCase):
 
         # Remove lr schedule from config, not needed here, and not supported by BC.
         del config["lr_schedule"]
-        config["enable_connectors"] = False
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
                     "action_space": action_space,
                 }
-                for flatten in [False]:
+                for flatten in [True, False]:
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten

@@ -264,7 +264,7 @@ class AgentCollector:
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
-                or (k == SampleBatch.ACTIONS and self.disable_action_flattening)
+                or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
@@ -508,7 +508,7 @@ class AgentCollector:
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
-                or (col == SampleBatch.ACTIONS and self.disable_action_flattening)
+                or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
