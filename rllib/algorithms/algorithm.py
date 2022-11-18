@@ -1532,7 +1532,9 @@ class Algorithm(Trainable):
                 extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
             else:
                 action, state, extra = policy.compute_actions_from_raw_input(
-                    next_obs_batch=[np.array(observation)],
+                    next_obs_batch=[
+                        tree.map_structure(lambda x: np.array(x), observation)
+                    ],
                     reward_batch=[np.array(prev_reward)],
                     dones_batch=[np.array(False)],
                     info_batch=[{}],
