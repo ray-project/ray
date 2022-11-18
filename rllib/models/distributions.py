@@ -19,6 +19,7 @@ class Distribution(abc.ABC):
         >>> logp = action_dist.logp(action)
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
+        >>> deterministic_action = action_dist.dsample()
 
     """
 
@@ -54,6 +55,29 @@ class Distribution(abc.ABC):
 
         If this method is implemented, we can take gradients of samples w.r.t. the
         distribution parameters.
+
+        Args:
+            sample_shape: The shape of the sample to draw.
+            return_logp: Whether to return the logp of the sampled values.
+            **kwargs: Forward compatibility placeholder.
+
+        Returns:
+            The sampled values. If return_logp is True, returns a tuple of the
+            sampled values and its logp.
+        """
+
+    @abc.abstractmethod
+    def dsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        """Draw a deterministic sample from the action distribution.
+
+        This will always return the maximum likelihood sample given
+        a specific set of logits.
 
         Args:
             sample_shape: The shape of the sample to draw.

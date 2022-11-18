@@ -5,7 +5,7 @@ already be familiar with.
 """
 import gym
 import numpy as np
-from typing import Optional
+from typing import List, Optional
 import abc
 
 
@@ -53,6 +53,12 @@ class TorchDistribution(Distribution, abc.ABC):
         return sample
 
     @override(Distribution)
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        raise NotImplementedError()
+
+    @override(Distribution)
     def rsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
@@ -60,6 +66,136 @@ class TorchDistribution(Distribution, abc.ABC):
         if return_logp:
             return rsample, self.logp(rsample)
         return rsample
+
+
+@DeveloperAPI
+class TorchMultiDistribution(TorchDistribution):
+    """A distribution class that contains multiple disparate distributions.
+
+    For example, a TorchMultiDistribution instance could contain two categorical
+    distributions and a normal distribution.
+
+    Public methods will recursively call the methods for each subdistribution, and
+    where necessary, concatenate the results over the last dimension. Depending on the
+    function (e.g. entropy()), the result will be reduced across the last dimension
+    (e.g. sum of entropies).
+
+    Example::
+    >>> d0 = TorchCategorical(torch.tensor([ 0.5, 0.5 ]))
+    >>> d1 = TorchDiagGaussian(torch.tensor([[0.5, 0.3], 0.01, 0.01]))
+    >>> combined = TorchMultiDistribution([d0, d1], [(2,), (2,2)])
+    >>> combined.sample().shape = (4,)
+    >>> combined.entropy().shape = (1,)
+    """
+
+    def __init__(self, distributions: List[TorchDistribution]):
+        self.distributions = distributions
+
+    def _get_torch_distribution(
+        self, *args, **kwargs
+    ) -> List[torch.distributions.Distribution]:
+        return [d._get_torch_distribution(*args, **kwargs) for d in self.distributions]
+
+    @override(Distribution)
+    def logp(self, value: TensorType, **kwargs):
+        logps = [d.logp(value, **kwargs) for d in self.distributions]
+        return torch.cat(logps, dim=-1)
+
+    def _check_dists(self, other: "TorchMultiDistribution") -> None:
+        """Ensures that we are doing a like-for-like comparison across distributions.
+
+        Args:
+            other: the other distribution we are comparing to
+
+        Raises:
+            NotImplementedError: if the other distribution is not a
+                TorchMultiDistribution
+            AssertionError: if the other MultiDistribution has different
+                subdistributions than our subdistributions
+        """
+
+        if not isinstance(other, TorchMultiDistribution):
+            raise NotImplementedError(
+                "Cannot compare MultiDistribution to non-MultiDistribution"
+            )
+
+        assert len(other) == len(
+            self.distributions
+        ), f"Distribution size mismatch: {self.distributions} and {other}"
+        for my_dist, other_dist in zip(self.distributions, other.distributions):
+            assert type(my_dist) == type(
+                other_dist
+            ), f"Distribution mismatch: {self.distributions} and {other}"
+
+    @override(Distribution)
+    def entropy(self) -> TensorType:
+        entropies = [d.entropy() for d in self.distributions]
+        # Total entropy is sum of entropies
+        return torch.cat(entropies, dim=-1).sum()
+
+    @override(Distribution)
+    def kl(self, other: Distribution) -> TensorType:
+        # Match each subdistribution to each other subdistribution
+        self._check_dists(other)
+        kls = []
+        for my_dist, other_dist in zip(self.distributions, other.distributions):
+            kls.append(my_dist.kl(other_dist))
+        # The combined KL divergence is the sum of divergences
+        return torch.cat(kls, dim=-1).sum()
+
+    @override(Distribution)
+    def sample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        samples = [d.dist.sample(sample_shape) for d in self.distributions]
+        if return_logp:
+            logps = [d.logp(s) for s, d in zip(samples, self.distributions)]
+            logps = torch.cat(logps, dim=-1)
+        samples = torch.cat(samples, dim=-1)
+
+        if return_logp:
+            return samples, logps
+        else:
+            return samples
+
+    @override(Distribution)
+    def rsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        rsamples = [d.dist.rsample(sample_shape) for d in self.distributions]
+        if return_logp:
+            logps = [d.logp(s) for s, d in zip(rsamples, self.distributions)]
+            logps = torch.cat(logps, dim=-1)
+        rsamples = torch.cat(rsamples, dim=-1)
+
+        if return_logp:
+            return rsamples, logps
+        else:
+            return rsamples
+
+    @override(Distribution)
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        dsamples = [d.dist.dsample(sample_shape) for d in self.distributions]
+        if return_logp:
+            logps = [d.logp(s) for s, d in zip(dsamples, self.distributions)]
+            logps = torch.cat(logps, dim=-1)
+        dsamples = torch.cat(dsamples, dim=-1)
+
+        if return_logp:
+            return dsamples, logps
+        else:
+            return dsamples
+
+    @staticmethod
+    @override(Distribution)
+    def required_model_output_shape(
+        space: gym.Space, model_config: ModelConfigDict
+    ) -> Tuple[int, ...]:
+        # TODO: We should implement this to use DistributionConfig
+        # that the user can pass to PiConfig
+        raise NotImplementedError()
 
 
 @DeveloperAPI
@@ -112,6 +248,14 @@ class TorchCategorical(TorchDistribution):
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
         return torch.distributions.categorical.Categorical(probs, logits)
+
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        dsample = self.dist.mode
+        if return_logp:
+            return dsample, self.logp(dsample)
+        return dsample
 
     @staticmethod
     @override(Distribution)
@@ -175,6 +319,15 @@ class TorchDiagGaussian(TorchDistribution):
     def kl(self, other: "TorchDistribution") -> TensorType:
         return super().kl(other).sum(-1)
 
+    @override(TorchDistribution)
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        dsample = self.dist.mean
+        if return_logp:
+            return dsample, self.logp(dsample)
+        return dsample
+
     @staticmethod
     @override(Distribution)
     def required_model_output_shape(
@@ -224,6 +377,15 @@ class TorchDeterministic(Distribution):
         dtype = self.loc.dtype
         shape = sample_shape + self.loc.shape
         return torch.ones(shape, device=device, dtype=dtype) * self.loc
+
+    def dsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs,
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        raise NotImplementedError
 
     def rsample(
         self,
