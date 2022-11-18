@@ -393,7 +393,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
             PGConfig()
             .environment("nested", disable_env_checking=True)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            # TODO (Artur): This only works with our pre-connector sampling logic
             .framework("tf")
             .training(
                 model={"custom_model": "composite", "use_lstm": test_lstm},
