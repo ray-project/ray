@@ -578,33 +578,10 @@ need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/man
 and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
 the collection. The execution results are then used to create a Dataset.
 
-.. code-block:: python
-
-    import ray
-
-    # Read a local MongoDB.
-    ds = ray.data.read_mongo(
-        uri="mongodb://localhost:27017",
-        database="my_db",
-        collection="my_collection",
-        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-    )
-
-    # Reading a remote MongoDB is the same.
-    ds = ray.data.read_mongo(
-        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-        database="my_db",
-        collection="my_collection",
-        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-    )
-
-    # Write back to MongoDB.
-    ds.write_mongo(
-        MongoDatasource(),
-        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-        database="my_db",
-        collection="my_collection",
-    )
+.. literalinclude:: ./doc_code/creating_datasets.py
+   :language: python
+   :start-after: __from_mongo_begin__
+   :end-before: __from_mongo_end__
 
 .. _datasets_custom_datasource:
 
