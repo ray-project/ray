@@ -319,16 +319,20 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
     def _get_pods_resource_version(self) -> str:
         """Extract a recent pods resource version by patching the head pod's annotations
-        and reading metadata.resourceVersion of the response.
+        and reading the metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
             return ""
-        path = f"pods/{RAY_HEAD_POD_NAME}/metadata/annotations"
-        # Mimic timestamp format used by K8s.
+        resource_path = f"pods/{RAY_HEAD_POD_NAME}"
+        # Patch the annotation "ray.io/autoscaler-update-timestamp"
+        patch_path = "/metadata/annotations/ray.io~1autoscaler-update-timestamp"
+        # Mimic the timestamp format used by K8s.
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        payload = replace_patch(path, {"ray.io/autoscaler-update-timestamp": timestamp})
-        pods_resp = self._patch(path, payload)
-        return pods_resp["metadata"]["resourceVersion"]
+        payload = [replace_patch(patch_path, timestamp)]
+        pod_resp = self._patch(resource_path, payload)
+        # The response carries the pod resource version at which the patch
+        # was accepted.
+        return pod_resp["metadata"]["resourceVersion"]
 
     def _scale_request_to_patch_payload(
         self, scale_request: ScaleRequest, raycluster: Dict[str, Any]
