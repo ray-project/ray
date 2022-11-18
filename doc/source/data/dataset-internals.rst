@@ -114,9 +114,11 @@ This section describes how Datasets manages execution and object store memory.
 Execution Memory
 ~~~~~~~~~~~~~~~~
 
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (and Python heap memory if conversion to non-Arrow format is needed). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+During execution, a task can read multiple input blocks, and write multiple output blocks. The input blocks consume object stored shared memory (and Python heap memory if conversion to non-Arrow format is needed). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
 
-This means that large block sizes can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
+Certain types of intermediate data must fit in memory. When a task has multiple input blocks, only one block needs to fit in memory at any given time. When a task has multiple output blocks, before Ray 2.2 all output blocks need to fit in memory. After Ray 2.2 only one output block needs to fit in memory at any given time. Under the hood, Ray Datasets uses :ref:`remote generators <generators>` to put output blocks in the object store one by one, without holding all blocks in memory.
+
+Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
 Object Store Memory
 ~~~~~~~~~~~~~~~~~~~
