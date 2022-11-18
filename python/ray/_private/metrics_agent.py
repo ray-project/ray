@@ -7,13 +7,10 @@ import traceback
 from collections import namedtuple, defaultdict
 from typing import List, Tuple, Any, List, Dict
 
-from prometheus_client import CollectorRegistry
 from prometheus_client.core import (
-    REGISTRY,
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
-    UnknownMetricFamily,
 )
 from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import aggregation
