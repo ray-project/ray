@@ -244,3 +244,19 @@ class NodeProvider:
     ) -> Dict[str, Any]:
         """Fills out missing "resources" field for available_node_types."""
         return cluster_config
+
+    def safe_to_scale(self) -> bool:
+        """Optional condition to determine if it's safe to proceed with an autoscaling
+        update. Can be used to wait for convergence of state managed by an external
+        cluster manager.
+
+        Called by the autoscaler immediately after non_terminated_nodes().
+        If False is returned, the autoscaler will abort the update.
+        """
+        return True
+
+    def post_process(self) -> None:
+        """This optional method is executed at the end of
+        StandardAutoscaler._update().
+        """
+        pass

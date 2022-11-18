@@ -17,7 +17,6 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
-    SimpleTensorFlowDatasource,
     WriteResult,
 )
 
@@ -192,23 +191,18 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
-def test_tensorflow_datasource(ray_start_regular_shared):
+def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
 
     tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
 
-    def dataset_factory():
-        return tfds.load("mnist", split=["train"], as_supervised=True)[0]
-
-    ray_dataset = ray.data.read_datasource(
-        SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
-    ).fully_executed()
-
-    assert ray_dataset.num_blocks() == 1
+    ray_dataset = ray.data.from_tf(tf_dataset)
 
     actual_data = ray_dataset.take_all()
     expected_data = list(tf_dataset)
+    assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
         expected_data, actual_data
     ):
@@ -318,25 +312,20 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_parquet(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_binary_files(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_csv(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_json(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         error = OSError(
             f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
         )
         _handle_read_os_error(error, dummy_path)
-    assert error_message in str(e.value)
 
 
 if __name__ == "__main__":

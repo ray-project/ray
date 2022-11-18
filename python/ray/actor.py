@@ -545,7 +545,8 @@ class ActorClass:
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_restarts: This specifies the maximum
                 number of times that the actor should be restarted when it dies

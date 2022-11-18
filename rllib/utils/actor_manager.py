@@ -2,17 +2,21 @@ from collections import defaultdict
 import copy
 from dataclasses import dataclass
 import logging
+import sys
+import time
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError, RayActorError
+from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
 
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class ResultOrError:
     """A wrapper around a result or an error.
 
@@ -30,7 +34,10 @@ class ResultOrError:
         # Note(jungong) : None is a valid result if the remote function
         # does not return anything.
         self._result = result
-        self._error = error
+        # Easier to handle if we show the user the original error.
+        self._error = (
+            error.as_instanceof_cause() if isinstance(error, RayTaskError) else error
+        )
 
     @property
     def ok(self):
@@ -44,6 +51,7 @@ class ResultOrError:
             return self._result
 
 
+@DeveloperAPI
 @dataclass
 class CallResult:
     """Represents a single result from a call to an actor.
@@ -65,6 +73,7 @@ class CallResult:
         return self.result_or_error.get()
 
 
+@DeveloperAPI
 class RemoteCallResults:
     """Represents a list of results from calls to a set of actors.
 
@@ -120,15 +129,61 @@ class RemoteCallResults:
     def ignore_ray_errors(self) -> Iterator[ResultOrError]:
         """Return an iterator over the results, skipping only Ray errors.
 
-        Similar to ignore_errors, but only skips Errors raised from the
-        Ray framework. This is useful for application that wants to handle
-        errors from user code differently.
+        Similar to ignore_errors, but only skips Errors raised because of
+        remote actor problems (often get restored automatcially).
+        This is useful for callers that wants to handle application errors differently.
         """
         return self._Iterator(
-            [r for r in self.result_or_errors if not isinstance(r.get(), RayError)]
+            [r for r in self.result_or_errors if not isinstance(r.get(), RayActorError)]
         )
 
 
+@DeveloperAPI
+class FaultAwareApply:
+    @DeveloperAPI
+    def ping(self) -> str:
+        """Ping the actor. Can be used as a health check.
+
+        Returns:
+            "pong" if actor is up and well.
+        """
+        return "pong"
+
+    @DeveloperAPI
+    def apply(
+        self,
+        func: Callable[[Any, Optional[Any], Optional[Any]], T],
+        *args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this rollout worker instance.
+
+        A generic interface for applying arbitray member functions on a
+        remote actor.
+
+        Args:
+            func: The function to call, with this RolloutWorker as first
+                argument, followed by args, and kwargs.
+            args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
+
+        Returns:
+            The return value of the function call.
+        """
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            if self.config.recreate_failed_workers:
+                logger.exception("Worker exception, recreating: {}".format(e))
+                # Allow logs messages to propagate.
+                time.sleep(0.5)
+                # Kill this worker so Ray Core can restart it.
+                sys.exit(1)
+            else:
+                raise e
+
+
+@DeveloperAPI
 class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
 
@@ -176,6 +231,7 @@ class FaultTolerantActorManager:
         self,
         actors: Optional[List[ActorHandle]] = None,
         max_remote_requests_in_flight_per_actor: Optional[int] = 2,
+        init_id: Optional[int] = 0,
     ):
         """Construct a FaultTolerantActorManager.
 
@@ -187,8 +243,11 @@ class FaultTolerantActorManager:
                 requests that can be in flight per actor. Any requests made to the pool
                 that cannot be scheduled because the limit has been reached will be
                 dropped. This only applies to the asynchronous remote call mode.
+            init_id: The initial ID to use for the next remote actor. Default is 0.
         """
-        self.__NEXT_ID = 0
+        # For historic reasons, just start remote worker ID from 1, so they never
+        # collide with local worker ID (0).
+        self.__next_id = init_id
 
         # Actors are stored in a map and indexed by a unique id.
         self.__actors: Mapping[int, ActorHandle] = {}
@@ -203,6 +262,9 @@ class FaultTolerantActorManager:
             max_remote_requests_in_flight_per_actor
         )
 
+        # Useful metric.
+        self._num_actor_restarts = 0
+
     @DeveloperAPI
     def actors(self):
         """Access the underlying actors being managed.
@@ -216,6 +278,11 @@ class FaultTolerantActorManager:
         return self.__actors
 
     @DeveloperAPI
+    def healthy_actor_ids(self) -> List[int]:
+        """Returns a list of worker IDs that are healthy."""
+        return [k for k, v in self.__remote_actor_states.items() if v.is_healthy]
+
+    @DeveloperAPI
     def add_actors(self, actors: List[ActorHandle]):
         """Add a list of actors to the pool.
 
@@ -223,21 +290,19 @@ class FaultTolerantActorManager:
             actors: A list of ray remote actors to be added to the pool.
         """
         for actor in actors:
-            self.__actors[self.__NEXT_ID] = actor
-            self.__remote_actor_states[self.__NEXT_ID] = self._ActorState()
-            self.__NEXT_ID += 1
+            self.__actors[self.__next_id] = actor
+            self.__remote_actor_states[self.__next_id] = self._ActorState()
+            self.__next_id += 1
 
-    @DeveloperAPI
-    def remove_actor(self, actor_id: int):
-        """Remove an actor from the pool.
+    def _remove_async_state(self, actor_id: int):
+        """Remove internal async state of for a given actor.
+
+        This is called when an actor is removed from the pool or being marked
+        unhealthy.
 
         Args:
-            actor_id: ID of the actor to remove.
+            actor_id: The id of the actor.
         """
-        # Remove the actor from the pool.
-        del self.__actors[actor_id]
-        del self.__remote_actor_states[actor_id]
-
         # Remove any outstanding async requests for this actor.
         reqs_to_be_removed = [
             req
@@ -248,6 +313,25 @@ class FaultTolerantActorManager:
             del self.__in_flight_req_to_actor_id[req]
 
     @DeveloperAPI
+    def remove_actor(self, actor_id: int) -> ActorHandle:
+        """Remove an actor from the pool.
+
+        Args:
+            actor_id: ID of the actor to remove.
+
+        Returns:
+            Handle to the actor that was removed.
+        """
+        actor = self.__actors[actor_id]
+
+        # Remove the actor from the pool.
+        del self.__actors[actor_id]
+        del self.__remote_actor_states[actor_id]
+        self._remove_async_state(actor_id)
+
+        return actor
+
+    @DeveloperAPI
     def num_actors(self) -> int:
         """Return the total number of actors in the pool."""
         return len(self.__actors)
@@ -256,6 +340,11 @@ class FaultTolerantActorManager:
     def num_healthy_actors(self) -> int:
         """Return the number of healthy remote actors."""
         return sum([s.is_healthy for s in self.__remote_actor_states.values()])
+
+    @DeveloperAPI
+    def total_num_restarts(self) -> int:
+        """Return the number of remote actors that have been restarted."""
+        return self._num_actor_restarts
 
     @DeveloperAPI
     def num_outstanding_async_reqs(self) -> int:
@@ -288,11 +377,15 @@ class FaultTolerantActorManager:
             raise ValueError(f"Unknown actor id: {actor_id}")
         self.__remote_actor_states[actor_id].is_healthy = healthy
 
+        if not healthy:
+            # Remove any async states.
+            self._remove_async_state(actor_id)
+
     @DeveloperAPI
     def clear(self):
         """Clean up managed actors."""
         for actor in self.__actors.values():
-            del actor
+            ray.kill(actor)
         self.__actors.clear()
         self.__remote_actor_states.clear()
         self.__in_flight_req_to_actor_id.clear()
@@ -323,8 +416,7 @@ class FaultTolerantActorManager:
 
         if isinstance(func, list):
             calls = [
-                self.__actors[i].apply.remote(func)
-                for i, func in zip(remote_actor_ids, func)
+                self.__actors[i].apply.remote(f) for i, f in zip(remote_actor_ids, func)
             ]
         else:
             calls = [self.__actors[i].apply.remote(func) for i in remote_actor_ids]
@@ -332,12 +424,13 @@ class FaultTolerantActorManager:
         return calls
 
     @DeveloperAPI
-    def __fetch_result_and_mark_state(
+    def __fetch_result(
         self,
         *,
         remote_actor_ids: List[int],
         remote_calls: List[ray.ObjectRef],
         timeout_seconds: int = None,
+        return_obj_refs: bool = False,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -348,6 +441,7 @@ class FaultTolerantActorManager:
                 calls were fired against.
             remote_calls: list of remote calls to fetch.
             timeout_seconds: timeout for the ray.wait() call. Default is None.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
 
         Returns:
             A list of ready ObjectRefs mapping to the results of those calls.
@@ -361,31 +455,31 @@ class FaultTolerantActorManager:
             num_returns=len(remote_calls),
             timeout=timeout,
             # Make sure remote results are fetched locally in parallel.
-            fetch_local=True,
+            fetch_local=not return_obj_refs,
         )
-
-        if timeout is not None and len(ready) < len(remote_calls):
-            logger.error(
-                f"Failed to wait for {len(remote_calls) - len(ready)} remote calls."
-            )
 
         # Remote data should already be fetched to local object store at this point.
         remote_results = RemoteCallResults()
         for r in ready:
             # Find the corresponding actor ID for this remote call.
             actor_id = remote_actor_ids[remote_calls.index(r)]
+
+            # If caller wants ObjectRefs, return directly without resolve them.
+            if return_obj_refs:
+                remote_results.add_result(actor_id, ResultOrError(result=r))
+                continue
+
             try:
                 result = ray.get(r)
                 remote_results.add_result(actor_id, ResultOrError(result=result))
-                # Able to fetch return value. Mark this actor healthy if necessary.
-                if not self.is_actor_healthy(actor_id):
-                    logger.info(f"brining actor {actor_id} back into service.")
-                self.set_actor_state(actor_id, healthy=True)
             except Exception as e:
                 # Return error to the user.
                 remote_results.add_result(actor_id, ResultOrError(error=e))
 
-                if isinstance(e, RayActorError):
+                # Mark the actor as unhealthy.
+                # TODO(jungong): Using RayError here to preserve historical behavior.
+                # It may very likely be better to use RayActorError here.
+                if isinstance(e, RayError):
                     # Take this actor out of service and wait for Ray Core to
                     # restore it.
                     if self.is_actor_healthy(actor_id):
@@ -400,6 +494,40 @@ class FaultTolerantActorManager:
 
         return ready, remote_results
 
+    def _filter_func_and_remote_actor_id_by_state(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        remote_actor_ids: List[int],
+    ):
+        """Filter out func and remote worker ids by actor state.
+
+        Args:
+            func: A single, or a list of Callables.
+            remote_actor_ids: IDs of potential remote workers to apply func on.
+
+        Returns:
+            A tuple of (filtered func, filtered remote worker ids).
+        """
+        if isinstance(func, list):
+            assert len(remote_actor_ids) == len(
+                func
+            ), "Func must have the same number of callables as remote actor ids."
+            # We are given a list of functions to apply.
+            # Need to filter the functions together with worker IDs.
+            temp_func = []
+            temp_remote_actor_ids = []
+            for f, i in zip(func, remote_actor_ids):
+                if self.is_actor_healthy(i):
+                    temp_func.append(f)
+                    temp_remote_actor_ids.append(i)
+            func = temp_func
+            remote_actor_ids = temp_remote_actor_ids
+        else:
+            # Simply filter the worker IDs.
+            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+
+        return func, remote_actor_ids
+
     @DeveloperAPI
     def foreach_actor(
         self,
@@ -408,8 +536,11 @@ class FaultTolerantActorManager:
         healthy_only=True,
         remote_actor_ids: List[int] = None,
         timeout_seconds=None,
+        return_obj_refs: bool = False,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
+
+        Automatically mark actors unhealthy if they fail to respond.
 
         Args:
             func: A single, or a list of Callables, that get applied on the list
@@ -420,6 +551,9 @@ class FaultTolerantActorManager:
                 Note(jungong) : setting timeout_seconds to 0 effectively makes all the
                 remote calls fire-and-forget, while setting timeout_seconds to None
                 make them synchronous calls.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
 
         Returns:
             The list of return values of all calls to `func(actor)`. The values may be
@@ -428,17 +562,20 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
         if healthy_only:
-            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
 
         remote_calls = self.__call_actors(
             func=func,
             remote_actor_ids=remote_actor_ids,
         )
 
-        _, remote_results = self.__fetch_result_and_mark_state(
+        _, remote_results = self.__fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
         )
 
         return remote_results
@@ -458,6 +595,8 @@ class FaultTolerantActorManager:
                 of specified remote actors.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
 
         Returns:
             The number of async requests that are actually fired.
@@ -465,15 +604,15 @@ class FaultTolerantActorManager:
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
 
         if healthy_only:
-            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
 
         if isinstance(func, list) and len(func) != len(remote_actor_ids):
             raise ValueError(
                 f"The number of functions specified {len(func)} must match "
                 f"the number of remote actor indices {len(remote_actor_ids)}."
             )
-
-        print(self.__remote_actor_states)
 
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
@@ -522,12 +661,16 @@ class FaultTolerantActorManager:
         self,
         *,
         timeout_seconds: Union[None, int] = 0,
+        return_obj_refs: bool = False,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
+
+        Automatically mark actors unhealthy if they fail to respond.
 
         Args:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
+            return_obj_refs: whether to return ObjectRef instead of actual results.
 
         Returns:
             A list of return values of all calls to `func(actor)` that are ready.
@@ -535,10 +678,11 @@ class FaultTolerantActorManager:
             remote call in the format of RemoteCallResults.
         """
         # Construct the list of in-flight requests.
-        ready, remote_results = self.__fetch_result_and_mark_state(
+        ready, remote_results = self.__fetch_result(
             remote_actor_ids=list(self.__in_flight_req_to_actor_id.values()),
             remote_calls=list(self.__in_flight_req_to_actor_id.keys()),
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
         )
 
         for obj_ref, result in zip(ready, remote_results):
@@ -546,7 +690,47 @@ class FaultTolerantActorManager:
             self.__remote_actor_states[
                 result.actor_id
             ].num_in_flight_async_requests -= 1
-            # Also, this call is done.
-            del self.__in_flight_req_to_actor_id[obj_ref]
+            # Also, remove this call here from the in-flight list,
+            # obj_refs may have already been removed when we disable an actor.
+            if obj_ref in self.__in_flight_req_to_actor_id:
+                del self.__in_flight_req_to_actor_id[obj_ref]
 
         return remote_results
+
+    @DeveloperAPI
+    def probe_unhealthy_actors(self) -> List[int]:
+        """Ping all unhealthy actors to try bringing them back.
+
+        Returns:
+            A list of actor ids that are restored.
+        """
+        unhealthy_actor_ids = [
+            actor_id
+            for actor_id in self.actors().keys()
+            if not self.is_actor_healthy(actor_id)
+        ]
+        if not unhealthy_actor_ids:
+            # Great, nothing to do.
+            return []
+
+        remote_results = self.foreach_actor(
+            func=lambda actor: actor.ping(),
+            remote_actor_ids=unhealthy_actor_ids,
+            healthy_only=False,  # We specifically want to ping unhealthy actors.
+        )
+
+        restored = []
+        for result in remote_results:
+            actor_id = result.actor_id
+            if result.ok:
+                # Yay, mark this actor as healthy.
+                logger.info(f"brining actor {actor_id} back into service.")
+                restored.append(actor_id)
+                self.set_actor_state(actor_id, healthy=True)
+                self._num_actor_restarts += 1
+            else:
+                # foreach_actor() already marked actors that failed to respond
+                # as unhealthy. Do not have to do anything here.
+                pass
+
+        return restored
