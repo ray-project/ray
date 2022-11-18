@@ -3,8 +3,10 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class DriverInfo(BaseModel):
     """A class for recording information about the driver related to the job."""
 
@@ -18,6 +20,7 @@ class DriverInfo(BaseModel):
     # TODO(aguo): Add node_id as a field.
 
 
+@PublicAPI(stability="beta")
 class JobType(str, Enum):
     """An enumeration for describing the different job types."""
 
@@ -27,6 +30,7 @@ class JobType(str, Enum):
     DRIVER = "DRIVER"
 
 
+@PublicAPI(stability="beta")
 class JobDetails(BaseModel):
     """
     Job data with extra details about its driver and its submission.
