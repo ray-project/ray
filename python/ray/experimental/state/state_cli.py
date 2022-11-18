@@ -736,6 +736,14 @@ log_node_id_option = click.option(
     help="Filters the logs by this NodeID",
 )
 
+log_suffix_option = click.option(
+    "--suffix",
+    required=False,
+    default="out",
+    type=click.Choice(["out", "err"], case_sensitive=False),
+    help="The suffix of the log file that denotes the log type.",
+)
+
 
 def _get_head_node_ip(address: Optional[str] = None):
     """Get the head node ip from the ray address if possible
@@ -765,6 +773,7 @@ def _print_log(
     tail: int = DEFAULT_LOG_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     interval: Optional[float] = None,
+    suffix: Optional[str] = None,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -788,6 +797,7 @@ def _print_log(
         follow=follow,
         _interval=interval,
         timeout=timeout,
+        suffix=suffix,
     ):
         print(chunk, end="", flush=True)
 
@@ -975,6 +985,7 @@ def log_cluster(
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@log_suffix_option
 @click.pass_context
 @PublicAPI(stability="alpha")
 def log_actor(
@@ -988,6 +999,7 @@ def log_actor(
     tail: int,
     interval: float,
     timeout: int,
+    suffix: str,
 ):
     """Get/List logs associated with an actor.
 
@@ -1029,6 +1041,7 @@ def log_actor(
         follow=follow,
         interval=interval,
         timeout=timeout,
+        suffix=suffix,
     )
 
 
@@ -1048,6 +1061,7 @@ def log_actor(
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@log_suffix_option
 @click.pass_context
 @PublicAPI(stability="alpha")
 def log_worker(
@@ -1060,6 +1074,7 @@ def log_worker(
     tail: int,
     interval: float,
     timeout: int,
+    suffix: str,
 ):
     """Get/List logs associated with a worker process.
 
@@ -1086,4 +1101,5 @@ def log_worker(
         follow=follow,
         interval=interval,
         timeout=timeout,
+        suffix=suffix,
     )

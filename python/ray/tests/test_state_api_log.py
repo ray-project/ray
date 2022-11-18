@@ -677,6 +677,62 @@ def test_log_get(ray_start_cluster):
         for _ in get_log(task_id=123, tail=10):
             pass
 
+    del a
+    """
+    Test log suffix selection for worker/actor
+    """
+    ACTOR_LOG_LINE = "{dest}:test actor log"
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            import sys
+
+            print(ACTOR_LOG_LINE.format(dest="out"))
+            print(ACTOR_LOG_LINE.format(dest="err"), file=sys.stderr)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    WORKER_LOG_LINE = "{dest}:test worker log"
+
+    @ray.remote
+    def worker_func():
+        import os
+        import sys
+
+        print(WORKER_LOG_LINE.format(dest="out"))
+        print(WORKER_LOG_LINE.format(dest="err"), file=sys.stderr)
+        return os.getpid()
+
+    pid = ray.get(worker_func.remote())
+
+    def verify():
+        # Test actors
+        lines = get_log(actor_id=actor_id, suffix="err")
+        assert ACTOR_LOG_LINE.format(dest="err") in "".join(lines)
+
+        lines = get_log(actor_id=actor_id, suffix="out")
+        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+
+        # Default to out
+        lines = get_log(actor_id=actor_id)
+        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+
+        # Test workers
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="err")
+        assert WORKER_LOG_LINE.format(dest="err") in "".join(lines)
+
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="out")
+        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid)
+        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
 
 def test_log_cli(shutdown_only):
     ray.init(num_cpus=1)
