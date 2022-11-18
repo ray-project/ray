@@ -20,9 +20,6 @@ import yaml
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
 from typing import Set, List
 
-SAMPLE_SCALE_REQUEST = ScaleRequest()
-SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
-
 
 def _get_basic_ray_cr_workers_to_delete(
     cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
