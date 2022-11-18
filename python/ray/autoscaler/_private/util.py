@@ -51,6 +51,9 @@ DictCount = Tuple[Dict, Number]
 # e.g., cpu_4_ondemand.
 NodeType = str
 
+# e.g., head, worker, unmanaged
+NodeKind = str
+
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
@@ -65,6 +68,11 @@ NodeIP = str
 
 # Number of nodes to launch
 NodeCount = int
+
+# e.g. "up-to-date", "update-failed"
+# See autoscaler/tags.py for other status
+# values used by the autoscaler.
+NodeStatus = str
 
 Usage = Dict[str, Tuple[Number, Number]]
 

@@ -148,6 +148,14 @@ class JobInfoStorageClient:
         else:
             return pickle.loads(pickled_info)
 
+    async def delete_info(self, job_id: str, timeout: int = 30):
+        await self._gcs_aio_client.internal_kv_del(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
+            False,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
+        )
+
     async def put_status(
         self,
         job_id: str,
@@ -343,6 +351,11 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
+
+
+@dataclass
+class JobDeleteResponse:
+    deleted: bool
 
 
 # TODO(jiaodong): Support log streaming #19415

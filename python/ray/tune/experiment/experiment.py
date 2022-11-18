@@ -431,6 +431,10 @@ class Experiment:
         return self.spec.get("local_dir")
 
     @property
+    def checkpoint_config(self):
+        return self.spec.get("checkpoint_config")
+
+    @property
     def checkpoint_dir(self):
         # Provided when initializing Experiment, if so, return directly.
         if self._experiment_checkpoint_dir:
@@ -442,6 +446,13 @@ class Experiment:
     def remote_checkpoint_dir(self) -> Optional[str]:
         if not self.sync_config.upload_dir or not self.dir_name:
             return None
+
+        # NOTE: `upload_dir` can contain query strings. For example:
+        # 's3://bucket?scheme=http&endpoint_override=localhost%3A9000'.
+        if "?" in self.sync_config.upload_dir:
+            path, query = self.sync_config.upload_dir.split("?")
+            return os.path.join(path, self.dir_name) + "?" + query
+
         return os.path.join(self.sync_config.upload_dir, self.dir_name)
 
     @property

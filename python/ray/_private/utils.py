@@ -15,10 +15,12 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
+from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 import grpc
 import numpy as np
@@ -396,7 +398,7 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = memory
+        resources["memory"] = int(memory)
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
@@ -1597,6 +1599,88 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_entrypoint_name():
+    """Get the entrypoint of the current script."""
+    prefix = ""
+    try:
+        curr = psutil.Process()
+        # Prepend `interactive_shell` for interactive shell scripts.
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode # noqa
+        if hasattr(sys, "ps1"):
+            prefix = "(interactive_shell) "
+
+        return prefix + list2cmdline(curr.cmdline())
+    except Exception:
+        return "unknown"
+
+
+def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
+    """Add params to the provided url as query parameters.
+
+    If url already contains query parameters, they will be merged with params, with the
+    existing query parameters overriding any in params with the same parameter name.
+
+    Args:
+        url: The URL to add query parameters to.
+        params: The query parameters to add.
+
+    Returns:
+        URL with params added as query parameters.
+    """
+    # Unquote URL first so we don't lose existing args.
+    url = unquote(url)
+    # Parse URL.
+    parsed_url = urlparse(url)
+    # Merge URL query string arguments dict with new params.
+    base_params = params
+    params = dict(parse_qsl(parsed_url.query))
+    base_params.update(params)
+    # bool and dict values should be converted to json-friendly values.
+    base_params.update(
+        {
+            k: json.dumps(v)
+            for k, v in base_params.items()
+            if isinstance(v, (bool, dict))
+        }
+    )
+
+    # Convert URL arguments to proper query string.
+    encoded_params = urlencode(base_params, doseq=True)
+    # Replace query string in parsed URL with updated query string.
+    parsed_url = parsed_url._replace(query=encoded_params)
+    # Convert back to URL.
+    return urlunparse(parsed_url)
+
+
+def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
+    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
+    parameter. For pyarrow >= 9.0.0, this is required in order to allow
+    ``S3FileSystem.create_dir()`` to create S3 buckets.
+
+    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
+    the URI unchanged.
+
+    Args:
+        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
+
+    Returns:
+        A URI with the added allow_bucket_creation=true query parameter, if the provided
+        URI is an S3 URL; uri will be returned unchanged otherwise.
+    """
+    from pkg_resources._vendor.packaging.version import parse as parse_version
+
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
+        return uri
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "s3":
+        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
+    return uri
 
 
 def _get_pyarrow_version() -> Optional[str]:

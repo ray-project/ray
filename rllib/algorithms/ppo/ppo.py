@@ -48,13 +48,14 @@ class PPOConfig(PGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = PPOConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -62,14 +63,16 @@ class PPOConfig(PGConfig):
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config.training(  # doctest: +SKIP
+        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -225,10 +228,11 @@ class PPOConfig(PGConfig):
         # to -1 to auto-calculate the actual batch size later).
         if self.sgd_minibatch_size > self.train_batch_size:
             raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    self.sgd_minibatch_size, self.train_batch_size
-                )
+                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                "times."
             )
 
         # Episodes may only be truncated (and passed into PPO's
@@ -326,16 +330,22 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        policies_to_update = list(train_results.keys())
+
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
         }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
-                    policies=list(train_results.keys()),
+                    policies=policies_to_update,
                     global_vars=global_vars,
                 )
 

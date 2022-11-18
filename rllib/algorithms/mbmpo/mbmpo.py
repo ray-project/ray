@@ -23,7 +23,12 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -40,13 +45,14 @@ class MBMPOConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
-        >>> config = MBMPOConfig().training(lr=0.0003, train_batch_size=512)\
-        ...     .resources(num_gpus=4)\
-        ...     .rollouts(num_rollout_workers=64)
-        >>> print(config.to_dict())
+        >>> config = MBMPOConfig()
+        >>> config = config.training(lr=0.0003, train_batch_size=512)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=4) # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=64)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -54,14 +60,15 @@ class MBMPOConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = MBMPOConfig()
         >>> # Print out some default values.
-        >>> print(config.vtrace)
+        >>> print(config.vtrace)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
+        >>> config = config\  # doctest: +SKIP
+        ...     .training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "AlphaStar",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -381,7 +388,7 @@ def post_process_metrics(prefix, workers, metrics):
         workers: Set of workers
         metrics: Current metrics dictionary
     """
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
     return metrics
@@ -522,9 +529,7 @@ class MBMPO(Algorithm):
         sync_stats(workers)
 
         # Dropping metrics from the first iteration
-        _, _ = collect_episodes(
-            workers.local_worker(), workers.remote_workers(), [], timeout_seconds=9999
-        )
+        _ = collect_episodes(workers=workers, timeout_seconds=9999)
 
         # Metrics Collector.
         metric_collect = CollectMetrics(
@@ -542,6 +547,7 @@ class MBMPO(Algorithm):
             for samples in itr:
                 print("Collecting Samples, Inner Adaptation {}".format(len(split)))
                 # Processing Samples (Standardize Advantages)
+                samples = [convert_ma_batch_to_sample_batch(batch) for batch in samples]
                 samples, split_lst = post_process_samples(samples, config)
 
                 buf.extend(samples)
