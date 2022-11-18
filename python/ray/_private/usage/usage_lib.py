@@ -263,11 +263,11 @@ class TagKey(Enum):
     GCS_STORAGE = auto()
 
     # The count(int) of worker crash with exit type 'system error' since
-    # the cluster started
+    # the cluster started, emitted from GCS
     WORKER_CRASH_SYSTEM_ERROR = auto()
 
     # The count(int) of worker crash with exit type 'out-of-memory' since
-    # the cluster started
+    # the cluster started, emitted from GCS
     WORKER_CRASH_OOM = auto()
 
 

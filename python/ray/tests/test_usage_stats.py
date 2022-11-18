@@ -216,6 +216,12 @@ def test_worker_crash_increment_stats():
             ray.get(oomer.options(max_retries=0).remote())
 
         gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        wait_for_condition(
+            lambda: "worker_crash_system_error"
+            in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
+            timeout=4,
+        )
+
         result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
 
         assert "worker_crash_system_error" in result
