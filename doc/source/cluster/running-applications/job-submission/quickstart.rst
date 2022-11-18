@@ -4,9 +4,6 @@
 Quickstart Using the Ray Jobs CLI
 =================================
 
-.. note::
-
-  The Ray Jobs API is in beta and may change before becoming stable.
 
 In this guide, we will walk through the Ray Jobs CLI commands available for submitting and interacting with a Ray Job.
 
