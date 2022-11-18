@@ -407,7 +407,7 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
         assert ctx.target_max_block_size == target_max_block_size
         return batch + 1
 
-    preprocessor = BatchMapper(map_fn)
+    preprocessor = BatchMapper(map_fn, batch_format="pandas")
 
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.target_max_block_size = target_max_block_size

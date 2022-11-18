@@ -120,7 +120,7 @@ def test_error(ray_start_4_cpus):
         {"train": 10},
         dataset_config={},
         datasets={"train": ds},
-        preprocessor=BatchMapper(lambda x: x),
+        preprocessor=BatchMapper(lambda x: x, batch_format="pandas"),
     )
     test.fit()
 
@@ -260,7 +260,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
     def rand(x):
         return [random.random() for _ in range(len(x))]
 
-    prep = BatchMapper(rand)
+    prep = BatchMapper(rand, batch_format="pandas")
     ds = ray.data.range_table(5, parallelism=1)
     test = TestStream(
         checker,
@@ -275,7 +275,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     def rand(x):
         return [random.random() for _ in range(len(x))]
 
-    prep = BatchMapper(rand)
+    prep = BatchMapper(rand, batch_format="pandas")
     ds = ray.data.range_table(5)
 
     # Test the default 1GiB window size.
