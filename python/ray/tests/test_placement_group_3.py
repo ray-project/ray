@@ -69,6 +69,7 @@ def test_create_placement_group_during_gcs_server_restart(
         placement_groups.append(placement_group)
 
     cluster.head_node.kill_gcs_server()
+    time.sleep(2)
     cluster.head_node.start_gcs_server()
 
     for i in range(0, 100):
