@@ -191,8 +191,6 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
-            if data["autoscaling_config"] is None:
-                data["autoscaling_config"] = -1
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -231,8 +229,6 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
-            if data["autoscaling_config"]["initial_replicas"] == -1:
-                data["autoscaling_config"]["initial_replicas"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
