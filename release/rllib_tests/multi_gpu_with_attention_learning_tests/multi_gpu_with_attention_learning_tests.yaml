@@ -154,36 +154,37 @@ ppo-stateless-cartpole:
         # Double batch size (2 GPUs).
         train_batch_size: 8000
 
-r2d2-stateless-cartpole:
-    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
-    run: R2D2
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 150.0
-        timesteps_total: 130000
-    stop:
-        time_total_s: 1200
-    config:
-        num_gpus: 2
-        num_workers: 0
-        # R2D2 settings.
-        burn_in: 20
-        zero_init_states: true
-        lr: 0.0005
-        # Give some more time to explore.
-        exploration_config:
-          epsilon_timesteps: 50000
-        model:
-            # Test w/ GTrXL net.
-            use_attention: true
-            max_seq_len: 20
-            attention_num_transformer_units: 1
-            attention_dim: 32
-            attention_memory_inference: 10
-            attention_memory_training: 10
-            attention_num_heads: 1
-            attention_head_dim: 32
-            attention_position_wise_mlp_dim: 32
-            # Use a very simple base-model.
-            fcnet_hiddens: [64]
-            fcnet_activation: linear
+# TODO (Kourosh): Activate these tests back when the new modeling stack is merged
+# r2d2-stateless-cartpole:
+#     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+#     run: R2D2
+#     # Minimum reward and total ts (in given time_total_s) to pass this test.
+#     pass_criteria:
+#         episode_reward_mean: 150.0
+#         timesteps_total: 130000
+#     stop:
+#         time_total_s: 1200
+#     config:
+#         num_gpus: 2
+#         num_workers: 0
+#         # R2D2 settings.
+#         burn_in: 20
+#         zero_init_states: true
+#         lr: 0.0005
+#         # Give some more time to explore.
+#         exploration_config:
+#           epsilon_timesteps: 50000
+#         model:
+#             # Test w/ GTrXL net.
+#             use_attention: true
+#             max_seq_len: 20
+#             attention_num_transformer_units: 1
+#             attention_dim: 32
+#             attention_memory_inference: 10
+#             attention_memory_training: 10
+#             attention_num_heads: 1
+#             attention_head_dim: 32
+#             attention_position_wise_mlp_dim: 32
+#             # Use a very simple base-model.
+#             fcnet_hiddens: [64]
+#             fcnet_activation: linear
