@@ -221,7 +221,7 @@ def crop_and_flip_image_batch(image_batch):
     return image_batch
 
 
-def decode_tf_record_batch(tf_record_batch):
+def decode_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
             image_buffer = tf.reshape(image_buffer, shape=[])
@@ -237,7 +237,7 @@ def decode_tf_record_batch(tf_record_batch):
     return df
 
 
-def decode_crop_and_flip_tf_record_batch(tf_record_batch):
+def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
     """
     This version of the preprocessor fuses the load step with the crop and flip
     step, which should have better performance (at the cost of re-executing the
@@ -518,11 +518,13 @@ if __name__ == "__main__":
             batch_size = 32
             if args.online_processing:
                 preprocessor = BatchMapper(
-                    decode_tf_record_batch, batch_size=batch_size
+                    decode_tf_record_batch, batch_size=batch_size, batch_format="pandas"
                 )
             else:
                 preprocessor = BatchMapper(
-                    decode_crop_and_flip_tf_record_batch, batch_size=batch_size
+                    decode_crop_and_flip_tf_record_batch,
+                    batch_size=batch_size,
+                    batch_format="pandas",
                 )
             train_loop_config["data_loader"] = RAY_DATA
 
