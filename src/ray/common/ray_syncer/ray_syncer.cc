@@ -322,15 +322,13 @@ void RaySyncer::Disconnect(const std::string &node_id) {
   }
 }
 
-bool RaySyncer::Register(MessageType message_type,
+void RaySyncer::Register(MessageType message_type,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  std::promise<bool> promise;
   io_context_.dispatch(
-      [&]() mutable {
+      [this, message_type, reporter, receiver, pull_from_reporter_interval_ms]() mutable {
         if (!node_state_->SetComponent(message_type, reporter, receiver)) {
-          promise.set_value(false);
           return;
         }
 
@@ -350,10 +348,8 @@ bool RaySyncer::Register(MessageType message_type,
                        << "message_type:" << message_type << ", reporter:" << reporter
                        << ", receiver:" << receiver << ", pull_from_reporter_interval_ms:"
                        << pull_from_reporter_interval_ms;
-        promise.set_value(true);
       },
       "RaySyncerRegister");
-  return promise.get_future().get();
 }
 
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {

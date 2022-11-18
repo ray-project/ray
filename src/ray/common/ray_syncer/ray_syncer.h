@@ -113,7 +113,7 @@ class RaySyncer {
   /// \param pull_from_reporter_interval_ms The frequence to pull a message. 0 means
   /// never pull a message in syncer.
   /// from reporter and push it to sending queue.
-  bool Register(MessageType message_type,
+  void Register(MessageType message_type,
                 const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
                 int64_t pull_from_reporter_interval_ms = 100);
