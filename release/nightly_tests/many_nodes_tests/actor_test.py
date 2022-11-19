@@ -16,11 +16,6 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
     return actors
 
 
-def test_actor_ready(actors, timeout=None):
-    remaining = [actor.foo.remote() for actor in actors]
-    ready, remaining = ray.wait(remaining, timeout=timeout)
-    return remaining
-
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
@@ -45,10 +40,12 @@ def main():
         return
     actor_ready_start = perf_counter()
     total_actors = len(actors)
-    while len(actors) != 0:
-        actors = test_actor_ready(actors, 10)
+    objs = [actor.foo.remote() for actor in actors]
+
+    while len(objs) != 0:
+        objs_ready, objs = ray.wait(objs, timeout=10)
         print(
-            f"Status: {total_actors - len(actors)}/{len(total_actors)}, {perf_counter() - actor_ready_start}"
+            f"Status: {total_actors - len(objs)}/{total_actors}, {perf_counter() - actor_ready_start}"
         )
     actor_ready_end = perf_counter()
     actor_ready_time = actor_ready_end - actor_ready_start

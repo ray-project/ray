@@ -188,7 +188,7 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
 
   // First message got sent
   EXPECT_CALL(sync_connection, Send(Eq(msg_ptr3), Eq(true)));
-  sync_connection.OnSendDone(true, msg_ptr1);
+  sync_connection.SendNext();
 }
 
 struct SyncerServerTest {
@@ -561,6 +561,17 @@ TEST_F(SyncerTest, Reconnect) {
         return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 1;
       },
       5));
+}
+
+TEST_F(SyncerTest, Reconnect2) {
+  auto server_address = std::string("0.0.0.0:19990");
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  auto server = builder.BuildAndStart();
+  auto channel = MakeChannel("19990");
+  auto &s2 = MakeServer("19991");
+  s2.syncer->Connect(ray::NodeID::FromRandom().Binary(), channel);
+  std::this_thread::sleep_for(30s);
 }
 
 TEST_F(SyncerTest, Broadcast) {
