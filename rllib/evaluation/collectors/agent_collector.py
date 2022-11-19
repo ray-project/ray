@@ -202,6 +202,7 @@ class AgentCollector:
                 SampleBatch.UNROLL_ID: self.unroll_id,
             }
 
+            # TODO (Artur): Remove when PREV_ACTIONS and PREV_REWARDS get deprecated.
             # Note (Artur): As long as we have these in our default view requirements,
             # we should  build buffers with neutral elements instead of building them
             # on the first AgentCollector.build_for_inference call if present.
