@@ -2,7 +2,6 @@ from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import os
 import shutil
-from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 import tree  # pip install dm_tree
 import unittest
 
