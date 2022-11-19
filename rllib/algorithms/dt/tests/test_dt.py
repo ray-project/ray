@@ -24,6 +24,9 @@ def _assert_input_dict_equals(d1: Dict[str, np.ndarray], d2: Dict[str, np.ndarra
         assert key in d1.keys()
 
     for key in d1.keys():
+        if key == SampleBatch.INFOS:
+            assert d1[key] == d2[key]
+            continue
         assert isinstance(d1[key], np.ndarray)
         assert isinstance(d2[key], np.ndarray)
         assert d1[key].shape == d2[key].shape
@@ -189,6 +192,8 @@ class TestDT(unittest.TestCase):
                 SampleBatch.RETURNS_TO_GO: np.array([0.0, 0.0], dtype=np.float32),
                 SampleBatch.REWARDS: np.zeros((), dtype=np.float32),
                 SampleBatch.T: np.array([-1, -1], dtype=np.int32),
+                SampleBatch.DONES: np.array([False, False]),
+                SampleBatch.INFOS: {},
             }
         )
         _assert_input_dict_equals(input_dict, target)
@@ -225,6 +230,8 @@ class TestDT(unittest.TestCase):
                 SampleBatch.RETURNS_TO_GO: np.array([0.0, -120.0], dtype=np.float32),
                 SampleBatch.REWARDS: np.asarray(-10.0),
                 SampleBatch.T: np.array([-1, 0], dtype=np.int32),
+                SampleBatch.DONES: np.array([False, False]),
+                SampleBatch.INFOS: {},
             }
         )
         _assert_input_dict_equals(input_dict, target)
@@ -261,6 +268,8 @@ class TestDT(unittest.TestCase):
                 SampleBatch.RETURNS_TO_GO: np.array([-120, -110.0], dtype=np.float32),
                 SampleBatch.REWARDS: np.asarray(-20.0),
                 SampleBatch.T: np.array([0, 1], dtype=np.int32),
+                SampleBatch.DONES: np.array([False, False]),
+                SampleBatch.INFOS: {},
             }
         )
         _assert_input_dict_equals(input_dict, target)
