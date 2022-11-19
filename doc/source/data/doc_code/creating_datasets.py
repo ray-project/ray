@@ -307,38 +307,6 @@ ds.show(3)
 # fmt: on
 
 # fmt: off
-# __from_mongo_begin__
-
-# NOTE: This example is not runnable as-is; you'll need to point it at your MongoDB 
-# instance.
-
-# Read a local MongoDB.
-ds = ray.data.read_mongo(
-    uri="mongodb://localhost:27017",
-    database="my_db",
-    collection="my_collection",
-    pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-)
-
-# Reading a remote MongoDB is the same.
-ds = ray.data.read_mongo(
-    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-    database="my_db",
-    collection="my_collection",
-    pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-)
-
-# Write back to MongoDB.
-ds.write_mongo(
-    MongoDatasource(),
-    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-    database="my_db",
-    collection="my_collection",
-)
-# __from_mongo_end__
-#fmt: on
-
-# fmt: off
 # __read_parquet_begin__
 # Create a tabular Dataset by reading a Parquet file.
 ds = ray.data.read_parquet("example://iris.parquet")
