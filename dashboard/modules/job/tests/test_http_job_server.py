@@ -334,7 +334,7 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     )
 
     wait_for_condition(
-        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout
+        _check_job_succeeded, client=client, job_id=job_id, timeout=60
     )
 
     logs = client.get_job_logs(job_id)

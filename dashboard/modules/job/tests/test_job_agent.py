@@ -231,7 +231,7 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         partial(
             _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
         ),
-        timeout=timeout,
+        timeout=60,
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent
