@@ -198,7 +198,7 @@ class TorchTrainer(DataParallelTrainer):
             assert best_checkpoint_loss <= 0.09
 
     .. testoutput::
-    
+
         ...
 
     Args:
