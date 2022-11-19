@@ -333,9 +333,7 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(
-        _check_job_succeeded, client=client, job_id=job_id, timeout=60
-    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=60)
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
