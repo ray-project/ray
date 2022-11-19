@@ -140,7 +140,7 @@ class NonTerminatedNodes:
         self.non_terminated_nodes_time = time.time() - start_time
         logger.info(
             f"The autoscaler took {round(self.non_terminated_nodes_time, 3)}"
-            " secounds to fetch the list of non-terminated nodes."
+            " seconds to fetch the list of non-terminated nodes."
         )
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
