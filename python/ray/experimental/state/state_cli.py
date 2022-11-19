@@ -741,7 +741,10 @@ log_suffix_option = click.option(
     required=False,
     default="out",
     type=click.Choice(["out", "err"], case_sensitive=False),
-    help="The suffix of the log file that denotes the log type.",
+    help=(
+        "The suffix of the log file that denotes the log type, where out refers "
+        "to logs from stdout, and err for logs from stderr "
+    ),
 )
 
 
@@ -1019,6 +1022,12 @@ def log_actor(
         ray logs actor --pid=123  —ip=ABC
         ```
 
+        Get the actor err log file.
+
+        ```
+        ray logs actor --id ABC --suffix err
+        ```
+
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`
             if the CLI is failed to query the data.
@@ -1084,6 +1093,12 @@ def log_worker(
 
         ```
         ray logs worker --pid ABC --follow
+        ```
+
+        Get the stderr logs from a worker process.
+
+        ```
+        ray logs worker --pid ABC --suffix err
         ```
 
     Raises:
