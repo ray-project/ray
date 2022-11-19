@@ -16,7 +16,6 @@ from typing import (
     Union,
 )
 
-import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -392,7 +391,7 @@ class WorkerSet:
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker: Optional RolloutWorker instance to sync from.
+            from_worker: Optional local RolloutWorker instance to sync from.
                 If None (default), sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.
@@ -413,6 +412,7 @@ class WorkerSet:
         weights = None
         if self.num_remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
+
             def set_weight(w):
                 w.set_weights(weights, global_vars)
 
