@@ -653,16 +653,6 @@ class Policy(metaclass=ABCMeta):
         _info_batch = [None] * len(next_obs_batch) if info_batch is None else info_batch
         _t_batch = [None] * len(next_obs_batch) if t_batch is None else t_batch
 
-        assert (
-            len(agent_ids)
-            == len(env_ids)
-            == len(next_obs_batch)
-            == len(_reward_batch)
-            == len(_dones_batch)
-            == len(_info_batch)
-            == len(_t_batch)
-        ), "All batched inputs must have the same first dimension"
-
         # Compute ACD list
         acd_list: List[AgentConnectorDataType] = []
         for (
