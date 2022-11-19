@@ -318,7 +318,10 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
-            REGISTRY.register(self._metrics_agent.c)
+            if self._metrics_agent.proxy_exporter_collector:
+                # proxy_exporter_collector is None
+                # if Prometheus server is not started.
+                REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
