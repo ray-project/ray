@@ -333,7 +333,6 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-
     wait_for_condition(
         _check_job_succeeded, client=client, job_id=job_id, timeout=timeout
     )
