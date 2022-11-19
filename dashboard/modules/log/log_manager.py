@@ -120,7 +120,7 @@ class LogsManager:
         pid: Optional[str],
         get_actor_fn: Callable[[str], Dict],
         timeout: int,
-        suffix: Optional[str],
+        suffix: Optional[str] = None,
     ) -> Tuple[str, str]:
         """Return the file name given all options.
 
