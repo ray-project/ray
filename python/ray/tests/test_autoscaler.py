@@ -645,6 +645,9 @@ class LoadMetricsTest(unittest.TestCase):
         ) in debug
 
 
+@unittest.skipIf(
+    sys.platform == "darwin", reason="Flaky. Also, autoscaling is not supported on Mac."
+)
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = lambda config: self.create_provider
