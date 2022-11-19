@@ -181,11 +181,13 @@ void RayServerBidiReactor::Disconnect() { Finish(grpc::Status::OK); }
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
 
 void RayServerBidiReactor::OnDone() {
-  io_context_.dispatch([cleanup_cb = cleanup_cb_,
-                        node_id = GetRemoteNodeID()]() { cleanup_cb(node_id, false); },
+  io_context_.dispatch([this, cleanup_cb = cleanup_cb_,
+                        node_id = GetRemoteNodeID()]() {
+    delete this;
+    cleanup_cb(node_id, false);
+  },
                        "");
   RAY_LOG(INFO) << "RayServerBidiReactor::OnDone\t" << this;
-  delete this;
 }
 
 RayClientBidiReactor::RayClientBidiReactor(
@@ -209,12 +211,12 @@ RayClientBidiReactor::RayClientBidiReactor(
 
 void RayClientBidiReactor::OnDone(const grpc::Status &status) {
   io_context_.dispatch(
-      [cleanup_cb = cleanup_cb_, node_id = GetRemoteNodeID(), status]() {
+      [this, cleanup_cb = cleanup_cb_, node_id = GetRemoteNodeID(), status]() {
+        delete this;
         cleanup_cb(node_id, !status.ok());
       },
       "");
   RAY_LOG(INFO) << "RayClientBidiReactor::OnDone\t" << this;
-  delete this;
 }
 
 void RayClientBidiReactor::Disconnect() { StartWritesDone(); }
