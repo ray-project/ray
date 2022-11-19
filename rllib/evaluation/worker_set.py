@@ -419,6 +419,7 @@ class WorkerSet:
             # Sync to specified remote workers in this WorkerSet.
             self.foreach_worker(
                 func=set_weight,
+                local_worker=False,  # Do not sync back to local worker.
                 remote_worker_ids=to_worker_indices,
                 # We can only sync to healthy remote workers.
                 # Restored workers need to have local work state synced over first,
