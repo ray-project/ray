@@ -436,7 +436,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                 << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                 << ", job id = " << actor->GetActorID().JobId();
   // Skip the creation if the actor has been dead.
-  if(actor->GetState() == rpc::ActorTableData::DEAD) {
+  if (actor->GetState() == rpc::ActorTableData::DEAD) {
     return;
   }
   std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());

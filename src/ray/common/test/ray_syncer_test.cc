@@ -27,6 +27,7 @@
 #include <grpcpp/server_builder.h>
 
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/rpc/grpc_server.h"
 #include "mock/ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
 
@@ -564,10 +565,8 @@ TEST_F(SyncerTest, Reconnect) {
 }
 
 TEST_F(SyncerTest, Reconnect2) {
-  auto server_address = std::string("0.0.0.0:19990");
-  grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  auto server = builder.BuildAndStart();
+  ray::rpc::GrpcServer server("test", 19990, false);
+  server.Run();
   auto channel = MakeChannel("19990");
   auto &s2 = MakeServer("19991");
   s2.syncer->Connect(ray::NodeID::FromRandom().Binary(), channel);

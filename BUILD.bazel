@@ -2557,6 +2557,7 @@ cc_test(
     deps = [
         ":ray_common",
         ":ray_mock",
+        ":grpc_common_lib",
         "@com_google_googletest//:gtest",
     ],
 )
