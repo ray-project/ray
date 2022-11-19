@@ -187,7 +187,6 @@ void RayServerBidiReactor::OnDone() {
         delete this;
       },
       "");
-  RAY_LOG(INFO) << "RayServerBidiReactor::OnDone\t" << this;
 }
 
 RayClientBidiReactor::RayClientBidiReactor(
@@ -215,8 +214,6 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
         delete this;
       },
       "");
-  RAY_LOG(INFO) << "RayClientBidiReactor::OnDone\t" << this << "\t" << status.error_code()
-                << "\t" << status.error_message();
 }
 
 void RayClientBidiReactor::Disconnect() { StartWritesDone(); }
