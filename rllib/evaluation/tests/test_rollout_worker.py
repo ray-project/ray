@@ -627,6 +627,7 @@ class TestRolloutWorker(unittest.TestCase):
             ),
         )
         samples = ev.sample()
+        samples = convert_ma_batch_to_sample_batch(samples)
         # three logical episodes
         self.assertEqual(len(set(samples["eps_id"])), 3)
         # only 1 hard done value
