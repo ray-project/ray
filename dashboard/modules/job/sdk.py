@@ -19,6 +19,7 @@ except ImportError:
     JobDetails = None
 
 from ray.dashboard.modules.job.common import (
+    JobDeleteResponse,
     JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -120,7 +121,7 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.0 or higher or downgrade the client Ray version.",
             )
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def submit_job(
         self,
         *,
@@ -224,7 +225,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def stop_job(
         self,
         job_id: str,
@@ -256,7 +257,44 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="alpha")
+    def delete_job(
+        self,
+        job_id: str,
+    ) -> bool:
+        """Delete a job in a terminal state and all of its associated data.
+
+        If the job is not already in a terminal state, raises an error.
+        This does not delete the job logs from disk.
+        Submitting a job with the same submission ID as a previously
+        deleted job is not supported and may lead to unexpected behavior.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient() # doctest: +SKIP
+            >>> job_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.delete_job(job_id) # doctest: +SKIP
+            True
+
+        Args:
+            job_id: submission ID for the job to be deleted.
+
+        Returns:
+            True if the job was deleted, otherwise False.
+
+        Raises:
+            RuntimeError: If the job does not exist, if the request to the
+                job server fails, or if the job is not in a terminal state.
+        """
+        logger.debug(f"Deleting job with job_id={job_id}.")
+        r = self._do_request("DELETE", f"/api/jobs/{job_id}")
+
+        if r.status_code == 200:
+            return JobDeleteResponse(**r.json()).deleted
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="stable")
     def get_job_info(
         self,
         job_id: str,
@@ -290,7 +328,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def list_jobs(self) -> List[JobDetails]:
         """List all jobs along with their status and other information.
 
@@ -331,7 +369,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_status(self, job_id: str) -> JobStatus:
         """Get the most recent status of a job.
 
@@ -355,7 +393,7 @@ class JobSubmissionClient(SubmissionClient):
         """
         return self.get_job_info(job_id).status
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job.
 
@@ -384,7 +422,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Get an iterator that follows the logs of a job.
 

@@ -8,7 +8,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
@@ -348,6 +352,9 @@ class Dreamer(Algorithm):
             < self.config.prefill_timesteps
         ):
             samples = self.workers.local_worker().sample()
+            # Dreamer only ever has one policy and we receive MA batches when
+            # connectors are on
+            samples = convert_ma_batch_to_sample_batch(samples)
             self.local_replay_buffer.add(samples)
 
     @override(Algorithm)

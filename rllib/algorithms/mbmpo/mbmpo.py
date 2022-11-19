@@ -23,7 +23,12 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -383,7 +388,7 @@ def post_process_metrics(prefix, workers, metrics):
         workers: Set of workers
         metrics: Current metrics dictionary
     """
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
     return metrics
@@ -524,9 +529,7 @@ class MBMPO(Algorithm):
         sync_stats(workers)
 
         # Dropping metrics from the first iteration
-        _, _ = collect_episodes(
-            workers.local_worker(), workers.remote_workers(), [], timeout_seconds=9999
-        )
+        _ = collect_episodes(workers=workers, timeout_seconds=9999)
 
         # Metrics Collector.
         metric_collect = CollectMetrics(
@@ -544,6 +547,7 @@ class MBMPO(Algorithm):
             for samples in itr:
                 print("Collecting Samples, Inner Adaptation {}".format(len(split)))
                 # Processing Samples (Standardize Advantages)
+                samples = [convert_ma_batch_to_sample_batch(batch) for batch in samples]
                 samples, split_lst = post_process_samples(samples, config)
 
                 buf.extend(samples)

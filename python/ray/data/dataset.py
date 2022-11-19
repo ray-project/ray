@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -67,7 +68,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
-    BlockPartitionMetadata,
     KeyFn,
     RowUDF,
     T,
@@ -88,6 +88,7 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
+    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -1440,7 +1441,7 @@ class Dataset(Generic[T]):
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
+            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
             for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
@@ -2447,6 +2448,60 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
+    def write_mongo(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a MongoDB datasource.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Notes:
+        - Currently, this supports only a subset of the pyarrow's types, due to the
+          limitation of pymongoarrow which is used underneath. Writing unsupported
+          types will fail on type checking. See all the supported types at:
+          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+        - The records will be inserted into MongoDB as new documents. If a record has
+          the _id field, this _id must be non-existent in MongoDB, otherwise the write
+          will be rejected and fail (hence preexisting documents are protected from
+          being mutated). It's fine to not have _id field in record and MongoDB will
+          auto generate one at insertion.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_mongo( # doctest: +SKIP
+            >>>     MongoDatasource(),
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+            >>>     database="my_db",
+            >>>     collection="my_collection",
+            >>> )
+
+        Args:
+            uri: The URI to the destination MongoDB where the dataset will be
+                written to. For the URI format, see details in
+                https://www.mongodb.com/docs/manual/reference/connection-string/.
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            collection: The name of the collection in the database. This collection
+                must exist otherwise ValueError will be raised.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+        self.write_datasource(
+            MongoDatasource(),
+            ray_remote_args=ray_remote_args,
+            uri=uri,
+            database=database,
+            collection=collection,
+        )
+
     def write_datasource(
         self,
         datasource: Datasource[T],
@@ -2544,16 +2599,16 @@ class Dataset(Generic[T]):
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
         try:
-            dataset_format = self._dataset_format()
+            dataset_format = self.dataset_format()
         except ValueError:
             # Dataset is empty or cleared, so fall back to "default".
             batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
-                if dataset_format == "arrow"
+                if dataset_format == BlockFormat.ARROW
                 else "pandas"
-                if dataset_format == "pandas"
+                if dataset_format == BlockFormat.PANDAS
                 else "default"
             )
         for batch in self.iter_batches(
@@ -3052,7 +3107,7 @@ class Dataset(Generic[T]):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        if self._dataset_format() == "simple":
+        if self.dataset_format() == BlockFormat.SIMPLE:
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
@@ -3391,7 +3446,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
 
-        if self._dataset_format() == "arrow":
+        if self.dataset_format() == BlockFormat.ARROW:
             # Zero-copy path.
             return blocks
 
@@ -3956,9 +4011,9 @@ class Dataset(Generic[T]):
             return False
         return schema.names == [TENSOR_COLUMN_NAME]
 
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
+    def dataset_format(self) -> BlockFormat:
+        """The format of the dataset's underlying data blocks. Possible values
+        are: "arrow", "pandas" and "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -3976,14 +4031,14 @@ class Dataset(Generic[T]):
             import pyarrow as pa
 
             if isinstance(schema, pa.Schema):
-                return "arrow"
+                return BlockFormat.ARROW
         except ModuleNotFoundError:
             pass
         from ray.data._internal.pandas_block import PandasBlockSchema
 
         if isinstance(schema, PandasBlockSchema):
-            return "pandas"
-        return "simple"
+            return BlockFormat.PANDAS
+        return BlockFormat.SIMPLE
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
@@ -4014,11 +4069,11 @@ class Dataset(Generic[T]):
         # Expand None into an aggregation for each column.
         if on is None:
             try:
-                dataset_format = self._dataset_format()
+                dataset_format = self.dataset_format()
             except ValueError:
                 dataset_format = None
-            if dataset_format in ["arrow", "pandas"]:
-                # This should be cached from the ._dataset_format() check, so we
+            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
+                # This should be cached from the .dataset_format() check, so we
                 # don't fetch and we assert that the schema is not None.
                 schema = self.schema(fetch_if_missing=False)
                 assert schema is not None

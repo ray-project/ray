@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -107,22 +107,18 @@ class TestAlgorithm(unittest.TestCase):
                         # Change the list of policies to train.
                         policies_to_train=[f"p{i}", f"p{i-1}"],
                     )
+
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)[0]
                 )
-                assert pid in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid in w.policy_map
+                    )[0]
                 )
+
                 # Assert new policy is part of local worker (eval worker set does NOT
                 # have a local worker, only the main WorkerSet does).
                 pol_map = algo.workers.local_worker().policy_map
@@ -209,19 +205,15 @@ class TestAlgorithm(unittest.TestCase):
                 )
                 # Make sure removed policy is no longer part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid not in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid not in w.policy_map)[
+                        0
+                    ]
                 )
-                assert pid not in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid not in w.policy_map
+                    )[0]
                 )
                 # Assert removed policy is no longer part of local worker
                 # (eval worker set does NOT have a local worker, only the main WorkerSet

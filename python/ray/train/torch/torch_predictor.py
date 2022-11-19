@@ -213,12 +213,12 @@ class TorchPredictor(DLPredictor):
 
             .. testoutput::
 
-                Standard model predictions: [[1.5487633]
-                 [3.8037925]]
+                Standard model predictions: {'predictions': array([[1.5487633],
+                       [3.8037925]], dtype=float32)}
                 ---
                 Custom model predictions:     predictions
                 0  [0.61623406]
-                1  [  2.857038]
+                1    [2.857038]
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 

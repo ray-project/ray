@@ -184,6 +184,7 @@ class EpisodeV2:
                 "_disable_action_flattening", False
             ),
             is_policy_recurrent=policy.is_recurrent(),
+            intial_states=policy.get_initial_state(),
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,
@@ -339,7 +340,7 @@ class EpisodeV2:
         If agent_id is None, return whether we have received any initial obs,
         in other words, whether this episode is completely fresh.
         """
-        if agent_id:
+        if agent_id is not None:
             return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
         else:
             return any(list(self._has_init_obs.values()))
