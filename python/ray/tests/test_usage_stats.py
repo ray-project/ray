@@ -1475,6 +1475,9 @@ async def test_usage_stats_dashboard_extra_tags(
             await async_wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
             def verify():
+                import requests
+                resp = requests.get("http://127.0.0.1:{fake_prometheus_port}/-/healthy")
+                print("RESP: " + str(resp.status_code) + ", " + resp.text)
                 tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
                 num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
                 assert tags == {
