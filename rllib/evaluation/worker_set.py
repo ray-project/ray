@@ -385,6 +385,7 @@ class WorkerSet:
         from_worker: Optional[RolloutWorker] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
+        timeout_seconds: Optional[int] = 0,
     ) -> None:
         """Syncs model weights from the local worker to all remote workers.
 
@@ -397,6 +398,10 @@ class WorkerSet:
                 weights to. If None (default), sync to all remote workers.
             global_vars: An optional global vars dict to set this
                 worker to. If None, do not update the global_vars.
+            timeout_seconds: Timeout in seconds to wait for the sync weights
+                calls to complete. Default is 0 (sync-and-forget, do not wait
+                for any sync calls to finish). This significantly improves
+                algorithm performance.
         """
         if self.local_worker() is None and from_worker is None:
             raise TypeError(
@@ -408,12 +413,8 @@ class WorkerSet:
         weights = None
         if self.num_remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
-            # Put weights only once into object store and use same object
-            # ref to synch to all workers.
-            weights_ref = ray.put(weights)
-
             def set_weight(w):
-                w.set_weights(ray.get(weights_ref), global_vars)
+                w.set_weights(weights, global_vars)
 
             # Sync to specified remote workers in this WorkerSet.
             self.foreach_worker(
@@ -423,6 +424,7 @@ class WorkerSet:
                 # Restored workers need to have local work state synced over first,
                 # before they will have all the policies to receive these weights.
                 healthy_only=True,
+                timeout_seconds=timeout_seconds,
             )
 
         # If `from_worker` is provided, also sync to this WorkerSet's
@@ -655,7 +657,7 @@ class WorkerSet:
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
         remote_worker_ids: List[int] = None,
-        timeout_seconds=None,
+        timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
@@ -706,7 +708,7 @@ class WorkerSet:
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
         remote_worker_ids: List[int] = None,
-        timeout_seconds=None,
+        timeout_seconds: Optional[int] = None,
     ) -> List[T]:
         """Similar to foreach_worker(), but calls the function with id of the worker too.
 
@@ -777,7 +779,7 @@ class WorkerSet:
     def fetch_ready_async_reqs(
         self,
         *,
-        timeout_seconds=0,
+        timeout_seconds: Optional[int] = 0,
         return_obj_refs: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
