@@ -289,8 +289,8 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
 
     spec = spec.copy()
 
-    cpus = spec.pop("cpu", 0.0)
-    gpus = spec.pop("gpu", 0.0)
+    cpus = spec.pop("cpu", spec.pop("CPU", 0.0))
+    gpus = spec.pop("gpu", spec.pop("GPU", 0.0))
     memory = spec.pop("memory", 0.0)
 
     bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
