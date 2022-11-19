@@ -220,7 +220,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     worker_id = WorkerID(b"3" * 28)
     logs_manager.list_logs = AsyncMock()
     logs_manager.list_logs.return_value = {
-        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"]
+        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
+        "worker_err": [],
     }
     log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
@@ -260,7 +261,10 @@ async def test_logs_manager_resolve_file(logs_manager):
         pid = 456
         logs_manager.list_logs = AsyncMock()
         # Provide the wrong pid.
-        logs_manager.list_logs.return_value = {"worker_out": ["worker-123-123-123.out"]}
+        logs_manager.list_logs.return_value = {
+            "worker_out": ["worker-123-123-123.out"],
+            "worker_err": [],
+        }
         log_file_name = await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
@@ -275,7 +279,10 @@ async def test_logs_manager_resolve_file(logs_manager):
     pid = 123
     logs_manager.list_logs = AsyncMock()
     # Provide the wrong pid.
-    logs_manager.list_logs.return_value = {"worker_out": [f"worker-123-123-{pid}.out"]}
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-123-123-{pid}.out"],
+        "worker_err": [],
+    }
     log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
@@ -303,6 +310,48 @@ async def test_logs_manager_resolve_file(logs_manager):
             get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
             timeout=10,
         )
+
+    """
+    Test suffix is specified 
+    """
+    pid = 123
+    logs_manager.list_logs = AsyncMock()
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-123-123-{pid}.out"],
+        "worker_err": [],
+    }
+    log_file_name, n = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=None,
+        task_id=None,
+        pid=pid,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{pid}*"
+    )
+    assert log_file_name == f"worker-123-123-{pid}.out"
+
+    logs_manager.list_logs.return_value = {
+        "worker_out": [],
+        "worker_err": [f"worker-123-123-{pid}.err"],
+    }
+    log_file_name, n = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=None,
+        task_id=None,
+        pid=pid,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+        suffix="err",
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{pid}*err"
+    )
+    assert log_file_name == f"worker-123-123-{pid}.err"
 
 
 @pytest.mark.skipif(

@@ -137,9 +137,7 @@ class LogsManager:
                 resolving by other ids'.
         """
         if suffix is None:
-            # Default to query "*.log" files for files resolved by id
-            # of actors/workers/tasks.
-            suffix = "out"
+            suffix = ""
 
         if actor_id:
             actor_data = get_actor_fn(actor_id)
