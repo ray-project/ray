@@ -248,8 +248,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         resource_path = f"pods?labelSelector={label_selector}"
         if resource_version:
             resource_path += (
-                f"&resourceVersion={resource_version}" +
-                "&resourceVersionMatch=NotOlderThan"
+                f"&resourceVersion={resource_version}"
+                + "&resourceVersionMatch=NotOlderThan"
             )
 
         pod_list = self._get(resource_path)
