@@ -264,7 +264,9 @@ class AgentCollector:
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
-            should_flatten_action_key = (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
+            should_flatten_action_key = (
+                k == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
@@ -512,7 +514,9 @@ class AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            should_flatten_action_key = (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
+            should_flatten_action_key = (
+                col == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
