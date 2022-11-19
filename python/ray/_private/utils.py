@@ -352,7 +352,7 @@ def set_omp_num_threads_if_unset() -> bool:
     """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
 
     This function sets the environment variable OMP_NUM_THREADS for the worker,
-    if the env is not previously set. Should only be called in worker not driver.
+    if the env is not previously set and it's running in worker (WORKER_MODE).
 
     Returns True if OMP_NUM_THREADS is set in this function.
 
@@ -363,7 +363,13 @@ def set_omp_num_threads_if_unset() -> bool:
         return False
 
     # If unset, try setting the correct CPU count assigned.
-    num_assigned_cpus = ray.get_runtime_context().get_assigned_resources().get("CPU")
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
     if num_assigned_cpus is None:
         # This is an actor task w/o any num_cpus specified, set it to 1
         logger.debug(
