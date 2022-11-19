@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import traceback
-from collections import namedtuple, defaultdict
+from collections import namedtuple
 from typing import List, Tuple, Any, Dict
 
 from prometheus_client.core import (
@@ -25,7 +25,6 @@ from opencensus.stats.aggregation_data import (
     LastValueAggregationData,
 )
 from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
