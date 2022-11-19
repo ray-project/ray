@@ -76,7 +76,7 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states
+        self.intial_states = intial_states or []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
 
@@ -190,33 +190,16 @@ class AgentCollector:
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
-            single_row = {
-                SampleBatch.OBS: init_obs,
-                SampleBatch.AGENT_INDEX: agent_index,
-                SampleBatch.ENV_ID: env_id,
-                SampleBatch.T: t,
-                SampleBatch.EPS_ID: self.episode_id,
-                SampleBatch.UNROLL_ID: self.unroll_id,
-            }
-
-            # Note (Artur): As long as we have these in our default view requirements,
-            # we should  build buffers with neutral elements instead of building them
-            # on the first AgentCollector.build_for_inference call if present.
-            # This prevents us from accidentally building buffers with duplicates of
-            # the first incoming value.
-            if SampleBatch.PREV_REWARDS in self.view_requirements:
-                single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
-                    space=self.view_requirements[SampleBatch.REWARDS].space,
-                    batch_size=0,
-                    fill_value=0.0,
-                )
-            if SampleBatch.PREV_ACTIONS in self.view_requirements:
-                single_row[SampleBatch.ACTIONS] = get_dummy_batch_for_space(
-                    space=self.view_requirements[SampleBatch.ACTIONS].space,
-                    batch_size=0,
-                    fill_value=0.0,
-                )
-            self._build_buffers(single_row)
+            self._build_buffers(
+                single_row={
+                    SampleBatch.OBS: init_obs,
+                    SampleBatch.AGENT_INDEX: agent_index,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.T: t,
+                    SampleBatch.EPS_ID: self.episode_id,
+                    SampleBatch.UNROLL_ID: self.unroll_id,
+                }
+            )
 
         # Append data to existing buffers.
         flattened = tree.flatten(init_obs)
@@ -232,7 +215,7 @@ class AgentCollector:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
         Args:
-            input_values: Data dict (interpreted as a single row) to be added to buffer.
+            values: Data dict (interpreted as a single row) to be added to buffer.
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
@@ -491,6 +474,7 @@ class AgentCollector:
 
         # Reset our unroll_id.
         self.unroll_id = None
+
         return batch
 
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
@@ -568,18 +552,6 @@ class AgentCollector:
         """Unflattens the given to match the buffer struct format for that key."""
         if key not in self.buffer_structs:
             return data[0]
-        if key == SampleBatch.ACTIONS and not self.disable_action_flattening:
-            from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
-
-            actions = None
-            # for
-            for shards in data:
-                if actions is None:
-                    actions = [[] for _ in range(len(shards))]
-                for action, shard in zip(actions, shards):
-                    action.append(shard)
-            actions = [flatten_to_single_ndarray(a) for a in actions]
-            return actions
 
         return tree.unflatten_as(self.buffer_structs[key], data)
 
@@ -621,19 +593,7 @@ class AgentCollector:
                     f"policy.get_initial_states()?"
                 )
             state_ind = int(data_col.split("_")[-1])
-            if self.intial_states:
-                initial_state = self.intial_states[state_ind]
-            else:
-                # Some models and policies don't provide initial states and
-                if log_once("initial_state_not_provided_in_agent_collector"):
-                    logger.info(
-                        "Agent collector was not provided an initial state "
-                        "but policy is recurrent. We infer initial state by "
-                        "sampling from the view requirement."
-                    )
-                initial_state = self.view_requirements[data_col].space.sample()
-
-            self._build_buffers({data_col: initial_state})
+            self._build_buffers({data_col: self.intial_states[state_ind]})
         else:
             is_state = False
             # only create dummy data during inference

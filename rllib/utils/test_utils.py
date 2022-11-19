@@ -323,19 +323,13 @@ def check_compute_single_action(
 
     action_space = pol.action_space
 
-    def _test_compute_actions(
-        what, method_to_test, full_fetch, explore, timestep, unsquash, clip
+    def _test(
+        what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
         if what is algorithm:
-            # Get the obs-space from Workers.env (not Policy) due to possible
-            # pre-processor up front.
-            obs_space = algorithm.get_policy(pid).observation_space
-            obs_space = getattr(obs_space, "original_space", obs_space)
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid
-        else:
-            obs_space = pol.observation_space
 
         obs = obs_space.sample()
         if isinstance(obs_space, Box):
@@ -407,12 +401,11 @@ def check_compute_single_action(
             )
 
         state_out = None
-        print((state_in, full_fetch, what))
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
-        if state_out is not None and len(state_out):
+        if state_out:
             for si, so in zip(state_in, state_out):
-                check(si.shape[-1], so.shape[-1])
+                check(list(si.shape), so.shape)
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]
@@ -444,80 +437,40 @@ def check_compute_single_action(
                     "for that!"
                 )
 
-    def _test_compute_actions_from_raw_data(
-        what, method_to_test, explore, timestep, unsquash, clip
-    ):
-        if what is algorithm:
-            return True
-
-        obs_space = getattr(
-            pol.observation_space, "original_space", pol.observation_space
-        )
-        obs = obs_space.sample()
-        if isinstance(obs_space, Box):
-            obs = np.clip(obs, -1.0, 1.0)
-
-        if method_to_test == "input_dict":
-            action, _, _ = pol.compute_actions_from_raw_input_dict(
-                input_dict={
-                    SampleBatch.NEXT_OBS: [obs],
-                    SampleBatch.REWARDS: [0],
-                    SampleBatch.DONES: [False],
-                    SampleBatch.INFOS: [{}],
-                },
-                explore=explore,
-                timestep=timestep,
-                clip=clip,
-            )
-            # Unbatch everything to be able to compare against single
-            # action below.
-            # ARS and ES return action batches as lists.
-            if isinstance(action, list):
-                action = np.array(action)
-            action = tree.map_structure(lambda s: s[0], action)
-            assert action_space.contains(action)
-        else:
-            action = what.compute_actions_from_raw_input(
-                next_obs_batch=[obs],
-                reward_batch=[0],
-                dones_batch=[False],
-                info_batch=[{}],
-                explore=explore,
-                timestep=timestep,
-                unsquash_action=unsquash,
-                clip_action=clip,
-                clip=clip,
-            )[0][0]
-            assert action_space.contains(action)
-
     # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
     for what in [pol, algorithm]:
+        if what is algorithm:
+            # Get the obs-space from Workers.env (not Policy) due to possible
+            # pre-processor up front.
+            worker_set = getattr(algorithm, "workers", None)
+            assert worker_set
+            if not worker_set.local_worker():
+                obs_space = algorithm.get_policy(pid).observation_space
+            else:
+                obs_space = worker_set.local_worker().for_policy(
+                    lambda p: p.observation_space, policy_id=pid
+                )
+            obs_space = getattr(obs_space, "original_space", obs_space)
+        else:
+            obs_space = pol.observation_space
+
         for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                timestep = random.randint(0, 100000)
-                for unsquash in [True, False, None]:
-                    for clip in [False] if unsquash else [True, False, None]:
-                        for full_fetch in (
-                            [False, True] if what is algorithm else [False]
-                        ):
-                            _test_compute_actions(
+                for full_fetch in [False, True] if what is algorithm else [False]:
+                    timestep = random.randint(0, 100000)
+                    for unsquash in [True, False, None]:
+                        for clip in [False] if unsquash else [True, False, None]:
+                            _test(
                                 what,
                                 method_to_test,
+                                obs_space,
                                 full_fetch,
                                 explore,
                                 timestep,
                                 unsquash,
                                 clip,
                             )
-                        _test_compute_actions_from_raw_data(
-                            what,
-                            method_to_test,
-                            explore,
-                            timestep,
-                            unsquash,
-                            clip,
-                        )
 
 
 def check_inference_w_connectors(policy, env_name, max_steps: int = 100):

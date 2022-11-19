@@ -13,6 +13,7 @@ from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
 from ray.rllib.connectors.agent.lambdas import register_lambda_agent_connector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.policy import local_policy_inference
 from ray.rllib.utils.typing import (
     PolicyOutputType,
     StateBatches,
@@ -74,7 +75,7 @@ V2ToV1ObsAgentConnector = register_lambda_agent_connector(
 )
 
 
-# Custom action connector to add a placeholder action as the additional action input.
+# Custom action connector to add a placeholder action as the addtional action input.
 def v1_to_v2_action(
     actions: TensorStructType, states: StateBatches, fetches: Dict
 ) -> PolicyOutputType:
@@ -109,33 +110,21 @@ def run(checkpoint_path):
     policy.agent_connectors.prepend(V2ToV1ObsAgentConnector(ctx))
     policy.action_connectors.append(V1ToV2ActionConnector(ctx))
 
-    # Put policy in inference mode, so we don't spend time on training
-    # only transformations.
-    policy.agent_connectors.in_eval()
-    policy.action_connectors.in_eval()
-
     # Run CartPole.
     env = MyCartPole()
     obs = env.reset()
     done = False
-    info = {}
-    reward = 0
     step = 0
     while not done:
         step += 1
-        actions, state_out, info = policy.compute_actions_from_raw_input_dict(
-            env_ids=["env_1"],
-            agent_ids=["agent_1"],
-            input_dict={
-                SampleBatch.OBS: [obs],
-                SampleBatch.DONES: [done],
-                SampleBatch.INFOS: [info],
-                SampleBatch.REWARDS: [reward],
-            },
-        )
+
+        # Use local_policy_inference() to easily run poicy with observations.
+        policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
+        assert len(policy_outputs) == 1
+        actions, _, _ = policy_outputs[0]
         print(f"step {step}", obs, actions)
 
-        obs, reward, done, info = env.step(actions)
+        obs, _, done, _ = env.step(actions)
 
 
 # __sphinx_doc_end__

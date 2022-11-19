@@ -326,7 +326,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     @override(TorchPolicyV2)
     def compute_actions_from_input_dict(
         self,
-        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        input_dict: SampleBatch,
         explore: bool = None,
         timestep: Optional[int] = None,
         **kwargs,

@@ -1,7 +1,7 @@
 """PyTorch policy class used for Simple Q-Learning"""
 
 import logging
-from typing import Any, Dict, List, Tuple, Type, Union, Optional
+from typing import Any, Dict, List, Tuple, Type, Union
 
 import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
@@ -60,45 +60,40 @@ class SimpleQTorchPolicy(
         return model
 
     @override(TorchPolicyV2)
-    def compute_actions(self, *args, **kwargs):
-        return self.compute_actions_from_input_dict(*args, **kwargs)
-
-    @override(TorchPolicyV2)
-    def compute_actions_from_input_dict(
+    def compute_actions(
         self,
-        input_dict: Dict[str, TensorType],
-        explore: bool = True,
-        timestep: Optional[int] = None,
+        *,
+        input_dict,
+        explore=True,
+        timestep=None,
+        episodes=None,
         is_training=False,
         **kwargs
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
         if timestep is None:
             timestep = self.global_timestep
-        with torch.no_grad():
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(input_dict)
-            # Compute the Q-values for each possible action, using our Q-value network.
-            q_vals = self._compute_q_values(
-                self.model, input_dict[SampleBatch.OBS], is_training=is_training
-            )
-            # Use a Categorical distribution for the exploration component.
-            # This way, it may either sample storchastically (e.g. when using SoftQ)
-            # or deterministically/greedily (e.g. when using EpsilonGreedy).
-            distribution = TorchCategorical(q_vals, self.model)
-            # Call the exploration component's `get_exploration_action` method to
-            # explore, if necessary.
-            actions, logp = self.exploration.get_exploration_action(
-                action_distribution=distribution, timestep=timestep, explore=explore
-            )
+        # Compute the Q-values for each possible action, using our Q-value network.
+        q_vals = self._compute_q_values(
+            self.model, input_dict[SampleBatch.OBS], is_training=is_training
+        )
+        # Use a Categorical distribution for the exploration component.
+        # This way, it may either sample storchastically (e.g. when using SoftQ)
+        # or deterministically/greedily (e.g. when using EpsilonGreedy).
+        distribution = TorchCategorical(q_vals, self.model)
+        # Call the exploration component's `get_exploration_action` method to
+        # explore, if necessary.
+        actions, logp = self.exploration.get_exploration_action(
+            action_distribution=distribution, timestep=timestep, explore=explore
+        )
         # Return (exploration) actions, state_outs (empty list), and extra outs.
         return (
-            convert_to_numpy(actions),
+            actions,
             [],
             {
-                "q_values": convert_to_numpy(q_vals),
-                SampleBatch.ACTION_LOGP: convert_to_numpy(logp),
-                SampleBatch.ACTION_PROB: convert_to_numpy(torch.exp(logp)),
-                SampleBatch.ACTION_DIST_INPUTS: convert_to_numpy(q_vals),
+                "q_values": q_vals,
+                SampleBatch.ACTION_LOGP: logp,
+                SampleBatch.ACTION_PROB: torch.exp(logp),
+                SampleBatch.ACTION_DIST_INPUTS: q_vals,
             },
         )
 
