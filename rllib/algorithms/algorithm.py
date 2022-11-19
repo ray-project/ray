@@ -1520,7 +1520,9 @@ class Algorithm(Trainable):
                             "provided as an argument.".format(old_kwarg)
                         )
             if input_dict is not None:
-                input_dict[SampleBatch.OBS] = [convert_to_numpy(observation)]
+                input_dict[SampleBatch.OBS] = convert_to_numpy(observation)
+                # Add batch dimension
+                input_dict = tree.map_structure(lambda s: s[None], input_dict)
                 action, state, extra = policy.compute_actions_from_raw_input_dict(
                     input_dict=input_dict,
                     explore=explore,
