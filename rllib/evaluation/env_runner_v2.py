@@ -642,8 +642,8 @@ class EnvRunnerV2:
                     # available
                     obs_space = (
                         policy.agent_connectors[ObsPreprocessorConnector]
-                        or policy.observation_space
-                    )
+                        or [policy.observation_space]
+                    )[0]
                     obs_space = getattr(obs_space, "original_space", obs_space)
                     values_dict = {
                         SampleBatch.T: episode.length,
