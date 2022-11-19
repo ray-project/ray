@@ -181,10 +181,9 @@ void RayServerBidiReactor::Disconnect() { Finish(grpc::Status::OK); }
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
 
 void RayServerBidiReactor::OnDone() {
-  io_context_.dispatch([this, cleanup_cb = cleanup_cb_,
-                        node_id = GetRemoteNodeID()]() {
+  io_context_.dispatch([this]() {
+    cleanup_cb_(GetRemoteNodeID(), false);
     delete this;
-    cleanup_cb(node_id, false);
   },
                        "");
   RAY_LOG(INFO) << "RayServerBidiReactor::OnDone\t" << this;
@@ -211,12 +210,13 @@ RayClientBidiReactor::RayClientBidiReactor(
 
 void RayClientBidiReactor::OnDone(const grpc::Status &status) {
   io_context_.dispatch(
-      [this, cleanup_cb = cleanup_cb_, node_id = GetRemoteNodeID(), status]() {
+      [this, status]() {
+        cleanup_cb_(GetRemoteNodeID(), !status.ok());
         delete this;
-        cleanup_cb(node_id, !status.ok());
       },
       "");
-  RAY_LOG(INFO) << "RayClientBidiReactor::OnDone\t" << this;
+  RAY_LOG(INFO) << "RayClientBidiReactor::OnDone\t" << this << "\t" << status.error_code()
+                << "\t" << status.error_message();
 }
 
 void RayClientBidiReactor::Disconnect() { StartWritesDone(); }
@@ -257,27 +257,31 @@ std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
 
 void RaySyncer::Connect(const std::string &node_id,
                         std::shared_ptr<grpc::Channel> channel) {
-  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-  auto reactor = std::make_unique<RayClientBidiReactor>(
-      node_id,
-      GetLocalNodeID(),
-      io_context_,
-      [this](auto msg) { BroadcastRaySyncMessage(msg); },
-      [this, channel](const std::string &node_id, bool restart) {
-        sync_connections_.erase(node_id);
-        if (restart) {
-          RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
-                        << NodeID::FromBinary(node_id);
-          Connect(node_id, channel);
-        }
-      },
-      std::move(stub));
-  Connect(reactor.release());
+  io_context_.dispatch([=]() {
+    auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+    auto reactor = std::make_unique<RayClientBidiReactor>(
+        node_id,
+        GetLocalNodeID(),
+        io_context_,
+        [this](auto msg) { BroadcastRaySyncMessage(msg); },
+        [this, channel](const std::string &node_id, bool restart) {
+          sync_connections_.erase(node_id);
+          if (restart) {
+            RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
+                          << NodeID::FromBinary(node_id);
+            Connect(node_id, channel);
+          }
+        },
+        std::move(stub));
+    Connect(reactor.release());
+  },
+    "");
 }
 
 void RaySyncer::Connect(NodeSyncConnection *connection) {
   io_context_.dispatch(
       [this, connection]() {
+        RAY_CHECK(sync_connections_.find(connection->GetRemoteNodeID()) == sync_connections_.end());
         sync_connections_[connection->GetRemoteNodeID()] = connection;
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {

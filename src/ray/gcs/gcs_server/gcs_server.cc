@@ -50,7 +50,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      local_node_id_(NodeID::FromRandom()),
+      local_node_id_(NodeID::FromBinary(std::string(kUniqueIDSize, 0))),
       pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
@@ -513,19 +513,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       boost::asio::io_service::work work(ray_syncer_io_context_);
       ray_syncer_io_context_.run();
     });
-
-    for (const auto &pair : gcs_init_data.Nodes()) {
-      if (pair.second.state() ==
-          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
-        rpc::Address address;
-        address.set_raylet_id(pair.second.node_id());
-        address.set_ip_address(pair.second.node_manager_address());
-        address.set_port(pair.second.node_manager_port());
-
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
-        ray_syncer_->Connect(pair.second.node_id(), raylet_client->GetChannel());
-      }
-    }
+    ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(*ray_syncer_);
+    rpc_server_.RegisterService(*ray_syncer_service_);
   } else {
     /*
       The current synchronization flow is:
@@ -651,9 +640,7 @@ void GcsServer::InstallEventListeners() {
     }
     cluster_task_manager_->ScheduleAndDispatchTasks();
 
-    if (RayConfig::instance().use_ray_syncer()) {
-      ray_syncer_->Connect(node->node_id(), raylet_client->GetChannel());
-    } else {
+    if (!RayConfig::instance().use_ray_syncer()) {
       gcs_ray_syncer_->AddNode(*node);
     }
   });
@@ -675,9 +662,7 @@ void GcsServer::InstallEventListeners() {
           gcs_healthcheck_manager_->RemoveNode(node_id);
         }
 
-        if (RayConfig::instance().use_ray_syncer()) {
-          ray_syncer_->Disconnect(node_id.Binary());
-        } else {
+        if (!RayConfig::instance().use_ray_syncer()) {
           gcs_ray_syncer_->RemoveNode(*node);
         }
       });

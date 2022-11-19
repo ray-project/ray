@@ -238,6 +238,7 @@ class GcsServer {
 
   /// Ray Syncer realted fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
   std::unique_ptr<std::thread> ray_syncer_thread_;
   instrumented_io_context ray_syncer_io_context_;
 
