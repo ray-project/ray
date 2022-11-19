@@ -11,6 +11,7 @@ from ray.rllib.algorithms.bc import BC
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SPACES = {
