@@ -645,6 +645,8 @@ class LoadMetricsTest(unittest.TestCase):
         ) in debug
 
 
+# Flaky in MacOS CI, but pretty consistent on Mac laptops.
+# Uncomment the skip if you need to develop this test on a Mac laptop.
 @unittest.skipIf(
     sys.platform == "darwin", reason="Flaky. Also, autoscaling is not supported on Mac."
 )
