@@ -88,7 +88,6 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
-    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -2496,6 +2495,8 @@ class Dataset(Generic[T]):
                 must exist otherwise ValueError will be raised.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        from ray.data.datasource import MongoDatasource
+
         self.write_datasource(
             MongoDatasource(),
             ray_remote_args=ray_remote_args,
