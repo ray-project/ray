@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Un
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
@@ -637,8 +638,12 @@ class EnvRunnerV2:
                     policy_id: PolicyID = episode.policy_for(agent_id)
                     policy = self._worker.policy_map[policy_id]
 
-                    # Create a fake (all-0s) observation.
-                    obs_space = policy.observation_space
+                    # Create a fake (all-0s) observation (from the original space if
+                    # available
+                    obs_space = (
+                        policy.agent_connectors[ObsPreprocessorConnector]
+                        or policy.observation_space
+                    )
                     obs_space = getattr(obs_space, "original_space", obs_space)
                     values_dict = {
                         SampleBatch.T: episode.length,
