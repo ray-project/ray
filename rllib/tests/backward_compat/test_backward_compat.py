@@ -145,7 +145,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies": {
                     "policy1": PolicySpec(),
                 },
-                "policy_mapping_fn": lambda aid, ep, worker, **kw: "policy1",
+                "policy_mapping_fn": lambda aid, episode, worker, **kw: "policy1",
                 "policies_to_train": ["policy1"],
             },
         }
