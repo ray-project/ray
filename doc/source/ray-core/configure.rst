@@ -59,7 +59,7 @@ If using the command line, connect to the Ray cluster as follow:
 .. note::
     Ray sets the environment variable ``OMP_NUM_THREADS=<num_cpus>`` if ``num_cpus`` is set on 
     the task/actor via :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
-    Or Ray sets ``OMP_NUM_THREADS=1`` if ``num_cpus`` is not specified; this 
+    Ray sets ``OMP_NUM_THREADS=1`` if ``num_cpus`` is not specified; this 
     is done to avoid performance degradation with many workers (issue #6998). You can
     also override this by explicitly setting ``OMP_NUM_THREADS`` to override anything Ray sets by default. 
     ``OMP_NUM_THREADS`` is commonly used in numpy, PyTorch, and Tensorflow to perform multi-threaded 
