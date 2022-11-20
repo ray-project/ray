@@ -197,6 +197,10 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         }
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_worker_crash_increment_stats():
     @ray.remote
     def crasher():
