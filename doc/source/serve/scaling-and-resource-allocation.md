@@ -152,8 +152,8 @@ Below is the full list of supported options in `ray_actor_options`; please see t
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
-To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray tasks and actors use a single CPU by default.
-If you *do* want to enable this parallelism in your Serve deployment, just set `OMP_NUM_THREADS` to the desired value either when starting Ray or in your function/class definition:
+Ray sets `OMP_NUM_THREADS=<num_cpus>` by default. To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` if `num_cpus` is not specified on the tasks/actors, to reduce contention between actors/tasks which run in a single thread.
+If you *do* want to enable this parallelism in your Serve deployment, just set `num_cpus` (recommended) to the desired value, or manually set the `OMP_NUM_THREADS` environment variable when starting Ray or in your function/class definition.
 
 ```bash
 OMP_NUM_THREADS=12 ray start --head

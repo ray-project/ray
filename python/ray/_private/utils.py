@@ -348,6 +348,46 @@ def get_cuda_visible_devices():
 last_set_gpu_ids = None
 
 
+def set_omp_num_threads_if_unset() -> bool:
+    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+
+    This function sets the environment variable OMP_NUM_THREADS for the worker,
+    if the env is not previously set and it's running in worker (WORKER_MODE).
+
+    Returns True if OMP_NUM_THREADS is set in this function.
+
+    """
+    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
+    if num_threads_from_env is not None:
+        # No ops if it's set
+        return False
+
+    # If unset, try setting the correct CPU count assigned.
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
+    if num_assigned_cpus is None:
+        # This is an actor task w/o any num_cpus specified, set it to 1
+        logger.debug(
+            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+            "degradation with many workers (issue #6998). You can override this "
+            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+        )
+        num_assigned_cpus = 1
+
+    import math
+
+    # For num_cpu < 1: Set to 1.
+    # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
+    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
+    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    return True
+
+
 def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
