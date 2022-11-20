@@ -1,6 +1,5 @@
 # flake8: noqa
 
-# fmt: off
 # __tasks_start__
 import ray
 import time
@@ -39,9 +38,7 @@ for _ in range(4):
     # This doesn't block.
     slow_function.remote()
 # __tasks_end__
-# fmt: on
 
-# fmt: off
 # __pass_by_ref_start__
 @ray.remote
 def function_with_an_argument(value):
@@ -55,17 +52,13 @@ assert ray.get(obj_ref1) == 1
 obj_ref2 = function_with_an_argument.remote(obj_ref1)
 assert ray.get(obj_ref2) == 2
 # __pass_by_ref_end__
-# fmt: on
 
-# fmt: off
 # __wait_start__
-object_refs =  [slow_function.remote() for _ in range(2)]
+object_refs = [slow_function.remote() for _ in range(2)]
 # Return as soon as one of the tasks finished execution.
 ready_refs, remaining_refs = ray.wait(object_refs, num_returns=1, timeout=None)
 # __wait_end__
-# fmt: on
 
-# fmt: off
 # __multiple_returns_start__
 # By default, a Ray task only returns a single Object Ref.
 @ray.remote
@@ -88,14 +81,13 @@ assert ray.get(object_ref0) == 0
 assert ray.get(object_ref1) == 1
 assert ray.get(object_ref2) == 2
 # __multiple_returns_end__
-# fmt: on 
 
-# fmt: off
 # __generator_start__
 @ray.remote(num_returns=3)
 def return_multiple_as_generator():
     for i in range(3):
         yield i
+
 
 # NOTE: Similar to normal functions, these objects will not be available
 # until the full task is complete and all returns have been generated.
@@ -103,11 +95,11 @@ a, b, c = return_multiple_as_generator.remote()
 # __generator_end__
 # fmt: on
 
-# fmt: off
 # __cancel_start__
 @ray.remote
 def blocking_operation():
     time.sleep(10e6)
+
 
 obj_ref = blocking_operation.remote()
 ray.cancel(obj_ref)
@@ -117,27 +109,27 @@ try:
 except ray.exceptions.TaskCancelledError:
     print("Object reference was cancelled.")
 # __cancel_end__
-# fmt: on
 
-# fmt: off
 # __resource_start__
 # Specify required resources.
 @ray.remote(num_cpus=4, num_gpus=2)
 def my_function():
     return 1
-# __resource_end__
-# fmt: on
 
-# fmt: off
+
+# __resource_end__
+
 # __fraction_resource_start__
 # Ray also supports fractional resource requirements.
 @ray.remote(num_gpus=0.5)
 def h():
     return 1
 
+
 # Ray support custom resources too.
-@ray.remote(resources={'Custom': 1})
+@ray.remote(resources={"Custom": 1})
 def f():
     return 1
+
+
 # __fraction_resource_end__
-# fmt: on
