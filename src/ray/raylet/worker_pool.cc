@@ -1202,30 +1202,25 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
-    RAY_LOG(INFO) << "0";
     if (task_spec.GetLanguage() != it->first->GetLanguage() ||
         it->first->GetAssignedJobId() != task_spec.JobId() ||
         state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
       continue;
     }
-    RAY_LOG(INFO) << "1";
 
     // Skip if the dynamic_options doesn't match.
     if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
       continue;
     }
 
-    RAY_LOG(INFO) << "2";
     // These workers are exiting. So skip them.
     if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
       continue;
     }
-    RAY_LOG(INFO) << "3";
     // Skip if the runtime env doesn't match.
     if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
       continue;
     }
-    RAY_LOG(INFO) << "4";
 
     state.idle.erase(it->first);
     // We can't erase a reverse_iterator.
