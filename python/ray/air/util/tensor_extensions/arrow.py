@@ -664,10 +664,11 @@ class ArrowVariableShapedTensorArray(
             np_data_buffer = np.concatenate(raveled)
         dtype = np_data_buffer.dtype
         if dtype.type is np.object_:
+            types_and_shapes = [(f"dtype={a.dtype}", f"shape={a.shape}") for a in arr]
             raise ValueError(
                 "ArrowVariableShapedTensorArray only supports heterogeneous-shaped "
-                "tensor collections, not arbitrarily nested ragged tensors. Got: "
-                f"{arr}"
+                "tensor collections, not arbitrarily nested ragged tensors. Got "
+                f"arrays: {types_and_shapes}"
             )
         pa_dtype = pa.from_numpy_dtype(dtype)
         if dtype.type is np.bool_:
@@ -720,7 +721,9 @@ class ArrowVariableShapedTensorArray(
             arrs = [self._to_numpy(i, zero_copy_only) for i in range(len(self))]
             # Return ragged NumPy ndarray in the ndarray of ndarray pointers
             # representation.
-            return np.array(arrs, dtype=object)
+            arr = np.empty(len(self), dtype=object)
+            arr[:] = arrs
+            return arr
         data = self.storage.field("data")
         shapes = self.storage.field("shape")
         value_type = data.type.value_type
