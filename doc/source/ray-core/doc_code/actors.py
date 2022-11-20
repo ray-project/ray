@@ -18,21 +18,21 @@ class Counter(object):
 counter = Counter.remote()
 # __actor_end__
 
-# __resource_start
+# __resource_start__
 # Specify required resources for an actor.
 @ray.remote(num_cpus=2, num_gpus=0.5)
 class Actor(object):
     pass
-# __resource_end
+# __resource_end__
 
-# __call_start
+# __call_start__
 # Call the actor.
 obj_ref = counter.increment.remote()
 assert ray.get(obj_ref) == 1
-# __call_end
+# __call_end__
 
 
-# __multi_call_start
+# __multi_call_start__
 # Create ten Counter actors.
 counters = [Counter.remote() for _ in range(10)]
 
@@ -45,10 +45,10 @@ print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 # and share state.
 results = ray.get([counters[0].increment.remote() for _ in range(5)])
 print(results)  # prints [2, 3, 4, 5, 6]
-# __multi_call_end
+# __multi_call_end__
 
 
-# __pass_handle_f_start
+# __pass_handle_f_start__
 import time
 
 @ray.remote
@@ -56,9 +56,10 @@ def f(counter):
     for _ in range(1000):
         time.sleep(0.1)
         counter.increment.remote()
-# __pass_handle_f_end
+# __pass_handle_f_end__
 
-# __pass_handle_start
+
+# __pass_handle_start__
 counter = Counter.remote()
 
 # Start some tasks that use the actor.
@@ -68,4 +69,4 @@ counter = Counter.remote()
 for _ in range(10):
     time.sleep(1)
     print(ray.get(counter.get_counter.remote()))
-# __pass_handle_end
+# __pass_handle_end__

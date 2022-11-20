@@ -13,22 +13,10 @@ that specific worker and can access and mutate the state of that worker.
 
     The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
 
-    .. code-block:: python
-
-      @ray.remote
-      class Counter(object):
-          def __init__(self):
-              self.value = 0
-
-          def increment(self):
-              self.value += 1
-              return self.value
-
-          def get_counter(self):
-              return self.value
-
-      # Create an actor from this class.
-      counter = Counter.remote()
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __actor_start__
+        :end-before: __actor_end__
 
 .. tabbed:: Java
 
@@ -94,12 +82,10 @@ You can specify resource requirements in actors too (see :ref:`resource-requirem
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # Specify required resources for an actor.
-        @ray.remote(num_cpus=2, num_gpus=0.5)
-        class Actor(object):
-            pass
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __resource_start__
+        :end-before: __resource_end__
 
 .. tabbed:: Java
 
@@ -125,11 +111,10 @@ value.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # Call the actor.
-        obj_ref = counter.increment.remote()
-        assert ray.get(obj_ref) == 1
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __call_start__
+        :end-before: __call_end__
 
 .. tabbed:: Java
 
@@ -151,20 +136,10 @@ Methods called on different actors can execute in parallel, and methods called o
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # Create ten Counter actors.
-        counters = [Counter.remote() for _ in range(10)]
-
-        # Increment each Counter once and get the results. These tasks all happen in
-        # parallel.
-        results = ray.get([c.increment.remote() for c in counters])
-        print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-
-        # Increment the first Counter five times. These tasks are executed serially
-        # and share state.
-        results = ray.get([counters[0].increment.remote() for _ in range(5)])
-        print(results)  # prints [2, 3, 4, 5, 6]
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __multi_call_start__
+        :end-before: __multi_call_end__
 
 .. tabbed:: Java
 
@@ -235,15 +210,10 @@ Actor handles can be passed into other tasks. We can define remote functions (or
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        import time
-
-        @ray.remote
-        def f(counter):
-            for _ in range(1000):
-                time.sleep(0.1)
-                counter.increment.remote()
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __pass_handle_f_start__
+        :end-before: __pass_handle_f_end__
 
 .. tabbed:: Java
 
@@ -274,17 +244,10 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        counter = Counter.remote()
-
-        # Start some tasks that use the actor.
-        [f.remote(counter) for _ in range(3)]
-
-        # Print the counter value.
-        for _ in range(10):
-            time.sleep(1)
-            print(ray.get(counter.get_counter.remote()))
+    .. literalinclude:: doc_code/actors.py
+        :language: python
+        :start-after: __pass_handle_start__
+        :end-before: __pass_handle_end__
 
 .. tabbed:: Java
 
