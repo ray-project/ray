@@ -26,12 +26,10 @@ Using Remote Functions with GPUs
 If a remote function requires GPUs, indicate the number of required GPUs in the
 remote decorator.
 
-.. tabbed:: Python
-
-    .. literalinclude:: doc_code/gpus.py
-        :language: python
-        :start-after: __gpu_start__
-        :end-before: __gpu_end__
+.. literalinclude:: doc_code/gpus.py
+    :language: python
+    :start-after: __gpu_start__
+    :end-before: __gpu_end__
 
 Inside of the remote function, a call to ``ray.get_gpu_ids()`` will return a
 list of strings indicating which GPUs the remote function is allowed to use.
@@ -46,12 +44,10 @@ external library like TensorFlow. Here is an example that actually uses GPUs.
 Note that for this example to work, you will need to install the GPU version of
 TensorFlow.
 
-.. tabbed:: Python
-
-    .. literalinclude:: doc_code/gpus.py
-        :language: python
-        :start-after: __tf_start__
-        :end-before: _tf_end__
+.. literalinclude:: doc_code/gpus.py
+    :language: python
+    :start-after: __tf_start__
+    :end-before: _tf_end__
 
 
 **Note:** It is certainly possible for the person implementing ``use_gpu`` to
@@ -67,9 +63,7 @@ Fractional GPUs
 If you want two tasks to share the same GPU, then the tasks can each request
 half (or some other fraction) of a GPU.
 
-.. tabbed:: Python
-
-    .. literalinclude:: doc_code/fraction-gpus.py
+.. literalinclude:: doc_code/fraction-gpus.py
 
 It is the developer's responsibility to make sure that the individual tasks
 don't use more than their share of the GPU memory. TensorFlow can be configured
@@ -87,9 +81,7 @@ the task process exists. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
 in the ``ray.remote`` decorator.
 
-.. tabbed:: Python
-
-    .. literalinclude:: doc_code/gpus.py
-        :language: python
-        :start-after: __leak_gpu_start__
-        :end-before: __leak_gpu_end__
+.. literalinclude:: doc_code/gpus.py
+    :language: python
+    :start-after: __leak_gpu_start__
+    :end-before: __leak_gpu_end__
