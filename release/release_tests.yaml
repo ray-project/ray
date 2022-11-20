@@ -1878,7 +1878,7 @@
   team: rl
   env: staging
   cluster:
-    cluster_env: app_config_np.yaml
+    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
