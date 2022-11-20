@@ -439,6 +439,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
 
+  /// Look up worker's dynamic options by startup token.
+  /// TODO(scv119): replace dynamic options by runtime_env.
+  const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
+
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
@@ -696,8 +700,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const int runtime_env_hash,
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
-
-  const WorkerProcessInfo *LookupWorkerProcessInfo(StartupToken token) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

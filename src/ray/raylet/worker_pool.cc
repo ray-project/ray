@@ -1202,27 +1202,30 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
+    RAY_LOG(INFO) << "0";
     if (task_spec.GetLanguage() != it->first->GetLanguage() ||
         it->first->GetAssignedJobId() != task_spec.JobId() ||
         state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
       continue;
     }
+    RAY_LOG(INFO) << "1";
 
     // Skip if the dynamic_options doesn't match.
-    auto worker_process_ptr = LookupWorkerProcessInfo(it->first->GetStartupToken());
-    if (worker_process_ptr == nullptr ||
-        worker_process_ptr->dynamic_options != dynamic_options) {
+    if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
       continue;
     }
 
+    RAY_LOG(INFO) << "2";
     // These workers are exiting. So skip them.
     if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
       continue;
     }
+    RAY_LOG(INFO) << "3";
     // Skip if the runtime env doesn't match.
     if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
       continue;
     }
+    RAY_LOG(INFO) << "4";
 
     state.idle.erase(it->first);
     // We can't erase a reverse_iterator.
@@ -1627,15 +1630,16 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
   }
 }
 
-const WorkerPool::WorkerProcessInfo *WorkerPool::LookupWorkerProcessInfo(
+const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
     StartupToken token) const {
   for (const auto &[lang, state] : states_by_lang_) {
     auto it = state.worker_processes.find(token);
     if (it != state.worker_processes.end()) {
-      return &(it->second);
+      return it->second.dynamic_options;
     }
   }
-  return nullptr;
+  static std::vector<std::string> kNoDynamicOptions;
+  return kNoDynamicOptions;
 }
 
 }  // namespace raylet
