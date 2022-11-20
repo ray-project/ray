@@ -218,6 +218,7 @@ class A3C(Algorithm):
         # update that particular worker's weights.
         global_vars = None
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
+        to_sync_workers = set()
         for worker_id, result in async_results:
             # Apply gradients to local worker.
             with self._timers[APPLY_GRADS_TIMER]:
@@ -237,18 +238,17 @@ class A3C(Algorithm):
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
 
-            # Synch updated weights back to the particular worker
-            # (only those policies that are trainable).
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(
-                    policies=local_worker.get_policies_to_train(),
-                    to_worker_indices=[worker_id],
-                    global_vars=global_vars,
-                )
+            # Add this worker to be synced.
+            to_sync_workers.add(worker_id)
 
-        # Update global vars of the local worker.
-        if global_vars:
-            local_worker.set_global_vars(global_vars)
+        # Synch updated weights back to the particular worker
+        # (only those policies that are trainable).
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(
+                policies=local_worker.get_policies_to_train(),
+                to_worker_indices=list(to_sync_workers),
+                global_vars=global_vars,
+            )
 
         return learner_info_builder.finalize()
 
