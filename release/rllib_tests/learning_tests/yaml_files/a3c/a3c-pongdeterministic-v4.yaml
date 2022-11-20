@@ -12,6 +12,7 @@ a3c-pongdeterministic-v4:
     config:
         num_gpus: 0
         num_workers: 16
+        max_requests_in_flight_per_sampler_worker: 1
         rollout_fragment_length: 20
         vf_loss_coeff: 0.5
         entropy_coeff: 0.01
