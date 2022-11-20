@@ -3,6 +3,10 @@
 Using Predictors for Inference
 ==============================
 
+.. tip::
+   Refer to the blog on `Model Batch Inference in Ray <https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets>`__
+   for an overview of batch inference strategies in Ray and additional examples.
+
 .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 
 .. image:: images/predictors.png
