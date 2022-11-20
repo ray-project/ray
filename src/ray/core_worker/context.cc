@@ -22,15 +22,15 @@ namespace ray {
 namespace core {
 
 /// per-thread context for core worker.
-struct WorkerThreadContext {
-  explicit WorkerThreadContext(const JobID &job_id)
+struct WorkerExtraContext {
+  explicit WorkerExtraContext(const JobID &job_id)
       : current_task_id_(), task_index_(0), put_counter_(0) {
     SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
   }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
-  uint64_t GetTaskIndex() { return task_index_; }
+  uint64_t GetTaskIndex() const { return task_index_; }
 
   /// Returns the next put object index. The index starts at the number of
   /// return values for the current task in order to keep the put indices from
@@ -135,9 +135,6 @@ struct WorkerThreadContext {
   bool placement_group_capture_child_tasks_ = false;
 };
 
-thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
-    nullptr;
-
 WorkerContext::WorkerContext(WorkerType worker_type,
                              const WorkerID &worker_id,
                              const JobID &job_id)
@@ -147,15 +144,16 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
+      extra_context_(std::make_unique<WorkerExtraContext>(job_id)),
       main_thread_id_(boost::this_thread::get_id()),
       mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil(),
-                                      /*attempt_number=*/0);
+  extra_context_->SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                       ? TaskID::ForDriverTask(job_id)
+                                       : TaskID::Nil(),
+                                   /*attempt_number=*/0);
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -163,13 +161,18 @@ const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
 uint64_t WorkerContext::GetNextTaskIndex() {
-  return GetThreadContext().GetNextTaskIndex();
+  absl::WriterMutexLock lock(&mutex_);
+  return extra_context_->GetNextTaskIndex();
 }
 
-uint64_t WorkerContext::GetTaskIndex() { return GetThreadContext().GetTaskIndex(); }
+uint64_t WorkerContext::GetTaskIndex() {
+  absl::ReaderMutexLock lock(&mutex_);
+  return extra_context_->GetTaskIndex();
+}
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
-  return GetThreadContext().GetNextPutIndex();
+  absl::WriterMutexLock lock(&mutex_);
+  return extra_context_->GetNextPutIndex();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
@@ -183,11 +186,13 @@ int64_t WorkerContext::GetTaskDepth() const {
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
-  return GetThreadContext().GetCurrentTaskID();
+  absl::ReaderMutexLock lock(&mutex_);
+  return extra_context_->GetCurrentTaskID();
 }
 
 const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
-  return GetThreadContext().GetCurrentInternalTaskId();
+  absl::ReaderMutexLock lock(&mutex_);
+  return extra_context_->GetCurrentInternalTaskId();
 }
 
 const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
@@ -196,7 +201,7 @@ const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
   if (current_actor_id_ != ActorID::Nil()) {
     return current_actor_placement_group_id_;
   } else {
-    return GetThreadContext().GetCurrentPlacementGroupId();
+    return extra_context_->GetCurrentPlacementGroupId();
   }
 }
 
@@ -206,7 +211,7 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   if (current_actor_id_ != ActorID::Nil()) {
     return placement_group_capture_child_tasks_;
   } else {
-    return GetThreadContext().PlacementGroupCaptureChildTasks();
+    return extra_context_->PlacementGroupCaptureChildTasks();
   }
 }
 
@@ -227,7 +232,8 @@ std::shared_ptr<json> WorkerContext::GetCurrentRuntimeEnv() const {
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
-  GetThreadContext().SetCurrentTaskId(task_id, attempt_number);
+  absl::WriterMutexLock lock(&mutex_);
+  extra_context_->SetCurrentTaskId(task_id, attempt_number);
 }
 
 void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {
@@ -241,7 +247,7 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   absl::WriterMutexLock lock(&mutex_);
-  GetThreadContext().SetCurrentTask(task_spec);
+  extra_context_->SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
@@ -274,10 +280,14 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
 }
 
-void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
+void WorkerContext::ResetCurrentTask() {
+  absl::WriterMutexLock lock(&mutex_);
+  extra_context_->ResetCurrentTask();
+}
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
-  return GetThreadContext().GetCurrentTask();
+  absl::ReaderMutexLock lock(&mutex_);
+  return extra_context_->GetCurrentTask();
 }
 
 const ActorID &WorkerContext::GetCurrentActorID() const {
@@ -324,14 +334,5 @@ bool WorkerContext::CurrentActorDetached() const {
   absl::ReaderMutexLock lock(&mutex_);
   return is_detached_actor_;
 }
-
-WorkerThreadContext &WorkerContext::GetThreadContext() const {
-  if (thread_context_ == nullptr) {
-    thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
-  }
-
-  return *thread_context_;
-}
-
 }  // namespace core
 }  // namespace ray

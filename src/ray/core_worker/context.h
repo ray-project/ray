@@ -25,7 +25,7 @@ using json = nlohmann::json;
 namespace ray {
 namespace core {
 
-struct WorkerThreadContext;
+struct WorkerExtraContext;
 
 class WorkerContext {
  public:
@@ -115,16 +115,12 @@ class WorkerContext {
   std::shared_ptr<json> runtime_env_ GUARDED_BY(mutex_);
   // The runtime env info.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
+  /// legacy worker context.
+  std::unique_ptr<WorkerExtraContext> extra_context_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
-
- private:
-  WorkerThreadContext &GetThreadContext() const;
-
-  /// Per-thread worker context.
-  static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
 }  // namespace core

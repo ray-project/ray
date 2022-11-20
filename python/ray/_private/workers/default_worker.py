@@ -192,7 +192,7 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True,
     )
-    
+
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
@@ -233,7 +233,6 @@ if __name__ == "__main__":
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
-
 
     print(f"time after set logs {time.time() - start}")
     if mode == ray.WORKER_MODE:
