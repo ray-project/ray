@@ -413,14 +413,14 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
   rpc::JobConfig *job_config = nullptr;
-  if (!IsIOWorkerType(worker_type)) {
+  if (!IsIOWorkerType(worker_type) && !job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      // *status = PopWorkerStatus::JobConfigMissing;
-      // process_failed_job_config_missing_++;
-      // return {Process(), (StartupToken)-1};
+      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      *status = PopWorkerStatus::JobConfigMissing;
+      process_failed_job_config_missing_++;
+      return {Process(), (StartupToken)-1};
     }
     job_config = &it->second;
   }
@@ -1216,15 +1216,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       continue;
     }
 
-    // Actor worker can't be reused.
-    if (is_actor_creation && it->first->GetReuseCount() > 0) {
-    // Skip if the dynamic_options doesn't match.
-    auto worker_process_ptr = LookupWorkerProcessInfo(it->first->GetStartupToken());
-    if (worker_process_ptr == nullptr ||
-        worker_process_ptr->dynamic_options != dynamic_options) {
-      continue;
-    }
-
     // Don't allow worker reuse across jobs.
     // TODO(scv119): make this optional?
     if (!it->first->GetAssignedJobId().IsNil() &&
@@ -1241,7 +1232,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
       RAY_LOG(DEBUG) << "runtime env mismatch:" << runtime_env_hash << ":"
                      << it->first->GetRuntimeEnvHash();
-      continue;
+      if (!task_spec.HasRuntimeEnv() && it->first->GetAssignedJobId().IsNil() &&
+          !RayConfig::instance().worker_resource_limits_enabled()) {
+        // pass
+      } else {
+        continue;
+      }
     }
 
     state.idle.erase(it->first);
@@ -1405,16 +1401,16 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects
     // unintentionally (which means that the worker process has died), we remove the
-    // others from idle pool so that the failed actor will not be rescheduled on the same
-    // process.
+    // others from idle pool so that the failed actor will not be rescheduled on the
+    // same process.
     auto pid = worker->GetProcess().GetId();
     for (auto worker2 : state.registered_workers) {
       if (worker2->GetProcess().GetId() == pid) {
         // NOTE(kfstorm): We have to use a new field to record these workers (instead of
         // just removing them from idle sets) because they may haven't announced worker
         // port yet. When they announce worker port, they'll be marked idle again. So
-        // removing them from idle sets here doesn't really prevent them from being popped
-        // later.
+        // removing them from idle sets here doesn't really prevent them from being
+        // popped later.
         state.pending_disconnection_workers.insert(worker2);
       }
     }
@@ -1668,27 +1664,16 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
   }
 }
 
-<<<<<<< HEAD
 const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
-=======
-const WorkerPool::WorkerProcessInfo *WorkerPool::LookupWorkerProcessInfo(
->>>>>>> bb289ffc6a (add)
     StartupToken token) const {
   for (const auto &[lang, state] : states_by_lang_) {
     auto it = state.worker_processes.find(token);
     if (it != state.worker_processes.end()) {
-<<<<<<< HEAD
       return it->second.dynamic_options;
     }
   }
   static std::vector<std::string> kNoDynamicOptions;
   return kNoDynamicOptions;
-=======
-      return &(it->second);
-    }
-  }
-  return nullptr;
->>>>>>> bb289ffc6a (add)
 }
 
 }  // namespace raylet
