@@ -152,10 +152,10 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil(),
-                                      /*attempt_number=*/0);
+  if (worker_type_ == WorkerType::DRIVER) {
+    GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
+                                        /*attempt_number=*/0);
+  }
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }

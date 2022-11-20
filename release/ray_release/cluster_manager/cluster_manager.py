@@ -55,6 +55,9 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
         ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
+        self.cluster_env["env_vars"][
+            "RAY_max_pending_lease_requests_per_scheduling_category"
+        ] = 1000
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
