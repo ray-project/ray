@@ -578,6 +578,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_multi_agent_pendulum_ppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
@@ -805,7 +815,7 @@ py_test(
 
 py_test(
     name = "test_worker_failures",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
@@ -1587,13 +1597,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["env/tests/test_multi_agent_env.py"]
-)
-
-py_test(
-    name = "env/tests/test_multi_agent_pendulum",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["env/tests/test_multi_agent_pendulum.py"]
 )
 
 sh_test(

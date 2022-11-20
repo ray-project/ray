@@ -262,7 +262,7 @@ def submit(
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
@@ -293,7 +293,7 @@ def status(address: Optional[str], job_id: str):
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
@@ -301,7 +301,7 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
         ray job stop <my_job_id>
     """
     client = _get_sdk_client(address)
-    cli_logger.print(f"Attempting to stop job {job_id}")
+    cli_logger.print(f"Attempting to stop job '{job_id}'")
     client.stop_job(job_id)
 
     if no_wait:
@@ -333,6 +333,37 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     ),
 )
 @click.argument("job-id", type=str)
+@add_click_logging_options
+@PublicAPI(stability="alpha")
+def delete(address: Optional[str], job_id: str):
+    """Deletes a stopped job and its associated data from memory.
+
+    Only supported for jobs that are already in a terminal state.
+    Fails with exit code 1 if the job is not already stopped.
+    Does not delete job logs from disk.
+    Submitting a job with the same submission ID as a previously
+    deleted job is not supported and may lead to unexpected behavior.
+
+    Example:
+        ray job delete <my_job_id>
+    """
+    client = _get_sdk_client(address)
+    client.delete_job(job_id)
+    cli_logger.print(f"Job '{job_id}' deleted successfully")
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.argument("job-id", type=str)
 @click.option(
     "-f",
     "--follow",
@@ -342,7 +373,7 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     help="If set, follow the logs (like `tail -f`).",
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
@@ -379,7 +410,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     ),
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def list(address: Optional[str]):
     """Lists all running jobs and their information.
 

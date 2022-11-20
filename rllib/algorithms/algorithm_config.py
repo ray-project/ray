@@ -6,8 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
-from ray.tune.result import TRIAL_INFO
-from ray.util import log_once
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -40,6 +39,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRIAL_INFO
+from ray.util import log_once
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -247,6 +248,7 @@ class AlgorithmConfig:
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
+        self.max_requests_in_flight_per_sampler_worker = 2
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -323,6 +325,7 @@ class AlgorithmConfig:
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        self.worker_cls = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -647,7 +650,10 @@ class AlgorithmConfig:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
-                default_policy_cls = self.algo_class.get_default_policy_class(self)
+                default_policy_cls = None
+                if self.algo_class:
+                    default_policy_cls = self.algo_class.get_default_policy_class(self)
+
                 policies = self.policies
                 policy_specs = (
                     [
@@ -679,6 +685,29 @@ class AlgorithmConfig:
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+        if self.input_ == "sampler" and self.off_policy_estimation_methods:
+            raise ValueError(
+                "Off-policy estimation methods can only be used if the input is a "
+                "dataset. We currently do not support applying off_policy_esitmation "
+                "method on a sampler input."
+            )
+
+        if self.input_ == "dataset":
+            # if we need to read a ray dataset set the parallelism and
+            # num_cpus_per_read_task from rollout worker settings
+            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
+            if self.in_evaluation:
+                # If using dataset for evaluation, the parallelism gets set to
+                # evaluation_num_workers for backward compatibility and num_cpus gets
+                # set to num_cpus_per_worker from rollout worker. User only needs to
+                # set evaluation_num_workers.
+                self.input_config["parallelism"] = self.evaluation_num_workers or 1
+            else:
+                # If using dataset for training, the parallelism and num_cpus gets set
+                # based on rollout worker parameters. This is for backwards
+                # compatibility for now. User only needs to set num_rollout_workers.
+                self.input_config["parallelism"] = self.num_rollout_workers or 1
 
     def build(
         self,
@@ -1187,6 +1216,7 @@ class AlgorithmConfig:
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1198,6 +1228,18 @@ class AlgorithmConfig:
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1220,6 +1262,10 @@ class AlgorithmConfig:
             self.model.update(model)
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
 
         return self
 
@@ -1455,8 +1501,10 @@ class AlgorithmConfig:
                 - A callable that takes an `IOContext` object as only arg and returns a
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
-            input_config: Arguments accessible from the IOContext for configuring custom
-                input.
+            input_config: Arguments that describe the settings for reading the input.
+                If input is `sample`, this will be environment configuation, e.g.
+                `env_name` and `env_config`, etc. See `EnvContext` for more info.
+                If the input is `dataset`, this will be e.g. `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
@@ -1492,6 +1540,25 @@ class AlgorithmConfig:
         if input_ is not NotProvided:
             self.input_ = input_
         if input_config is not NotProvided:
+            if not isinstance(input_config, dict):
+                raise ValueError(
+                    f"input_config must be a dict, got {type(input_config)}."
+                )
+            # TODO (Kourosh) Once we use a complete sepration between rollout worker
+            # and input dataset reader we can remove this.
+            # For now Error out if user attempts to set these parameters.
+            msg = "{} should not be set in the input_config. RLlib will use {} instead."
+            if input_config.get("num_cpus_per_read_task") is not None:
+                raise ValueError(
+                    msg.format("num_cpus_per_read_task", "num_cpus_per_worker")
+                )
+            if input_config.get("parallelism") is not None:
+                if self.in_evaluation:
+                    raise ValueError(
+                        msg.format("parallelism", "evaluation_num_workers")
+                    )
+                else:
+                    raise ValueError(msg.format("parallelism", "num_rollout_workers"))
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
@@ -1771,6 +1838,7 @@ class AlgorithmConfig:
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -1791,6 +1859,7 @@ class AlgorithmConfig:
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1807,6 +1876,8 @@ class AlgorithmConfig:
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if worker_cls is not NotProvided:
+            self.worker_cls = worker_cls
 
         return self
 

@@ -445,7 +445,11 @@ class ConnectorPipeline(abc.ABC):
             elif isinstance(key, int):
                 return [self.connectors[key]]
             elif isinstance(key, type):
-                key = key.__name__
+                results = []
+                for c in self.connectors:
+                    if issubclass(c.__class__, key):
+                        results.append(c)
+                return results
             else:
                 raise NotImplementedError(
                     "Indexing by {} is currently not supported.".format(type(key))
@@ -455,9 +459,6 @@ class ConnectorPipeline(abc.ABC):
         for c in self.connectors:
             if c.__class__.__name__ == key:
                 results.append(c)
-
-        if len(results) == 0:
-            return []
 
         return results
 

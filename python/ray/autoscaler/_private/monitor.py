@@ -9,7 +9,6 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
@@ -138,7 +137,6 @@ class Monitor:
         log_dir: str = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
-        stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
         self.gcs_address = address
@@ -172,8 +170,6 @@ class Monitor:
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
-        # Can be used to signal graceful exit from monitor loop.
-        self.stop_event = stop_event  # type: Optional[Event]
         self.retry_on_failure = retry_on_failure
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
@@ -346,8 +342,6 @@ class Monitor:
         """Run the monitor loop."""
         while True:
             try:
-                if self.stop_event and self.stop_event.is_set():
-                    break
                 gcs_request_start_time = time.time()
                 self.update_load_metrics()
                 gcs_request_time = time.time() - gcs_request_start_time

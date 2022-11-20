@@ -132,7 +132,7 @@ def test_standard_scaler():
 @pytest.mark.parametrize(
     "preprocessor",
     [
-        BatchMapper(fn=lambda x: x),
+        BatchMapper(fn=lambda x: x, batch_format="pandas"),
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
@@ -1026,7 +1026,7 @@ def test_chain():
         df["A"] *= 2
         return df
 
-    batch_mapper = BatchMapper(fn=udf)
+    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
@@ -1096,7 +1096,7 @@ def test_nested_chain_state():
         return df
 
     def create_chain():
-        batch_mapper = BatchMapper(fn=udf)
+        batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
         imputer = SimpleImputer(["B"])
         scaler = StandardScaler(["A", "B"])
         encoder = LabelEncoder("C")
@@ -1133,7 +1133,7 @@ def test_nested_chain():
         df["A"] *= 2
         return df
 
-    batch_mapper = BatchMapper(fn=udf)
+    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
@@ -1709,9 +1709,9 @@ def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
     with pytest.raises(NotImplementedError):
         with_nothing.transform(ds)
 
-    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas.transform(ds).dataset_format() == "pandas"
 
-    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas_and_numpy.transform(ds).dataset_format() == "pandas"
 
 
 def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
@@ -1728,12 +1728,12 @@ def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
     with pytest.raises(NotImplementedError):
         with_nothing.transform(ds)
 
-    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas.transform(ds).dataset_format() == "pandas"
 
-    assert with_numpy.transform(ds)._dataset_format() == "arrow"
+    assert with_numpy.transform(ds).dataset_format() == "arrow"
 
     # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
-    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "arrow"
+    assert with_pandas_and_numpy.transform(ds).dataset_format() == "arrow"
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
