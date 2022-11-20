@@ -4,6 +4,7 @@ the code. This matches the design pattern of torch distribution which developers
 already be familiar with.
 """
 import gym
+from matplotlib.pyplot import sca
 import numpy as np
 from typing import List, Optional
 import abc
@@ -67,6 +68,9 @@ class TorchDistribution(Distribution, abc.ABC):
             return rsample, self.logp(rsample)
         return rsample
 
+    def __str__(self):
+        return "self.__self.dist
+
 
 @DeveloperAPI
 class TorchMultiDistribution(TorchDistribution):
@@ -94,7 +98,7 @@ class TorchMultiDistribution(TorchDistribution):
     def _get_torch_distribution(
         self, *args, **kwargs
     ) -> List[torch.distributions.Distribution]:
-        return [d._get_torch_distribution(*args, **kwargs) for d in self.distributions]
+        raise NotImplementedError()
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs):
@@ -147,16 +151,18 @@ class TorchMultiDistribution(TorchDistribution):
     def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        samples = [d.dist.sample(sample_shape) for d in self.distributions]
+        samples = [d.sample(sample_shape=sample_shape, return_logp=return_logp) for d in self.distributions]
         if return_logp:
-            logps = [d.logp(s) for s, d in zip(samples, self.distributions)]
-            logps = torch.cat(logps, dim=-1)
-        samples = torch.cat(samples, dim=-1)
+            samples, logps = zip(*samples)
 
-        if return_logp:
-            return samples, logps
-        else:
+        breakpoint()
+        
+        samples = torch.cat(samples, dim=-1)
+        if not return_logp:
             return samples
+
+        logps = torch.cat(logps, dim=-1)
+        return samples, logps
 
     @override(Distribution)
     def rsample(
@@ -196,7 +202,6 @@ class TorchMultiDistribution(TorchDistribution):
         # TODO: We should implement this to use DistributionConfig
         # that the user can pass to PiConfig
         raise NotImplementedError()
-
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
@@ -246,8 +251,8 @@ class TorchCategorical(TorchDistribution):
     ) -> torch.distributions.Distribution:
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
-        return torch.distributions.categorical.Categorical(probs, logits)
+            logits = logits / temperature
+        return torch.distributions.Categorical(probs, logits)
 
     def dsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
@@ -262,8 +267,38 @@ class TorchCategorical(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        #return (space.n,)
+        return (gym.spaces.utils.flatdim(space),)
 
+
+class TorchBernoulli(TorchDistribution):
+    @override(TorchDistribution)
+    def _get_torch_distribution(
+        self,
+        probs: torch.Tensor = None,
+        logits: torch.Tensor = None,
+        temperature: Union[float, TensorType] = 1.0,
+    ) -> torch.distributions.Distribution:
+        if logits is not None:
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+            logits = logits / temperature
+        return torch.distributions.Bernoulli(probs, logits)
+
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        dsample = self.dist.mode
+        if return_logp:
+            return dsample, self.logp(dsample)
+        return dsample
+
+    @staticmethod
+    @override(Distribution)
+    def required_model_output_shape(
+        space: gym.Space, model_config: ModelConfigDict
+    ) -> Tuple[int, ...]:
+        #return (space.n,)
+        return (gym.spaces.utils.flatdim(space),)
 
 @DeveloperAPI
 class TorchDiagGaussian(TorchDistribution):
@@ -303,7 +338,7 @@ class TorchDiagGaussian(TorchDistribution):
         self, loc, scale=None
     ) -> torch.distributions.Distribution:
         if scale is None:
-            loc, log_std = torch.chunk(self.inputs, 2, dim=1)
+            loc, log_std = torch.chunk(loc, 2, dim=-1)
             scale = torch.exp(log_std)
         return torch.distributions.normal.Normal(loc, scale)
 
@@ -333,8 +368,62 @@ class TorchDiagGaussian(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        #return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (2 * gym.spaces.utils.flatdim(space),)
 
+class TorchSquashedDiagGaussian(TorchDiagGaussian):
+    @override(Distribution)
+    def __init__(
+        self,
+        loc: Union[float, torch.Tensor],
+        scale: Optional[Union[float, torch.Tensor]] = None,
+        low: Union[float, TensorType] = -1.0,
+        high: Union[float, TensorType] = 1.0,
+    ):
+        super().__init__(loc=loc, scale=scale)
+        self.support = (low, high)
+        self.shift = (self.support[1] + self.support[0]) / 2.0
+        self.scale = (self.support[1] - self.support[0]) / 2.0
+
+    def logp(self, value: TensorType) -> TensorType:
+        # Computing logp after sample is error-prone.
+        # arctanh() or inverse sigmoid will return inf/nan for 
+        # sufficiently large log probs.
+        # Force the users to hold onto the accurate logp via
+        # calls to sample()
+        raise NotImplementedError("Call sample(logp=True) instead")
+
+    def _squash(self, x):
+        return self.scale * x.tanh() + self.shift
+
+    @override(TorchDistribution)
+    def sample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        sample = self.dist.sample(sample_shape)
+        if return_logp:
+            # This is more accurate than calling sample and logp separately
+            return self._squash(sample), self.dist.log_prob(sample)
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def dsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        dsample = self.dist.mean
+        if return_logp:
+            return self._squash(dsample), self.logp(dsample)
+        return dsample
+         
+
+    @override(TorchDistribution)
+    def rsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        rsample = self.dist.rsample(sample_shape)
+        if return_logp:
+            return self._squash(rsample), self.logp(rsample)
+        return self._squash(rsample)
 
 @DeveloperAPI
 class TorchDeterministic(Distribution):
