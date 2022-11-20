@@ -585,8 +585,7 @@ class ActorClass:
                 as a global object independent of the creator.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             scheduling_strategy: Strategy about how to
                 schedule a remote function or actor. Possible values are
                 None: ray will figure out the scheduling strategy to use, it
