@@ -25,7 +25,7 @@ using json = nlohmann::json;
 namespace ray {
 namespace core {
 
-struct WorkerExtraContext;
+class WorkerExtraContext;
 
 class WorkerContext {
  public:
@@ -125,3 +125,5 @@ class WorkerContext {
 
 }  // namespace core
 }  // namespace ray
+
+#include "ray/core_worker/context_internal.h"
