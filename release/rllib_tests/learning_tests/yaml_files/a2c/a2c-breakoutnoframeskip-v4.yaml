@@ -8,6 +8,7 @@ a2c-breakoutnoframeskip-v4:
     stop:
         time_total_s: 7200
     config:
+        train_batch_size: 500
         rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5
