@@ -164,7 +164,7 @@ class Monitor:
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = self.gcs_address.rsplit(":", 1)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None

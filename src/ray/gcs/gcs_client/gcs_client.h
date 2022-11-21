@@ -31,6 +31,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
@@ -44,7 +45,7 @@ class GcsClientOptions {
   ///
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    std::vector<std::string> address = SplitIpPort(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];

@@ -117,7 +117,7 @@ class DashboardHead:
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
         DataOrganizer.head_node_ip = self.ip
-        ip, port = gcs_address.split(":")
+        ip, port = gcs_address.rsplit(":", 1)
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"

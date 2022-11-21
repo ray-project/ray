@@ -61,6 +61,19 @@ class stream_protocol;
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
+inline std::vector<std::string> SplitIpPort(const std::string &address) {
+  std::vector<std::string> result;
+  size_t found;
+  found = address.find_last_of(":");
+  if (found == std::string::npos) {
+    return result;
+  }
+
+  result.push_back(address.substr(0, found));
+  result.push_back(address.substr(found + 1));
+  return result;
+}
+
 // Transfer the string to the Hex format. It can be more readable than the ANSI mode
 inline std::string StringToHex(const std::string &str) {
   constexpr char hex[] = "0123456789abcdef";
