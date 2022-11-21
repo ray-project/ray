@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from unittest import mock
@@ -209,23 +210,17 @@ pytest_custom_serialization_arrays = [
         ),
         0.1,
     ),
-    # TODO (Clark): Support dense unions.
-    # # Union array (dense)
-    # (
-    #     pa.UnionArray.from_dense(
-    #         pa.array([0, 1] * 500, type=pa.int8()),
-    #         pa.array(
-    #             [
-    #                 i
-    #                 if i % 2 == 0 else (i % 3) % 2
-    #                 for i in range(1000)
-    #             ],
-    #             type=pa.int32()
-    #         ),
-    #         [pa.array(list(range(1000))), pa.array([True, False])],
-    #     ),
-    #     0.1,
-    # ),
+    # Union array (dense)
+    (
+        pa.UnionArray.from_dense(
+            pa.array([0, 1] * 500, type=pa.int8()),
+            pa.array(
+                [i if i % 2 == 0 else (i % 3) % 2 for i in range(1000)], type=pa.int32()
+            ),
+            [pa.array(list(range(1000))), pa.array([True, False])],
+        ),
+        0.1,
+    ),
     # Dictionary array
     (
         pa.DictionaryArray.from_arrays(
@@ -362,6 +357,78 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
+@pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+def test_custom_arrow_data_serializer_fallback(
+    ray_start_regular_shared, propagate_logs, caplog
+):
+    # Reset serialization fallback set so warning is logged.
+    import ray.data._internal.arrow_serialization as arrow_ser_module
+
+    arrow_ser_module._serialization_fallback_set = set()
+
+    data = pa.table(
+        {
+            "a": pa.UnionArray.from_dense(
+                pa.array([0, 1] * 500, type=pa.int8()),
+                pa.array(
+                    [i if i % 2 == 0 else (i % 3) % 2 for i in range(1000)],
+                    type=pa.int32(),
+                ),
+                [pa.array(list(range(1000))), pa.array([True, False])],
+            )
+        }
+    )
+    cap_mult = 0.1
+    ray._private.worker.global_worker.get_serialization_context()
+    data.validate()
+    pyarrow_version = parse_version(_get_pyarrow_version())
+    if pyarrow_version >= parse_version("7.0.0"):
+        # get_total_buffer_size API was added in Arrow 7.0.0.
+        buf_size = data.get_total_buffer_size()
+    # Create a zero-copy slice view of data.
+    view = data.slice(10, 10)
+    # Confirm that (1) fallback works, and (2) warning is logged.
+    with caplog.at_level(
+        logging.WARNING,
+        logger="ray.data._internal.arrow_serialization",
+    ):
+        s_arr = pickle.dumps(data)
+    assert "Failed to complete optimized serialization" in caplog.text
+    caplog.clear()
+    # Confirm that we only warn once per process.
+    with caplog.at_level(
+        logging.WARNING,
+        logger="ray.data._internal.arrow_serialization",
+    ):
+        s_view = pickle.dumps(view)
+    assert "Failed to complete optimized serialization" not in caplog.text
+    post_slice = pickle.loads(s_view)
+    post_slice.validate()
+    # Check for round-trip equality.
+    assert view.equals(post_slice), post_slice
+    # Check that the slice view was truncated upon serialization.
+    assert len(s_view) <= cap_mult * len(s_arr)
+    # Check that offset was reset on slice.
+    for column in post_slice.columns:
+        if column.num_chunks > 0:
+            assert column.chunk(0).offset == 0
+    if pyarrow_version >= parse_version("7.0.0"):
+        # Check that slice buffer only contains slice data.
+        slice_buf_size = post_slice.get_total_buffer_size()
+        if buf_size > 0:
+            assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+
+
 def test_custom_arrow_data_serializer_parquet_roundtrip(
     ray_start_regular_shared, tmp_path
 ):
@@ -381,7 +448,7 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
     ray.worker._post_init_hooks = []
     context = ray.worker.global_worker.get_serialization_context()
-    context._unregister_cloudpickle_reducer(pa.ChunkedArray)
+    context._unregister_cloudpickle_reducer(pa.Table)
     # Disable custom Arrow array serialization.
     os.environ["RAY_DISABLE_CUSTOM_ARROW_ARRAY_SERIALIZATION"] = "1"
     ray.init()

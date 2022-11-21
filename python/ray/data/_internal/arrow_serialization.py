@@ -117,14 +117,11 @@ def _register_arrow_data_serializer(serialization_context):
 
     import pyarrow as pa
 
-    serialization_context._register_cloudpickle_reducer(
-        pa.ChunkedArray, _arrow_chunked_array_reduce
-    )
+    serialization_context._register_cloudpickle_reducer(pa.Table, _arrow_table_reduce)
 
 
-def _arrow_chunked_array_reduce(ca: "pyarrow.ChunkedArray"):
-    """Custom reducer for Arrow ChunkedArrays that works around a zero-copy slice
-    pickling bug.
+def _arrow_table_reduce(t: "pyarrow.Table"):
+    """Custom reducer for Arrow Tables that works around a zero-copy slice pickling bug.
     Background:
         Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
         but the former has a serialization bug where the entire buffer is serialized
@@ -138,26 +135,73 @@ def _arrow_chunked_array_reduce(ca: "pyarrow.ChunkedArray"):
     """
     global _serialization_fallback_set
 
-    import pyarrow as pa
-
-    truncated_chunks = []
-    for chunk in ca.chunks:
+    # Reduce the ChunkedArray columns.
+    reduced_columns = []
+    for column_name in t.column_names:
+        column = t[column_name]
         try:
-            chunk = _copy_array_if_needed(chunk)
+            # Delegate to ChunkedArray reducer.
+            reduced_column = _arrow_chunked_array_reduce(column)
         except Exception as e:
-            if _is_in_test():
-                # If running in a test, we want to raise the error, not fall back.
+            if not _is_dense_union(column.type) and _is_in_test():
+                # If running in a test and the column is not a dense union array
+                # (which we expect to need a fallback), we want to raise the error,
+                # not fall back.
                 raise e from None
-            if type(chunk) not in _serialization_fallback_set:
+            if type(column.type) not in _serialization_fallback_set:
                 logger.warning(
-                    "Failed to complete optimized serialization of Arrow array of type "
-                    f"{type(chunk)}, falling back to default serialization. Note that "
-                    "this may result in bloated serialized arrays. Error:",
+                    "Failed to complete optimized serialization of Arrow Table, "
+                    f"serialization of column '{column_name}' of type {column.type} "
+                    "failed, so we're falling back to Arrow IPC serialization for the "
+                    "table. Note that this may result in slower serialization and more "
+                    "worker memory utilization. Serialization error:",
                     exc_info=True,
                 )
-                _serialization_fallback_set.add(type(chunk))
+                _serialization_fallback_set.add(type(column.type))
+            # Fall back to Arrow IPC-based workaround for the entire table.
+            return _arrow_table_ipc_reduce(t)
+        else:
+            # Column reducer succeeded, add reduced column to list.
+            reduced_columns.append(reduced_column)
+    return _reconstruct_table, (reduced_columns, t.schema)
+
+
+def _reconstruct_table(
+    reduced_columns: List[Tuple[List["pyarrow.Array"], "pyarrow.DataType"]],
+    schema: "pyarrow.Schema",
+) -> "pyarrow.Table":
+    """Restore a serialized Arrow Table, reconstructing each reduced column."""
+    import pyarrow as pa
+
+    # Reconstruct each reduced column.
+    columns = []
+    for chunks, type_ in reduced_columns:
+        columns.append(_reconstruct_chunked_array(chunks, type_))
+
+    return pa.Table.from_arrays(columns, schema=schema)
+
+
+def _arrow_chunked_array_reduce(
+    ca: "pyarrow.ChunkedArray",
+) -> Tuple[List["pyarrow.Array"], "pyarrow.DataType"]:
+    """Custom reducer for Arrow ChunkedArrays that works around a zero-copy slice
+    pickling bug. This reducer does not return a reconstruction function, since it's
+    expected to be reconstructed by the Arrow Table reconstructor.
+    """
+    truncated_chunks = []
+    for chunk in ca.chunks:
+        chunk = _copy_array_if_needed(chunk)
         truncated_chunks.append(chunk)
-    return pa.chunked_array, (truncated_chunks, ca.type)
+    return truncated_chunks, ca.type
+
+
+def _reconstruct_chunked_array(
+    chunks: List["pyarrow.Array"], type_: "pyarrow.DataType"
+) -> "pyarrow.ChunkedArray":
+    """Restore a serialized Arrow ChunkedArray from chunks and type."""
+    import pyarrow as pa
+
+    return pa.chunked_array(chunks, type_)
 
 
 def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
@@ -172,8 +216,8 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
     # needing to be recomputed on deserialization?
     import pyarrow as pa
 
-    if pa.types.is_union(a.type) and a.type.mode != "sparse":
-        # Dense unions not supported.
+    if _is_dense_union(a.type):
+        # Dense unions are not supported.
         # TODO(Clark): Support dense unions.
         raise NotImplementedError(
             "Custom slice view serialization of dense union arrays is not yet "
@@ -324,7 +368,7 @@ def _copy_array_buffers_if_needed(
         assert buffers is None
         if pa.types.is_union(type_):
             # Only sparse unions are supported.
-            assert type_.mode == "sparse"
+            assert not _is_dense_union(type_)
             assert buf is not None
             buf = _copy_buffer_if_needed(buf, pa.int8(), offset, length)
             new_buffers.append(buf)
@@ -506,3 +550,37 @@ def _copy_variable_shaped_tensor_array_if_needed(
         storage.field("data").type.value_type, a.type.ndim
     )
     return pa.ExtensionArray.from_storage(type_, storage)
+
+
+def _arrow_table_ipc_reduce(table: "pyarrow.Table"):
+    """Custom reducer for Arrow Table that works around a zero-copy slicing pickling
+    bug by using the Arrow IPC format for the underlying serialization.
+
+    This is currently used as a fallback for unsupported types (or unknown bugs) for
+    the manual buffer truncation workaround, e.g. for dense unions.
+    """
+    from pyarrow.ipc import RecordBatchStreamWriter
+    from pyarrow.lib import BufferOutputStream
+
+    output_stream = BufferOutputStream()
+    with RecordBatchStreamWriter(output_stream, schema=table.schema) as wr:
+        wr.write_table(table)
+    # NOTE: output_stream.getvalue() materializes the serialized table to a single
+    # contiguous bytestring, resulting in a few copy. This adds 1-2 extra copies on the
+    # serialization side, and 1 extra copy on the deserialization side.
+    return _restore_table_from_ipc, (output_stream.getvalue(),)
+
+
+def _restore_table_from_ipc(buf: bytes) -> "pyarrow.Table":
+    """Restore an Arrow Table serialized to Arrow IPC format."""
+    from pyarrow.ipc import RecordBatchStreamReader
+
+    with RecordBatchStreamReader(buf) as reader:
+        return reader.read_all()
+
+
+def _is_dense_union(type_: "pyarrow.DataType") -> bool:
+    """Whether the provided Arrow type is a dense union."""
+    import pyarrow as pa
+
+    return pa.types.is_union(type_) and type_.mode == "dense"
