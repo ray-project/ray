@@ -426,7 +426,11 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status NodeInfoAccessor::DrainSelf() {
-  RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already drained.";
+    // This node is already drained.
+    return Status::OK();
+  }
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::DrainNodeRequest request;
