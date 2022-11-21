@@ -267,6 +267,7 @@ def test_actor_stats():
             == "2",
             timeout=5,
         )
+        del actor
 
 
 def test_pg_stats():
