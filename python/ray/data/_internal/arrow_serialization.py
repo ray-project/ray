@@ -391,7 +391,6 @@ def _copy_normal_buffer_if_needed(
         # serializing; this slice of the underlying buffer (not the array) will ensure
         # that the buffer is properly copied at pickle-time.
         buf = buf.slice(byte_offset, byte_length)
-        print("buffer copy made! ", offset, byte_length)
     return buf
 
 
@@ -406,7 +405,6 @@ def _copy_bitpacked_buffer_if_needed(
     byte_length = _bytes_for_bits(bit_offset + length) // 8
     if offset > 0 or byte_length < buf.size:
         buf = buf.slice(byte_offset, byte_length)
-        print("buffer copy made! ", offset, byte_length)
         if bit_offset != 0:
             # Need to manually shift the buffer to eliminate the bit offset.
             buf = _align_bit_offset(buf, bit_offset, byte_length)
@@ -425,7 +423,15 @@ def _copy_offsets_buffer_if_needed(
     import pyarrow as pa
     import pyarrow.compute as pac
 
-    offset_type = pa.int64() if pa.types.is_large_list(arr_type) else pa.int32()
+    if (
+        pa.types.is_large_list(arr_type)
+        or pa.types.is_large_string(arr_type)
+        or pa.types.is_large_binary(arr_type)
+        or pa.types.is_large_unicode(arr_type)
+    ):
+        offset_type = pa.int64()
+    else:
+        offset_type = pa.int32()
     # Copy offset buffer, if needed.
     buf = _copy_buffer_if_needed(buf, offset_type, offset, length + 1)
     # Reconstruct the offset array so we can determine the offset and length

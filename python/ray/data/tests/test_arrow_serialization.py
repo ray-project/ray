@@ -125,8 +125,15 @@ pytest_custom_serialization_arrays = [
     (pa.array([True, False] * 500), 0.8),
     # String array
     (pa.array(["foo", "bar", "bz", None, "quux"] * 200), 0.1),
+    # Large string array
+    (pa.array(["foo", "bar", "bz", None, "quux"] * 200, type=pa.large_string()), 0.1),
     # Binary array
     (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200), 0.1),
+    # Large binary array
+    (
+        pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200, type=pa.large_binary()),
+        0.1,
+    ),
     # List array with nulls
     (pa.array(([None] + [list(range(9)) + [None]] * 9) * 100), 0.1),
     # Large list array with nulls
