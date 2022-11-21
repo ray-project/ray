@@ -86,7 +86,7 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help=("DEPRECATED: Use -- submission-id instead."),
+    help=("DEPRECATED: Use `--submission-id` instead."),
 )
 @click.option(
     "--submission-id",
@@ -120,7 +120,7 @@ def job_cli_group():
     help=(
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
-        "If specified, this overrides the option in --runtime-env."
+        "If specified, this overrides the option in `--runtime-env`."
     ),
 )
 @click.option(
@@ -171,7 +171,7 @@ def submit(
     """Submits a job to be run on the cluster.
 
     Example:
-        ray job submit -- python my_script.py --arg=val
+        `ray job submit -- python my_script.py --arg=val`
     """
 
     if job_id:
@@ -257,17 +257,17 @@ def submit(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the `RAY_ADDRESS` environment variable."
     ),
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
-        ray job status <my_job_id>
+        `ray job status <my_job_id>`
     """
     client = _get_sdk_client(address)
     _log_job_status(client, job_id)
@@ -281,7 +281,7 @@ def status(address: Optional[str], job_id: str):
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the `RAY_ADDRESS` environment variable."
     ),
 )
 @click.option(
@@ -293,12 +293,12 @@ def status(address: Optional[str], job_id: str):
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
-        ray job stop <my_job_id>
+        `ray job stop <my_job_id>`
     """
     client = _get_sdk_client(address)
     cli_logger.print(f"Attempting to stop job '{job_id}'")
@@ -373,12 +373,12 @@ def delete(address: Optional[str], job_id: str):
     help="If set, follow the logs (like `tail -f`).",
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
-        ray job logs <my_job_id>
+        `ray job logs <my_job_id>`
     """
     client = _get_sdk_client(address)
     sdk_version = client.get_version()
@@ -410,12 +410,12 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     ),
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def list(address: Optional[str]):
     """Lists all running jobs and their information.
 
     Example:
-        ray job list
+        `ray job list`
     """
     client = _get_sdk_client(address)
     # Set no_format to True because the logs may have unescaped "{" and "}"

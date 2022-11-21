@@ -7,6 +7,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
+from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
@@ -239,6 +240,10 @@ class EnvRunnerV2:
                 step.
         """
         self._worker = worker
+        if isinstance(base_env, ExternalEnvWrapper):
+            raise ValueError(
+                "Policies using the new Connector API do not support ExternalEnv."
+            )
         self._base_env = base_env
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
         self._callbacks = callbacks
@@ -386,13 +391,6 @@ class EnvRunnerV2:
 
     def step(self) -> List[SampleBatchType]:
         """Samples training episodes by stepping through environments."""
-
-        # Before the very first poll (this will reset all vector sub-environments):
-        # Create all upcoming episodes and call `on_episode_created` callbacks for
-        # all sub-environments (upcoming episodes).
-        if not self._active_episodes:
-            for env_id, _ in self._base_env.get_sub_environments(as_dict=True).items():
-                self.create_episode(env_id)
 
         self._perf_stats.incr("iters", 1)
 
@@ -555,7 +553,11 @@ class EnvRunnerV2:
                 )
                 continue
 
-            episode: EpisodeV2 = self._active_episodes[env_id]
+            if env_id not in self._active_episodes:
+                episode: EpisodeV2 = self.create_episode(env_id)
+                self._active_episodes[env_id] = episode
+            else:
+                episode: EpisodeV2 = self._active_episodes[env_id]
             # If this episode is brand-new, call the episode start callback(s).
             # Note: EpisodeV2s are initialized with length=-1 (before the reset).
             if not episode.has_init_obs():
@@ -858,18 +860,20 @@ class EnvRunnerV2:
             # Tell the sampler we have got a faulty episode.
             outputs.append(RolloutMetrics(episode_faulty=True))
         else:
-            is_error = False
-            # Output the collected episode.
-            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
+            is_error = False
+            # Output the collected episode after adding rollout metrics so that we
+            # always fetch metrics with RolloutWorker before we fetch samples.
+            # This is because we need to behave like env_runner() for now.
+            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
         self.end_episode(env_id, episode_or_exception)
         # Create a new episode instance (before we reset the sub-environment).
-        self.create_episode(env_id)
+        new_episode: EpisodeV2 = self.create_episode(env_id)
 
         # Horizon hit and we have a soft horizon (no hard env reset).
         soft_reset = not is_error and hit_horizon and self._soft_horizon
@@ -908,7 +912,7 @@ class EnvRunnerV2:
         # Creates a new episode if this is not async return.
         # If reset is async, we will get its result in some future poll.
         elif resetted_obs != ASYNC_RESET_RETURN:
-            new_episode: EpisodeV2 = self._active_episodes[env_id]
+            self._active_episodes[env_id] = new_episode
             self._call_on_episode_start(new_episode, env_id)
 
             if not soft_reset:
@@ -952,7 +956,6 @@ class EnvRunnerV2:
             worker=self._worker,
             callbacks=self._callbacks,
         )
-        self._active_episodes[env_id] = new_episode
 
         # Call `on_episode_created()` callback.
         self._callbacks.on_episode_created(
