@@ -1,5 +1,6 @@
 import os
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from ray import tune
@@ -63,20 +64,18 @@ def _convert_scaling_config_to_ray_params(
 
     # This should be upstreamed to xgboost_ray,
     # but also left here for backwards compatibility.
-    if not hasattr(ray_params_cls, "placement_strategy"):
+    if not hasattr(ray_params_cls, "placement_options"):
 
+        @dataclass
         class RayParamsFromScalingConfig(ray_params_cls):
-            placement_strategy: Optional[str] = None
-            pgf_args: Optional[Tuple[Any]] = None
-            pgf_kwargs: Optional[Dict[str, Any]] = None
+            # Passed as kwargs to PlacementGroupFactory
+            placement_options: Dict[str, Any] = None
 
             def get_tune_resources(self) -> PlacementGroupFactory:
                 pgf = super().get_tune_resources()
                 extended_pgf = PlacementGroupFactory(
                     pgf.bundles,
-                    strategy=self.placement_strategy,
-                    *(self.pgf_args or []),
-                    **(self.pgf_kwargs or {}),
+                    **self.placement_options,
                 )
                 extended_pgf._head_bundle_is_empty = pgf._head_bundle_is_empty
                 return extended_pgf
@@ -86,12 +85,12 @@ def _convert_scaling_config_to_ray_params(
         ray_params_cls_extended = ray_params_cls
 
     ray_params = ray_params_cls_extended(
+        placement_options={
+            "strategy": scaling_config.placement_strategy,
+            "_max_cpu_fraction_per_node": scaling_config._max_cpu_fraction_per_node,
+        },
         **ray_params_kwargs,
     )
-    scaling_config_pgf = scaling_config.as_placement_group_factory()
-    ray_params.placement_strategy = scaling_config.placement_strategy
-    ray_params.pgf_args = scaling_config_pgf._args
-    ray_params.pgf_kwargs = scaling_config_pgf._kwargs
 
     return ray_params
 
