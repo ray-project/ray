@@ -29,6 +29,7 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
+#include "ray/gcs/gcs_server/usage_reporter.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -252,6 +253,8 @@ class GcsServer {
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+
+  std::unique_ptr<GcsUsageReporter> usage_reporter_;
   /// Runtime env handler and service.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;

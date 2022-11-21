@@ -123,6 +123,9 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
+  // Init KV Manager
+  InitKVManager();
+
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
@@ -140,9 +143,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init function manager
   InitFunctionManager();
@@ -559,6 +559,7 @@ void GcsServer::InitKVManager() {
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
+  usage_reporter_ = std::make_unique<GcsUsageReporter>(*instance.get());
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.

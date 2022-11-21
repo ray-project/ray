@@ -15,22 +15,21 @@
 #pragma once
 #include <memory>
 
-#include "ray/gcs/store_client/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "src/ray/protobuf/usage.pb.h"
 
 namespace ray {
 namespace gcs {
 
-/// \class InternalKVInterface
-/// The interface for internal kv implementation. Ideally we should merge this
-/// with store client, but due to compatibility issue, we keep them separated
-/// right now.
+///
 class GcsUsageReporter {
  public:
   GcsUsageReporter(InternalKVInterface &kv);
-  void RecordExtraUsageTag(usage::TagKey key, std::string value);
+  void ReportValue(usage::TagKey key, std::string value);
+  void ReportCounter(usage::TagKey key, int64_t counter);
 
-  privat : InternalKVInterface &kv_;
+ private:
+  InternalKVInterface &kv_;
 };
 
 }  // namespace gcs

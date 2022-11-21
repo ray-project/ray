@@ -14,19 +14,27 @@
 
 #include "ray/gcs/gcs_server/usage_reporter.h"
 
-#include <memory>
+#include <string>
 
 namespace ray {
 namespace gcs {
 
+namespace {
+const std::string kUsageStatsNamespace{"usage_stats"};
+}
+
 GcsUsageReporter::GcsUsageReporter(InternalKVInterface &kv) : kv_(kv) {}
 
-void GcsUsageReporter::RecordExtraUsageTag(usage::TagKey key, std::string value) {
-  kv_->Put("usage_stats",
-           key,
-           std::to_string(count),
-           /*overwrite*/ true,
-           /*callback*/ [](bool /*newly_added*/) {});
+void GcsUsageReporter::ReportValue(usage::TagKey key, std::string value) {
+  kv_.Put(kUsageStatsNamespace,
+          usage::TagKey_Name(key),
+          value,
+          /*overwrite*/ true,
+          /*callback*/ [](bool /*newly_added*/) {});
+}
+
+void GcsUsageReporter::ReportCounter(usage::TagKey key, int64_t counter) {
+  ReportValue(key, std::to_string(counter));
 }
 
 }  // namespace gcs
