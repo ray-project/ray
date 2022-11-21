@@ -14,8 +14,6 @@ import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import gcs_utils
 from ray._private.test_utils import (
-    async_wait_for_condition,
-    async_wait_for_condition_async_predicate,
     format_web_url,
     run_string_as_driver,
     wait_for_condition,
@@ -1425,71 +1423,6 @@ def test_usages_stats_available_when_dashboard_not_included(
             return read_file(temp_dir, "usage_stats")["seq_number"] > 2
 
         wait_for_condition(verify)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
-@pytest.mark.asyncio
-async def test_usage_stats_dashboard_extra_tags(
-    monkeypatch, ray_start_cluster, reset_usage_stats, gcs_storage_type
-):
-    """
-    Test the dashboard tags are set correctly.
-    """
-    import aiohttp
-    import asyncio
-
-    fake_prometheus_port = 55873
-
-    # Start fake prometheus server in parallel
-    async def fake_prometheus_healthcheck(req):
-        return aiohttp.web.Response(text="Prometheus is healthy.")
-
-    prometheus_app = aiohttp.web.Application()
-    prometheus_app.add_routes(
-        [aiohttp.web.get("/-/healthy", fake_prometheus_healthcheck)]
-    )
-    runner = aiohttp.web.AppRunner(prometheus_app)
-    await runner.setup()
-    site = aiohttp.web.TCPSite(runner, "localhost", fake_prometheus_port)
-    server_task = asyncio.create_task(site.start())
-
-    try:
-        with monkeypatch.context() as m:
-            m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-            m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-            m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-            m.setenv("RAY_PROMETHEUS_HOST", f"http://127.0.0.1:{fake_prometheus_port}")
-
-            cluster = ray_start_cluster
-            cluster.add_node(num_cpus=3)
-            cluster.add_node(num_cpus=3)
-
-            context = ray.init(address=cluster.address)
-
-            """
-            Verify the usage_stats.json contains the lib usage.
-            """
-            temp_dir = pathlib.Path(context.address_info["session_dir"])
-            await async_wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-            async def verify():
-                tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
-                num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
-                assert tags == {
-                    "dashboard_metrics_grafana_enabled": "False",
-                    "dashboard_metrics_prometheus_enabled": "True",
-                    "gcs_storage": gcs_storage_type,
-                }
-                assert num_nodes == 2
-                return True
-
-            await async_wait_for_condition_async_predicate(verify)
-
-    finally:
-        server_task.cancel()
 
 
 if __name__ == "__main__":

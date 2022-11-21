@@ -56,7 +56,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         if self._grafana_ran_before:
             return
-    
+
         grafana_running = False
         try:
             resp = requests.get(f"{self._dashboard_url_base}/api/grafana_health")
