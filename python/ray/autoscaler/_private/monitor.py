@@ -347,9 +347,10 @@ class Monitor:
                 gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
+                load_metrics_summary = self.load_metrics.summary()
                 status = {
                     "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "load_metrics_report": asdict(load_metrics_summary),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
                 }
@@ -374,6 +375,20 @@ class Monitor:
                         ] = (
                             self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
+
+                        for resource_name in ["CPU", "GPU"]:
+                            _, total = load_metrics_summary.usage.get(
+                                resource_name, (0, 0)
+                            )
+                            pending = autoscaler_summary.pending_resources.get(
+                                resource_name, 0
+                            )
+                            self.prom_metrics.cluster_resources.labels(
+                                resource=resource_name
+                            ).set(total)
+                            self.prom_metrics.pending_resources.labels(
+                                resource=resource_name
+                            ).set(pending)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
