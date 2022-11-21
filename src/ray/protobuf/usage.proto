@@ -46,3 +46,4 @@ enum TagKey {
     // The GCS storage type, which could be memory or redis.
     GCS_STORAGE = 7;
   }
+  
