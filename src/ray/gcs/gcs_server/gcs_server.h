@@ -254,7 +254,7 @@ class GcsServer {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
 
-  std::unique_ptr<GcsUsageReporter> usage_reporter_;
+  std::shared_ptr<GcsUsageReporter> usage_reporter_;
   /// Runtime env handler and service.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;

@@ -232,7 +232,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                            std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
-                           GcsUsageReporter &usage_reporter,
+                           std::shared_ptr<GcsUsageReporter> usage_reporter,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
@@ -466,7 +466,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
-  GcsUsageReporter &usage_reporter_;
+  std::shared_ptr<GcsUsageReporter> usage_reporter_;
 
   /// Get ray namespace.
   std::function<std::string(const JobID &)> get_ray_namespace_;

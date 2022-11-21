@@ -46,6 +46,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
                                                    gcs_placement_group_scheduler_,
                                                    gcs_table_storage_,
                                                    *resource_manager_,
+                                                   nullptr,
                                                    [](auto &) { return ""; });
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }

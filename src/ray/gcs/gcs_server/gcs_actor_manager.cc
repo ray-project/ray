@@ -209,7 +209,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsPublisher> gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
-    GcsUsageReporter &usage_reporter,
+    std::shared_ptr<GcsUsageReporter> usage_reporter,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
@@ -1595,8 +1595,8 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
-  usage_reporter_.ReportCounter(usage::TagKey::ACTOR_NUM_CREATED,
-                                liftime_num_created_actors_);
+  usage_reporter_->ReportCounter(usage::TagKey::ACTOR_NUM_CREATED,
+                                 liftime_num_created_actors_);
   actor_state_counter_->FlushOnChangeCallbacks();
 }
 

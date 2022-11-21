@@ -123,9 +123,6 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  // Init KV Manager
-  InitKVManager();
-
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
@@ -143,6 +140,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
+
+  // Init KV Manager
+  InitKVManager();
 
   // Init function manager
   InitFunctionManager();
@@ -420,7 +420,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       gcs_publisher_,
       *runtime_env_manager_,
       *function_manager_,
-      *usage_reporter_,
+      usage_reporter_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -465,7 +465,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
-      *usage_reporter_,
+      usage_reporter_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
       });
@@ -561,7 +561,7 @@ void GcsServer::InitKVManager() {
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
-  usage_reporter_ = std::make_unique<GcsUsageReporter>(main_service_, *instance.get());
+  usage_reporter_ = std::make_shared<GcsUsageReporter>(main_service_, *instance.get());
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
