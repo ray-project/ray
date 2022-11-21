@@ -183,9 +183,10 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         assert result == {
-            "key": "val",
             "_test1": "val1",
             "_test2": "val2",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -200,6 +201,8 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
         }
 
 
@@ -1131,6 +1134,8 @@ provider:
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -1471,7 +1476,12 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
+<<<<<<< HEAD
                 "dashboard_used": "False",
+=======
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+>>>>>>> 6956cd2000 (add)
             }
             assert num_nodes == 2
             return True
