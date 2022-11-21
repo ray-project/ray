@@ -1,7 +1,7 @@
 .. _ray-job-rest-api:
 
-REST API
-^^^^^^^^
+Ray Jobs REST API
+^^^^^^^^^^^^^^^^^
 
 Under the hood, both the Python SDK and the CLI make HTTP calls to the job server running on the Ray head node. You can also directly send requests to the corresponding endpoints via HTTP if needed:
 
