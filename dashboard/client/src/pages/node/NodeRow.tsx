@@ -261,9 +261,9 @@ export const NodeRows = ({
   const [isExpanded, setExpanded] = useState(startExpanded);
 
   const { data } = useSWR(
-    "getNodeDetail",
-    async () => {
-      const { data } = await getNodeDetail(node.raylet.nodeId);
+    ["getNodeDetail", node.raylet.nodeId],
+    async (_, nodeId) => {
+      const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 
       if (result === false) {
