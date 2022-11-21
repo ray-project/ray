@@ -16,10 +16,6 @@ For the sake of example, let's maximize this objective function:
     :start-after: __example_objective_start__
     :end-before: __example_objective_end__
 
-In both APIs, the ``config`` dictionary is populated automatically by Tune and corresponds to the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
-
-.. tip:: Avoid passing large objects as hyperparameters in the ``config`` directory, as that will incur a large performance overhead. Use :ref:`tune-with-parameters` to pass large objects in or, if possible, load them inside your function from disk (making sure that all nodes have access to the files) or cloud storage. See :ref:`tune-bottlenecks` for more information.
-
 .. _tune-function-api:
 
 Function API
@@ -27,6 +23,9 @@ Function API
 
 The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
 one for each Tune trial.
+
+The ``config`` argument in the function is a dictionary populated automatically by Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
 
@@ -101,6 +100,9 @@ separate process (using the :ref:`Ray Actor API <actor-guide>`).
      Each time, the Trainable object executes one logical iteration of training in the tuning process,
      which may include one or more iterations of actual training.
   3. ``cleanup`` is invoked when training is finished.
+
+The ``config`` argument in the ``setup`` method is a dictionary populated automatically by Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads
     (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
