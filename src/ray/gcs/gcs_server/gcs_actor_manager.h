@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_reporter.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -282,6 +283,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
+      GcsUsageReporter &usage_reporter,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
@@ -635,6 +637,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
+
+  GcsUsageReporter &usage_reporter_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -643,6 +647,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+
+  /// Total number of successfully created actors in the cluster lifetime.
+  int64_t liftime_num_created_actors_;
 
   // Debug info.
   enum CountType {

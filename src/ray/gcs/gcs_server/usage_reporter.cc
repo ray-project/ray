@@ -28,13 +28,15 @@ GcsUsageReporter::GcsUsageReporter(instrumented_io_context &service,
     : service_(service), kv_(kv) {}
 
 void GcsUsageReporter::ReportValue(usage::TagKey key, std::string value) {
-  service_.post([this, key, value = std::move(value)]() {
-    kv_.Put(kUsageStatsNamespace,
-            usage::TagKey_Name(key),
-            value,
-            /*overwrite*/ true,
-            /*callback*/ [](bool /*newly_added*/) {});
-  }, "report_usage");
+  service_.post(
+      [this, key, value = std::move(value)]() {
+        kv_.Put(kUsageStatsNamespace,
+                usage::TagKey_Name(key),
+                value,
+                /*overwrite*/ true,
+                /*callback*/ [](bool /*newly_added*/) {});
+      },
+      "report_usage");
 }
 
 void GcsUsageReporter::ReportCounter(usage::TagKey key, int64_t counter) {

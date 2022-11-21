@@ -38,6 +38,7 @@ enum TagKey {
     RLLIB_ALGORITHM = 3;
     // The number of workers as a string.
     RLLIB_NUM_WORKERS = 4;
+
     // Serve
     // The public Python API version ("v1", "v2").
     SERVE_API_VERSION = 5;
@@ -45,4 +46,10 @@ enum TagKey {
     SERVE_NUM_DEPLOYMENTS = 6;
     // The GCS storage type, which could be memory or redis.
     GCS_STORAGE = 7;
+
+    // Core
+    // Total number of placement groups created.
+    PG_NUM_CREATED = 300;
+    // Total number of actors created.
+    ACTOR_NUM_CREATED = 301;
   }

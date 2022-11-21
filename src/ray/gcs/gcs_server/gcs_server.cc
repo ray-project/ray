@@ -420,6 +420,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       gcs_publisher_,
       *runtime_env_manager_,
       *function_manager_,
+      *usage_reporter_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -464,6 +465,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
+      *usage_reporter_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
       });

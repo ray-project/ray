@@ -209,6 +209,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsPublisher> gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
+    GcsUsageReporter &usage_reporter,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
@@ -220,6 +221,7 @@ GcsActorManager::GcsActorManager(
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
+      usage_reporter_(usage_reporter),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
@@ -1185,6 +1187,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
+  liftime_num_created_actors_++;
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
@@ -1592,6 +1595,8 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  usage_reporter_.ReportCounter(usage::TagKey::ACTOR_NUM_CREATED,
+                                liftime_num_created_actors_);
   actor_state_counter_->FlushOnChangeCallbacks();
 }
 

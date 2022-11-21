@@ -29,6 +29,7 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_reporter.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
@@ -227,12 +228,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
-  explicit GcsPlacementGroupManager(
-      instrumented_io_context &io_context,
-      std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsResourceManager &gcs_resource_manager,
-      std::function<std::string(const JobID &)> get_ray_namespace);
+  GcsPlacementGroupManager(instrumented_io_context &io_context,
+                           std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
+                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                           GcsResourceManager &gcs_resource_manager,
+                           GcsUsageReporter &usage_reporter,
+                           std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -465,6 +466,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  GcsUsageReporter &usage_reporter_;
+
   /// Get ray namespace.
   std::function<std::string(const JobID &)> get_ray_namespace_;
 
@@ -472,6 +475,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// name, first keyed by namespace.
   absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, PlacementGroupID>>
       named_placement_groups_;
+
+  /// Total number of successfully created placement groups in the cluster lifetime.
+  int64_t lifetime_num_placement_groups_created_ = 0;
 
   // Debug info.
   enum CountType {
