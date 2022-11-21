@@ -139,6 +139,10 @@ class NonTerminatedNodes:
         # time because on some clients, there may be pagination and the
         # underlying api calls may be done lazily.
         self.non_terminated_nodes_time = time.time() - start_time
+        logger.info(
+            f"The autoscaler took {round(self.non_terminated_nodes_time, 3)}"
+            " seconds to fetch the list of non-terminated nodes."
+        )
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
         """Remove nodes we're in the process of terminating from internal
@@ -446,6 +450,10 @@ class StandardAutoscaler:
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
         update_time = time.time() - self.last_update_time
+        logger.info(
+            f"The autoscaler took {round(update_time, 3)}"
+            " seconds to complete the update iteration."
+        )
         self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):

@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -32,6 +34,8 @@ KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 KUBERAY_KIND_HEAD = "head"
 # Group name (node type) to use for the  head.
 KUBERAY_TYPE_HEAD = "head-group"
+
+RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
 # Design:
 
@@ -174,7 +178,9 @@ def url_from_resource(namespace: str, path: str) -> str:
 
 def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
     """Extract worker group index from RayCluster."""
-    group_names = [spec["groupName"] for spec in raycluster["spec"]["workerGroupSpecs"]]
+    group_names = [
+        spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])
+    ]
     return group_names.index(group_name)
 
 
@@ -225,9 +231,32 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         # Store the raycluster CR
         self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
 
-        # Get pods filtered by cluster_name.
+        # Get the pods resource version.
+        # Specifying a resource version in list requests is important for scalability:
+        # https://kubernetes.io/docs/reference/using-api/api-concepts/#semantics-for-get-and-list
+        resource_version = self._get_pods_resource_version()
+        if resource_version:
+            logger.info(
+                f"Listing pods for RayCluster {self.cluster_name}"
+                f" in namespace {self.namespace}"
+                f" at pods resource version >= {resource_version}."
+            )
+
+        # Filter pods by cluster_name.
         label_selector = requests.utils.quote(f"ray.io/cluster={self.cluster_name}")
-        pod_list = self._get("pods?labelSelector=" + label_selector)
+
+        resource_path = f"pods?labelSelector={label_selector}"
+        if resource_version:
+            resource_path += (
+                f"&resourceVersion={resource_version}"
+                + "&resourceVersionMatch=NotOlderThan"
+            )
+
+        pod_list = self._get(resource_path)
+        fetched_resource_version = pod_list["metadata"]["resourceVersion"]
+        logger.info(
+            f"Fetched pod data at resource version" f" {fetched_resource_version}."
+        )
 
         # Extract node data from the pod list.
         node_data_dict = {}
@@ -312,6 +341,24 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         # It's safe to proceed with the autoscaler update.
         return True
+
+    def _get_pods_resource_version(self) -> str:
+        """Extract a recent pods resource version by patching the head pod's annotations
+        and reading the metadata.resourceVersion of the response.
+        """
+        if not RAY_HEAD_POD_NAME:
+            return None
+        # Patch the head pod.
+        resource_path = f"pods/{RAY_HEAD_POD_NAME}"
+        # Patch the annotation "ray.io/autoscaler-update-timestamp"
+        patch_path = "/metadata/annotations/ray.io~1autoscaler-update-timestamp"
+        # Mimic the timestamp format used by K8s.
+        value = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = [replace_patch(patch_path, value)]
+        pod_resp = self._patch(resource_path, payload)
+        # The response carries the pod resource version at which the patch
+        # was accepted.
+        return pod_resp["metadata"]["resourceVersion"]
 
     def _scale_request_to_patch_payload(
         self, scale_request: ScaleRequest, raycluster: Dict[str, Any]
