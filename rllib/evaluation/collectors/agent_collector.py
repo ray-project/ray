@@ -10,7 +10,10 @@ from typing import Any, Dict, List, Optional
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.spaces.space_utils import (
+    flatten_to_single_ndarray,
+    get_dummy_batch_for_space,
+)
 from ray.rllib.utils.typing import (
     EpisodeID,
     EnvID,
@@ -261,11 +264,16 @@ class AgentCollector:
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
+            should_flatten_action_key = (
+                k == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
-                or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or should_flatten_action_key
             ):
+                if should_flatten_action_key:
+                    v = flatten_to_single_ndarray(v)
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -506,11 +514,16 @@ class AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
+            should_flatten_action_key = (
+                col == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
-                or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or should_flatten_action_key
             ):
+                if should_flatten_action_key:
+                    data = flatten_to_single_ndarray(data)
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [
