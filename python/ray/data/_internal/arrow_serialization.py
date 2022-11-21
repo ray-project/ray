@@ -115,73 +115,16 @@ def _register_arrow_data_serializer(serialization_context):
     if os.environ.get(RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION, "0") == "1":
         return
 
-    # TODO (Clark): Port this to an Arrow Table reducer to reduce scope.
-    array_types = _get_arrow_array_types()
-    for array_type in array_types:
-        serialization_context._register_cloudpickle_reducer(
-            array_type, _arrow_array_reduce
-        )
+    import pyarrow as pa
+
+    serialization_context._register_cloudpickle_reducer(
+        pa.ChunkedArray, _arrow_chunked_array_reduce
+    )
 
 
-def _get_arrow_array_types() -> List[type]:
-    """Get all Arrow array types that we want to register a custom serializer for."""
-    try:
-        import pyarrow as pa
-    except ModuleNotFoundError:
-        # No pyarrow installed so not using Arrow, so no need for custom serializer.
-        return []
-
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
-
-    array_types = [
-        pa.lib.NullArray,
-        pa.lib.BooleanArray,
-        pa.lib.UInt8Array,
-        pa.lib.UInt16Array,
-        pa.lib.UInt32Array,
-        pa.lib.UInt64Array,
-        pa.lib.Int8Array,
-        pa.lib.Int16Array,
-        pa.lib.Int32Array,
-        pa.lib.Int64Array,
-        pa.lib.Date32Array,
-        pa.lib.Date64Array,
-        pa.lib.TimestampArray,
-        pa.lib.Time32Array,
-        pa.lib.Time64Array,
-        pa.lib.DurationArray,
-        pa.lib.HalfFloatArray,
-        pa.lib.FloatArray,
-        pa.lib.DoubleArray,
-        pa.lib.ListArray,
-        pa.lib.LargeListArray,
-        pa.lib.MapArray,
-        pa.lib.FixedSizeListArray,
-        pa.lib.UnionArray,
-        pa.lib.BinaryArray,
-        pa.lib.StringArray,
-        pa.lib.LargeBinaryArray,
-        pa.lib.LargeStringArray,
-        pa.lib.DictionaryArray,
-        pa.lib.FixedSizeBinaryArray,
-        pa.lib.Decimal128Array,
-        pa.lib.Decimal256Array,
-        pa.lib.StructArray,
-        pa.lib.ExtensionArray,
-        ArrowTensorArray,
-        ArrowVariableShapedTensorArray,
-    ]
-    try:
-        array_types.append(pa.lib.MonthDayNanoIntervalArray)
-    except AttributeError:
-        # MonthDayNanoIntervalArray doesn't exist on older pyarrow versions.
-        pass
-    return array_types
-
-
-def _arrow_array_reduce(a: "pyarrow.Array"):
-    """Custom reducer for Arrow arrays that works around a zero-copy slicing pickling
-    bug.
+def _arrow_chunked_array_reduce(ca: "pyarrow.ChunkedArray"):
+    """Custom reducer for Arrow ChunkedArrays that works around a zero-copy slice
+    pickling bug.
     Background:
         Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
         but the former has a serialization bug where the entire buffer is serialized
@@ -195,27 +138,26 @@ def _arrow_array_reduce(a: "pyarrow.Array"):
     """
     global _serialization_fallback_set
 
-    import time
+    import pyarrow as pa
 
-    start = time.perf_counter()
-
-    try:
-        maybe_copy = _copy_array_if_needed(a)
-        print("maybe copied in:", time.perf_counter() - start)
-    except Exception as e:
-        if _is_in_test():
-            # If running in a test, we want to raise the error, not fall back.
-            raise e from None
-        if type(a) not in _serialization_fallback_set:
-            logger.warning(
-                "Failed to complete optimized serialization of Arrow array of type "
-                f"{type(a)}, falling back to default serialization. Note that this "
-                "may result in bloated serialized arrays. Error:",
-                exc_info=True,
-            )
-            _serialization_fallback_set.add(type(a))
-        maybe_copy = a
-    return maybe_copy.__reduce__()
+    truncated_chunks = []
+    for chunk in ca.chunks:
+        try:
+            chunk = _copy_array_if_needed(chunk)
+        except Exception as e:
+            if _is_in_test():
+                # If running in a test, we want to raise the error, not fall back.
+                raise e from None
+            if type(chunk) not in _serialization_fallback_set:
+                logger.warning(
+                    "Failed to complete optimized serialization of Arrow array of type "
+                    f"{type(chunk)}, falling back to default serialization. Note that "
+                    "this may result in bloated serialized arrays. Error:",
+                    exc_info=True,
+                )
+                _serialization_fallback_set.add(type(chunk))
+        truncated_chunks.append(chunk)
+    return pa.chunked_array, (truncated_chunks, ca.type)
 
 
 def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
@@ -230,11 +172,6 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
     # needing to be recomputed on deserialization?
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorArray,
-        ArrowVariableShapedTensorArray,
-    )
-
     if pa.types.is_union(a.type) and a.type.mode != "sparse":
         # Dense unions not supported.
         # TODO(Clark): Support dense unions.
@@ -242,6 +179,11 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
             "Custom slice view serialization of dense union arrays is not yet "
             "supported."
         )
+
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorArray,
+        ArrowVariableShapedTensorArray,
+    )
 
     if isinstance(a, ArrowTensorArray):
         # Custom path for copying the buffers underlying our tensor column extension

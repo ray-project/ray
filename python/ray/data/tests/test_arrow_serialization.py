@@ -13,7 +13,6 @@ import ray.cloudpickle as pickle
 from ray._private.utils import _get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 from ray.data._internal.arrow_serialization import (
-    _get_arrow_array_types,
     _bytes_for_bits,
     _align_bit_offset,
     _copy_buffer_if_needed,
@@ -337,8 +336,7 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
     ray.worker._post_init_hooks = []
     context = ray.worker.global_worker.get_serialization_context()
-    for array_type in _get_arrow_array_types():
-        context._unregister_cloudpickle_reducer(array_type)
+    context._unregister_cloudpickle_reducer(pa.ChunkedArray)
     # Disable custom Arrow array serialization.
     os.environ["RAY_DISABLE_CUSTOM_ARROW_ARRAY_SERIALIZATION"] = "1"
     ray.init()
