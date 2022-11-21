@@ -192,7 +192,6 @@ class TorchTrainer(DataParallelTrainer):
             best_checkpoint_loss = result.metrics['loss']
             # print(f"best loss: {best_checkpoint_loss:.4f}")
 
-
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
