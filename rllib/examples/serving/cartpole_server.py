@@ -30,6 +30,7 @@ import ray
 from ray import air, tune
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
+from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls
 
@@ -94,18 +95,18 @@ def get_cli_args():
         "--run=[IMPALA|PPO|R2D2]",
     )
     parser.add_argument(
-        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+        "--stop-iters", type=int, default=50, help="Number of iterations to train."
     )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
-        default=500000,
+        default=200000,
         help="Number of timesteps to train.",
     )
     parser.add_argument(
         "--stop-reward",
         type=float,
-        default=80.0,
+        default=150.0,
         help="Reward at which we stop training.",
     )
     parser.add_argument(
@@ -242,8 +243,9 @@ if __name__ == "__main__":
             print(pretty_print(results))
             checkpoint = algo.save()
             print("Last checkpoint", checkpoint)
-            with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+            if checkpoint_path:
+                with open(checkpoint_path, "w") as f:
+                    f.write(checkpoint)
             if (
                 results["episode_reward_mean"] >= args.stop_reward
                 or ts >= args.stop_timesteps
@@ -263,6 +265,10 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        tune.Tuner(
+        results = tune.Tuner(
             args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
         ).fit()
+
+        if args.as_test:
+            print("Checking if learning goals were achieved")
+            check_learning_achieved(results, args.stop_reward)

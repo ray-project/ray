@@ -96,6 +96,9 @@ parser.add_argument(
     action="store_true",
     help="Whether to load the Policy weights from a previous checkpoint",
 )
+parser.add_argument(
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -153,16 +156,16 @@ if __name__ == "__main__":
         algo.restore(checkpoint_path)
 
     # Serving and training loop.
-    count = 0
-    while True:
+    num_iters = 0
+    while num_iters < args.stop_iters:
         # Calls to train() will block on the configured `input` in the Trainer
         # config above (PolicyServerInput).
         print(algo.train())
-        if count % args.checkpoint_freq == 0:
+        if num_iters % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")
             checkpoint = algo.save()
             # Write the latest checkpoint location to CHECKPOINT_FILE,
             # so we can pick up from the latest one after a server re-start.
             with open(checkpoint_path, "w") as f:
                 f.write(checkpoint)
-        count += 1
+        num_iters += 1

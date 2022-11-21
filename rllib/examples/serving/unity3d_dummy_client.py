@@ -80,12 +80,6 @@ parser.add_argument(
     help="For `inference-mode=local`, every how many seconds do we update "
     "learnt policy weights from the server?",
 )
-parser.add_argument(
-    "--num-episodes",
-    type=int,
-    default=10,
-    help="Stop once the specified number of episodes have been played.",
-)
 
 if __name__ == "__main__":
     args = parser.parse_args()
