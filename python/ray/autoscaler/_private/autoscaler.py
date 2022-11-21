@@ -107,6 +107,7 @@ class AutoscalerSummary:
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
+    pending_resources: Dict[str, int] = field(default_factory=lambda: {})
 
 
 class NonTerminatedNodes:
@@ -1433,7 +1434,7 @@ class StandardAutoscaler:
                 completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
                 is_pending = status not in completed_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type, status))
+                    pending_nodes.append((node_id, ip, node_type, status))
                     non_failed.add(node_id)
 
         failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
@@ -1445,13 +1446,28 @@ class StandardAutoscaler:
             if count:
                 pending_launches[node_type] = count
 
+        pending_resources = {}
+        for node_resources in self.resource_demand_scheduler.calculate_node_resources(
+            nodes=[node_id for node_id, _, _, _ in pending_nodes],
+            pending_nodes=pending_launches,
+            # We don't fill this field out because we're intentionally only
+            # passing pending nodes (which aren't tracked by load metrics
+            # anyways).
+            unused_resources_by_ip={},
+        )[0]:
+            for key, value in node_resources.items():
+                pending_resources[key] = value + pending_resources.get(key, 0)
+
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
-            pending_nodes=pending_nodes,
+            pending_nodes=[
+                (ip, node_type, status) for _, ip, node_type, status in pending_nodes
+            ],
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
             node_availability_summary=self.node_provider_availability_tracker.summary(),
+            pending_resources=pending_resources,
         )
 
     def info_string(self):
