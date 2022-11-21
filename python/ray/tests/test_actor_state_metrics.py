@@ -8,6 +8,7 @@ import ray
 from ray._private.test_utils import (
     raw_metrics,
     wait_for_condition,
+    run_string_as_driver,
 )
 from ray._private.worker import RayContext
 
@@ -128,6 +129,42 @@ def test_destroy_actors(shutdown_only):
         retry_interval_ms=500,
     )
     del c
+
+
+def test_destroy_actors_from_driver(shutdown_only):
+    driver = """
+import ray
+ray.init("auto")
+
+@ray.remote(num_cpus=0)
+class Actor:
+    def ready(self):
+        pass
+
+actors = [Actor.remote() for _ in range(40)]
+ray.get([actor.ready.remote() for actor in actors])
+"""
+    info = ray.init(num_cpus=3, _system_config=_SYSTEM_CONFIG)
+
+    output = run_string_as_driver(driver)
+    print(output)
+    # @ray.remote(num_cpus=0)
+    # class Actor:
+    #     def ready(self):
+    #         pass
+
+    # actors = [Actor.remote() for _ in range(40)]
+    # ray.get([actor.ready.remote() for actor in actors])
+    # del actors
+
+    expected = {
+        "DEAD": 40,
+    }
+    wait_for_condition(
+        lambda: actors_by_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
 
 
 def test_dep_wait(shutdown_only):

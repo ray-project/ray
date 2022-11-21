@@ -1338,23 +1338,23 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
       }
 
       run_delayed_(
-          [this, non_detached_actors = std::move(non_detached_actors)]() {
+          [this, job_id, non_detached_actors = std::move(non_detached_actors)]() {
+            for (auto iter = destroyed_actors_.begin();
+                 iter != destroyed_actors_.end();) {
+              if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
+                destroyed_actors_.erase(iter++);
+              } else {
+                iter++;
+              }
+            }
+
             RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
                 non_detached_actors, [this, non_detached_actors](const Status &status) {
                   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
                       non_detached_actors, nullptr));
                 }));
           },
-
           actor_gc_delay_);
-
-      for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
-        if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
-          destroyed_actors_.erase(iter++);
-        } else {
-          iter++;
-        }
-      };
     }
   };
 
