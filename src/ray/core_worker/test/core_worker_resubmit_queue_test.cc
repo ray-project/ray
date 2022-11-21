@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "gtest/gtest.h"
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace core {
 
-class CoreWorkerResubmitQueueTest : public ::testing::Test {};
+// class CoreWorkerResubmitQueueTest : public ::testing::Test {};
 
-TEST_F(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
+TEST(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
   TaskSpecification task_spec;
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
       to_resubmit_;
