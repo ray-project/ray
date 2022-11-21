@@ -193,16 +193,39 @@ class AgentCollector:
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
-            self._build_buffers(
-                single_row={
-                    SampleBatch.OBS: init_obs,
-                    SampleBatch.AGENT_INDEX: agent_index,
-                    SampleBatch.ENV_ID: env_id,
-                    SampleBatch.T: t,
-                    SampleBatch.EPS_ID: self.episode_id,
-                    SampleBatch.UNROLL_ID: self.unroll_id,
-                }
-            )
+            single_row = {
+                SampleBatch.OBS: init_obs,
+                SampleBatch.AGENT_INDEX: agent_index,
+                SampleBatch.ENV_ID: env_id,
+                SampleBatch.T: t,
+                SampleBatch.EPS_ID: self.episode_id,
+                SampleBatch.UNROLL_ID: self.unroll_id,
+            }
+
+            # TODO (Artur): Remove when PREV_ACTIONS and PREV_REWARDS get deprecated.
+            # Note (Artur): As long as we have these in our default view requirements,
+            # we should  build buffers with neutral elements instead of building them
+            # on the first AgentCollector.build_for_inference call if present.
+            # This prevents us from accidentally building buffers with duplicates of
+            # the first incoming value.
+            if SampleBatch.PREV_REWARDS in self.view_requirements:
+                single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.REWARDS].space,
+                    batch_size=0,
+                    fill_value=0.0,
+                )
+            if SampleBatch.PREV_ACTIONS in self.view_requirements:
+                potentially_flattened_batch = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.ACTIONS].space,
+                    batch_size=0,
+                    fill_value=0.0,
+                )
+                if not self.disable_action_flattening:
+                    potentially_flattened_batch = flatten_to_single_ndarray(
+                        potentially_flattened_batch
+                    )
+                single_row[SampleBatch.ACTIONS] = potentially_flattened_batch
+            self._build_buffers(single_row)
 
         # Append data to existing buffers.
         flattened = tree.flatten(init_obs)
