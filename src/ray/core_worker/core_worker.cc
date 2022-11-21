@@ -332,7 +332,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
