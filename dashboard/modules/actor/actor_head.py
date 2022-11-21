@@ -77,7 +77,6 @@ def actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-    logger.info(light_message)
 
     return light_message
 
@@ -245,6 +244,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             message="All actors fetched.",
             actors=DataSource.actors,
             # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
             convert_google_style=False,
         )
 
