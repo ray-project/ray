@@ -18,8 +18,6 @@
 namespace ray {
 namespace core {
 
-// class CoreWorkerResubmitQueueTest : public ::testing::Test {};
-
 TEST(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
   TaskSpecification task_spec;
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
