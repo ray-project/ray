@@ -16,18 +16,26 @@ fi
 if [ "$2" == "cartpole" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
+  stop_criterion="--stop-reward=150.0"
+  trainer_cls="PPO"
 elif [ "$2" == "cartpole_lstm" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
+  stop_criterion="--stop-reward=150.0"
+  trainer_cls="IMPALA --use-lstm"
 # Unity3D dummy setup.
 elif [ "$2" == "unity3d" ]; then
   server_script=unity3d_server.py
   client_script=unity3d_dummy_client.py
+  stop_criterion="--num-episodes=10"
+  trainer_cls="PPO"
 # CartPole dummy test using 2 simultaneous episodes on the client.
 # One episode has training_enabled=False (its data should NOT arrive at server).
 else
   server_script=cartpole_server.py
   client_script=dummy_client_with_two_episodes.py
+  stop_criterion="--dummy-arg=dummy"  # no stop criterion: client script terminates either way
+  trainer_cls="PPO"
 fi
 
 port=$3
@@ -47,17 +55,9 @@ fi
 
 # Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client
 # connections).
-# Run it until it reaches n reward (CartPole) or n episodes (dummy Unity3D).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
-if [ "$2" == "cartpole" ]; then
-  (python $basedir/$server_script --run=PPO --num-workers=2 --stop-reward=150.0 --as-test --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
-elif [ "$2" == "cartpole_lstm" ]; then
-  (python $basedir/$server_script --run=IMPALA --use-lstm --num-workers=2 --stop-reward=150.0 --as-test --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
-elif [ "$2" == "unity3d" ]; then
-  (python $basedir/$server_script --run=PPO --num-workers=2 --stop-iters=5 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
-else
-  (python $basedir/$server_script --run=PPO --num-workers=2 --stop-iters=1 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
-fi
+(python $basedir/$server_script --run=$trainer_cls --num-workers=2 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
+server_pid=$!
 
 echo "Waiting for server to start ..."
 while ! curl localhost:$worker_1_port; do
@@ -79,14 +79,10 @@ sleep 2
 (python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port) &
 client2_pid=$!
 
-# Start client 3 (also connecting to port $worker_2_port).
+# Start client 3 (also connecting to port $worker_2_port) and run it until it reaches
+# x reward (CartPole) or n episodes (dummy Unity3D).
+# Then stop everything.
 sleep 2
-(python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port) &
-client3_pid=$!
+python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
-echo "Waiting for server to finish (learning) ..."
-while curl localhost:$worker_1_port; do
-  sleep 1
-done
-
-kill $client1_pid $client2_pid $client3_pid || true
+kill $server_pid $client1_pid $client2_pid || true

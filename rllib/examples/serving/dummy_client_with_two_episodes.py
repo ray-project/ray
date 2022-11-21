@@ -29,6 +29,7 @@ parser.add_argument(
 parser.add_argument(
     "--port", type=int, default=9900, help="The port to use (on localhost)."
 )
+parser.add_argument("--dummy-arg", type=str, default="")
 
 
 if __name__ == "__main__":

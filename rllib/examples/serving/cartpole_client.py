@@ -56,6 +56,12 @@ parser.add_argument(
     "(Policy-computed) ones.",
 )
 parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=9999,
+    help="Stop once the specified reward is reached.",
+)
+parser.add_argument(
     "--port", type=int, default=9900, help="The port to use (on localhost)."
 )
 
@@ -107,7 +113,10 @@ if __name__ == "__main__":
 
         # Reset the episode if done.
         if done:
-            print("Total episode reward (measured on client side):", rewards)
+            print("Total reward:", rewards)
+            if rewards >= args.stop_reward:
+                print("Target reward achieved, exiting")
+                exit(0)
 
             rewards = 0.0
 
