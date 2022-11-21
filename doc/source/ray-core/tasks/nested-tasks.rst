@@ -4,7 +4,7 @@ Nested Remote Functions
 Remote functions can call other remote functions, resulting in nested tasks.
 For example, consider the following.
 
-.. literalinclude:: doc_code/nested-tasks.py
+.. literalinclude:: ../doc_code/nested-tasks.py
     :language: python
     :start-after: __nested_start__
     :end-before: __nested_end__
@@ -35,7 +35,7 @@ deadlock cases where the nested tasks are waiting for the CPU
 resources held by the parent task.
 Consider the following remote function.
 
-.. literalinclude:: doc_code/nested-tasks.py
+.. literalinclude:: ../doc_code/nested-tasks.py
     :language: python
     :start-after: __yield_start__
     :end-before: __yield_end__
