@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+import requests
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
@@ -27,8 +28,17 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
+        self._dashboard_url_base = (
+            f"http://{dashboard_head.http_host}:{dashboard_head.http_port}"
+        )
+        # We want to record stats for anyone who has run ray with grafana or
+        # prometheus at any point in time during a ray session.
+        self._grafana_ran_before = False
+        self._prometheus_ran_before = False
+
     if ray._private.utils.check_dashboard_dependencies_installed():
         import aiohttp
+        import ray.dashboard.optional_utils
 
         routes = ray.dashboard.optional_utils.ClassMethodRouteTable
 
@@ -41,6 +51,61 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
+    def _check_grafana_running(self):
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if self._grafana_ran_before:
+            return
+
+        grafana_running = False
+        try:
+            resp = requests.get(f"{self._dashboard_url_base}/api/grafana_health")
+            if resp.status_code == 200:
+                json = resp.json()
+                grafana_running = (
+                    json["result"] is True and json["data"]["grafanaHost"] != "DISABLED"
+                )
+        except Exception:
+            pass
+
+        record_extra_usage_tag(
+            TagKey.DASHBOARD_METRICS_GRAFANA_ENABLED,
+            str(grafana_running),
+        )
+
+        if grafana_running:
+            # Don't need to update the tag ever again
+            self._grafana_ran_before = True
+
+    def _check_prometheus_running(self):
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if self._prometheus_ran_before:
+            return
+
+        prometheus_running = False
+        try:
+            resp = requests.get(f"{self._dashboard_url_base}/api/prometheus_health")
+            if resp.status_code == 200:
+                json = resp.json()
+                prometheus_running = json["result"] is True
+        except Exception:
+            pass
+
+        record_extra_usage_tag(
+            TagKey.DASHBOARD_METRICS_PROMETHEUS_ENABLED,
+            str(prometheus_running),
+        )
+
+        if prometheus_running:
+            # Don't need to update the tag ever again
+            self._prometheus_ran_before = True
+
+    def _fetch_and_record_extra_usage_stats_data(self):
+        logger.debug("Recording dashboard metrics extra telemetry data...")
+        self._check_grafana_running()
+        self._check_prometheus_running()
+
     def _report_usage_sync(self):
         """
         - Always write usage_stats.json regardless of report success/failure.
@@ -52,6 +117,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return
 
         try:
+            self._fetch_and_record_extra_usage_stats_data()
+
             data = ray_usage_lib.generate_report_data(
                 self.cluster_config_to_report,
                 self.total_success,

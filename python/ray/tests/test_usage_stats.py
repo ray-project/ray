@@ -554,14 +554,13 @@ def test_usage_lib_cluster_metadata_generation(
         )
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_usage_stats_enabled_endpoint(
     monkeypatch, ray_start_cluster, reset_usage_stats
 ):
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # Doesn't work with minimal installation
-        # since we need http server.
-        return
-
     import requests
 
     with monkeypatch.context() as m:
@@ -580,13 +579,13 @@ def test_usage_stats_enabled_endpoint(
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation "
+    "since we import serve.",
+)
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # Doesn't work with minimal installation
-        # since we import serve.
-        return
-
     address = call_ray_start
     ray.init(address=address)
 
@@ -1066,6 +1065,8 @@ provider:
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
+            "dashboard_metrics_grafana_enabled": "False",
+            "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "gcs_storage": gcs_storage_type,
@@ -1404,6 +1405,8 @@ def test_usage_stats_tags(
             assert tags == {
                 "key": "val",
                 "key2": "val2",
+                "dashboard_metrics_grafana_enabled": "False",
+                "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
             }
             assert num_nodes == 2
