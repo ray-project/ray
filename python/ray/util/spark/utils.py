@@ -5,6 +5,7 @@ import random
 import math
 import time
 import fcntl
+import threading
 
 
 _MEMORY_BUFFER_OFFSET = 0.8
@@ -370,42 +371,53 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return gpu_addr_list
 
 
-def _port_acquisition_delay():
+def _ray_worker_startup_barrier():
     """
-    Use a file lock to delay the worker processes to ensure that port acquisition does not
-    create a resource contention issue due to a race condition
+    If we start multiple ray workers on a machine concurrently, some ray worker processes
+    might fail due to ray port conflicts, this is because race condition on getting free
+    port and opening the free port.
+    To address the issue, this function use an exclusive file lock to delay the worker processes
+    to ensure that port acquisition does not create a resource contention issue due to a race
+    condition.
 
     Returns: None
     """
-
-    def acquire_lock(file):
+    def acquire_lock(file_path):
         mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
-        file_ref = os.open(file, mode)
-        locked_file_ref = None
-        # Allow for retrying getting a file lock a maximum number of seconds
-        max_lock_iter = 60 * 2
-        for _ in range(max_lock_iter):
-            try:
-                fcntl.flock(file_ref, fcntl.LOCK_EX)
-            except (IOError, OSError):
-                pass
-            else:
-                locked_file_ref = file_ref
-                break
-            time.sleep(1.0)
-        if locked_file_ref is None:
-            os.close(file_ref)
-        return locked_file_ref
+        try:
+            fd = os.open(file_path, mode)
+            # Allow for retrying getting a file lock a maximum number of seconds
+            max_lock_iter = 600
+            for _ in range(max_lock_iter):
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    # Lock is used by other processes, continue loop to wait for lock available
+                    pass
+                else:
+                    # Acquire lock successfully.
+                    return fd
+                time.sleep(1.0)
+            raise TimeoutError(f"Acquiring lock on file {file_path} timeout.")
+        except Exception:
+            os.close(fd)
 
-    def release_lock(locked_file):
-        fcntl.flock(locked_file, fcntl.LOCK_UN)
-        os.close(locked_file)
+    lock_file_path = "/tmp/ray_worker_startup_barrier_lock.lock"
+    try:
+        lock_fd = acquire_lock(lock_file_path)
+    except TimeoutError:
+        # The file might be locked forever because that previous process locked the file
+        # and then crashed.
+        # So here remove the existing lock file and acquire file lock on the file again.
+        try:
+            os.remove(lock_file_path)
+        except Exception:
+            pass
+        lock_fd = acquire_lock(lock_file_path)
 
-    file_lock = acquire_lock("/tmp/port_waiting_lock.lock")
-    if file_lock is None:
-        raise RuntimeError(
-            "Failed to acquire lock for port assignment contention resolution."
-        )
-    # Set a sleep while the file is locked to allow for port acquisition for each ray worker
-    time.sleep(10)
-    release_lock(file_lock)
+    def hold_lock_for_10s_and_release():
+        time.sleep(10)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+    threading.Thread(target=hold_lock_for_10s_and_release, args=()).start()

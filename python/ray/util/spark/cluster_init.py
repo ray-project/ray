@@ -23,7 +23,7 @@ from .utils import (
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
-    _port_acquisition_delay,
+    _ray_worker_startup_barrier,
 )
 
 if not sys.platform.startswith("linux"):
@@ -31,7 +31,7 @@ if not sys.platform.startswith("linux"):
 
 _logger = logging.getLogger("ray.util.spark")
 
-_spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
+_spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
 try:
     import pyspark
 
@@ -100,10 +100,10 @@ class RayClusterOnSpark:
                         for node in ray.nodes()
                         if node["Alive"]
                     ]
-                )
+                ) - 1
                 # The head node is included. If alive count is greater than worker count,
                 # the ray cluster is fully initialized
-                if cur_alive_worker_count > self.num_ray_workers:
+                if cur_alive_worker_count == self.num_ray_workers:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
@@ -515,54 +515,29 @@ def init_ray_cluster(
 
         _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
-        def _worker_exec_cmd(
-            cmd,
-            synchronous,
-            capture_output,
-            stream_output,
-            extra_env,
-            preexec_fn,
-            stdout,
-            stderr,
-        ):
-            exec_cmd(
-                cmd,
-                synchronous=synchronous,
-                capture_output=capture_output,
-                stream_output=stream_output,
-                extra_env=extra_env,
-                preexec_fn=preexec_fn,
-                stdout=stdout,
-                stderr=stderr,
-            )
+        _ray_worker_startup_barrier()
 
-        # TODO: write to NFS mount
         with open(
             os.path.join(ray_log_dir, f"ray-start-worker-{task_id}.log"),
             "w",
-            buffering=1,
+            buffering=1
         ) as worker_log_fp:
-            worker_thread = threading.Thread(
-                target=_worker_exec_cmd,
-                args=(
-                    ray_worker_cmd,
-                    True,
-                    False,
-                    False,
-                    ray_worker_extra_envs,
-                    setup_sigterm_on_parent_death,
-                    worker_log_fp,
-                    subprocess.STDOUT,
-                ),
+            exec_cmd(
+                ray_worker_cmd,
+                synchronous=True,
+                capture_output=False,
+                stream_output=False,
+                extra_env=ray_worker_extra_envs,
+                preexec_fn=setup_sigterm_on_parent_death,
+                stdout=worker_log_fp,
+                stderr=subprocess.STDOUT,
             )
-            port_acquisition_thread.start()
-            worker_thread.start()
-            port_acquisition_thread.join(timeout=60 * 4)
 
-        # Delete the worker temp and log directories at the conclusion of running the
-        # submitted task.
-        shutil.rmtree(ray_temp_dir, ignore_errors=True)
-        shutil.rmtree(ray_log_dir, ignore_errors=True)
+        # TODO: Delete the worker temp and log directories at the conclusion of running the
+        #  submitted task.
+        #  Currently all workers uses the same ray_temp_dir as head side,
+        #  and one machine might run mulitple ray workers concurrently,
+        #  so we cannot directly delele the temp dir here.
 
         # NB: Not reachable.
         yield 0
