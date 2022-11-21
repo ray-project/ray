@@ -108,8 +108,8 @@ RAY_PROCESSES = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
-    [os.path.join("dashboard", "dashboard.py"), False],
     [os.path.join("dashboard", "agent.py"), False],
+    [os.path.join("dashboard", "dashboard.py"), False],
     ["ray_process_reaper.py", False],
 ]
 
