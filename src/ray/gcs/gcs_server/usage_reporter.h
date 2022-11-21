@@ -26,7 +26,8 @@ namespace gcs {
 /// Note: this class could only be used on Gcs.
 class GcsUsageReporter {
  public:
-  GcsUsageReporter(instrumented_io_context &service, InternalKVInterface &kv);
+  GcsUsageReporter(instrumented_io_context &service,
+                   std::shared_ptr<InternalKVInterface> kv);
 
   // Report a custom usage key/value pairs. If the key
   // already exists, the value will be overwritten.
@@ -37,7 +38,7 @@ class GcsUsageReporter {
 
  private:
   instrumented_io_context &service_;
-  InternalKVInterface &kv_;
+  std::shared_ptr<InternalKVInterface> kv_;
 };
 
 }  // namespace gcs
