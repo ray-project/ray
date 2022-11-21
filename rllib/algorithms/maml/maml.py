@@ -13,7 +13,10 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import concat_samples
+from ray.rllib.policy.sample_batch import (
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
@@ -339,10 +342,11 @@ class MAML(Algorithm):
                 # Processing Samples (Standardize Advantages)
                 split_lst = []
                 for sample in samples:
+                    sample = convert_ma_batch_to_sample_batch(sample)
                     sample["advantages"] = standardized(sample["advantages"])
                     split_lst.append(sample.count)
+                    buf.append(sample)
 
-                buf.extend(samples)
                 split.append(split_lst)
 
                 adapt_iter = len(split) - 1

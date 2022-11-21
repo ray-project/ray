@@ -121,6 +121,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
+    "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_resource_demand_scheduler.py",
