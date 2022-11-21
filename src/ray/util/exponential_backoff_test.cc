@@ -42,14 +42,14 @@ TEST(ExponentialBackoffTest, TestOverflowReturnsMaxAttempt) {
   ASSERT_EQ(backoff, static_cast<uint64_t>(pow(2, 50)));
 }
 
-TEST(ExponentialBackoffTest, TestOverflowReturnsZero) {
+TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
   // 2 ^ 80 will overflow.
   auto backoff = ExponentialBackoff::GetBackoffMs(
       /*attempt*/ 80,
       /*base_ms*/ 1,
       /*max_attempt*/ 80,
-      /*max_backoff_ms*/ std::numeric_limits<uint64_t>::max());
-  ASSERT_EQ(backoff, 0);
+      /*max_backoff_ms*/ 1234);
+  ASSERT_EQ(backoff, 1234);
 }
 
 }  // namespace ray

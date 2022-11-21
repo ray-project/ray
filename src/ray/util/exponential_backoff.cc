@@ -17,6 +17,10 @@ uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
                                   << " max attempt= " << max_backoff_ms;
   }
   uint64_t delay = static_cast<uint64_t>(pow(2, attempt));
+  // Use max_backoff_ms if there is an overflow.
+  if (delay == 0) {
+    return max_backoff_ms;
+  }
   return std::min(base_ms * delay, max_backoff_ms);
 };
 

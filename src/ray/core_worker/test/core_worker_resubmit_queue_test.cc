@@ -26,22 +26,22 @@ TEST(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
   to_resubmit_.push({3, task_spec});
   to_resubmit_.push({0, task_spec});
 
-  ASSERT_EQ(to_resubmit_.top().exection_time_ms, 0);
+  ASSERT_EQ(to_resubmit_.top().execution_time_ms, 0);
   to_resubmit_.pop();
 
   to_resubmit_.push({0, task_spec});
   to_resubmit_.push({2, task_spec});
 
-  ASSERT_EQ(to_resubmit_.top().exection_time_ms, 0);
+  ASSERT_EQ(to_resubmit_.top().execution_time_ms, 0);
   to_resubmit_.pop();
 
-  ASSERT_EQ(to_resubmit_.top().exection_time_ms, 1);
+  ASSERT_EQ(to_resubmit_.top().execution_time_ms, 1);
   to_resubmit_.pop();
 
-  ASSERT_EQ(to_resubmit_.top().exection_time_ms, 2);
+  ASSERT_EQ(to_resubmit_.top().execution_time_ms, 2);
   to_resubmit_.pop();
 
-  ASSERT_EQ(to_resubmit_.top().exection_time_ms, 3);
+  ASSERT_EQ(to_resubmit_.top().execution_time_ms, 3);
   to_resubmit_.pop();
 
   ASSERT_TRUE(to_resubmit_.empty());
