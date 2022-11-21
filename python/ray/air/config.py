@@ -79,14 +79,6 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 class ScalingConfig:
     """Configuration for scaling training.
 
-    .. warning::
-        Ray will not automatically set any environment variables or configuration
-        related to local (in-worker) parallelism / threading
-        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>` in user
-        defined training / tuning functions (with eg. Tensorflow, PyTorch, Horovod).
-        Make sure you configure threading in your code according to the
-        framework you are using.
-
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
             will default to 1 CPU.
