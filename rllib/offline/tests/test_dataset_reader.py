@@ -50,9 +50,9 @@ class TestDatasetReader(unittest.TestCase):
     def test_dataset_shard_with_only_local(self):
         """Tests whether the dataset_shard function works correctly for a single shard
         for the local worker."""
-        config = AlgorithmConfig().offline_data(input_="dataset", input_config={
-            "format": "json", "paths": self.dset_path
-        })
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config={"format": "json", "paths": self.dset_path}
+        )
 
         # two ways of doing this:
 
@@ -66,9 +66,9 @@ class TestDatasetReader(unittest.TestCase):
         """Tests whether the dataset_shard function works correctly for the remote
         workers with a dummy dataset shard for the local worker."""
 
-        config = AlgorithmConfig().offline_data(input_="dataset", input_config={
-            "format": "json", "paths": self.dset_path
-        })
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config={"format": "json", "paths": self.dset_path}
+        )
         NUM_WORKERS = 4
 
         _, shards = get_dataset_and_shards(config, num_workers=NUM_WORKERS)
@@ -82,11 +82,13 @@ class TestDatasetReader(unittest.TestCase):
     def test_dataset_shard_with_task_parallelization(self):
         """Tests whether the dataset_shard function works correctly with parallelism
         for reading the dataset."""
-        config = AlgorithmConfig().offline_data(input_="dataset", input_config={
-            "format": "json",
-            "paths": self.dset_path,
-            "parallelism": 10,
-        })
+        config = AlgorithmConfig().offline_data(
+            input_="dataset",
+            input_config={
+                "format": "json",
+                "paths": self.dset_path,
+            },
+        ).rollouts(num_rollout_workers=10)
         NUM_WORKERS = 4
 
         _, shards = get_dataset_and_shards(config, num_workers=NUM_WORKERS)
@@ -112,10 +114,11 @@ class TestDatasetReader(unittest.TestCase):
         dataset format is specified."""
 
         config = AlgorithmConfig().offline_data(
-            input_="dataset", input_config={
+            input_="dataset",
+            input_config={
                 "format": "__UNSUPPORTED_FORMAT__",
                 "paths": self.dset_path,
-            }
+            },
         )
 
         with self.assertRaises(ValueError):
@@ -127,11 +130,12 @@ class TestDatasetReader(unittest.TestCase):
         dset = ray.data.range(100)
 
         config = AlgorithmConfig().offline_data(
-            input_="dataset", input_config={
+            input_="dataset",
+            input_config={
                 "format": "json",
                 "paths": self.dset_path,
                 "loader_fn": lambda: dset,
-            }
+            },
         )
 
         with self.assertRaises(ValueError):

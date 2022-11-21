@@ -16,12 +16,14 @@ class _MockTrainer(Algorithm):
         return (
             AlgorithmConfig()
             .framework("tf")
-            .update_from_dict({
-                "mock_error": False,
-                "persistent_error": False,
-                "test_variable": 1,
-                "user_checkpoint_freq": 0,
-            })
+            .update_from_dict(
+                {
+                    "mock_error": False,
+                    "persistent_error": False,
+                    "test_variable": 1,
+                    "user_checkpoint_freq": 0,
+                }
+            )
         )
 
     @classmethod
@@ -30,8 +32,6 @@ class _MockTrainer(Algorithm):
 
     @override(Algorithm)
     def setup(self, config):
-        self.config.env = self._env_id
-
         self.callbacks = self.config.callbacks_class()
 
         # Add needed properties.
@@ -90,15 +90,14 @@ class _SigmoidFakeData(_MockTrainer):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
-        return (
-            AlgorithmConfig().
-            update_from_dict({
+        return AlgorithmConfig().update_from_dict(
+            {
                 "width": 100,
                 "height": 100,
                 "offset": 0,
                 "iter_time": 10,
                 "iter_timesteps": 1,
-            })
+            }
         )
 
     def step(self):
@@ -118,15 +117,14 @@ class _ParameterTuningTrainer(_MockTrainer):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
-        return (
-            AlgorithmConfig()
-            .update_from_dict({
+        return AlgorithmConfig().update_from_dict(
+            {
                 "reward_amt": 10,
                 "dummy_param": 10,
                 "dummy_param2": 15,
                 "iter_time": 10,
                 "iter_timesteps": 1,
-            })
+            }
         )
 
     def step(self):

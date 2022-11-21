@@ -127,7 +127,7 @@ logger = logging.getLogger(__name__)
 
 @Deprecated(
     new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
-        "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
     error=False,
 )
 def with_common_config(extra_config):
