@@ -514,7 +514,7 @@ if __name__ == "__main__":
         def sigterm_handler():
             logger.warning("Exiting with SIGTERM immediately...")
             # Exit code 0 will be considered as an expected shutdown
-            os._exit(0)
+            os._exit(signal.SIGTERM)
 
         if sys.platform != "win32":
             # TODO(rickyyx): we currently do not have any logic for actual
