@@ -29,7 +29,7 @@ class TorchTrainer(DataParallelTrainer):
 
     .. testcode::
 
-        from typing import Dict
+        from typing import Dict, Any
         def train_loop_per_worker(config: Dict[str, Any]):
             ...
 
