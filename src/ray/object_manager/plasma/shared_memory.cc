@@ -7,9 +7,9 @@
 #include <unistd.h>
 #endif
 
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/util/logging.h"
-#include "ray/common/ray_config.h"
 
 namespace plasma {
 
@@ -42,18 +42,20 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
 
 void ClientMmapTableEntry::MaybeMadviseDontdump() {
   if (!RayConfig::instance().plasma_client_madvise_dontdump()) {
-    RAY_LOG(DEBUG) << "plasma_client_madvise_dontdump disabled, worker coredumps will contain "
+    RAY_LOG(DEBUG)
+        << "plasma_client_madvise_dontdump disabled, worker coredumps will contain "
         << "the object store mappings.";
     return;
   }
 
 #if !defined(__linux__)
-  RAY_LOG(DEBUG) << "Filtering object store pages from coredumps only supported on linux.";
+  RAY_LOG(DEBUG)
+      << "Filtering object store pages from coredumps only supported on linux.";
 #else
   int rval = madvise(pointer_, length_, MADV_DONTDUMP);
   if (rval) {
-    RAY_LOG(WARNING) << "madvise(MADV_DONTDUMP) call failed: " << rval
-        << ", " << strerror(errno);
+    RAY_LOG(WARNING) << "madvise(MADV_DONTDUMP) call failed: " << rval << ", "
+                     << strerror(errno);
   } else {
     RAY_LOG(DEBUG) << "madvise(MADV_DONTDUMP) call succeeded.";
   }
