@@ -83,8 +83,6 @@ def load_experiments_from_file(
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-            if stop is not None:
-                raise ValueError("`stop` criteria only supported for python files.")
     # Python file case (ensured by file type enum)
     else:
         module_name = os.path.basename(config_file).replace(".py", "")
