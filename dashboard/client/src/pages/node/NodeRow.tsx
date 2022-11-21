@@ -86,6 +86,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         </Box>
       </TableCell>
       <TableCell>
+        <Link to={`/log/${encodeURIComponent(logUrl)}`}>Log</Link>
+      </TableCell>
+      <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
         </PercentageBar>
@@ -128,9 +131,6 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
-      <TableCell>
-        <Link to={`/log/${encodeURIComponent(logUrl)}`}>Log</Link>
-      </TableCell>
     </TableRow>
   );
 };
@@ -184,30 +184,6 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <PercentageBar num={Number(cpu)} total={100}>
-          {cpu}%
-        </PercentageBar>
-      </TableCell>
-      <TableCell>
-        {mem && (
-          <PercentageBar num={memoryInfo.rss} total={mem[0]}>
-            {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-            {(memoryInfo.rss / mem[0]).toFixed(1)}
-            %)
-          </PercentageBar>
-        )}
-      </TableCell>
-      <TableCell>
-        <WorkerGPU worker={worker} />
-      </TableCell>
-      <TableCell>
-        <WorkerGRAM worker={worker} node={node} />
-      </TableCell>
-      <TableCell>N/A</TableCell>
-      <TableCell>N/A</TableCell>
-      <TableCell align="center">N/A</TableCell>
-      <TableCell align="center">N/A</TableCell>
-      <TableCell>
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
@@ -231,6 +207,30 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         </a>
         <br />
       </TableCell>
+      <TableCell>
+        <PercentageBar num={Number(cpu)} total={100}>
+          {cpu}%
+        </PercentageBar>
+      </TableCell>
+      <TableCell>
+        {mem && (
+          <PercentageBar num={memoryInfo.rss} total={mem[0]}>
+            {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
+            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            %)
+          </PercentageBar>
+        )}
+      </TableCell>
+      <TableCell>
+        <WorkerGPU worker={worker} />
+      </TableCell>
+      <TableCell>
+        <WorkerGRAM worker={worker} node={node} />
+      </TableCell>
+      <TableCell>N/A</TableCell>
+      <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
     </TableRow>
   );
 };

@@ -40,6 +40,7 @@ const columns = [
   "State",
   "ID",
   "IP / PID",
+  "Actions",
   "CPU Usage",
   "Memory",
   "GPU",
@@ -48,7 +49,6 @@ const columns = [
   "Disk(root)",
   "Sent",
   "Received",
-  "Actions",
 ];
 
 export const brpcLinkChanger = (href: string) => {

@@ -56,7 +56,6 @@ def actor_table_data_to_dict(message):
         "numRestarts",
         "timestamp",
         "className",
-        "requiredResources",
         "startTime",
         "endTime",
     }
@@ -78,6 +77,7 @@ def actor_table_data_to_dict(message):
     light_message["exitDetail"] = exit_detail
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
+    light_message["requiredResources"] = dict(message.required_resources)
 
     return light_message
 
@@ -241,7 +241,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         return rest_response(
-            success=True, message="All actors fetched.", actors=DataSource.actors
+            success=True,
+            message="All actors fetched.",
+            actors=DataSource.actors,
+            # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
+            convert_google_style=False,
         )
 
     async def run(self, server):
