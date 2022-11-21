@@ -43,8 +43,8 @@ Note that jobs started in these ways are not managed by the Ray Jobs API, so the
 
 quickstart
 sdk
-rest
 jobs-package-ref
 cli
+rest
 ray-client
 ```
