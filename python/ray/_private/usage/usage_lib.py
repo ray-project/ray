@@ -268,6 +268,14 @@ class TagKey(Enum):
     DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
     DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
 
+    # The count(int) of worker crash with exit type 'system error' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_SYSTEM_ERROR = auto()
+
+    # The count(int) of worker crash with exit type 'out-of-memory' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_OOM = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
@@ -630,6 +638,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
         except Exception as e:
             logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
+    valid_tag_keys = [tag_key.name.lower() for tag_key in TagKey]
     try:
         keys = gcs_client.internal_kv_keys(
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
@@ -641,6 +650,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             )
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
         logger.info(f"Failed to get extra usage tags from kv store {e}")
