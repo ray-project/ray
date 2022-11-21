@@ -12,20 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "ray/gcs/gcs_server/usage_reporter.h"
+
+#include <memory>
 
 namespace ray {
 namespace gcs {
 
-GcsUsageReporter::GcsUsageReporter(InternalKVInterface& kv): kv_(kv) {}
+GcsUsageReporter::GcsUsageReporter(InternalKVInterface &kv) : kv_(kv) {}
 
 void GcsUsageReporter::RecordExtraUsageTag(usage::TagKey key, std::string value) {
-  kv_->Put(
-        "usage_stats", key, std::to_string(count), /*overwrite*/true, /*callback*/[](bool /*newly_added*/) {});
+  kv_->Put("usage_stats",
+           key,
+           std::to_string(count),
+           /*overwrite*/ true,
+           /*callback*/ [](bool /*newly_added*/) {});
 }
-
 
 }  // namespace gcs
 }  // namespace ray
