@@ -402,7 +402,7 @@ def _ray_worker_startup_barrier():
         except Exception:
             os.close(fd)
 
-    lock_file_path = "/tmp/ray_worker_startup_barrier_lock.lock"
+    lock_file_path = "/tmp/ray_on_spark_worker_startup_barrier_lock.lock"
     try:
         lock_fd = acquire_lock(lock_file_path)
     except TimeoutError:
