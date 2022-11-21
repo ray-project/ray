@@ -21,7 +21,8 @@ class CoreWorkerResubmitQueueTest : public ::testing::Test {};
 
 TEST_F(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
   TaskSpecification task_spec;
-  std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator> to_resubmit_;
+  std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
+      to_resubmit_;
   to_resubmit_.push({1, task_spec});
   to_resubmit_.push({3, task_spec});
   to_resubmit_.push({0, task_spec});
