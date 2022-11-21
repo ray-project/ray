@@ -429,13 +429,7 @@ def init_ray_cluster(
         context = TaskContext.get()
         task_id = context.partitionId()
 
-        # NB: If we launch multiple ray worker nodes at the same time,
-        #  it might cause Raylet to have a port conflict, likely due to a race condition.
-        #  A sleep is added here to attempt to avoid resource allocation contention with available
-        #  ports.
-        port_acquisition_thread = threading.Thread(
-            target=_port_acquisition_delay, args=[]
-        )
+        _ray_worker_startup_barrier()
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
@@ -478,44 +472,37 @@ def init_ray_cluster(
                 [str(gpu_id) for gpu_id in available_physical_gpus]
             )
 
-        if sys.platform.startswith("linux"):
-
-            def setup_sigterm_on_parent_death():
-                """
-                Uses prctl to automatically send SIGTERM to the command process when its parent is
-                dead.
-
-                This handles the case when the parent is a PySpark worker process.
-                If a user cancels the PySpark job, the worker process gets killed, regardless of
-                PySpark daemon and worker reuse settings.
-                We use prctl to ensure the command process receives SIGTERM after spark job
-                cancellation.
-                The command process itself should handle SIGTERM properly.
-                This is a no-op on macOS because prctl is not supported.
-
-                Note:
-                When a pyspark job cancelled, the UDF python process are killed by signal "SIGKILL",
-                This case neither "atexit" nor signal handler can capture SIGKILL signal.
-                prctl is the only way to capture SIGKILL signal.
-                """
-                try:
-                    import ctypes
-                    import signal
-
-                    libc = ctypes.CDLL("libc.so.6")
-                    # Set the parent process death signal of the command process to SIGTERM.
-                    libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
-                except OSError as e:
-                    _worker_logger.warning(
-                        f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}."
-                    )
-
-        else:
-            setup_sigterm_on_parent_death = None
-
         _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
-        _ray_worker_startup_barrier()
+        def setup_sigterm_on_parent_death():
+            """
+            Uses prctl to automatically send SIGTERM to the command process when its parent is
+            dead.
+
+            This handles the case when the parent is a PySpark worker process.
+            If a user cancels the PySpark job, the worker process gets killed, regardless of
+            PySpark daemon and worker reuse settings.
+            We use prctl to ensure the command process receives SIGTERM after spark job
+            cancellation.
+            The command process itself should handle SIGTERM properly.
+            This is a no-op on macOS because prctl is not supported.
+
+            Note:
+            When a pyspark job cancelled, the UDF python process are killed by signal "SIGKILL",
+            This case neither "atexit" nor signal handler can capture SIGKILL signal.
+            prctl is the only way to capture SIGKILL signal.
+            """
+            try:
+                import ctypes
+                import signal
+
+                libc = ctypes.CDLL("libc.so.6")
+                # Set the parent process death signal of the command process to SIGTERM.
+                libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
+            except OSError as e:
+                _worker_logger.warning(
+                    f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}."
+                )
 
         with open(
             os.path.join(ray_log_dir, f"ray-start-worker-{task_id}.log"),
