@@ -187,7 +187,7 @@ class Component:
 
 class OpenCensusProxyCollector:
     def __init__(self, namespace: str, component_timeout_s: int = 60):
-        """Promehtue collector implementation for opencensus proxy export.
+        """Prometheus collector implementation for opencensus proxy export.
 
         Prometheus collector requires to implement `collect` which is
         invoked whenever Prometheus queries the endpoint.
@@ -232,7 +232,7 @@ class OpenCensusProxyCollector:
 
         Stale means the component is dead or unresponsive.
 
-        Stale components won't be reported to Promemetheus anymore.
+        Stale components won't be reported to Prometheus anymore.
         """
         with self._components_lock:
             stale_components = []
