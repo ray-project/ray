@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -178,7 +179,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                                                           {actor_creation_return_id});
     }
 
-    retry_task_callback_(spec, /*delay=*/false);
+    RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                  << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
+    retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
   }
 
   return true;
@@ -460,7 +463,14 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                 << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId();
-    retry_task_callback_(spec, /*delay=*/true);
+    // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
+    // on by some tests.
+    int32_t delay_ms = task_failed_due_to_oom
+                           ? ExponentialBackoff::GetBackoffMs(
+                                 spec.AttemptNumber(),
+                                 RayConfig::instance().task_oom_retry_delay_base_ms())
+                           : RayConfig::instance().task_retry_delay_ms();
+    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
