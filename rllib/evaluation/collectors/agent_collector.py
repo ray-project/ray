@@ -10,7 +10,10 @@ from typing import Any, Dict, List, Optional
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.spaces.space_utils import (
+    flatten_to_single_ndarray,
+    get_dummy_batch_for_space,
+)
 from ray.rllib.utils.typing import (
     EpisodeID,
     EnvID,
@@ -212,11 +215,16 @@ class AgentCollector:
                     fill_value=0.0,
                 )
             if SampleBatch.PREV_ACTIONS in self.view_requirements:
-                single_row[SampleBatch.ACTIONS] = get_dummy_batch_for_space(
+                potentially_flattened_batch = get_dummy_batch_for_space(
                     space=self.view_requirements[SampleBatch.ACTIONS].space,
                     batch_size=0,
                     fill_value=0.0,
                 )
+                if not self.disable_action_flattening:
+                    potentially_flattened_batch = flatten_to_single_ndarray(
+                        potentially_flattened_batch
+                    )
+                single_row[SampleBatch.ACTIONS] = potentially_flattened_batch
             self._build_buffers(single_row)
 
         # Append data to existing buffers.
