@@ -46,16 +46,16 @@ const ActorTable = ({
   const columns = [
     { label: "" },
     { label: "ID" },
-    { 
+    {
       label: "Class",
       helpInfo: (
         <Typography>
-          The class name of the actor. 
-          For example, the below actor has a class name `Actor`.
+          The class name of the actor. For example, the below actor has a class
+          name `Actor`.
           <br />
-          <br/>
+          <br />
           @ray.remote
-          <br/>
+          <br />
           class Actor:
           <br />
           &emsp;pass
@@ -63,38 +63,39 @@ const ActorTable = ({
         </Typography>
       ),
     },
-    { 
+    {
       label: "Name",
       helpInfo: (
         <Typography>
-          The name of the actor given by an `name` argument. 
-          For example, this actor's name is `unique_name`.
+          The name of the actor given by an `name` argument. For example, this
+          actor's name is `unique_name`.
           <br />
           <br />
           Actor.options(name="unique_name").remote()
         </Typography>
       ),
-     },
-    { 
-      label: "State", 
+    },
+    {
+      label: "State",
       helpInfo: (
         <Typography>
-          The state of the actor. States are documented
-          at a `ActorState` from a `gcs.proto` file.
+          The state of the actor. States are documented at a `ActorState` from a
+          `gcs.proto` file.
         </Typography>
       ),
     },
-    { 
-      label: "Actions", 
+    {
+      label: "Actions",
       helpInfo: (
         <Typography>
           A list of actions performable on this actor.
           <br />
-          - Log: See a log message of this actor. Only available if a node is alive.
+          - Log: See a log message of this actor. Only available if a node is
+          alive.
           <br />
           - Stack Trace: Get a stacktrace of the alive actor.
-          <br />
-          - Flame Graph: Get a flamegraph of the alive actor. It profiles for 5 seconds by default.
+          <br />- Flame Graph: Get a flamegraph of the alive actor. It profiles
+          for 5 seconds by default.
         </Typography>
       ),
     },
@@ -102,7 +103,7 @@ const ActorTable = ({
     { label: "Job Id" },
     { label: "Pid" },
     { label: "IP" },
-    { 
+    {
       label: "Restarted",
       helpInfo: (
         <Typography>
@@ -110,12 +111,12 @@ const ActorTable = ({
         </Typography>
       ),
     },
-    { 
+    {
       label: "Required Resources",
       helpInfo: (
         <Typography>
           The required Ray resources to start an actor.
-          <br/>
+          <br />
           For example, this actor has GPU:1 required resources.
           <br />
           <br />
@@ -128,7 +129,7 @@ const ActorTable = ({
         </Typography>
       ),
     },
-    { 
+    {
       label: "Exit Detail",
       helpInfo: (
         <Typography>
@@ -242,16 +243,10 @@ const ActorTable = ({
           <TableRow>
             {columns.map(({ label, helpInfo }) => (
               <TableCell align="center" key={label}>
-                <Box
-                  display="flex"
-                  justifyContent="center"
-                  alignItems="center"
-                >
+                <Box display="flex" justifyContent="center" alignItems="center">
                   {label}
                   {helpInfo && (
-                    <HelpInfo className={classes.helpInfo}>
-                      {helpInfo}
-                    </HelpInfo>
+                    <HelpInfo className={classes.helpInfo}>{helpInfo}</HelpInfo>
                   )}
                 </Box>
               </TableCell>
@@ -377,9 +372,9 @@ const ActorTable = ({
                     interactive
                   >
                     <div>
-                      {Object.entries(requiredResources || {}).map(
-                        ([key, val]) => `${key}: ${val}`,
-                      ).join(", ")}
+                      {Object.entries(requiredResources || {})
+                        .map(([key, val]) => `${key}: ${val}`)
+                        .join(", ")}
                     </div>
                   </Tooltip>
                 </TableCell>
