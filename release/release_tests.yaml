@@ -580,7 +580,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: true
+  stable: false
   env: staging
 
   frequency: nightly
