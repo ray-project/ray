@@ -18,6 +18,7 @@ from ray.data._internal.arrow_serialization import (
     _copy_buffer_if_needed,
     _copy_normal_buffer_if_needed,
     _copy_bitpacked_buffer_if_needed,
+    _copy_offsets_buffer_if_needed,
 )
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
@@ -25,14 +26,22 @@ from ray.data.extensions.tensor_extension import (
 )
 
 
-def test_bytes_for_bits():
+@pytest.mark.parametrize(
+    "n,expected",
+    [(0, 0)] + [(i, 8) for i in range(1, 9)] + [(i, 16) for i in range(9, 17)],
+)
+def test_bytes_for_bits_manual(n, expected):
+    assert _bytes_for_bits(n) == expected
+
+
+def test_bytes_for_bits_auto():
     M = 128
     expected = [((n - 1) // 8 + 1) * 8 for n in range(M)]
     for n, e in enumerate(expected):
         assert _bytes_for_bits(n) == e, n
 
 
-def test_align_bit_offset():
+def test_align_bit_offset_auto():
     M = 10
     n = M * (2**8 - 1)
     # Represent an integer as a Pyarrow buffer of bytes.
@@ -111,6 +120,34 @@ def test_copy_bitpacked_buffer_if_needed():
             assert copied_buf.size == ((length + (offset % 8) - 1) // 8) + 1
 
 
+@pytest.mark.parametrize(
+    "arr_type,expected_offset_type",
+    [
+        (pa.list_(pa.int64()), pa.int32()),
+        (pa.string(), pa.int32()),
+        (pa.binary(), pa.int32()),
+        (pa.large_list(pa.int64()), pa.int64()),
+        (pa.large_string(), pa.int64()),
+        (pa.large_binary(), pa.int64()),
+    ],
+)
+def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
+    offset_arr = pa.array([0, 1, 3, 6, 10, 15, 21], type=expected_offset_type)
+    buf = offset_arr.buffers()[1]
+    offset = 2
+    length = 3
+    offset_buf, data_offset, data_length = _copy_offsets_buffer_if_needed(
+        buf, arr_type, offset, length
+    )
+    assert data_offset == 3
+    assert data_length == 12
+    truncated_offset_arr = pa.Array.from_buffers(
+        expected_offset_type, length, [None, offset_buf]
+    )
+    expected_offset_arr = pa.array([0, 3, 7], type=expected_offset_type)
+    assert truncated_offset_arr.equals(expected_offset_arr)
+
+
 pytest_custom_serialization_arrays = [
     # Null array
     (pa.array([]), 1.0),
@@ -172,6 +209,7 @@ pytest_custom_serialization_arrays = [
         ),
         0.1,
     ),
+    # TODO (Clark): Support dense unions.
     # # Union array (dense)
     # (
     #     pa.UnionArray.from_dense(
