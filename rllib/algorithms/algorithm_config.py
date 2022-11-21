@@ -2306,7 +2306,6 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
 
