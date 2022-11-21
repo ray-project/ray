@@ -277,6 +277,7 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  std::shared_ptr<InternalKVInterface> kv_instance_;
 };
 
 }  // namespace gcs

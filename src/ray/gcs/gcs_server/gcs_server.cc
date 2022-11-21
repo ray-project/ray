@@ -20,6 +20,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -552,17 +553,16 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitKVManager() {
-  std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+    kv_instance_ = std::make_shared<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+    kv_instance_ =
+        std::make_shared<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(kv_instance_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -615,8 +615,8 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
+      gcs_table_storage_, gcs_publisher_, kv_instance_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
