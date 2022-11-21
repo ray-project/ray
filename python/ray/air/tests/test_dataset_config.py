@@ -321,10 +321,21 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     test.fit()
 
 
-def test_global_shuffle(ray_start_4_cpus):
+@pytest.mark.parametrize("random_seed", (None, 1))
+def test_global_shuffle(ray_start_4_cpus, random_seed):
     def checker(shard, results):
         assert len(results[0]) == 5, results
-        assert results[0] != results[1], results
+        if random_seed:
+            assert results[0] == [
+                {"value": 2},
+                {"value": 0},
+                {"value": 4},
+                {"value": 1},
+                {"value": 3},
+            ]
+            assert results[0] == results[1], results
+        else:
+            assert results[0] != results[1], results
         stats = shard.stats()
         print(results)
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
@@ -334,12 +345,22 @@ def test_global_shuffle(ray_start_4_cpus):
     test = TestStream(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config={
+            "train": DatasetConfig(global_shuffle=True, random_seed=random_seed)
+        },
     )
     test.fit()
 
     def checker(shard, results):
         assert len(results) == 5, results
+        if random_seed:
+            assert results == [
+                {"value": 0},
+                {"value": 3},
+                {"value": 2},
+                {"value": 4},
+                {"value": 1},
+            ]
         stats = shard.stats()
         print(results)
         assert "Stage 1 read->random_shuffle" in stats, stats
@@ -348,12 +369,15 @@ def test_global_shuffle(ray_start_4_cpus):
     test = TestBatch(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config={
+            "train": DatasetConfig(global_shuffle=True, random_seed=random_seed)
+        },
     )
     test.fit()
 
 
-def test_randomize_block_order(ray_start_4_cpus):
+@pytest.mark.parametrize("random_seed", (None, 1))
+def test_randomize_block_order(ray_start_4_cpus, random_seed):
     def checker(shard, results):
         stats = shard.stats()
         assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
@@ -373,7 +397,9 @@ def test_randomize_block_order(ray_start_4_cpus):
     test = TestStream(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(randomize_block_order=False)},
+        dataset_config={
+            "train": DatasetConfig(randomize_block_order=False, random_seed=random_seed)
+        },
     )
     test.fit()
 
@@ -386,6 +412,7 @@ def test_randomize_block_order(ray_start_4_cpus):
     test = TestBatch(
         checker,
         datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(random_seed=random_seed)},
     )
     test.fit()
 
