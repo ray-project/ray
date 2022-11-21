@@ -450,6 +450,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             )
 
         self._original_kwargs: dict = locals().copy()
+        self._original_kwargs["config"] = (
+            self._original_kwargs["config"].copy(copy_frozen=False)
+        )
         del self._original_kwargs["self"]
 
         global _global_worker

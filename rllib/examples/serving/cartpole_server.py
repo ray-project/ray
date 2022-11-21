@@ -141,11 +141,13 @@ if __name__ == "__main__":
         # We are remote worker or we are local worker with num_workers=0:
         # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
+            port = args.port + ioctx.worker_index - (1 if ioctx.worker_index > 0 else 0)
+            print(f"trying port={port}")
             return PolicyServerInput(
                 ioctx,
                 SERVER_ADDRESS,
-                args.port + ioctx.worker_index - (1 if ioctx.worker_index > 0 else 0),
-                use_json=True,
+                port,
+                use_json=False,
             )
         # No InputReader (PolicyServerInput) needed.
         else:
