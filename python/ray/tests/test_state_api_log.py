@@ -312,7 +312,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         )
 
     """
-    Test suffix is specified 
+    Test suffix is specified
     """
     pid = 123
     logs_manager.list_logs = AsyncMock()
