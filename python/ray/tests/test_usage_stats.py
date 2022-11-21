@@ -15,6 +15,7 @@ import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import gcs_utils
 from ray._private.test_utils import (
     async_wait_for_condition,
+    async_wait_for_condition_async_predicate,
     format_web_url,
     run_string_as_driver,
     wait_for_condition,
@@ -1474,10 +1475,7 @@ async def test_usage_stats_dashboard_extra_tags(
             temp_dir = pathlib.Path(context.address_info["session_dir"])
             await async_wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
-            def verify():
-                import requests
-                resp = requests.get(f"http://127.0.0.1:{fake_prometheus_port}/-/healthy")
-                print("RESP: " + str(resp.status_code) + ", " + resp.text)
+            async def verify():
                 tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
                 num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
                 assert tags == {
@@ -1488,7 +1486,7 @@ async def test_usage_stats_dashboard_extra_tags(
                 assert num_nodes == 2
                 return True
 
-            await async_wait_for_condition(verify)
+            await async_wait_for_condition_async_predicate(verify)
 
     finally:
         server_task.cancel()
