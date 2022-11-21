@@ -140,6 +140,13 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
           RAY_CHECK_OK(status);
           promise.set_value();
         });
+
+    // mock all bundles of pg have prepared and committed resource.
+    int bundles_size = placement_group->GetPlacementGroupTableData().bundles_size();
+    for (int bundle_index = 0; bundle_index < bundles_size; bundle_index++) {
+      placement_group->GetMutableBundle(bundle_index)
+          ->set_node_id(NodeID::FromRandom().Binary());
+    }
     gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
     promise.get_future().get();
   }
