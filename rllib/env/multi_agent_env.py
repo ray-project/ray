@@ -109,10 +109,9 @@ class MultiAgentEnv(gym.Env):
 
         Examples:
             >>> env = ... # doctest: +SKIP
-            >>> obs, rewards, terminateds, truncateds, infos = env.step( # doctest: +SKIP
-            ...    action_dict={ # doctest: +SKIP
-            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
-            ...    }) # doctest: +SKIP
+            >>> obs, rewards, terminateds, truncateds, infos = env.step(action_dict={
+            ...     "car_0": 1, "car_1": 0, "traffic_light_1": 2,
+            ... }) # doctest: +SKIP
             >>> print(rewards) # doctest: +SKIP
             {
                 "car_0": 3,
@@ -617,7 +616,13 @@ class MultiAgentEnvWrapper(BaseEnv):
     ]:
         obs, rewards, terminateds, truncateds, infos = {}, {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
-            obs[i], rewards[i], terminateds[i], truncateds[i], infos[i] = env_state.poll()
+            (
+                obs[i],
+                rewards[i],
+                terminateds[i],
+                truncateds[i],
+                infos[i],
+            ) = env_state.poll()
         return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
@@ -669,7 +674,9 @@ class MultiAgentEnvWrapper(BaseEnv):
                 self.terminateds.add(env_id)
             if truncateds["__all__"]:
                 self.truncateds.add(env_id)
-            self.env_states[env_id].observe(obs, rewards, terminateds, truncateds, infos)
+            self.env_states[env_id].observe(
+                obs, rewards, terminateds, truncateds, infos
+            )
 
     @override(BaseEnv)
     def try_reset(
@@ -817,7 +824,11 @@ class _MultiAgentEnvState:
         infos = self.last_infos
 
         # If episode is done or we have an error, release everything we have.
-        if terminateds["__all__"] or truncateds["__all__"] or isinstance(observations, Exception):
+        if (
+            terminateds["__all__"]
+            or truncateds["__all__"]
+            or isinstance(observations, Exception)
+        ):
             rewards = self.last_rewards
             self.last_rewards = {}
             terminateds = self.last_terminateds

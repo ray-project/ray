@@ -76,7 +76,9 @@ class RandomEnv(gym.Env):
         # Max episode length not reached yet -> Sample `terminated` via `p_terminated`.
         elif self.p_terminated > 0.0:
             terminated = bool(
-                np.random.choice([True, False], p=[self.p_terminated, 1.0 - self.p_terminated])
+                np.random.choice(
+                    [True, False], p=[self.p_terminated, 1.0 - self.p_terminated]
+                )
             )
 
         if not self.static_samples:

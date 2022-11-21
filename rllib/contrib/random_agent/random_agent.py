@@ -26,7 +26,7 @@ class RandomAgent(Algorithm):
         steps = 0
         for _ in range(self.config.rollouts_per_iteration):
             self.env.reset()
-            terminated = tuncated = False
+            terminated = truncated = False
             reward = 0.0
             while not terminated and not truncated:
                 action = self.env.action_space.sample()

@@ -569,7 +569,11 @@ class EnvRunnerV2:
             # Episode length after this step.
             next_episode_length = episode.length + 1
             # Check episode termination conditions.
-            if terminateds[env_id]["__all__"] or truncateds["__all__"] or next_episode_length >= self._horizon:
+            if (
+                terminateds[env_id]["__all__"]
+                or truncateds["__all__"]
+                or next_episode_length >= self._horizon
+            ):
                 hit_horizon = (
                     next_episode_length >= self._horizon
                     and not terminateds[env_id]["__all__"]
@@ -595,13 +599,20 @@ class EnvRunnerV2:
 
                 policy_id: PolicyID = episode.policy_for(agent_id)
 
-                agent_terminated = bool(terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id))
+                agent_terminated = bool(
+                    terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id)
+                )
                 agent_terminateds[agent_id] = agent_terminated
-                agent_truncated = bool(truncateds[env_id]["__all__"] or truncateds[env_id].get(agent_id, False))
+                agent_truncated = bool(
+                    truncateds[env_id]["__all__"]
+                    or truncateds[env_id].get(agent_id, False)
+                )
                 agent_truncateds[agent_id] = agent_truncated
 
                 # A completely new agent is already done -> Skip entirely.
-                if not episode.has_init_obs(agent_id) and (agent_terminated or agent_truncated):
+                if not episode.has_init_obs(agent_id) and (
+                    agent_terminated or agent_truncated
+                ):
                     continue
 
                 values_dict = {
@@ -635,7 +646,11 @@ class EnvRunnerV2:
                 for agent_id in episode.get_agents():
                     # If the latest obs we got for this agent is done, or if its
                     # episode state is already done, nothing to do.
-                    if agent_terminateds.get(agent_id, False) or agent_truncateds.get(agent_id, False) or episode.is_done(agent_id):
+                    if (
+                        agent_terminateds.get(agent_id, False)
+                        or agent_truncateds.get(agent_id, False)
+                        or episode.is_done(agent_id)
+                    ):
                         continue
 
                     policy_id: PolicyID = episode.policy_for(agent_id)
@@ -864,16 +879,17 @@ class EnvRunnerV2:
 
         Args:
             env_id: Environment ID.
-            env_obs_or_exception: Last per-environment observation or Exception.
+            env_obs: Last per-environment observation or Exception.
+            env_infos: Last per-environment infos.
             is_done: If all agents are done.
             hit_horizon: Whether the episode ended because it hit horizon.
             active_envs: Set of active env ids.
             to_eval: Output container for policy eval data.
             outputs: Output container for collected sample batches.
         """
-        if isinstance(env_obs_or_exception, Exception):
+        if isinstance(env_obs, Exception):
             is_error = True
-            episode_or_exception: Exception = env_obs_or_exception
+            episode_or_exception: Exception = env_obs
             # Tell the sampler we have got a faulty episode.
             outputs.append(RolloutMetrics(episode_faulty=True))
         else:
@@ -893,9 +909,7 @@ class EnvRunnerV2:
         # Horizon hit and we have a soft horizon (no hard env reset).
         soft_reset = not is_error and hit_horizon and self._soft_horizon
         if soft_reset:
-            resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
-                env_id: env_obs_or_exception
-            }
+            resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {env_id: env_obs}
             resetted_infos = {env_id: env_infos}
             # Do not reset connector state if this is a soft reset.
             # Basically carry RNN and other buffered state to the

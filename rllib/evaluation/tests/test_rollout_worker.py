@@ -674,7 +674,14 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
         )
         batch = convert_ma_batch_to_sample_batch(ev.sample())
-        for key in ["obs", "actions", "rewards", "terminateds", "truncateds", "advantages"]:
+        for key in [
+            "obs",
+            "actions",
+            "rewards",
+            "terminateds",
+            "truncateds",
+            "advantages",
+        ]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
         ev.stop()

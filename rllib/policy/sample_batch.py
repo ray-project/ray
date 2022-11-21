@@ -98,7 +98,7 @@ def attempt_count_timesteps(tensor_dict: dict):
             except TypeError:
                 # If input contains scalar arrays (that don't have a length),
                 # they should all be scalar arrays
-                same_lengths = all([sub_space.size == 0 for sub_space in v_list])
+                same_lengths = all(sub_space.size == 0 for sub_space in v_list)
             if not same_lengths:
                 if log_once("flattened_elements_have_different_lengths"):
                     deprecation_warning(

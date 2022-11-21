@@ -409,7 +409,13 @@ class ExternalEnvWrapper(BaseEnv):
     ]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
-        all_obs, all_rewards, all_terminateds, all_truncateds, all_infos = {}, {}, {}, {}, {}
+        all_obs, all_rewards, all_terminateds, all_truncateds, all_infos = (
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()

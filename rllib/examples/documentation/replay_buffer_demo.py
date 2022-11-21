@@ -103,13 +103,15 @@ while not terminated and not truncated:
     obs, reward, terminated, truncated, info = env.step([0, 0])
     # Note that in order for RLlib to find out about start and end of an episode,
     # "t" and "terminateds" have to properly mark an episode's trajectory
-    one_step_batch = SampleBatch({
-        "obs": [obs],
-        "t": [t],
-        "reward": [reward],
-        "terminateds": [terminated],
-        "truncateds": [truncated],
-    })
+    one_step_batch = SampleBatch(
+        {
+            "obs": [obs],
+            "t": [t],
+            "reward": [reward],
+            "terminateds": [terminated],
+            "truncateds": [truncated],
+        }
+    )
     batch = concat_samples([batch, one_step_batch])
     t += 1
 

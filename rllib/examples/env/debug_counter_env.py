@@ -68,7 +68,9 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
             terminated[i] = truncated[i]
-            truncated[i] = True if self.timesteps[i] > self.base_episode_len + i else False
+            truncated[i] = (
+                True if self.timesteps[i] > self.base_episode_len + i else False
+            )
             if terminated[i]:
                 self.terminateds.add(i)
                 self.truncateds.add(i)

@@ -69,7 +69,10 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.OBS], [0, 1, 2, 3, 4, 5, 6])
         check(batch[SampleBatch.ACTIONS], check_actions)
         check(batch[SampleBatch.NEXT_OBS], [4, 5, 6, 7, 7, 7, 7])
-        check(batch[SampleBatch.TERMINATEDS], [False, False, False, True, True, True, True])
+        check(
+            batch[SampleBatch.TERMINATEDS],
+            [False, False, False, True, True, True, True],
+        )
         check(
             batch[SampleBatch.REWARDS],
             [
@@ -96,7 +99,15 @@ class TestPostprocessing(unittest.TestCase):
                 SampleBatch.OBS: obs,
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.TERMINATEDS: [False, False, True, False, False, False, True],
+                SampleBatch.TERMINATEDS: [
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
@@ -158,7 +169,10 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.OBS], [0, 1, 2, 3, 4, 5, 6])
         check(batch[SampleBatch.ACTIONS], check_actions)
         check(batch[SampleBatch.NEXT_OBS], [4, 5, 6, 7, 7, 7, 7])
-        check(batch[SampleBatch.TERMINATEDS], [False, False, False, True, True, True, True])
+        check(
+            batch[SampleBatch.TERMINATEDS],
+            [False, False, False, True, True, True, True],
+        )
         check(
             batch[SampleBatch.REWARDS],
             [

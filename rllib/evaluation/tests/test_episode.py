@@ -101,7 +101,9 @@ class EpisodeEnv(MultiAgentEnv):
     def step(self, action_dict):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+                action
+            )
             obs[i] = obs[i] + i
             rew[i] = rew[i] + i
             info[i]["timestep"] = info[i]["timestep"] + i

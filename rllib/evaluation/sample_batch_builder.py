@@ -186,7 +186,10 @@ class MultiAgentSampleBatchBuilder:
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
-            if any(pre_batch[SampleBatch.DONES][:-1]) or len(set(pre_batch[SampleBatch.EPS_ID])) > 1:
+            if (
+                any(pre_batch[SampleBatch.DONES][:-1])
+                or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
+            ):
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single trajectory.",

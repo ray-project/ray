@@ -48,8 +48,8 @@ class BasicMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = (
-                self.agents[i].step(action)
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+                action
             )
             if terminated[i]:
                 self.terminateds.add(i)
@@ -165,7 +165,9 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         # Apply the actions.
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+                action
+            )
             if terminated[i]:
                 self.terminateds.add(i)
             if truncated[i]:
@@ -174,7 +176,9 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         # Sometimes, add a new agent to the episode.
         if random.random() > 0.75 and len(action_dict) > 0:
             i = self.spawn()
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+                action
+            )
             if terminated[i]:
                 self.terminateds.add(i)
             if truncated[i]:

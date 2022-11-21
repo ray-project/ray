@@ -849,7 +849,11 @@ def _process_observations(
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
-        if terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"] or episode.length >= horizon:
+        if (
+            terminateds[env_id]["__all__"]
+            or truncateds[env_id]["__all__"]
+            or episode.length >= horizon
+        ):
             hit_horizon = (
                 episode.length >= horizon and not terminateds[env_id]["__all__"]
             )
@@ -883,7 +887,10 @@ def _process_observations(
             # for some agents (the environment is not required to do so if
             # terminateds[__all__]=True).
             for ag_id in episode.get_agents():
-                if not episode.last_terminated_for(ag_id) and ag_id not in all_agents_obs:
+                if (
+                    not episode.last_terminated_for(ag_id)
+                    and ag_id not in all_agents_obs
+                ):
                     # Create a fake (all-0s) observation.
                     obs_sp = worker.policy_map[
                         episode.policy_for(ag_id)
@@ -915,8 +922,12 @@ def _process_observations(
             assert agent_id != "__all__"
 
             last_observation: EnvObsType = episode.last_observation_for(agent_id)
-            agent_terminated = bool(terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id))
-            agent_truncated = bool(truncateds[env_id]["__all__"] or truncateds[env_id].get(agent_id, False))
+            agent_terminated = bool(
+                terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id)
+            )
+            agent_truncated = bool(
+                truncateds[env_id]["__all__"] or truncateds[env_id].get(agent_id, False)
+            )
 
             # A new agent (initial obs) is already done -> Skip entirely.
             if last_observation is None and (agent_terminated or agent_truncated):
