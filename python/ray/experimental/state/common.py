@@ -294,8 +294,8 @@ class GetLogOptions:
             raise ValueError(f"Invalid media type: {self.media_type}")
         if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "node_id or node_ip should be provided when no actor or task id "
-                "is provided. Please provide at least one of them."
+                "node_id or node_ip must be provided as constructor arguments when no "
+                "actor or task_id is supplied as arguments."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
