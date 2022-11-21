@@ -21,7 +21,8 @@ namespace gcs {
 
 namespace {
 const std::string kUsageStatsNamespace{"usage_stats"};
-}
+const std::string kExtraUsageTagPrefix{"extra_usage_tag_"};
+}  // namespace
 
 GcsUsageReporter::GcsUsageReporter(instrumented_io_context &service,
                                    std::shared_ptr<InternalKVInterface> kv)
@@ -31,7 +32,7 @@ void GcsUsageReporter::ReportValue(usage::TagKey key, std::string value) {
   service_.post(
       [this, key, value = std::move(value)]() {
         kv_->Put(kUsageStatsNamespace,
-                 usage::TagKey_Name(key),
+                 kExtraUsageTagPrefix + absl::AsciiStrToLower(usage::TagKey_Name(key)),
                  value,
                  /*overwrite*/ true,
                  /*callback*/ [](bool /*newly_added*/) {});
