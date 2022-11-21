@@ -128,7 +128,7 @@ class DataParallelIngestSpec:
             # If globally shuffling, don't randomize unless using the stream API.
             local_window = conf.use_stream_api and conf.stream_window_size > 0
             if conf.randomize_block_order and (not conf.global_shuffle or local_window):
-                datasets[key] = dataset.randomize_block_order()
+                datasets[key] = dataset.randomize_block_order(seed=conf.random_seed)
 
         if prep:
             ds_to_fit = None
@@ -177,6 +177,13 @@ class DataParallelIngestSpec:
 
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
+            # Add to the seed so that it is different compared to the
+            # seed used for preprocessing datasets
+            if config.random_seed is not None:
+                randomize_block_order_seed = config.random_seed + 1
+                random_shuffle_seed = config.random_seed + 2
+            else:
+                randomize_block_order_seed = random_shuffle_seed = config.random_seed
 
             if config.use_stream_api:
                 if config.stream_window_size > 0:
@@ -196,13 +203,17 @@ class DataParallelIngestSpec:
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
                 if config.randomize_block_order and not config.global_shuffle:
-                    dataset = dataset.randomize_block_order_each_window()
+                    dataset = dataset.randomize_block_order_each_window(
+                        seed=randomize_block_order_seed
+                    )
 
             if config.global_shuffle:
                 if config.use_stream_api:
-                    dataset = dataset.random_shuffle_each_window()
+                    dataset = dataset.random_shuffle_each_window(
+                        seed=random_shuffle_seed
+                    )
                 else:
-                    dataset = dataset.random_shuffle()
+                    dataset = dataset.random_shuffle(seed=random_shuffle_seed)
 
             if config.split:
                 dataset_splits = dataset.split(

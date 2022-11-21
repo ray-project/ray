@@ -326,6 +326,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
+        print(results)
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert "Stage 1 read->randomize_block_order->random_shuffle" in stats, stats
 
@@ -340,6 +341,7 @@ def test_global_shuffle(ray_start_4_cpus):
     def checker(shard, results):
         assert len(results) == 5, results
         stats = shard.stats()
+        print(results)
         assert "Stage 1 read->random_shuffle" in stats, stats
 
     ds = ray.data.range_table(5)

@@ -324,6 +324,9 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        random_seed: Sets random seed for shuffle and randomization operations for
+            reproducibility. If not set, one will be chosen based on system randomness,
+            meaning order will be different each execution.
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
@@ -337,6 +340,7 @@ class DatasetConfig:
     stream_window_size: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    random_seed: Optional[int] = None
 
     def __repr__(self):
         return _repr_dataclass(self)
@@ -361,6 +365,7 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            random_seed=self.random_seed if self.random_seed is not None else None,
         )
 
     @staticmethod
@@ -443,6 +448,9 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            random_seed=self.random_seed
+            if other.random_seed is None
+            else other.random_seed,
         )
         return new_config
 
