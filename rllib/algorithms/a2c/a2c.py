@@ -114,6 +114,10 @@ class A2CConfig(A3CConfig):
         # Call super's validation method.
         super().validate()
 
+        # Synchronous sampling, on-policy PG algo -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
+
         if self.microbatch_size:
             if self.num_gpus > 1:
                 raise AttributeError(
