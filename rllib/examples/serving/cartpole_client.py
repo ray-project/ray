@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
         # Reset the episode if done.
         if done:
-            print("Total reward:", rewards)
+            print("Total episode reward (measured on client side):", rewards)
 
             rewards = 0.0
 
