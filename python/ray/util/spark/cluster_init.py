@@ -561,6 +561,24 @@ def init_ray_cluster(
                 "This job group is for spark job which runs the Ray cluster with ray head node "
                 f"{ray_head_hostname}:{ray_head_port}",
             )
+
+            # Starting a normal spark job (not barrier spark job) to run ray workers, the design
+            # purpose is:
+            # 1. Using normal spark job, spark tasks can automatically retry individually, we don't
+            # need to write additional retry logic, But, in barrier mode, if one spark task fails,
+            # it will cause all other spark tasks killed.
+            # 2. Using normal spark job, we can support failover when a spark worker physical
+            # machine crashes. (spark will try to re-schedule the spark task to other spark worker
+            # nodes)
+            # 3. Using barrier mode job, if the cluster resources does not satisfy
+            # "idle spark task slots >= argument num_spark_task", then the barrier job gets stuck
+            # and waits until enough idle task slots available, this behavior is not user-friendly,
+            # on a shared spark cluster, user is hard to estimate how many idle tasks available at
+            # a time, But, if using normal spark job, it can launch job with less spark tasks
+            # (i.e. user will see a ray cluster setup with less worker number initially), and when
+            # more task slots become available, it continues to launch tasks on new available
+            # slots, and user can see the ray cluster worker number increases when more slots
+            # available.
             spark.sparkContext.parallelize(
                 list(range(num_worker_nodes)), num_worker_nodes
             ).mapPartitions(ray_cluster_job_mapper).collect()
