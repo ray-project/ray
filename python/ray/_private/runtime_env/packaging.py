@@ -60,10 +60,10 @@ class _AsyncFileLock:
 
     async def __aenter__(self):
         while True:
-            acquired = self.file.acquire(blocking=False)
-            if acquired:
+            try:
+                self.file.acquire(timeout=0)
                 return
-            else:
+            except TimeoutError:
                 await asyncio.sleep(0.1)
 
     async def __aexit__(self, exc_type, exc, tb):

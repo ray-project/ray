@@ -36,11 +36,11 @@ export const JobRow = ({
   },
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
-  const { progress, error, driverExits } = useJobProgress(job_id ?? undefined);
+  const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
   const classes = useStyles();
 
   const progressBar = (() => {
-    if (!driverExits) {
+    if (!driverExists) {
       return "-";
     }
     if (!progress || error) {

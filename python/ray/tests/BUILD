@@ -121,6 +121,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
+    "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_resource_demand_scheduler.py",
@@ -200,6 +201,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",

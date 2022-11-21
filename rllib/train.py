@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 from pathlib import Path
-import yaml
+import sys
 import typer
 from typing import Optional
+import yaml
 
 import ray
 from ray.tune.resources import resources_to_json, json_to_resources
@@ -58,24 +60,48 @@ def load_experiments_from_file(
     checkpoint_config: Optional[dict] = None,
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
-    If you want to use a Python file, it has to have a 'config' variable
-    that is an AlgorithmConfig object."""
 
+    If you want to use a Python file, it has to have a 'config' variable
+    that is an AlgorithmConfig object and - optionally - a `stop` variable defining
+    the stop criteria.
+
+    Args:
+        config_file: The yaml or python file to be used as experiment definition.
+            Must only contain exactly one experiment.
+        file_type: One value of the `SupportedFileType` enum (yaml or python).
+        stop: An optional stop json string, only used if file_type is python.
+            If None (and file_type is python), will try to extract stop information
+            from a defined `stop` variable in the python file, otherwise, will use {}.
+        checkpoint_config: An optional checkpoint config to add to the returned
+            experiments dict.
+
+    Returns:
+        The experiments dict ready to be passed into `tune.run_experiments()`.
+    """
+
+    #
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-    else:  # Python file case (ensured by file type enum)
-        import importlib
-
-        module_qualifier = config_file.replace("/", ".").replace(".py", "")
-        module = importlib.import_module(module_qualifier)
-
+            if stop is not None:
+                raise ValueError("`stop` criteria only supported for python files.")
+    # Python file case (ensured by file type enum)
+    else:
+        module_name = os.path.basename(config_file).replace(".py", "")
+        spec = importlib.util.spec_from_file_location(module_name, config_file)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
         if not hasattr(module, "config"):
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
         algo_config = getattr(module, "config")
+        if stop is None:
+            stop = getattr(module, "stop", {})
+        else:
+            stop = json.loads(stop)
 
         # Note: we do this gymnastics to support the old format that
         # "run_rllib_experiments" expects. Ideally, we'd just build the config and
@@ -86,12 +112,9 @@ def load_experiments_from_file(
                 "run": algo_config.__class__.__name__.replace("Config", ""),
                 "env": config.get("env"),
                 "config": config,
+                "stop": stop,
             }
         }
-
-        # Add a stopping condition if provided
-        if stop:
-            experiments["default"]["stop"] = json.loads(stop)
 
     for key, val in experiments.items():
         experiments[key]["checkpoint_config"] = checkpoint_config or {}

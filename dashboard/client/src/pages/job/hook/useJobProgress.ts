@@ -15,23 +15,15 @@ import { getJobProgress, getJobProgressByTaskName } from "../../../service/job";
 export const useJobProgress = (jobId?: string) => {
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
-  const [driverExits, setDriverExits] = useState(true);
   const [isRefreshing, setRefresh] = useState(true);
   const refreshRef = useRef(isRefreshing);
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);
   };
   refreshRef.current = isRefreshing;
-  console.log(jobId);
   const { data: progress } = useSWR(
-    "useJobProgress",
-    async () => {
-      if (!jobId) {
-        // JobId is empty if there's no driver.
-        // In this case, we have no progress to report.
-        setDriverExits(false);
-        return null;
-      }
+    jobId ? ["useJobProgress", jobId]: null,
+    async (_, jobId) => {
       const rsp = await getJobProgress(jobId);
 
       setMsg(rsp.data.msg);
@@ -45,13 +37,14 @@ export const useJobProgress = (jobId?: string) => {
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
+  const driverExists = (!jobId) ? false : true;
   return {
     progress,
     msg,
     error,
     isRefreshing,
     onSwitchChange,
-    driverExits,
+    driverExists,
   };
 };
 
@@ -75,8 +68,8 @@ export const useJobProgressByTaskName = (jobId: string) => {
   refreshRef.current = isRefreshing;
 
   const { data: progress } = useSWR(
-    "useJobProgressByTaskName",
-    async () => {
+    ["useJobProgressByTaskName", jobId],
+    async (_, jobId) => {
       const rsp = await getJobProgressByTaskName(jobId);
       setMsg(rsp.data.msg);
 
