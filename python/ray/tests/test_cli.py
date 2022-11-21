@@ -433,10 +433,10 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
         )
 
 
-# @pytest.mark.skipif(
-#     sys.platform == "darwin",
-#     reason=("Mac builds don't provide proper locale support. "),
-# )
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Mac builds don't provide proper locale support. "),
+)
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows signal handling not compatible"
 )

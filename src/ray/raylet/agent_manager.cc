@@ -142,7 +142,7 @@ void AgentManager::StartAgent() {
                                            "sigterm to itself. The process will not "
                                            "gracefully shutdown.";
     // If the process is not terminated within 10 seconds, forcefully kill itself.
-    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000)
+    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   });
   monitor_thread.detach();
 }
