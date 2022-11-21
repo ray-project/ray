@@ -799,8 +799,9 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.EPS_ID,
                         SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID,
-                        SampleBatch.DONES,
+                        SampleBatch.TERMINATEDS,
                         SampleBatch.TRUNCATEDS,
+                        SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
                         SampleBatch.T,
@@ -813,7 +814,8 @@ class DynamicTFPolicyV2(TFPolicy):
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
-            # Also always leave DONES, REWARDS, and INFOS, no matter what.
+            # Also always leave TERMINATEDS, TRUNCATEDS, REWARDS, and INFOS,
+            # no matter what.
             for key in list(self.view_requirements.keys()):
                 if (
                     key not in all_accessed_keys
@@ -822,8 +824,9 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.EPS_ID,
                         SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID,
-                        SampleBatch.DONES,
+                        SampleBatch.TERMINATEDS,
                         SampleBatch.TRUNCATEDS,
+                        SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
                         SampleBatch.T,
