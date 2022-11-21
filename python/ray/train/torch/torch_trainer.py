@@ -16,7 +16,7 @@ class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. These actors already have the necessary torch process group already
+    Actors. These actors already have the necessary torch process group
     configured for distributed PyTorch training.
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
@@ -30,7 +30,7 @@ class TorchTrainer(DataParallelTrainer):
     .. testcode::
 
         from typing import Dict
-        def train_loop_per_worker(config: Dict):
+        def train_loop_per_worker(config: Dict[str, Any]):
             ...
 
     If ``train_loop_per_worker`` accepts an argument, then
@@ -44,7 +44,7 @@ class TorchTrainer(DataParallelTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray AIR session methods <air-session-ref>`. See full example cod below.
 
     .. testcode::
 
@@ -54,19 +54,19 @@ class TorchTrainer(DataParallelTrainer):
             #
             session.report(...)
 
-            # Session returns dict of last saved checkpoint.
+            # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
             # Session returns the Ray Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
-            # Session returns the total number of workers executing training.
+            # Get the total number of workers executing training.
             session.get_world_size()
 
-            # Session returns the rank of this worker.
+            # Get the rank of this worker.
             session.get_world_rank()
 
-            # Sessionb returns the rank of the worker on the current node.
+            # Get the rank of the worker on the current node.
             session.get_local_rank()
 
     You can also use any of the Torch specific function utils,
@@ -189,7 +189,6 @@ class TorchTrainer(DataParallelTrainer):
 
             result = trainer.fit()
 
-            # Get the loss metric from TorchCheckpoint tuple data dictionary
             best_checkpoint_loss = result.metrics['loss']
             # print(f"best loss: {best_checkpoint_loss:.4f}")
 
