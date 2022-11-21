@@ -244,7 +244,11 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue, use_json):
                 response = self.execute_command(parsed_input)
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(pickle.dumps(response) if not use_json else json.dumps(response).encode("utf-8"))
+                self.wfile.write(
+                    pickle.dumps(response)
+                    if not use_json
+                    else json.dumps(response).encode("utf-8")
+                )
             except Exception:
                 self.send_error(500, traceback.format_exc())
 
