@@ -1547,6 +1547,18 @@ cc_test(
 )
 
 cc_test(
+    name = "exponential_backoff_test",
+    size = "small",
+    srcs = ["src/ray/util/exponential_backoff_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["src/ray/util/sample_test.cc"],

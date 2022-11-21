@@ -388,7 +388,7 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   error = rpc::ErrorType::OUT_OF_MEMORY;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_ms());
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
   ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;

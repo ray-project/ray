@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -465,7 +466,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
-                           ? RayConfig::instance().task_oom_retry_delay_ms()
+                           ? ExponentialBackoff::GetBackoffMs(
+                                 spec.AttemptNumber(),
+                                 RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
     retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
     return true;

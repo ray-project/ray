@@ -34,7 +34,7 @@ def ray_with_memory_monitor(shutdown_only):
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": task_oom_retries,
             "min_memory_free_bytes": -1,
-            "task_oom_retry_delay_ms": 0,
+            "task_oom_retry_delay_base_ms": 0,
         },
     ) as addr:
         yield addr
@@ -52,7 +52,7 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 0,
             "min_memory_free_bytes": -1,
-            "task_oom_retry_delay_ms": 0,
+            "task_oom_retry_delay_base_ms": 0,
         },
     ) as addr:
         yield addr
