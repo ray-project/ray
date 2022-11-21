@@ -219,7 +219,6 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     initial_region_ptr = static_cast<char *>(*pointer);
     initial_region_size = size;
   }
-
 }
 
 #endif

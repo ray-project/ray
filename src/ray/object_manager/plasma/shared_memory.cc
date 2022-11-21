@@ -56,7 +56,7 @@ void ClientMmapTableEntry::MaybeMadviseDontdump() {
         << ", " << strerror(errno);
   } else {
     RAY_LOG(DEBUG) << "madvise(MADV_DONTDUMP) call succeeded.";
-  } 
+  }
 #endif
 }
 
