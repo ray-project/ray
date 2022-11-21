@@ -1610,6 +1610,7 @@ cc_test(
     ],
     deps = [
         ":ray_common",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
