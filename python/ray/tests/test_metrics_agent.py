@@ -106,8 +106,6 @@ _AUTOSCALER_METRICS = [
     "autoscaler_failed_recoveries",
     "autoscaler_drain_node_exceptions",
     "autoscaler_update_time",
-    "autoscaler_cluster_resources",
-    "autoscaler_pending_resources",
 ]
 
 
