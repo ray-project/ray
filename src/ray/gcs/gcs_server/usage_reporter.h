@@ -15,20 +15,28 @@
 #pragma once
 #include <memory>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "src/ray/protobuf/usage.pb.h"
 
 namespace ray {
 namespace gcs {
 
-///
+/// Helper class collects custom usage data.
+/// Note: this class could only be used on Gcs.
 class GcsUsageReporter {
  public:
-  GcsUsageReporter(InternalKVInterface &kv);
+  GcsUsageReporter(instrumented_io_context &service, InternalKVInterface &kv);
+
+  // Report a custom usage key/value pairs. If the key
+  // already exists, the value will be overwritten.
   void ReportValue(usage::TagKey key, std::string value);
+
+  // Report a monotonically increasing counter.
   void ReportCounter(usage::TagKey key, int64_t counter);
 
  private:
+  instrumented_io_context &service_;
   InternalKVInterface &kv_;
 };
 

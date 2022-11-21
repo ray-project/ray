@@ -559,7 +559,7 @@ void GcsServer::InitKVManager() {
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
-  usage_reporter_ = std::make_unique<GcsUsageReporter>(*instance.get());
+  usage_reporter_ = std::make_unique<GcsUsageReporter>(main_service_, *instance.get());
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
