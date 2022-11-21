@@ -327,3 +327,8 @@ python_grpc_compile(
     name = "usage_py_proto",
     deps = [":usage_proto"],
 )
+
+cc_proto_library(
+    name = "usage_cc_proto",
+    deps = [":usage_proto"],
+)
