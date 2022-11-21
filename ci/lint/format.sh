@@ -194,6 +194,23 @@ mypy_on_each() {
     popd
 }
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+WORKSPACE_DIR="${ROOT_DIR}/../.."
+
+format_frontend() {
+  (
+    echo "$(date)" "format frontend...."
+    local folder 
+    folder="${WORKSPACE_DIR}/python/ray/dashboard/client"
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
+    "${folder}/"node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
+  )
+}
+
 
 # Format specified files
 format_files() {
@@ -355,6 +372,10 @@ format_changed() {
             shellcheck_scripts "${shell_files[@]}"
         fi
     fi
+
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.ts' '*.tsx' &>/dev/null; then
+        format_frontend
+    fi
 }
 
 # This flag formats individual files. --files *must* be the first command line
@@ -370,6 +391,8 @@ elif [ "${1-}" == '--all-scripts' ]; then
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
+elif [ "${1-}" == '--frontend' ]; then
+    format_frontend
 else
     # Add the upstream remote if it doesn't exist
     if ! git remote -v | grep -q upstream; then
