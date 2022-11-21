@@ -15,7 +15,7 @@ from ray._private.worker import RayContext
 
 _SYSTEM_CONFIG = {
     "metrics_report_interval_ms": 200,
-    "gcs_actor_table_min_duration_ms": 10000
+    "gcs_actor_table_min_duration_ms": 2000,
 }
 
 
@@ -166,7 +166,6 @@ ray.get([actor.ready.remote() for actor in actors])
     """
     # Wait until the state API returns the # of actors are 0
     # becasue entries are GC'ed by GCS.
-    print("abc")
     wait_for_condition(lambda: len(list_actors()) == 0, timeout=60)
     # DEAD count shouldn't be changed.
     wait_for_condition(
