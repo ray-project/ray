@@ -194,14 +194,11 @@ mypy_on_each() {
     popd
 }
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
-WORKSPACE_DIR="${ROOT_DIR}/../.."
-
 format_frontend() {
   (
     echo "$(date)" "format frontend...."
     local folder 
-    folder="${WORKSPACE_DIR}/python/ray/dashboard/client"
+    folder="$(pwd)/dashboard/client"
     local filenames
     # shellcheck disable=SC2207
     filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
