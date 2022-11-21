@@ -22,8 +22,8 @@ export const useJobProgress = (jobId?: string) => {
   };
   refreshRef.current = isRefreshing;
   const { data: progress } = useSWR(
-    "useJobProgress",
-    async () => {
+    ["useJobProgress", jobId],
+    async (_, jobId) => {
       const rsp = await getJobProgress(jobId);
 
       setMsg(rsp.data.msg);
@@ -66,8 +66,8 @@ export const useJobProgressByTaskName = (jobId: string) => {
   refreshRef.current = isRefreshing;
 
   const { data: progress } = useSWR(
-    "useJobProgressByTaskName",
-    async () => {
+    ["useJobProgressByTaskName", jobId],
+    async (_, jobId) => {
       const rsp = await getJobProgressByTaskName(jobId);
       setMsg(rsp.data.msg);
 
