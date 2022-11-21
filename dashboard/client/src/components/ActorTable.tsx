@@ -51,7 +51,7 @@ const ActorTable = ({
       helpInfo: (
         <Typography>
           The class name of the actor. For example, the below actor has a class
-          name `Actor`.
+          name "Actor".
           <br />
           <br />
           @ray.remote
@@ -67,8 +67,8 @@ const ActorTable = ({
       label: "Name",
       helpInfo: (
         <Typography>
-          The name of the actor given by an `name` argument. For example, this
-          actor's name is `unique_name`.
+          The name of the actor given by the "name" argument. For example, this
+          actor's name is "unique_name".
           <br />
           <br />
           Actor.options(name="unique_name").remote()
@@ -79,8 +79,8 @@ const ActorTable = ({
       label: "State",
       helpInfo: (
         <Typography>
-          The state of the actor. States are documented at a `ActorState` from a
-          `gcs.proto` file.
+          The state of the actor. States are documented as a "ActorState" in the
+          "gcs.proto" file.
         </Typography>
       ),
     },
@@ -90,12 +90,12 @@ const ActorTable = ({
         <Typography>
           A list of actions performable on this actor.
           <br />
-          - Log: See a log message of this actor. Only available if a node is
+          - Log: view log messages of this actor. Only available if a node is
           alive.
           <br />
           - Stack Trace: Get a stacktrace of the alive actor.
-          <br />- Flame Graph: Get a flamegraph of the alive actor. It profiles
-          for 5 seconds by default.
+          <br />- Flame Graph: Get a flamegraph for the next 5 seconds of an
+          alive actor.
         </Typography>
       ),
     },
