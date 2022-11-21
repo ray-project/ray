@@ -212,8 +212,6 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
     # See the Arrow buffer layouts for each type for information on how this buffer
     # traversal and copying works:
     # https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
-    # TODO(Clark): Preserve null count on copy (if already computed) to prevent it
-    # needing to be recomputed on deserialization?
     import pyarrow as pa
 
     if _is_dense_union(a.type):
@@ -281,7 +279,14 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
             items = _copy_array_if_needed(a.items.slice(data_offset, data_length))
             return pa.MapArray.from_arrays(offsets, keys, items)
     return _copy_array_buffers_if_needed(
-        bitmap, buf, a.type, a.offset, len(a), buffers=buffers, children=children
+        bitmap,
+        buf,
+        a.type,
+        a.offset,
+        len(a),
+        a.null_count,
+        buffers=buffers,
+        children=children,
     )
 
 
@@ -291,6 +296,7 @@ def _copy_array_buffers_if_needed(
     type_: "pyarrow.DataType",
     offset: int,
     length: int,
+    null_count: int,
     *,
     buffers: Optional[List["pyarrow.Buffer"]] = None,
     children: Optional[List["pyarrow.Array"]] = None,
@@ -328,6 +334,8 @@ def _copy_array_buffers_if_needed(
             type_=type_.value_type,
             offset=child_offset,
             length=child_length,
+            # Null count not known without the child arrays exposed in the Python API.
+            null_count=-1,
             buffers=buffers[2:],
         )
         new_children = [child]
@@ -342,6 +350,8 @@ def _copy_array_buffers_if_needed(
             type_=type_.value_type,
             offset=type_.list_size * offset,
             length=type_.list_size * length,
+            # Null count not known.
+            null_count=-1,
             buffers=buffers[1:],
         )
         new_children = [child]
@@ -399,7 +409,9 @@ def _copy_array_buffers_if_needed(
         if buf is not None:
             buf = _copy_buffer_if_needed(buf, type_, offset, length)
         new_buffers.append(buf)
-    return pa.Array.from_buffers(type_, length, new_buffers, children=new_children)
+    return pa.Array.from_buffers(
+        type_, length, buffers=new_buffers, null_count=null_count, children=new_children
+    )
 
 
 def _copy_buffer_if_needed(
