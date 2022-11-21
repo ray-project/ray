@@ -1,3 +1,4 @@
+import asyncio
 import binascii
 import errno
 import functools
@@ -1639,6 +1640,42 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    import sys
+
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
 
 
 def get_entrypoint_name():

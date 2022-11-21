@@ -87,17 +87,16 @@ async def json_resolver(request: starlette.requests.Request):
 )
 def main(http_test: Optional[bool], data_size: Optional[int]):
 
-    loop = asyncio.get_event_loop()
     test_name = "gRPC"
     if http_test:
         test_name = "http"
         serve.run(DAGDriver.bind(D.bind(), http_adapter=json_resolver))
-        throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
+        throughput_mean_tps, throughput_std_tps = asyncio.run(
             trial(measure_http_throughput_tps, data_size=data_size)
         )
     else:
         serve.run(DefaultgRPCDriver.bind(D.bind()))
-        throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
+        throughput_mean_tps, throughput_std_tps = asyncio.run(
             trial(measure_grpc_throughput_tps, data_size=data_size)
         )
 
