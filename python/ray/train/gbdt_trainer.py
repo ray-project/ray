@@ -73,9 +73,13 @@ def _convert_scaling_config_to_ray_params(
 
             def get_tune_resources(self) -> PlacementGroupFactory:
                 pgf = super().get_tune_resources()
+                placement_options = self.placement_options.copy()
+                # Special case, same as in ScalingConfig.as_placement_group_factory
+                if placement_options.get("_max_cpu_fraction_per_node", None) is None:
+                    placement_options.pop("_max_cpu_fraction_per_node", None)
                 extended_pgf = PlacementGroupFactory(
                     pgf.bundles,
-                    **self.placement_options,
+                    **placement_options,
                 )
                 extended_pgf._head_bundle_is_empty = pgf._head_bundle_is_empty
                 return extended_pgf
@@ -84,17 +88,11 @@ def _convert_scaling_config_to_ray_params(
     else:
         ray_params_cls_extended = ray_params_cls
 
-    placement_options = {
-        "strategy": scaling_config.placement_strategy,
-    }
-    # Special case, same as in ScalingConfig.as_placement_group_factory
-    if scaling_config._max_cpu_fraction_per_node is not None:
-        placement_options[
-            "_max_cpu_fraction_per_node"
-        ] = scaling_config._max_cpu_fraction_per_node
-
     ray_params = ray_params_cls_extended(
-        placement_options=placement_options,
+        placement_options={
+            "strategy": scaling_config.placement_strategy,
+            "_max_cpu_fraction_per_node": scaling_config._max_cpu_fraction_per_node,
+        },
         **ray_params_kwargs,
     )
 
