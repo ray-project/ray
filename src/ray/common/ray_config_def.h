@@ -398,7 +398,7 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
-RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
