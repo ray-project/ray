@@ -188,6 +188,23 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
+def test_fractional_memory_round_down(shutdown_only):
+    @ray.remote
+    def test():
+        pass
+
+    with ray.init(num_cpus=1, _memory=2):
+        ray.get(test.options(memory=2.9).remote(), timeout=2)
+
+    with ray.init(num_cpus=1, _memory=0.2):
+        ray.get(test.options(memory=0.5).remote(), timeout=2)
+
+    with ray.init(num_cpus=1, _memory=2.2):
+        ray.get(test.options(memory=2.9).remote(), timeout=2)
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(test.options(memory=3.1).remote(), timeout=2)
+
+
 def test_multiple_raylets(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific raylets, and we will check that they are assigned

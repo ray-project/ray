@@ -64,6 +64,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
@@ -95,6 +96,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -148,7 +150,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -217,7 +219,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus: The number of CPUs to allocate for the remote actor.
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
-            memory: The heap memory request for the remote actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -229,6 +232,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus=num_gpus,
             memory=memory,
             resources=resources,
+            # Automatically restart failed workers.
+            max_restarts=-1,
         )(cls)
 
     @DeveloperAPI
@@ -301,8 +306,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)
@@ -452,6 +455,8 @@ class RolloutWorker(ParallelIteratorWorker):
         global _global_worker
         _global_worker = self
 
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         # Default config needed?
         if config is None or isinstance(config, dict):
             config = AlgorithmConfig().update_from_dict(config or {})
@@ -535,7 +540,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
             # TODO(sven): Make this per-policy!
-            "timesteps": 0,
+            "timestep": 0,
             # Counter for performed gradient updates per policy in `self.policy_map`.
             # Allows for compiling metrics on the off-policy'ness of an update given
             # that the number of gradient updates of the sampling policies are known
@@ -1827,40 +1832,15 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
-
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
         # Close all policies' sessions (if tf static graph).
-        for policy in self.policy_map.values():
+        for policy in self.policy_map.cache.values():
             sess = policy.get_session()
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
-
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this rollout worker instance.
-
-        Useful for when the RolloutWorker class has been converted into a
-        ActorHandle and the user needs to execute some functionality (e.g.
-        add a property) on the underlying policy object.
-
-        Args:
-            func: The function to call, with this RolloutWorker as first
-                argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
-
-        Returns:
-            The return value of the function call.
-        """
-        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str

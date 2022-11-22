@@ -26,6 +26,8 @@ of them individually.
 Breaking changes **must** be both allowed and expected in alpha components, and
 users **must** have no expectation of stability.
 
+.. _api-stability-beta:
+
 Beta
 ~~~~
 
