@@ -36,7 +36,7 @@ def run():
     from ray import tune
 
     param_space = {"lr": tune.loguniform(1e-4, 1e-1)}
-    num_samples = 2
+    num_samples = 1
 
     tuner = tune.Tuner(
         train,
@@ -88,7 +88,7 @@ def run_distributed():
     from ray_lightning.tune import get_tune_resources
 
     param_space = {"lr": tune.loguniform(1e-4, 1e-1)}
-    num_samples = 2
+    num_samples = 1
 
     tuner = tune.Tuner(
         tune.with_resources(
