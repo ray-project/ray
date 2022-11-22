@@ -192,11 +192,12 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
+                    prev_action = not config.enable_connectors
                     config.training(
                         model=dict(
                             use_lstm=lstm,
-                            lstm_use_prev_action=lstm,
-                            lstm_use_prev_reward=lstm,
+                            lstm_use_prev_action=lstm and prev_action,
+                            lstm_use_prev_reward=lstm and prev_action,
                         )
                     )
 
@@ -223,7 +224,7 @@ class TestPPO(unittest.TestCase):
                         print(f"off-policy'ness={off_policy_ness}")
 
                     check_compute_single_action(
-                        algo, include_prev_action_reward=True, include_state=lstm
+                        algo, include_prev_action_reward=prev_action, include_state=lstm
                     )
                     algo.stop()
 
