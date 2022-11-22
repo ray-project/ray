@@ -1484,9 +1484,7 @@ class Algorithm(Trainable):
             observation = local_worker.filters[policy_id](observation, update=False)
         else:
             # Just preprocess observations, similar to how it used to be done before.
-            assert prev_action is None, "prev_action is deprecated with connectors."
-            assert prev_reward is None, "prev_reward is deprecated with connectors."
-
+            
             # Note(Kourosh): The connector with leave the policy's connector in eval
             # mode would that be a problem?
             policy.agent_connectors.in_eval()
