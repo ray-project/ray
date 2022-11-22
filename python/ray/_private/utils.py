@@ -1789,6 +1789,8 @@ class DeferSigint(contextlib.AbstractContextManager):
         self.task_cancelled = False
         # The original SIGINT handler.
         self.orig_sigint_handler = None
+        # The original signal method.
+        self.orig_signal = None
 
     @classmethod
     def create_if_main_thread(cls) -> contextlib.AbstractContextManager:
@@ -1804,15 +1806,39 @@ class DeferSigint(contextlib.AbstractContextManager):
         """SIGINT handler that defers the signal."""
         self.task_cancelled = True
 
+    def _signal_monkey_patch(self, signum, handler):
+        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
+        registered within the DeferSigint context.
+        """
+        # Only raise an error if setting a SIGINT handler in the main thread; if setting
+        # a handler in a non-main thread, signal.signal will raise an error anyway
+        # indicating that Python does not allow that.
+        if (
+            threading.current_thread() == threading.main_thread()
+            and signum == signal.SIGINT
+        ):
+            raise ValueError(
+                "Can't set signal handler for SIGINT while SIGINT is being deferred "
+                "within a DeferSigint context."
+            )
+        return self.orig_signal(signum, handler)
+
     def __enter__(self):
         # Save original SIGINT handler for later restoration.
         self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
         # Set SIGINT signal handler that defers the signal.
         signal.signal(signal.SIGINT, self._set_task_cancelled)
+        # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
+        # within the context.
+        self.orig_signal = signal.signal
+        signal.signal = self._signal_monkey_patch
         return self
 
     def __exit__(self, exc_type, exc, exc_tb):
         assert self.orig_sigint_handler is not None
+        assert self.orig_signal is not None
+        # Restore original signal.signal function.
+        signal.signal = self.orig_signal
         # Restore original SIGINT handler.
         signal.signal(signal.SIGINT, self.orig_sigint_handler)
         if exc_type is None and self.task_cancelled:

@@ -118,6 +118,15 @@ def test_defer_sigint():
         assert signal.getsignal(signal.SIGINT) is orig_sigint_handler
 
 
+def test_defer_sigint_monkey_patch():
+    # Tests that setting a SIGINT signal handler within a DeferSigint context is not
+    # allowed.
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+    with pytest.raises(ValueError):
+        with DeferSigint():
+            signal.signal(signal.SIGINT, orig_sigint_handler)
+
+
 def test_defer_sigint_noop_in_non_main_thread():
     # Tests that we don't try to defer SIGINT when not in the main thread.
 
