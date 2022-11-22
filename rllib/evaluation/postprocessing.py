@@ -167,7 +167,7 @@ def compute_gae_for_sample_batch(
     """
 
     # Trajectory is actually complete -> last r=0.0.
-    if sample_batch[SampleBatch.DONES][-1]:
+    if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:

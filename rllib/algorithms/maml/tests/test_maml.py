@@ -20,7 +20,7 @@ class TestMAML(unittest.TestCase):
 
     def test_maml_compilation(self):
         """Test whether MAML can be built with all frameworks."""
-        config = maml.MAMLConfig().rollouts(num_rollout_workers=1, horizon=200)
+        config = maml.MAMLConfig().rollouts(num_rollout_workers=1)
 
         num_iterations = 1
 

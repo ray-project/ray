@@ -22,8 +22,8 @@ class TestMBMPO(unittest.TestCase):
         """Test whether MBMPO can be built with all frameworks."""
         config = (
             mbmpo.MBMPOConfig()
-            .rollouts(num_rollout_workers=2, horizon=200)
-            .training(dynamics_model={"ensemble_size": 2})
+            .rollouts(num_rollout_workers=2)
+            .training(dynamics_model={"ensemble_size": 2}, horizon=200)
             .environment(env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
         )
         num_iterations = 1

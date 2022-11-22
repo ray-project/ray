@@ -562,7 +562,6 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
                 rollout_fragment_length=10,
                 horizon=4,
-                soft_horizon=False,
             ),
         )
         samples = convert_ma_batch_to_sample_batch(ev.sample())
@@ -585,7 +584,6 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
                 rollout_fragment_length=10,
                 horizon=6,
-                soft_horizon=False,
             ),
         )
         samples = convert_ma_batch_to_sample_batch(ev.sample())
