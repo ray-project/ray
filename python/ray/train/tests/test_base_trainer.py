@@ -307,7 +307,6 @@ def test_reserved_cpu_warnings_no_cpu_usage(
     def train_loop(config):
         pass
 
-    # Fraction correctly specified.
     trainer = DummyTrainer(
         train_loop,
         scaling_config=ScalingConfig(
