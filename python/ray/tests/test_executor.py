@@ -1,4 +1,5 @@
 import os
+import ray
 import sys
 import pytest
 from ray.util.executor.ray_executor import RayExecutor
@@ -20,6 +21,22 @@ def test_remote_function_runs_on_local_instance():
     ex = RayExecutor()
     result = ex.submit(f, 1_000)
     assert result == 1000
+
+@ray.remote
+class ActorTest:
+    def __init__(self, name):
+        self.name = name
+
+    def actor_function(self, number):
+        return f"{self.name}-Actor-{number}"
+
+def test_remote_actor_on_local_instance():
+    a = ActorTest.options(get_if_exists=True).remote("A")
+    with RayExecutor() as ex:
+        name = ex.submit_actors(a.actor_function, 0)
+    result = name.result()
+    assert result == "A-Actor-0"
+
 
 
 if __name__ == "__main__":
