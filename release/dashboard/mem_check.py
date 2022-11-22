@@ -15,7 +15,7 @@ if __name__ == "__main__":
     client = JobSubmissionClient("http://127.0.0.1:8265")
     job_id = client.submit_job(
         # Entrypoint shell command to execute
-        entrypoint="rllib train file atari.yaml",
+        entrypoint="python workload.py",
     )
     print(job_id)
 
