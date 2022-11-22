@@ -140,6 +140,7 @@ Different ways of creating Datasets leads to a different starting internal forma
 * Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
 * Reading NumPy files or converting from NumPy ndarrays creates Arrow blocks.
 * Reading TFRecord file creates Arrow blocks.
+* Reading MongoDB creates Arrow blocks.
 
 However, this internal format is not exposed to the user. Datasets converts between formats
 as needed internally depending on the specified ``batch_format`` of transformations.
