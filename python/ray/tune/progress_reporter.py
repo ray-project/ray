@@ -1358,7 +1358,7 @@ class TrialProgressCallback(Callback):
         last_print = self._last_print[trial]
         last_print_iteration = self._last_print_iteration[trial]
         should_print = (
-            (done and not result[TRAINING_ITERATION] == last_print_iteration)
+            (done and not result.get(TRAINING_ITERATION) == last_print_iteration)
             or error
             or time.time() - last_print > DEBUG_PRINT_INTERVAL
         )
@@ -1373,7 +1373,8 @@ class TrialProgressCallback(Callback):
                 self.print_result(trial, result, error, done)
 
             self._last_print[trial] = time.time()
-            self._last_print_iteration[trial] = result[TRAINING_ITERATION]
+            if TRAINING_ITERATION in result:
+                self._last_print_iteration[trial] = result[TRAINING_ITERATION]
 
     def print_result(self, trial: Trial, result: Dict, error: bool, done: bool):
         """Print the most recent results for the given trial to stdout.
