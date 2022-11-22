@@ -642,6 +642,12 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert (
+        isinstance(train_results["config"], dict),
+        "`config` in results not a python dict!",
+    )
+
     is_multi_agent = train_results["config"].is_multi_agent()
 
     # Check in particular the "info" dict.
