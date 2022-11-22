@@ -408,6 +408,11 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                                       actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);
+                                        if (actor->GetState() ==
+                                            rpc::ActorTableData::DEAD) {
+                                          // Actor has already been killed.
+                                          return;
+                                        }
                                         CreateActorOnWorker(actor, leased_worker);
                                       }));
   }
