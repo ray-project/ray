@@ -1492,18 +1492,18 @@ class Algorithm(Trainable):
                 try:
                     observation = np.asarray(observation)
                 except Exception:
-                    raise ValueError("Failed to convert to array", observation)
+                    raise ValueError(
+                        f"Observation type {type(observation)} cannot be converted to "
+                        f"np.ndarray."
+                    )
             if pp:
                 assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
                 pp = pp[0]
 
-                # Note(Kourosh): The connector with leave the policy's connector in eval
-                # mode would that be a problem?
+                # Note(Kourosh): The connector will leave the policy's connector in eval
+                # mode. would that be a problem?
                 pp.in_eval()
                 if observation is not None:
-                    # TODO (Kourosh): why next_obs? this is an assumption on
-                    # connectors. We will change this in the future since it's very
-                    # confusing
                     _input_dict = {SampleBatch.OBS: observation}
                 elif input_dict is not None:
                     _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
@@ -1512,7 +1512,7 @@ class Algorithm(Trainable):
                         "Either observation or input_dict must be provided."
                     )
 
-                # TODO (Kourosh): Creating a new util method for algorithm that computes
+                # TODO (Kourosh): Create a new util method for algorithm that computes
                 # actions based on raw inputs from env and can keep track of its own
                 # internal state.
                 acd = AgentConnectorDataType("0", "0", _input_dict)
