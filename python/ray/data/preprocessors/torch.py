@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     import torch
 
 
-@PublicAPI(annotation="alpha")
+@PublicAPI(stability="alpha")
 class TorchPreprocessor(Preprocessor):
     def __init__(
         self, columns: List[str], transform: Callable[["torch.Tensor"], "torch.Tensor"]
