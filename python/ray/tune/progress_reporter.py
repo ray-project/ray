@@ -1311,6 +1311,7 @@ class TrialProgressCallback(Callback):
         self, metric: Optional[str] = None, progress_metrics: Optional[List[str]] = None
     ):
         self._last_print = collections.defaultdict(float)
+        self._last_print_iteration = collections.defaultdict(int)
         self._completed_trials = set()
         self._last_result_str = {}
         self._metric = metric
@@ -1355,7 +1356,12 @@ class TrialProgressCallback(Callback):
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
         last_print = self._last_print[trial]
-        should_print = done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL
+        last_print_iteration = self._last_print_iteration[trial]
+        should_print = (
+            (done and not result[TRAINING_ITERATION] == last_print_iteration)
+            or error
+            or time.time() - last_print > DEBUG_PRINT_INTERVAL
+        )
 
         if done and trial not in self._completed_trials:
             self._completed_trials.add(trial)
@@ -1367,6 +1373,7 @@ class TrialProgressCallback(Callback):
                 self.print_result(trial, result, error, done)
 
             self._last_print[trial] = time.time()
+            self._last_print_iteration[trial] = result[TRAINING_ITERATION]
 
     def print_result(self, trial: Trial, result: Dict, error: bool, done: bool):
         """Print the most recent results for the given trial to stdout.
