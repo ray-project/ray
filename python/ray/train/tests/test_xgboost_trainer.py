@@ -56,6 +56,32 @@ def test_fit(ray_start_4_cpus):
     trainer.fit()
 
 
+class ScalingConfigAssertingXGBoostTrainer(XGBoostTrainer):
+    def training_loop(self) -> None:
+        pgf = tune.get_trial_resources()
+        assert pgf.strategy == "SPREAD"
+        assert pgf._kwargs["_max_cpu_fraction_per_node"] == 0.9
+        return super().training_loop()
+
+
+def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
+    """Ensure that extra ScalingConfig arguments are respected."""
+    train_dataset = ray.data.from_pandas(train_df)
+    valid_dataset = ray.data.from_pandas(test_df)
+    trainer = ScalingConfigAssertingXGBoostTrainer(
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 0},
+            num_workers=2,
+            placement_strategy="SPREAD",
+            _max_cpu_fraction_per_node=0.9,
+        ),
+        label_column="target",
+        params=params,
+        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+    )
+    trainer.fit()
+
+
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
