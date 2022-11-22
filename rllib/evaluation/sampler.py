@@ -267,7 +267,7 @@ class SyncSampler(SamplerInput):
                 multiple_episodes_in_batch,
                 callbacks,
                 self.perf_stats,
-                soft_horizon,
+                no_done_at_end,
                 observation_fn,
                 self.sample_collector,
                 self.render,

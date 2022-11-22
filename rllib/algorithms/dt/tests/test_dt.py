@@ -86,7 +86,6 @@ class TestDT(unittest.TestCase):
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .reporting(
                 min_train_timesteps_per_iteration=10,
@@ -164,7 +163,6 @@ class TestDT(unittest.TestCase):
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .experimental(_disable_preprocessor_api=True)
         )

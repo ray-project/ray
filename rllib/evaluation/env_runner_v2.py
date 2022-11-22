@@ -785,7 +785,7 @@ class EnvRunnerV2:
         # This would be ok, b/c the alternative would be the worker crashing
         # entirely.
         while True:
-            resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
+            resetted_obs = self._base_env.try_reset(env_id)
 
             if resetted_obs is None or not isinstance(resetted_obs[env_id], Exception):
                 break

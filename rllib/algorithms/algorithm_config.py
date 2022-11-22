@@ -233,6 +233,7 @@ class AlgorithmConfig:
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
+        self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
@@ -359,7 +360,6 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
-        self.no_done_at_end = DEPRECATED_VALUE
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
 
@@ -996,13 +996,13 @@ class AlgorithmConfig:
         recreate_failed_workers: Optional[bool] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
+        no_done_at_end: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        no_done_at_end=DEPRECATED_VALUE,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -1099,6 +1099,17 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
+            no_done_at_end: Don't set 'done' at the end of the episode.
+                In combination with `soft_horizon`, this works as follows:
+                - no_done_at_end=False soft_horizon=False:
+                Reset env and add `done=True` at end of each episode.
+                - no_done_at_end=True soft_horizon=False:
+                Reset env, but do NOT add `done=True` at end of the episode.
+                - no_done_at_end=False soft_horizon=True:
+                Do NOT reset env at horizon, but add `done=True` at the horizon
+                (pretending the episode has terminated).
+                - no_done_at_end=True soft_horizon=True:
+                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1175,6 +1186,8 @@ class AlgorithmConfig:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
+        if no_done_at_end is not NotProvided:
+            self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not NotProvided:
             assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
@@ -1190,12 +1203,6 @@ class AlgorithmConfig:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
-                new="Your gymnasium.Env.step() should return a truncated=True flag",
-                error=True,
-            )
         if horizon != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(horizon=..)",
