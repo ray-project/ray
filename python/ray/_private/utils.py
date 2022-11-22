@@ -1,5 +1,6 @@
 import asyncio
 import binascii
+import contextlib
 import errno
 import functools
 import hashlib
@@ -23,6 +24,7 @@ from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+
 import grpc
 import numpy as np
 
@@ -1777,7 +1779,7 @@ def _get_pyarrow_version() -> Optional[str]:
     return _PYARROW_VERSION
 
 
-class DeferSigint:
+class DeferSigint(contextlib.AbstractContextManager):
     """Context manager that defers SIGINT signals until the the context is left."""
 
     # This is used by Ray's task cancellation to defer cancellation interrupts during
@@ -1787,6 +1789,16 @@ class DeferSigint:
         self.task_cancelled = False
         # The original SIGINT handler.
         self.orig_sigint_handler = None
+
+    @classmethod
+    def create_if_main_thread(cls) -> contextlib.AbstractContextManager:
+        """Creates a DeferSigint context manager if running on the main thread,
+        returns a no-op context manager otherwise.
+        """
+        if threading.current_thread() == threading.main_thread():
+            return cls()
+        else:
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""

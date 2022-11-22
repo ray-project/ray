@@ -2,6 +2,7 @@ import os
 import random
 import signal
 import sys
+import threading
 import time
 
 import pytest
@@ -115,6 +116,55 @@ def test_defer_sigint():
         assert signal_was_deferred
         # Check that original SIGINT handler was restored.
         assert signal.getsignal(signal.SIGINT) is orig_sigint_handler
+
+
+def test_defer_sigint_noop_in_non_main_thread():
+    # Tests that we don't try to defer SIGINT when not in the main thread.
+
+    # Check that DeferSigint.create_if_main_thread() does not return DeferSigint when
+    # not in the main thread.
+    def check_no_defer():
+        cm = DeferSigint.create_if_main_thread()
+        assert not isinstance(cm, DeferSigint)
+
+    check_no_defer_thread = threading.Thread(target=check_no_defer)
+    try:
+        check_no_defer_thread.start()
+        check_no_defer_thread.join()
+    except AssertionError as e:
+        pytest.fail(
+            "DeferSigint.create_if_main_thread() unexpected returned a DeferSigint "
+            f"instance when not in the main thread: {e}"
+        )
+
+    # Check that signal is not deferred when trying to defer it in not the main thread.
+    signal_was_deferred = False
+
+    def maybe_defer():
+        nonlocal signal_was_deferred
+
+        with DeferSigint.create_if_main_thread() as cm:
+            # Check that DeferSigint context manager was NOT returned.
+            assert not isinstance(cm, DeferSigint)
+            # Send singal to current process.
+            os.kill(os.getpid(), signal.SIGINT)
+            # Wait for signal to be delivered.
+            time.sleep(1)
+            # Signal should have been delivered by here, so we consider it deferred if
+            # this is reached.
+            signal_was_deferred = True
+
+    # Create thread that will maybe defer SIGINT.
+    maybe_defer_thread = threading.Thread(target=maybe_defer)
+    try:
+        maybe_defer_thread.start()
+        maybe_defer_thread.join()
+        # KeyboardInterrupt should get raised in main thread.
+    except KeyboardInterrupt:
+        # Check that SIGINT was not deferred.
+        assert not signal_was_deferred
+        # Check that original SIGINT handler was not overridden.
+        assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
 
 
 def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):

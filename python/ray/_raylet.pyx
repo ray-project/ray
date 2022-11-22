@@ -796,26 +796,27 @@ cdef void execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
-
-                    # Defer task cancellation (SIGINT) until after the task argument
-                    # deserialization context has been left.
-                    # NOTE (Clark): We defer SIGINT until after task argument
-                    # deserialization completes to keep from interrupting non-reentrant
-                    # imports that may be re-entered during error serialization or
-                    # storage.
-                    # See https://github.com/ray-project/ray/issues/30453.
-                    with DeferSigint():
-                        if core_worker.current_actor_is_asyncio():
-                            # We deserialize objects in event loop thread to
-                            # prevent segfaults. See #7799
-                            async def deserialize_args():
-                                return (ray._private.worker.global_worker
-                                        .deserialize_objects(
-                                            metadata_pairs, object_refs))
-                            args = core_worker.run_async_func_in_event_loop(
-                                deserialize_args, function_descriptor,
-                                name_of_concurrency_group_to_execute)
-                        else:
+                    if core_worker.current_actor_is_asyncio():
+                        # We deserialize objects in event loop thread to
+                        # prevent segfaults. See #7799
+                        async def deserialize_args():
+                            return (ray._private.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_refs))
+                        args = core_worker.run_async_func_in_event_loop(
+                            deserialize_args, function_descriptor,
+                            name_of_concurrency_group_to_execute)
+                    else:
+                        # Defer task cancellation (SIGINT) until after the task argument
+                        # deserialization context has been left.
+                        # NOTE (Clark): We defer SIGINT until after task argument
+                        # deserialization completes to keep from interrupting
+                        # non-reentrant imports that may be re-entered during error
+                        # serialization or storage.
+                        # See https://github.com/ray-project/ray/issues/30453.
+                        # NOTE (Clark): Signal handlers can only be registered on the
+                        # main thread.
+                        with DeferSigint.create_if_main_thread():
                             args = (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
