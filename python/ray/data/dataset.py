@@ -280,6 +280,25 @@ class Dataset(Generic[T]):
                 must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+
+            :meth:`~Dataset.flat_map`:
+                Call this method to create new records from existing ones. Unlike 
+                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map` 
+                can return multiple records. 
+
+                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call 
+                :meth:`~Dataset.map_batches` instead.
+
+            :meth:`~Dataset.map_batches`
+                Call this method to transform batches of data. It's faster and more 
+                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
+                
+            :meth:`~Dataset.map`
+                Call this method to transform one record at time. 
+                
+                This method isn't recommended because it's slow; call 
+                :meth:`~Dataset.map_batches` instead.
         """
         if isinstance(fn, CallableClass) and (
             compute is None
