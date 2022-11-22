@@ -996,9 +996,7 @@ def _process_observations(
             del active_episodes[env_id]
 
             # Create a new episode and call `on_episode_created` callback(s).
-            episode = _create_episode(
-                active_episodes, env_id, callbacks, worker, base_env
-            )
+            _create_episode(active_episodes, env_id, callbacks, worker, base_env)
 
             # The sub environment at index `env_id` might throw an exception
             # during the following `try_reset()` attempt. If configured with
@@ -1010,7 +1008,9 @@ def _process_observations(
             # This would be ok, b/c the alternative would be the worker crashing
             # entirely.
             while True:
-                resetted_obs, resetted_infos = base_env.try_reset(env_id)
+                resetted_obs: Optional[
+                    Dict[EnvID, Dict[AgentID, EnvObsType]]
+                ] = base_env.try_reset(env_id)
                 if resetted_obs is None or not isinstance(
                     resetted_obs[env_id], Exception
                 ):
