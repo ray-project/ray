@@ -30,9 +30,7 @@ class TestParameterNoise(unittest.TestCase):
         self.do_test_parameter_noise_exploration(
             dqn.DQN,
             # Switch on complete_episodes mode b/c we are using ParameterNoise.
-            core_config=dqn.DQNConfig().rollouts(
-                batch_mode="complete_episodes", enable_connectors=True
-            ),
+            core_config=dqn.DQNConfig().rollouts(batch_mode="complete_episodes"),
             env="FrozenLake-v1",
             env_config={"is_slippery": False, "map_name": "4x4"},
             obs=np.array(0),
