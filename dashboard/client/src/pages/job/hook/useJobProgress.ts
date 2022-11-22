@@ -22,8 +22,8 @@ export const useJobProgress = (jobId?: string) => {
   };
   refreshRef.current = isRefreshing;
   const { data: progress } = useSWR(
-    "useJobProgress",
-    async () => {
+    jobId ? ["useJobProgress", jobId] : null,
+    async (_, jobId) => {
       const rsp = await getJobProgress(jobId);
 
       setMsg(rsp.data.msg);
@@ -37,12 +37,14 @@ export const useJobProgress = (jobId?: string) => {
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
+  const driverExists = !jobId ? false : true;
   return {
     progress,
     msg,
     error,
     isRefreshing,
     onSwitchChange,
+    driverExists,
   };
 };
 
@@ -66,8 +68,8 @@ export const useJobProgressByTaskName = (jobId: string) => {
   refreshRef.current = isRefreshing;
 
   const { data: progress } = useSWR(
-    "useJobProgressByTaskName",
-    async () => {
+    ["useJobProgressByTaskName", jobId],
+    async (_, jobId) => {
       const rsp = await getJobProgressByTaskName(jobId);
       setMsg(rsp.data.msg);
 
