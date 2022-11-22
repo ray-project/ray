@@ -49,7 +49,8 @@ GcsActorScheduler::GcsActorScheduler(
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
+      !actor->GetCreationTaskSpecification().GetRequiredResources().IsEmpty()) {
     ScheduleByGcs(actor);
   } else {
     ScheduleByRaylet(actor);
