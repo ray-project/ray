@@ -27,6 +27,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -40,8 +41,7 @@ if TYPE_CHECKING:
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = logging.getLogger(__name__)
-
+logger = DatasetLogger(__name__).logger
 
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
