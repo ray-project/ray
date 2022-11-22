@@ -569,7 +569,7 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
             overwrite_trainable=train_func_1,
             resume_errored=True,
         )
-        assert "The trainable has been overwritten" in caplog.text
+        assert "The trainable will be overwritten" in caplog.text
 
     results = tuner.fit()
     assert not results.errors

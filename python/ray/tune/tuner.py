@@ -189,10 +189,12 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            overwrite_trainable: Allows the original trainable to be overwritten.
-                Used in the case where the trainable is not fully serializable
-                (ex: when the trainable has object references attached to it,
-                the objects may not exist if restoring from a new Ray cluster).
+            overwrite_trainable: A newly specified trainable that will overwrite
+                the trainable that was originally saved by Tune. This should
+                only be used to resume an experiment where the original trainable
+                is not fully serializable (e.g. when the trainable has object
+                references attached to it via ``tune.with_parameters``, the objects
+                they point to may not exist if restoring from a new Ray cluster).
                 NOTE: This API is experimental and should be used with caution.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across

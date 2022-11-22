@@ -231,7 +231,7 @@ class TunerInternal:
         error_message = (
             "Usage of `overwrite_trainable` is limited to re-specifying the "
             "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (ex: holds object references)."
+            "that the trainable is not serializable (ex: it holds object references)."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
@@ -253,11 +253,11 @@ class TunerInternal:
                 )
 
         logger.warning(
-            "The trainable has been overwritten - this should be done with caution: "
+            "The trainable will be overwritten - this should be done with caution: "
             "it's possible to supply an incompatible trainable, and there are "
-            "no guarantees that the resumed experiment will continue successfully."
+            "no guarantees that the resumed experiment will continue successfully. "
             "If you encounter errors during training, ensure that you are passing "
-            "in a trainable that is compatible with the old Tune experiment."
+            "in the same trainable that was passed into the initial `Tuner` object."
         )
 
     def _restore_from_path_or_uri(
