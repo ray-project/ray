@@ -714,3 +714,7 @@ RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
+
+/// Use madvise to prevent worker coredump from including the mapped plasma pages
+/// in the worker processes.
+RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
