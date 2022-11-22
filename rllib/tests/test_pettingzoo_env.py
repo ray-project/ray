@@ -68,7 +68,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("simple_spread")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=30, horizon=200)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(
