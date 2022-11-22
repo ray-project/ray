@@ -13,7 +13,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 @freeze_time("2022-11-01 01:23:45")
 def test_dataset_logger(ray_start_regular_shared):
     curr_ts = datetime.now(pytz.timezone('US/Pacific'))
-    log_name, msg = 'test_name', 'test message'
+    log_name, msg = 'test_name', 'test message 1234'
     with patch("logging.open", mock_open(), create=True) as open_mock:
         logger = DatasetLogger(log_name).logger
         logger.info(msg)
