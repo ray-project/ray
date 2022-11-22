@@ -256,7 +256,6 @@ if sys.version_info < (3, 7):
     from ray import data  # noqa: F401
     from ray import workflow  # noqa: F401
 else:
-    print("path triggered")
     # Delay importing of expensive, isolated subpackages.
     def __getattr__(name: str):
         import importlib
