@@ -185,9 +185,9 @@ def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):
     # We test this by doing the following:
     #  - register a custom serializer for (a) a task argument that triggers
     #  non-reentrant imports on deserialization, and (b) RayTaskError that triggers
-    #  non-reentrant imports on serialization; in our case, we chose pandas and Torch
-    #  since they are both non-reentrant and expensive, with a cumulative import time of
-    #  0.8-1.2 seconds, giving us a wide cancellation target,
+    #  non-reentrant imports on serialization; in our case, we chose pandas it is both
+    #  non-reentrant and expensive, with an import time ~0.5 seconds, giving us a wide
+    #  cancellation target,
     #  - wait until those serializers are registered on all workers,
     #  - launch the task and wait until we are confident that the cancellation signal
     #  will be received by the workers during task argument deserialization (currently a
@@ -195,10 +195,9 @@ def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):
     #  - check that a graceful task cancellation error is raised, not a
     # WorkerCrashedError.
     def non_reentrant_import():
-        # NOTE: Both pandas and Torch have non-reentrant imports and should cumulatively
-        # take 0.8-1.2 seconds to import, giving us a wide cancellation target.
+        # NOTE: Pandas has a non-reentrant import and should take ~0.5 seconds to
+        # import, giving us a wide cancellation target.
         import pandas  # noqa
-        import torch  # noqa
 
     def non_reentrant_import_and_delegate(obj):
         # Custom serializer for task argument and task error resulting in non-reentrant
