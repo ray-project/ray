@@ -15,7 +15,7 @@ py_test(
 )
 
 py_test(
- name = "simple_tune",
+ name = "simple_tune_distributed",
  size="small",
  srcs = ["simple_tune.py"],
  args = ["--distributed"],
