@@ -1,5 +1,6 @@
 import os
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from ray import tune
@@ -9,6 +10,7 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
@@ -59,7 +61,38 @@ def _convert_scaling_config_to_ray_params(
             "num_actors": int(num_actors),
         }
     )
-    ray_params = ray_params_cls(
+
+    # This should be upstreamed to xgboost_ray,
+    # but also left here for backwards compatibility.
+    if not hasattr(ray_params_cls, "placement_options"):
+
+        @dataclass
+        class RayParamsFromScalingConfig(ray_params_cls):
+            # Passed as kwargs to PlacementGroupFactory
+            placement_options: Dict[str, Any] = None
+
+            def get_tune_resources(self) -> PlacementGroupFactory:
+                pgf = super().get_tune_resources()
+                placement_options = self.placement_options.copy()
+                # Special case, same as in ScalingConfig.as_placement_group_factory
+                if placement_options.get("_max_cpu_fraction_per_node", None) is None:
+                    placement_options.pop("_max_cpu_fraction_per_node", None)
+                extended_pgf = PlacementGroupFactory(
+                    pgf.bundles,
+                    **placement_options,
+                )
+                extended_pgf._head_bundle_is_empty = pgf._head_bundle_is_empty
+                return extended_pgf
+
+        ray_params_cls_extended = RayParamsFromScalingConfig
+    else:
+        ray_params_cls_extended = ray_params_cls
+
+    ray_params = ray_params_cls_extended(
+        placement_options={
+            "strategy": scaling_config.placement_strategy,
+            "_max_cpu_fraction_per_node": scaling_config._max_cpu_fraction_per_node,
+        },
         **ray_params_kwargs,
     )
 

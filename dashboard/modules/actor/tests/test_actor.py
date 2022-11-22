@@ -25,16 +25,29 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
         def do_task(self):
             return self.num
 
-    @ray.remote(num_gpus=1)
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+        def get_pid(self):
+            import os
+
+            return os.getpid()
+
+    @ray.remote(num_cpus=0, resources={"infeasible_actor": 1})
     class InfeasibleActor:
         pass
 
-    foo_actors = [Foo.remote(4), Foo.remote(5)]
-    infeasible_actor = InfeasibleActor.remote()  # noqa
+    foo_actors = [Foo.options(name="first").remote(4), Foo.remote(5)]
+    infeasible_actor = InfeasibleActor.options(name="infeasible").remote()  # noqa
+    dead_actor = Foo.options(name="dead").remote(1)
+    ray.kill(dead_actor)
     results = [actor.do_task.remote() for actor in foo_actors]  # noqa
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
+    job_id = ray.get_runtime_context().get_job_id()
+    node_id = ray.get(foo_actors[0].get_node_id.remote())
+    pid = ray.get(foo_actors[0].get_pid.remote())
 
     timeout_seconds = 5
     start_time = time.time()
@@ -46,16 +59,45 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
-            assert len(actors) == 3
-            one_entry = list(actors.values())[0]
-            assert "jobId" in one_entry
-            assert "className" in one_entry
-            assert "address" in one_entry
-            assert type(one_entry["address"]) is dict
-            assert "state" in one_entry
-            assert "name" in one_entry
-            assert "numRestarts" in one_entry
-            assert "pid" in one_entry
+            assert len(actors) == 4
+            for a in actors.values():
+                if a["name"] == "first":
+                    actor_response = a
+            assert actor_response["jobId"] == job_id
+            assert "Foo" in actor_response["className"]
+            assert "address" in actor_response
+            assert type(actor_response["address"]) is dict
+            assert actor_response["address"]["rayletId"] == node_id
+            assert actor_response["state"] == "ALIVE"
+            assert actor_response["name"] == "first"
+            assert actor_response["numRestarts"] == "0"
+            assert actor_response["pid"] == pid
+            assert actor_response["startTime"] > 0
+            assert actor_response["requiredResources"] == {}
+            assert actor_response["endTime"] == 0
+            assert actor_response["exitDetail"] == "-"
+            for a in actors.values():
+                # "exitDetail always exits from the response"
+                assert "exitDetail" in a
+
+            # Check the dead actor metadata.
+            for a in actors.values():
+                if a["name"] == "dead":
+                    dead_actor_response = a
+            assert dead_actor_response["endTime"] > 0
+            assert "ray.kill" in dead_actor_response["exitDetail"]
+            assert dead_actor_response["state"] == "DEAD"
+            assert dead_actor_response["name"] == "dead"
+
+            # Check the infeasible actor metadata.
+            for a in actors.values():
+                if a["name"] == "infeasible":
+                    infeasible_actor_response = a
+            # Make sure the infeasible actor's resource name is correct.
+            assert infeasible_actor_response["requiredResources"] == {
+                "infeasible_actor": 1
+            }
+            assert infeasible_actor_response["pid"] == 0
             all_pids = {entry["pid"] for entry in actors.values()}
             assert 0 in all_pids  # The infeasible actor
             assert len(all_pids) > 1
@@ -77,7 +119,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
 
 def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     timeout = 5
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     address_info = ray_start_with_dashboard
 
     sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])

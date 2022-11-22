@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 from pathlib import Path
-import yaml
+import sys
 import typer
 from typing import Optional
+import yaml
 
 import ray
 from ray.tune.resources import resources_to_json, json_to_resources
@@ -82,13 +84,13 @@ def load_experiments_from_file(
             experiments = yaml.safe_load(f)
             if stop is not None:
                 raise ValueError("`stop` criteria only supported for python files.")
-    else:  # Python file case (ensured by file type enum)
-        import importlib
-
-        module_qualifier = (
-            config_file.replace("/", ".").replace("\\", ".").replace(".py", "")
-        )
-        module = importlib.import_module(module_qualifier)
+    # Python file case (ensured by file type enum)
+    else:
+        module_name = os.path.basename(config_file).replace(".py", "")
+        spec = importlib.util.spec_from_file_location(module_name, config_file)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
 
         if not hasattr(module, "config"):
             raise ValueError(
