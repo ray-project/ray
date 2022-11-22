@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
@@ -6,7 +6,8 @@ from ray.air.config import RunConfig
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
-from ray.tune.impl.tuner_internal import TunerInternal, TrainableTypeOrTrainer
+from ray.tune.trainable import Trainable
+from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
@@ -15,6 +16,8 @@ from ray.tune.progress_reporter import (
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 
+if TYPE_CHECKING:
+    from ray.train.base_trainer import BaseTrainer
 
 ClientActorHandle = Any
 
@@ -119,7 +122,9 @@ class Tuner:
 
     def __init__(
         self,
-        trainable: Optional[TrainableTypeOrTrainer] = None,
+        trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
         *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
@@ -157,7 +162,9 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        overwrite_trainable: Optional[TrainableTypeOrTrainer] = None,
+        overwrite_trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
