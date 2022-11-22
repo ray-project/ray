@@ -85,7 +85,7 @@ class TorchTrainer(DataParallelTrainer):
             # `session.get_dataset_shard(...).iter_torch_batches(...)`
             train.torch.prepare_data_loader(...)
 
-            # Returns the current torch device.
+            # Get the current torch device.
             train.torch.get_device()
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
@@ -113,7 +113,7 @@ class TorchTrainer(DataParallelTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 180
+            num_epochs = 200
             num_workers = 3
 
             # Define your network structure
@@ -121,10 +121,11 @@ class TorchTrainer(DataParallelTrainer):
                 def __init__(self):
                     super(NeuralNetwork, self).__init__()
                     self.layer1 = nn.Linear(input_size, layer_size)
+                    self.relu = nn.ReLU()
                     self.layer2 = nn.Linear(layer_size, output_size)
 
                 def forward(self, input):
-                    return self.layer2(self.layer1(input))
+                    return self.layer2(self.relu(self.layer1(input)))
 
             # Define your train worker loop
             def train_loop_per_worker():
@@ -151,7 +152,7 @@ class TorchTrainer(DataParallelTrainer):
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
                         output = model(inputs)
 
-                        # Get outputs as the same dimension as labels
+                        # Make output shape same as the as labels
                         loss = loss_fn(output.squeeze(), labels)
 
                         # Zero out grads, do backward, and update optimizer
@@ -160,7 +161,7 @@ class TorchTrainer(DataParallelTrainer):
                         optimizer.step()
 
                         # Print what's happening with loss per 30 epochs
-                        if epoch % 30 == 0:
+                        if epoch % 20 == 0:
                             print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
 
                     # Report and record metrics, checkpoint model at end of each
@@ -172,7 +173,7 @@ class TorchTrainer(DataParallelTrainer):
 
             torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                     [{"x": x, "y": 2 * x + 1} for x in range(2000)]
+                     [{"x": x, "y": 2 * x + 1} for x in range(200)]
             )
 
             # Define scaling and run configs
@@ -190,12 +191,13 @@ class TorchTrainer(DataParallelTrainer):
             result = trainer.fit()
 
             best_checkpoint_loss = result.metrics['loss']
-            # print(f"best loss: {best_checkpoint_loss:.4f}")
 
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
     .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
 
         ...
 
