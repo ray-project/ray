@@ -70,8 +70,10 @@ class TaskManagerTest : public ::testing::Test {
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
-            [this](TaskSpecification &spec, bool delay) {
+            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
               num_retries_++;
+              last_delay_ms_ = delay_ms;
+              last_object_recovery_ = object_recovery;
               return Status::OK();
             },
             [](const JobID &job_id,
@@ -97,6 +99,8 @@ class TaskManagerTest : public ::testing::Test {
   bool all_nodes_alive_ = true;
   TaskManager manager_;
   int num_retries_ = 0;
+  uint32_t last_delay_ms_ = 0;
+  bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
 };
 
@@ -121,7 +125,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -200,7 +204,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -278,6 +282,8 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     std::vector<std::shared_ptr<RayObject>> results;
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
+    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
+    ASSERT_EQ(last_object_recovery_, false);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -382,10 +388,14 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   error = rpc::ErrorType::OUT_OF_MEMORY;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
+  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 2);
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
+  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -439,7 +449,7 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
@@ -508,7 +518,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -551,7 +561,7 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -597,7 +607,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -630,7 +640,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -676,7 +686,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -729,7 +739,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -745,6 +755,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_, 0);
+  ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
@@ -785,7 +797,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
 
   // The task completes. Both return objects are stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -806,6 +818,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_, 0);
+  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task completes again. One of the return objects is now
   // returned directly.
@@ -815,7 +829,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -847,7 +861,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
 
   // The task completes. One return object is stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -867,6 +881,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_, 0);
+  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task fails due to worker crashed.
   {
@@ -875,7 +891,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
@@ -897,7 +913,7 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -958,7 +974,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -983,6 +999,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_, 0);
+  ASSERT_EQ(last_object_recovery_, true);
 
   // Dereference the generator to a list of its internal ObjectRefs.
   for (const auto &dynamic_return_id : dynamic_return_ids) {
@@ -997,7 +1015,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);

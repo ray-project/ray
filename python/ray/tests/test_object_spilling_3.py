@@ -330,14 +330,14 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     }
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(num_cpus=0, _system_config=config, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=0, _system_config=config, object_store_memory=10**8)
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
     @ray.remote
     def put():
-        return np.zeros(10 ** 5, dtype=np.uint8)
+        return np.zeros(10**5, dtype=np.uint8)
 
     @ray.remote
     def check(x):
@@ -347,14 +347,14 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     for _ in range(4):
         ray.get(check.remote(ref))
         cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
     # All reconstruction attempts used up. The object's value should now be an
     # error in the local store.
     # Force object spilling and check that it can complete.
     xs = []
     for _ in range(20):
-        xs.append(ray.put(np.zeros(10 ** 7, dtype=np.uint8)))
+        xs.append(ray.put(np.zeros(10**7, dtype=np.uint8)))
     for x in xs:
         ray.get(x, timeout=10)
 

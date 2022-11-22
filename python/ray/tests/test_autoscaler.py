@@ -28,6 +28,8 @@ from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import (
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
@@ -60,6 +62,9 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2
+from ray.tests.test_batch_node_provider_unit import (
+    MockBatchingNodeProvider,
+)
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -326,6 +331,7 @@ class MockProvider(NodeProvider):
         self.cache_stopped = cache_stopped
         self.unique_ips = unique_ips
         self.fail_to_fetch_ip = False
+        self.safe_to_scale_flag = True
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
@@ -367,7 +373,7 @@ class MockProvider(NodeProvider):
 
     def node_tags(self, node_id):
         if node_id is None:
-            # Circumvent test-cases where there's no head node.
+            # Circumvent test cases where there's no head node.
             return {}
         # Don't assume that node providers can retrieve tags from
         # terminated nodes.
@@ -430,6 +436,9 @@ class MockProvider(NodeProvider):
                 if node.state == "pending":
                     node.state = "running"
 
+    def safe_to_scale(self):
+        return self.safe_to_scale_flag
+
 
 class MockAutoscaler(StandardAutoscaler):
     """Test autoscaler constructed to verify the property that each
@@ -441,8 +450,10 @@ class MockAutoscaler(StandardAutoscaler):
         self.fail_to_find_ip_during_drain = False
 
     def _update(self):
-        # Only works with MockProvider
-        assert isinstance(self.provider, MockProvider)
+        # Only works with MockProvider or MockBatchingNodeProvider.
+        assert isinstance(self.provider, MockProvider) or isinstance(
+            self.provider, MockBatchingNodeProvider
+        )
         start_calls = self.provider.num_non_terminated_nodes_calls
         super()._update()
         end_calls = self.provider.num_non_terminated_nodes_calls
@@ -1694,10 +1705,21 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling7(self):
         self.helperDynamicScaling(DrainNodeOutcome.DrainDisabled)
 
+    def testDynamicScalingForegroundLauncher(self):
+        """Test autoscaling with node launcher in the foreground."""
+        self.helperDynamicScaling(foreground_node_launcher=True)
+
+    def testDynamicScalingBatchingNodeProvider(self):
+        """Test autoscaling with BatchingNodeProvider"""
+        self.helperDynamicScaling(
+            foreground_node_launcher=True, batching_node_provider=True
+        )
+
     def helperDynamicScaling(
         self,
         drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
         foreground_node_launcher: bool = False,
+        batching_node_provider: bool = False,
     ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
@@ -1708,6 +1730,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_metrics,
             mock_node_info_stub,
             foreground_node_launcher=foreground_node_launcher,
+            batching_node_provider=batching_node_provider,
             disable_drain=disable_drain,
         )
 
@@ -1759,38 +1782,61 @@ class AutoscalingTest(unittest.TestCase):
             # There were no successful calls either.
             assert mock_node_info_stub.drain_node_reply_success == 0
 
-    def testDynamicScalingForegroundLauncher(self):
-        """Test autoscaling with node launcher in the foreground."""
-        self.helperDynamicScaling(foreground_node_launcher=True)
-
     def _helperDynamicScaling(
         self,
         mock_metrics,
         mock_node_info_stub,
         foreground_node_launcher=False,
+        batching_node_provider=False,
         disable_drain=False,
     ):
+        if batching_node_provider:
+            assert (
+                foreground_node_launcher
+            ), "BatchingNodeProvider requires foreground node launch."
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 2
         if foreground_node_launcher:
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
+        if batching_node_provider:
+            config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
+            config["provider"][DISABLE_LAUNCH_CONFIG_CHECK_KEY] = True
+            config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
         if disable_drain:
             config["provider"][WORKER_RPC_DRAIN_KEY] = False
 
         config_path = self.write_config(config)
-        self.provider = MockProvider()
+        if batching_node_provider:
+            self.provider = MockBatchingNodeProvider(
+                provider_config={
+                    DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+                    DISABLE_NODE_UPDATERS_KEY: True,
+                    FOREGROUND_NODE_LAUNCH_KEY: True,
+                },
+                cluster_name="test-cluster",
+                _allow_multiple=True,
+            )
+        else:
+            self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(12)])
         lm = LoadMetrics()
-        self.provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_USER_NODE_TYPE: "head",
-            },
-            1,
-        )
+
+        # As part of setup for this test, ensure there is a head node.
+        if batching_node_provider:
+            # MockBatchingNodeProvider creates a head node in the __init__ method.
+            pass
+        else:
+            # MockProvider needs to create a head node with create_node.
+            self.provider.create_node(
+                {},
+                {
+                    TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                    TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                    TAG_RAY_USER_NODE_TYPE: "head",
+                },
+                1,
+            )
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
         autoscaler = MockAutoscaler(
             config_path,
@@ -1806,11 +1852,22 @@ class AutoscalingTest(unittest.TestCase):
         if mock_node_info_stub.drain_node_outcome == DrainNodeOutcome.FailedToFindIp:
             autoscaler.fail_to_find_ip_during_drain = True
         self.waitForNodes(0, tag_filters=WORKER_FILTER)
+        # Test aborting an autoscaler update with the batching NodeProvider.
+        if batching_node_provider:
+            self.provider.safe_to_scale_flag = False
+            autoscaler.update()
+            # The autoscaler update was aborted, so there's no change in worker count.
+            assert self.num_nodes(tag_filters=WORKER_FILTER) == 0
+            self.provider.safe_to_scale_flag = True
+
         autoscaler.update()
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes
             # to be available. (Node creation should block.)
-            assert self.num_nodes(tag_filters=WORKER_FILTER) == 2
+            assert self.num_nodes(tag_filters=WORKER_FILTER) == 2, (
+                self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER),
+                self.provider.non_terminated_nodes(tag_filters={}),
+            )
         else:
             self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
@@ -1818,13 +1875,13 @@ class AutoscalingTest(unittest.TestCase):
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["max_workers"] = 1
         new_config["available_node_types"]["worker"]["max_workers"] = 1
-        new_config["available_node_types"]["worker"]["mix_workers"] = 1
+        new_config["available_node_types"]["worker"]["min_workers"] = 1
         self.write_config(new_config)
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
-        # Check the launch failure event is generated.
+        # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker " "(max_workers_per_type)." in events
         assert mock_metrics.stopped_nodes.inc.call_count == 1
@@ -1849,7 +1906,11 @@ class AutoscalingTest(unittest.TestCase):
         else:
             self.waitForNodes(10, tag_filters=WORKER_FILTER)
 
-        self.worker_node_thread_check(foreground_node_launcher)
+        # Awkward and unecessary to repeat the following check for BatchingNodeProvider.
+        if not batching_node_provider:
+            # Verify that worker nodes were launched in the main thread if foreground
+            # node launch is enabled, in a subthread otherwise.
+            self.worker_node_thread_check(foreground_node_launcher)
 
         autoscaler.update()
         assert mock_metrics.running_workers.set.call_args_list[-1][0][0] >= 10
@@ -3718,7 +3779,9 @@ class AutoscalingTest(unittest.TestCase):
                 StandardAutoscaler=FaultyAutoscaler,
                 _internal_kv_initialized=Mock(return_value=False),
             ):
-                monitor = Monitor(address="Here", autoscaling_config="")
+                monitor = Monitor(
+                    address="Here", autoscaling_config="", log_dir=self.tmpdir
+                )
                 with pytest.raises(AutoscalerInitFailException):
                     monitor.run()
                 mock_publish.assert_called_once()

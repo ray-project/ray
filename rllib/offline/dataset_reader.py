@@ -14,19 +14,9 @@ from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_P
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
 
-logger = logging.getLogger(__name__)
-
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
-
-# TODO: @avnishn what is the use of this function anymore?
-def _get_resource_bundles(config: AlgorithmConfigDict):
-    input_config = config.get("input_config", {})
-    parallelism = input_config.get("parallelism", config.get("num_workers", 1))
-    cpus_per_task = input_config.get(
-        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
-    )
-    return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
+logger = logging.getLogger(__name__)
 
 
 def _unzip_this_path(fpath: Path, extract_path: str):
@@ -135,9 +125,8 @@ def get_dataset_and_shards(
     # check if at least loader_fn or format + path is specified.
     if not (format and paths) and not loader_fn:
         raise ValueError(
-            f"If using a loader_fn: {loader_fn} that constructs a dataset, "
-            "neither format: {format} and paths: {paths} must not be specified. If "
-            "format and paths are specified, a loader_fn must not be specified."
+            "Must specify either a `loader_fn` or a `format` and `path` in "
+            "`input_config`."
         )
 
     # check paths to be a str or list[str] if not None
@@ -150,6 +139,8 @@ def get_dataset_and_shards(
             raise ValueError("Paths must be a path string or a list of path strings.")
         paths = _unzip_if_needed(paths, format)
 
+    # TODO (Kourosh): num_workers is not necessary since we can use parallelism for
+    # everything. Having two parameters is confusing here. Remove num_workers later.
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK

@@ -30,7 +30,7 @@ RetriableLIFOWorkerKillingPolicy::RetriableLIFOWorkerKillingPolicy() {}
 const std::shared_ptr<WorkerInterface>
 RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-    const MemoryMonitor &memory_monitor) const {
+    const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return nullptr;
@@ -54,9 +54,8 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
             });
 
   const static int32_t max_to_print = 10;
-  RAY_LOG_EVERY_MS(INFO, 5000)
-      << "Top 10 worker candidates to kill based on worker killing policy:\n"
-      << WorkersDebugString(sorted, max_to_print, memory_monitor);
+  RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
+                << WorkersDebugString(sorted, max_to_print, system_memory);
 
   return sorted.front();
 }
@@ -64,12 +63,19 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
 std::string WorkerKillingPolicy::WorkersDebugString(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     int32_t num_workers,
-    const MemoryMonitor &memory_monitor) {
+    const MemorySnapshot &system_memory) {
   std::stringstream result;
   int64_t index = 1;
   for (auto &worker : workers) {
     auto pid = worker->GetProcess().GetId();
-    auto used_memory = memory_monitor.GetProcessMemoryBytes(pid);
+    int64_t used_memory = 0;
+    const auto pid_entry = system_memory.process_used_bytes.find(pid);
+    if (pid_entry != system_memory.process_used_bytes.end()) {
+      used_memory = pid_entry->second;
+    } else {
+      RAY_LOG_EVERY_MS(INFO, 60000)
+          << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+    }
     result << "Worker " << index << ": task assigned time counter "
            << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
            << worker->WorkerId() << " memory used " << used_memory << " task spec "

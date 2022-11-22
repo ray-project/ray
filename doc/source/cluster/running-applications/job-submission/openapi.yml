@@ -1,0 +1,471 @@
+openapi: 3.1.0
+info:
+  title: Ray Jobs API
+  version: 4.0.0
+  description: |
+    This is the specification for the Ray Jobs REST API.
+    See the Ray Jobs documentation for details:
+    https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html
+
+paths:
+  /api/version:
+    get:
+      summary: |
+        Get Version
+      description: |
+        Get the Ray Jobs API version and the Ray version running on the cluster.
+      responses:
+        200:
+          summary: Version
+          description: |
+            The Ray Jobs API version and the Ray version running on the cluster.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    description: The version of the Ray Jobs API running on the server.
+                    type: string
+                  ray_version:
+                    description: The version of Ray running on the server.
+                    type: string
+                  ray_commit:
+                    description: The commit of Ray running on the server.
+                    type: string
+  /api/jobs:
+    post:
+      summary: |
+        Submit Job
+      description: |
+        Submit a job to the cluster.
+      requestBody:
+        description: |
+          The job to submit.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobSubmitRequest'
+      responses:
+        200:
+          summary: Job Submit Response
+          description: |
+            The ID of the submitted job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSubmitResponse'
+        400:
+          summary: Job Submit Validation Error
+          description: |
+            A TypeError or ValueError was raised when submitting the job.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        500:
+          summary: Job Submit Internal Error
+          description: |
+            An internal error occurred when submitting the job.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+    get:
+      summary: List Jobs
+      description: |
+        List all submitted jobs in the cluster and their details.
+      responses:
+        200:
+          summary: List of Job Details
+          description: |
+            The details of the jobs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobDetails'
+  /api/jobs/{submission_id}:
+    get:
+      summary: Get Job Details
+      description: |
+        Get the status and details of a job.
+      parameters:
+        - name: submission_id
+          in: path
+          description: |
+            The ID of the job to get the status and details of.
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          summary: Job Details
+          description: |
+            The details of the job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobDetails'
+        404:
+          summary: Job Not Found
+          description: |
+            The job does not exist.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+    delete:
+      summary: Delete Job
+      description: |
+        Delete a job that is already in a terminal state.
+      parameters:
+        - name: submission_id
+          in: path
+          description: |
+            The ID of the job to cancel.
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          summary: Job Status
+          description: |
+            The status of the job.
+          content:
+            application/json:
+              schema:
+                description: Whether the job was successfully deleted.
+                type: boolean
+        500:
+          summary: Internal Error
+          description: |
+            An internal error occurred when deleting the job, or the job was not in a terminal state.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        404:
+          summary: Job Not Found
+          description: |
+            The job does not exist.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        400:
+          summary: Wrong Job Type
+          description: |
+            The job was not submitted via the Ray Jobs API, so it cannot be deleted.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+  /api/jobs/{submission_id}/stop:
+    post:
+      summary: Stop Job
+      description: |
+        Stop a job.
+      parameters:
+        - name: submission_id
+          in: path
+          description: |
+            The ID of the job to stop.
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          summary: Job Status
+          description: |
+            The status of the job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        500:
+          summary: Internal Error
+          description: |
+            An internal error occurred when stopping the job.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        404:
+          summary: Job Not Found
+          description: |
+            The job does not exist.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        400:
+          summary: Wrong Job Type
+          description: |
+            The job was not submitted via the Ray Jobs API, so it cannot be stopped.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+  /api/jobs/{submission_id}/logs:
+    get:
+      summary: Get Job Logs
+      description: |
+        Get the logs of a job.
+      parameters:
+        - name: submission_id
+          in: path
+          description: |
+            The ID of the job to get the logs of.
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          summary: Job Logs
+          description: |
+            The logs of the job.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: string
+                    description: The logs of the job.
+        500:
+          summary: Job Logs Internal Error
+          description: |
+            An internal error occurred when getting the logs of the job.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        404:
+          summary: Job Not Found
+          description: |
+            The job does not exist.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        400:
+          summary: Wrong Job Type
+          description: |
+            The job was not submitted via the Ray Jobs API, so its logs cannot be retrieved.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+  /api/jobs/{submission_id}/logs/tail:
+    get:
+      summary: Tail Job Logs
+      description: |
+        WebSocket endpoint for tailing the logs of a job 
+        (Not documented in OpenAPI, see 
+        https://docs.ray.io/en/latest/_modules/ray/dashboard/modules/job/sdk.html#JobSubmissionClient.tail_job_logs
+        for example usage).
+      parameters:
+        - name: submission_id
+          in: path
+          description: |
+            The ID of the job to tail the logs of.
+          required: true
+          schema:
+            type: string
+      responses:
+        404:
+          summary: Job Not Found
+          description: |
+            The job does not exist.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        400:
+          summary: Wrong Job Type
+          description: |
+            The job was not submitted via the Ray Jobs API, so its logs cannot be retrieved.
+          content:
+            text/plain:
+              schema:
+                description: The error message.
+                type: string
+        
+
+
+components:
+  schemas:
+    JobDetails:
+      description: Job data with extra details about its driver and its submission.
+      type: object
+      properties:
+        type:
+          description: The type of job.
+          allOf:
+            - $ref: '#/components/schemas/JobType'
+        entrypoint:
+          title: Entrypoint
+          description: The entrypoint command for this job.
+          type: string
+        job_id:
+          title: Job Id
+          description: >-
+            The job id. An id that is created for every job that is launched in ray.
+            This can be used to fetch data about jobs using ray core apis.
+          type: string
+        submission_id:
+          title: Submission Id
+          description: >-
+            A submission id is an id created for every submission job. It can be used
+            to fetch data about jobs using the job submission apis.
+          type: string
+        driver_info:
+          title: Driver Info
+          description: >-
+            The driver related to this job. For submission jobs, it is the last driver
+            launched by that job submission, or None if there is no driver.
+          allOf:
+            - $ref: '#/components/schemas/DriverInfo'
+        status:
+          description: The status of the job.
+          allOf:
+            - $ref: '#/components/schemas/JobStatus'
+        message:
+          title: Message
+          description: A message describing the status in more detail.
+          type: string
+        error_type:
+          title: Error Type
+          description: Internal error, user script error
+          type: string
+        start_time:
+          title: Start Time
+          description: The time when the job was started. A Unix timestamp in ms.
+          type: integer
+        end_time:
+          title: End Time
+          description: The time when the job moved into a terminal state. A Unix timestamp in ms.
+          type: integer
+        metadata:
+          title: Metadata
+          description: Arbitrary user-provided metadata for the job.
+          type: object
+          additionalProperties:
+            type: string
+        runtime_env:
+          title: Runtime Env
+          description: The runtime environment for the job.
+          type: object
+        driver_agent_http_address:
+          title: Driver Agent Http Address
+          description: Driver agent http address.
+          type: string
+        driver_node_id:
+          title: Driver Node Id
+          description: Driver node id.
+          type: string
+      required:
+        - type
+        - entrypoint
+        - status
+    JobSubmitRequest:
+      type: object
+      properties:
+        entrypoint:
+          type: string
+          description: "Command to start execution, ex: 'python script.py'"
+        submission_id:
+          type: string
+          description: "Optional submission_id to specify for the job."
+        job_id:
+          type: string
+          description: "Optional job_id to specify for the job."
+          deprecated: true
+        runtime_env:
+          type: object
+          description: "The runtime environment for the job."
+        metadata:
+          type: object
+          description: "Arbitrary user-provided metadata for the job."
+          additionalProperties:
+            type: string
+        entrypoint_num_cpus:
+          type: number
+          description: "Number of CPUs to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
+        entrypoint_num_gpus:
+          type: number
+          description: "Number of GPUs to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
+        entrypoint_resources:
+          type: object
+          description: "The quantity of various custom resources to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
+          additionalProperties:
+            type: number
+      required:
+        - entrypoint
+
+    JobSubmitResponse:
+      type: object
+      properties:
+        job_id:
+          description: |
+            The ID of the submitted job.
+          deprecated: true
+          type: string
+        submission_id:
+          description: |
+            The ID of the submitted job.
+          type: string
+    JobType:
+      title: JobType
+      description: An enumeration for describing the different job types.
+      enum:
+        - SUBMISSION
+        - DRIVER
+      type: string
+    DriverInfo:
+      title: DriverInfo
+      description: A class for recording information about the driver related to the job.
+      type: object
+      properties:
+        id:
+          title: Id
+          description: The id of the driver
+          type: string
+        node_ip_address:
+          title: Node Ip Address
+          description: The ip address of the node the driver is running on
+          type: string
+        pid:
+          title: Pid
+          description: The pid of the worker process the driver is using.
+          type: string
+      required:
+        - id
+        - node_ip_address
+        - pid
+    JobStatus:
+      title: JobStatus
+      description: An enumeration for describing the status of a job.
+      enum:
+        - PENDING
+        - RUNNING
+        - STOPPED
+        - SUCCEEDED
+        - FAILED
+      type: string

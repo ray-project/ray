@@ -34,11 +34,10 @@ class _MockTrainer(Algorithm):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
+            self.get_default_config(), config, True
         )
         self.config["env"] = self._env_id
 
-        self.validate_config(self.config)
         self.callbacks = self.config["callbacks"]()
 
         # Add needed properties.

@@ -84,3 +84,29 @@ def test_deployment_init_error_logging(serve_instance, capsys):
 
     assert "Exception in deployment 'D'" in captured.err
     assert "ZeroDivisionError" in captured.err
+
+
+def test_connect_serve_start_logging(serve_instance, capsys):
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+
+    @serve.deployment
+    class D:
+        def __init__(self):
+            pass
+
+    serve.run(D.options().bind(), _blocking=False)
+
+    expected_log = (
+        'Connecting to existing Serve app in namespace "serve"'
+        ". New http options will not be applied."
+    )
+
+    # wait long enough for the warning to be printed
+    # with a small grace period
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
+
+    captured = capsys.readouterr()
+
+    assert expected_log in captured.err
