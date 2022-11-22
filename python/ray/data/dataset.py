@@ -4203,6 +4203,12 @@ class Dataset(Generic[T]):
             "This may be an expensive operation."
         )
 
+    def __iter__(self):
+        raise TypeError(
+            "`Dataset` objects aren't iterable. If you want to inspect records, call "
+            "`ds.take()`. If you want to transform records, call `ds.map_batches()`."
+        )
+
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get([get_num_rows.remote(b) for b in self.get_internal_block_refs()])
