@@ -1,3 +1,4 @@
+import asyncio
 import binascii
 import errno
 import functools
@@ -346,6 +347,46 @@ def get_cuda_visible_devices():
 
 
 last_set_gpu_ids = None
+
+
+def set_omp_num_threads_if_unset() -> bool:
+    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+
+    This function sets the environment variable OMP_NUM_THREADS for the worker,
+    if the env is not previously set and it's running in worker (WORKER_MODE).
+
+    Returns True if OMP_NUM_THREADS is set in this function.
+
+    """
+    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
+    if num_threads_from_env is not None:
+        # No ops if it's set
+        return False
+
+    # If unset, try setting the correct CPU count assigned.
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
+    if num_assigned_cpus is None:
+        # This is an actor task w/o any num_cpus specified, set it to 1
+        logger.debug(
+            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+            "degradation with many workers (issue #6998). You can override this "
+            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+        )
+        num_assigned_cpus = 1
+
+    import math
+
+    # For num_cpu < 1: Set to 1.
+    # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
+    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
+    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    return True
 
 
 def set_cuda_visible_devices(gpu_ids):
@@ -1599,6 +1640,42 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    import sys
+
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
 
 
 def get_entrypoint_name():
