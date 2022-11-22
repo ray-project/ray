@@ -304,10 +304,8 @@ def __check_atari_obs_space(obs):
     # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
     #  connectors (and don't auto-wrap in RW anymore)
     if any(
-        [
-            o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
-            for o in tree.flatten(obs)
-        ]
+        o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
+        for o in tree.flatten(obs)
     ):
         if log_once("warn_about_possibly_non_wrapped_atari_env"):
             logger.warning(

@@ -41,7 +41,7 @@ config = (
         # Pick one trainable and one non-trainable policy per episode.
         policy_mapping_fn=(
             lambda aid, eps, worker, **kw: "pol"
-                                           + str(
+            + str(
                 np.random.randint(0, num_trainable)
                 if aid == 0
                 else np.random.randint(num_trainable, num_policies)

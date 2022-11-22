@@ -1612,7 +1612,9 @@ class AlgorithmConfig:
         *,
         policies=NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
-        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = NotProvided,
+        policy_mapping_fn: Optional[
+            Callable[[AgentID, "Episode"], PolicyID]
+        ] = NotProvided,
         policies_to_train: Optional[
             Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = NotProvided,

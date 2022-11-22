@@ -6,11 +6,9 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig, PPOTF2Policy
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
-from ray.tune.registry import register_env
 
 TIME_NO_SWAPS: Optional[float] = None
 TIME_SWAPS: Optional[float] = None
@@ -19,7 +17,7 @@ TIME_SWAPS: Optional[float] = None
 class TestPolicyMap(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
