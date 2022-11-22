@@ -257,13 +257,14 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, caplog):
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        tuner = Tuner.restore(
-            str(tmpdir / "restore_new_trainer"),
-            overwrite_trainable=trainer,
-            resume_errored=True,
-        )
-        # Should log a warning about the RunConfig being ignored
-        assert "RunConfig" in caplog.text
+        with pytest.warns() as warn_record:
+            tuner = Tuner.restore(
+                str(tmpdir / "restore_new_trainer"),
+                overwrite_trainable=trainer,
+                resume_errored=True,
+            )
+        # Should warn about the RunConfig being ignored
+        assert "RunConfig" in str(warn_record[0].message)
         assert "The trainable will be overwritten" in caplog.text
 
     results = tuner.fit()

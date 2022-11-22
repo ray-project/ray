@@ -245,9 +245,10 @@ class TunerInternal:
 
         if isinstance(overwrite_trainable, BaseTrainer):
             if overwrite_trainable.run_config != original_trainable.run_config:
-                logger.warning(
-                    "Overwriting the original AIR Trainer with a new `RunConfig` is "
-                    "not supported. Defaulting to use the original config."
+                warnings.warn(
+                    "Overwriting the AIR Trainer with a new `RunConfig` is not "
+                    "supported - the restored experiment will continue with the old "
+                    "config. To avoid this warning, revert changes made to `RunConfig`."
                 )
                 overwrite_trainable.run_config = original_trainable.run_config
         else:
