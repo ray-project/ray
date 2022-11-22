@@ -33,6 +33,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
@@ -1484,29 +1485,42 @@ class Algorithm(Trainable):
             observation = local_worker.filters[policy_id](observation, update=False)
         else:
             # Just preprocess observations, similar to how it used to be done before.
+            pp = policy.agent_connectors[ObsPreprocessorConnector]
 
-            # Note(Kourosh): The connector with leave the policy's connector in eval
-            # mode would that be a problem?
-            policy.agent_connectors.in_eval()
-            if observation is not None:
-                # TODO (Kourosh): why next_obs? this is an assumption on connectors. We
-                # will change this in the future since it's very confusing
-                _input_dict = {SampleBatch.NEXT_OBS: observation}
-            elif input_dict is not None:
-                _input_dict = {SampleBatch.NEXT_OBS: input_dict[SampleBatch.OBS]}
-            else:
-                raise ValueError("Either observation or input_dict must be provided.")
+            # convert the observation to array if possible
+            if not isinstance(observation, (np.ndarray, dict, tuple)):
+                try:
+                    observation = np.asarray(observation)
+                except Exception:
+                    raise ValueError("Failed to convert to array", observation)
+            if pp:
+                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+                pp = pp[0]
+                
+                # Note(Kourosh): The connector with leave the policy's connector in eval
+                # mode would that be a problem?
+                pp.in_eval()
+                if observation is not None:
+                    # TODO (Kourosh): why next_obs? this is an assumption on
+                    # connectors. We will change this in the future since it's very
+                    # confusing
+                    _input_dict = {SampleBatch.OBS: observation}
+                elif input_dict is not None:
+                    _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                else:
+                    raise ValueError(
+                        "Either observation or input_dict must be provided."
+                    )
 
-            # TODO (Kourosh): Creating a new util method for algorithm that computes
-            # actions based on raw inputs from env and can keep track of its own
-            # internal state.
-            acd = AgentConnectorDataType("0", "0", _input_dict)
-            # make sure the state is reset since we are only applying the preprocessor
-            policy.agent_connectors.reset(env_id="0")
-            ac_o = policy.agent_connectors([acd])[0]
-            observation = ac_o.data.sample_batch[SampleBatch.OBS]
-            # sqeeze(0) to remove the batch dimension
-            observation = tree.map_structure(lambda x: x.squeeze(0), observation)
+                # TODO (Kourosh): Creating a new util method for algorithm that computes
+                # actions based on raw inputs from env and can keep track of its own
+                # internal state.
+                acd = AgentConnectorDataType("0", "0", _input_dict)
+                # make sure the state is reset since we are only applying the
+                # preprocessor
+                pp.reset(env_id="0")
+                ac_o = pp([acd])[0]
+                observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:
