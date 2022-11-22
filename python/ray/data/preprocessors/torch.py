@@ -11,6 +11,29 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TorchVisionPreprocessor(Preprocessor):
+    """Apply a TorchVision transform to an image column.
+
+    Examples:
+        >>> import ray
+        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data/batoidea")
+        >>> dataset  # doctest: +ellipsis
+        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
+
+        >>> from torchvision import transforms
+        >>> from ray.data.preprocessors import TorchVisionPreprocessor
+        >>> transform = transforms.Compose([
+        ...     transforms.ToTensor(),
+        ...     transforms.Resize((224, 224)),
+        ... ])
+        >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
+        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
+        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+
+    Args:
+        columns: The columns to apply the TorchVision transform to.
+        transform: The TorchVision transform you want to apply. This transform should
+            accept an ``np.ndarray`` as input and return a ``torch.Tensor`` as output.
+    """
 
     _is_fittable = False
 
