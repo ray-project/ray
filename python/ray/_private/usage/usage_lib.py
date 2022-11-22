@@ -264,6 +264,8 @@ class TagKey(Enum):
     GCS_STORAGE = auto()
 
     # Ray Core State API
+    # NOTE(rickyxx): Currently only setting "1" for tracking existence of
+    # invocations only.
     CORE_STATE_API_LIST_ACTORS = auto()
     CORE_STATE_API_LIST_TASKS = auto()
     CORE_STATE_API_LIST_JOBS = auto()
