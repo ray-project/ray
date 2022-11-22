@@ -216,3 +216,115 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+Run large Ray cluster
+---------------------
+
+The GCS plays an important role in Ray cluster and nodes and workers connect to the GCS. To run a large scale
+Ray cluster, more attentions need to be paied to the head node where the GCS runs. There are several things need
+to be tuned for this.
+
+## Tuning the OS
+
+Because all nodes and workers connect to the GCS, it means a lof of network connections will be created and the
+OS has to support that number of connections and nodes.  
+
+### Maximum open files
+
+Every worker and rayelt connect to the GCS, which in the end creating a lot of tcp connections. This usually will
+reach the limit of opening connections restricted by the OS.
+The current limit can be checked by `ulimit -n` and if it's small, it should be increased according to the OS mannual.
+
+### ARP cache
+
+Another thing that needs to be configured is the ARP cache. In a large cluster, all the worker nodes need to
+connect to the head node, so it needs to ensure that the ARP cache size is bigger than that. Fail to do this
+will result in the head node hanging and fail to response any requests. When it happens, `dmesg` will show errors like
+`neighbor table overflow message`.
+
+The ARP cache size can be tuned in `/etc/sysctl.conf` by increasing the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`.
+For more details, please refer to OS mannual.
+
+## Tuning the Ray
+
+When GCS is overloaded, some function is going to be slow and thus bring down the whole cluster. Luckily, here are
+the OS environments which can be used to tune these.
+
+### Health check
+
+GCS checks the health of the worker nodes by sending ping periodically. Sometimes, if the network is poor or the
+raylet is too busy and response late, the raylet might be marked dead incorrectly.
+
+GCS use similar algorithm as k8s probes to check the healthiness of the Raylet: it sends the ping to the worker periodically and
+if it failed X times consecutively, the worker will be marked as dead. Once a worker is marked as dead, it'll be considered dead
+by the Ray cluster, even it's not. The following OS environments can be used to tune this:
+
+- `RAY_health_check_initial_delay_ms` The delay of the first health check, 5000ms by default.
+- `RAY_health_check_period_ms` The interval between two health check request, 3000ms by default.
+- `RAY_health_check_timeout_ms` The timeout to consider a health check failed, 10000ms by default.
+- `RAY_health_check_failure_threshold` The consecutively failure threshold the worker node will be considered dead, 5 by default.
+
+
+### Resource broadcasting
+
+Another functionality GCS provided is to ensure each worker node has a view of available resources of each other in the
+Ray cluster. Each raylet is going to push its local available resource to GCS and GCS will broadcast it to all the raylet periodically.
+The time complexity is O(N^2). In a large Ray cluster, this is going to be an issue, since most of the time is spent on broadcasting
+the resources. There are several OS environments we can use to tune this:
+
+- `RAY_resource_broadcast_batch_size` The maximum number of nodes in a single requests sent by GCS, by default 512.   
+- `RAY_raylet_report_resources_period_milliseconds` The interval between two resources report in raylet, 100ms by default.
+
+Beaware that there is a trade off between scheduling performance and GCS loads. Decrease the resource broadcasting
+frequency might make scheduling slower. 
+
+### gRPC threads for GCS
+By default, only one gRPC thread is used for server and client polling from the completion queue.
+This might become the bottleneck if QPS is too high.
+
+- `RAY_gcs_server_rpc_server_thread_num` Control the number of threads in GCS polling from the server completion queue, by default, 1.
+- `RAY_gcs_server_rpc_client_thread_num` Control the number of threads in GCS polling from the client completion queue, by default, 1.
+
+
+### Benchmark
+
+The machine setup:
+
+- 1 head node: m5.4xlarge (16 vCPUs/64GB mem)
+- 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
+
+The OS setup:
+- Set the maxinum number of opening files to 1048576
+- Increase the ARP cache size:
+  - `net.ipv4.neigh.default.gc_thresh1=2048`
+  - `net.ipv4.neigh.default.gc_thresh2=4096`
+  - `net.ipv4.neigh.default.gc_thresh3=8192`
+
+
+The Ray setup:
+- `RAY_gcs_server_rpc_client_thread_num=3`
+- `RAY_gcs_server_rpc_server_thread_num=3`
+- `RAY_event_stats=false`
+- `RAY_gcs_resource_report_poll_period_ms=1000`  
+
+Test workload:
+- Test script: code https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py
+
+
+Result:
+
+.. list-table:: Benchmark result
+   :header-rows: 1
+
+   * - Number of actors
+     - Actor launch time
+     - Actor ready time
+     - Total time
+   * - 20k (10 actors / node)
+     - 5.8s
+     - 146.1s
+     - 151.9s
+   * - 80k (40 actors / node)
+     - 21.1s
+     - 583.9s
+     - 605s
