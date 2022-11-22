@@ -50,6 +50,7 @@ extensions = [
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib.redoc",
 ]
 
 myst_enable_extensions = [
@@ -338,3 +339,15 @@ def setup(app):
 
     # Create galleries on the fly
     app.connect("builder-inited", build_gallery)
+
+
+redoc = [
+    {
+        "name": "Ray Jobs API",
+        "page": "cluster/running-applications/job-submission/api",
+        "spec": "cluster/running-applications/job-submission/openapi.yml",
+        "embed": True,
+    },
+]
+
+redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"

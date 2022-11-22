@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -26,6 +25,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
+    get_or_create_event_loop,
     get_release_wheel_url,
     get_wheel_filename,
     try_to_create_directory,
@@ -354,7 +354,7 @@ class CondaPlugin(RuntimeEnvPlugin):
             logger.info(f"Finished creating conda environment at {conda_env_name}")
             return get_directory_size_bytes(conda_env_name)
 
-        loop = asyncio.get_event_loop()
+        loop = get_or_create_event_loop()
         return await loop.run_in_executor(None, _create)
 
     def modify_context(

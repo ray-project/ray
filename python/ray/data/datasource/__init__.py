@@ -9,6 +9,8 @@ from ray.data.datasource.datasource import (
     Reader,
     WriteResult,
 )
+from ray.data.datasource.mongo_datasource import MongoDatasource
+
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
@@ -66,6 +68,7 @@ __all__ = [
     "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
+    "MongoDatasource",
     "ReadTask",
     "Reader",
     "TextDatasource",

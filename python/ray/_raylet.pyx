@@ -992,6 +992,11 @@ cdef execute_task_with_cancellation_handler(
     # Automatically restrict the GPUs available to this task.
     ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
     # in case executing the main task throws an exception.
@@ -1078,6 +1083,10 @@ cdef execute_task_with_cancellation_handler(
     finally:
         with current_task_id_lock:
             current_task_id = None
+
+        if omp_num_threads_overriden:
+            # Reset the OMP_NUM_THREADS environ if it was set.
+            os.environ.pop("OMP_NUM_THREADS", None)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -1417,7 +1426,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name):
+                  startup_token, session_name, entrypoint):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1468,6 +1477,7 @@ cdef class CoreWorker:
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
+        options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
