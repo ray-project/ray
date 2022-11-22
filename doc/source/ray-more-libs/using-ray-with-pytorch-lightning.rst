@@ -52,6 +52,7 @@ First, let's define our PyTorch Lightning module.
 
 .. literalinclude:: /../../python/ray/tests/ray_lightning/simple_example.py
     :language: python
+    :dedent:
     :start-after: __pl_module_init__
     :end-before: __pl_module_end__
 
@@ -60,6 +61,7 @@ Then, we create a PyTorch Lightning Trainer, passing in ``RayStrategy``. We can 
 
 .. literalinclude:: /../../python/ray/tests/ray_lightning/simple_example.py
     :language: python
+    :dedent:
     :start-after: __train_begin__
     :end-before: __train_end__
 
