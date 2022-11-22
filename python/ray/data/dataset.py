@@ -281,6 +281,7 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
+        .. seealso::
 
             :meth:`~Dataset.flat_map`:
                 Call this method to create new records from existing ones. Unlike 
