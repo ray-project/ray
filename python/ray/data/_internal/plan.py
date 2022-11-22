@@ -43,6 +43,7 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 logger = DatasetLogger(__name__).logger
 
+
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
