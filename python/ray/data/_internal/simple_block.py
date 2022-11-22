@@ -97,8 +97,8 @@ class SimpleBlockAccessor(BlockAccessor):
         return pandas.DataFrame({"value": self._items})
 
     def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
-        if columns:
-            raise ValueError("`columns` arg is not supported for list block.")
+        if columns is not None:
+            return BlockAccessor.for_block(self.select(columns)).to_numpy()
         return np.array(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
