@@ -95,6 +95,7 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -1475,11 +1476,38 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
+        else:
+            # Just preprocess observations, similar to how it used to be done before.
+            assert prev_action is None, "prev_action is deprecated with connectors."
+            assert prev_reward is None, "prev_reward is deprecated with connectors."
+
+            # Note(Kourosh): The connector with leave the policy's connector in eval
+            # mode would that be a problem?
+            policy.agent_connectors.in_eval()
+            if observation is not None:
+                # TODO (Kourosh): why next_obs? this is an assumption on connectors. We
+                # will change this in the future since it's very confusing
+                _input_dict = {SampleBatch.NEXT_OBS: observation}
+            elif input_dict is not None:
+                _input_dict = {SampleBatch.NEXT_OBS: input_dict[SampleBatch.OBS]}
+            else:
+                raise ValueError("Either observation or input_dict must be provided.")
+
+            # TODO (Kourosh): Creating a new util method for algorithm that computes
+            # actions based on raw inputs from env and can keep track of its own
+            # internal state.
+            acd = AgentConnectorDataType("0", "0", _input_dict)
+            # make sure the state is reset since we are only applying the preprocessor
+            policy.agent_connectors.reset(env_id="0")
+            ac_o = policy.agent_connectors([acd])[0]
+            # sqeeze(0) to remove the batch dimension
+            observation = ac_o.data.sample_batch[SampleBatch.OBS].squeeze(0)
 
         # Input-dict.
         if input_dict is not None:
