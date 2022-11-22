@@ -103,7 +103,7 @@ class TestOPE(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(ignore_reinit_error=True)
         seed = 42
         np.random.seed(seed)
 
@@ -280,7 +280,7 @@ class TestFQE(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(ignore_reinit_error=True)
         env = CliffWalkingWallEnv()
         cls.policy = CliffWalkingWallPolicy(
             observation_space=env.observation_space,
