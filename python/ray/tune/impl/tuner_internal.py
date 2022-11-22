@@ -200,7 +200,7 @@ class TunerInternal:
         original_trainable: TrainableTypeOrTrainer,
         overwrite_trainable: Optional[TrainableTypeOrTrainer],
     ):
-        """Determines whether the re-specified overwrite_trainable is compatible
+        """Determines whether the new `overwrite_trainable` is compatible
         with the restored experiment with some basic sanity checks
         (ensuring same type and name as the original trainable).
         """
@@ -231,7 +231,7 @@ class TunerInternal:
         error_message = (
             "Usage of `overwrite_trainable` is limited to re-specifying the "
             "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (ex: it holds object references)."
+            "that the trainable is not serializable (e.g. it holds object references)."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
@@ -243,7 +243,14 @@ class TunerInternal:
 
         from ray.train.trainer import BaseTrainer
 
-        if not isinstance(overwrite_trainable, BaseTrainer):
+        if isinstance(overwrite_trainable, BaseTrainer):
+            if overwrite_trainable.run_config != original_trainable.run_config:
+                logger.warning(
+                    "Overwriting the original AIR Trainer with a new `RunConfig` is "
+                    "not supported. Defaulting to use the original config."
+                )
+                overwrite_trainable.run_config = original_trainable.run_config
+        else:
             original_name = Experiment.get_trainable_name(original_trainable)
             overwrite_name = Experiment.get_trainable_name(overwrite_trainable)
             if original_name != overwrite_name:
