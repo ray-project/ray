@@ -139,7 +139,7 @@ You can also access logs through ``ray logs`` API.
 
         ray list actors
         # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
-        ray logs --actor-id <ACTOR_ID> 
+        ray logs actor --id <ACTOR_ID> 
 
 .. tabbed:: Python SDK
 
@@ -422,14 +422,14 @@ Logs
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
-E.g., Get all retrievable log file names from a head node
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E.g., Get all retrievable log file names from a head node in a cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: CLI
 
     .. code-block:: bash
 
-        ray logs 
+        ray logs cluster
 
 .. tabbed:: Python SDK
 
@@ -470,7 +470,7 @@ E.g., Stream a log file from a node
     .. code-block:: bash
 
         # You could get the node id / node ip from `ray list nodes` 
-        ray logs -f raylet.out --node-ip <NODE_IP> 
+        ray logs raylet.out --node-ip <NODE_IP> --follow
 
 .. tabbed:: Python SDK
 
@@ -490,7 +490,7 @@ E.g., Stream log from a pid
 
     .. code-block:: bash
 
-        ray logs --pid=<PID> --follow
+        ray logs worker --pid=<PID> --follow
 
 .. tabbed:: Python SDK
 

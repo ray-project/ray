@@ -1311,7 +1311,7 @@ py_test(
 py_test(
     name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
         "--env", "FrozenLake-v1",
@@ -1324,7 +1324,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -1351,7 +1351,7 @@ py_test(
     name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train", "external_files"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     args = [
