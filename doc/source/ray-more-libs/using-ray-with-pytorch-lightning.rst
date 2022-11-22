@@ -100,6 +100,7 @@ We first wrap our training code into a function. To report metrics back to Tune 
 
 .. literalinclude:: /../../python/ray/tests/ray_lightning/simple_tune.py
     :language: python
+    :dedent:
     :start-after: __train_func_begin__
     :end-before: __train_func_end__
 
