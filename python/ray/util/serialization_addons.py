@@ -59,7 +59,7 @@ def apply(serialization_context):
     register_starlette_serializer(serialization_context)
 
     if sys.platform != "win32":
-        from ray.util.arrow_serialization import (
+        from ray._private.arrow_serialization import (
             _register_custom_datasets_serializers,
         )
 
