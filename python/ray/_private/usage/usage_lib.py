@@ -264,7 +264,20 @@ class TagKey(Enum):
     GCS_STORAGE = auto()
 
     # Ray Core State API
-    CORE_STATE_API = auto()
+    CORE_STATE_API_LIST_ACTORS = auto()
+    CORE_STATE_API_LIST_TASKS = auto()
+    CORE_STATE_API_LIST_JOBS = auto()
+    CORE_STATE_API_LIST_NODES = auto()
+    CORE_STATE_API_LIST_PLACEMENT_GROUPS = auto()
+    CORE_STATE_API_LIST_WORKERS = auto()
+    CORE_STATE_API_LIST_OBJECTS = auto()
+    CORE_STATE_API_LIST_RUNTIME_ENVS = auto()
+    CORE_STATE_API_LIST_CLUSTER_EVENTS = auto()
+    CORE_STATE_API_LIST_LOGS = auto()
+    CORE_STATE_API_GET_LOG = auto()
+    CORE_STATE_API_SUMMARIZE_TASKS = auto()
+    CORE_STATE_API_SUMMARIZE_ACTORS = auto()
+    CORE_STATE_API_SUMMARIZE_OBJECTS = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -329,20 +342,19 @@ def record_library_usage(library_usage: str):
 
 
 @contextmanager
-def record_usage(tag_key: TagKey, tag_value: str):
-    """A simple contextmanager fo recording extra usage tag
+def record_usage(tag_key: TagKey):
+    """A simple contextmanager fo recording existence of an extra usage tag
 
     Args:
         tag_key: TagKey defined
-        tag_value: string value
 
     Example:
-        @record_usage(TagKey.MY_KEY, "MY_VAL")
+        @record_usage(TagKey.MY_KEY)
         def func(a, b):
             ...
 
     """
-    record_extra_usage_tag(tag_key, tag_value)
+    record_extra_usage_tag(tag_key, "1")
     yield
 
 
