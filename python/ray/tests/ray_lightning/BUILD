@@ -18,6 +18,7 @@ py_test(
  name = "simple_tune_distributed",
  size="small",
  srcs = ["simple_tune.py"],
+ main = ["simple_tune.py"],
  args = ["--distributed"],
  deps = ["//:ray_lib"],
  tags = ["team:ml", "compat", "exclusive"]
