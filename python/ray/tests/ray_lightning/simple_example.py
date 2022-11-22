@@ -9,47 +9,49 @@ if v_parse(version("ray_lightning")) < v_parse("0.3.0"):  # Older Ray Lightning 
 
     ray_lightning.RayStrategy = ray_lightning.RayPlugin
 
+# __pl_module_init__
+import torch
+from torch import nn
+import torch.nn.functional as F
+
+import pytorch_lightning as pl
+
+
+class LitAutoEncoder(pl.LightningModule):
+    def __init__(self, lr=1e-1):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(28 * 28, 128), nn.ReLU(), nn.Linear(128, 3)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(3, 128), nn.ReLU(), nn.Linear(128, 28 * 28)
+        )
+        self.lr = lr
+
+    def forward(self, x):
+        # in lightning, forward defines the prediction/inference actions
+        embedding = self.encoder(x)
+        return embedding
+
+    def training_step(self, batch, batch_idx):
+        # training_step defines the train loop. It is independent of forward
+        x, y = batch
+        x = x.view(x.size(0), -1)
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        loss = F.mse_loss(x_hat, x)
+        self.log("train_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+
+# __pl_module_end__
+
 
 def main():
-    # __pl_module_init__
-    import torch
-    from torch import nn
-    import torch.nn.functional as F
-
-    import pytorch_lightning as pl
-
-    class LitAutoEncoder(pl.LightningModule):
-        def __init__(self, lr=1e-1):
-            super().__init__()
-            self.encoder = nn.Sequential(
-                nn.Linear(28 * 28, 128), nn.ReLU(), nn.Linear(128, 3)
-            )
-            self.decoder = nn.Sequential(
-                nn.Linear(3, 128), nn.ReLU(), nn.Linear(128, 28 * 28)
-            )
-            self.lr = lr
-
-        def forward(self, x):
-            # in lightning, forward defines the prediction/inference actions
-            embedding = self.encoder(x)
-            return embedding
-
-        def training_step(self, batch, batch_idx):
-            # training_step defines the train loop. It is independent of forward
-            x, y = batch
-            x = x.view(x.size(0), -1)
-            z = self.encoder(x)
-            x_hat = self.decoder(z)
-            loss = F.mse_loss(x_hat, x)
-            self.log("train_loss", loss)
-            return loss
-
-        def configure_optimizers(self):
-            optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-            return optimizer
-
-    # __pl_module_end__
-
     # __train_begin__
     import os
     from torch.utils.data import DataLoader, random_split
