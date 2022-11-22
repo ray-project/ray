@@ -1496,7 +1496,7 @@ class Algorithm(Trainable):
             if pp:
                 assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
                 pp = pp[0]
-                
+
                 # Note(Kourosh): The connector with leave the policy's connector in eval
                 # mode would that be a problem?
                 pp.in_eval()
