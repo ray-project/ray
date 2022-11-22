@@ -13,6 +13,9 @@ class NullMetric:
     def inc(self, *args, **kwargs):
         pass
 
+    def labels(self, *args, **kwargs):
+        return self
+
 
 try:
 
@@ -201,6 +204,27 @@ try:
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,
+            )
+            # This represents the autoscaler's view of essentially
+            # `ray.cluster_resources()`, it may be slightly different from the
+            # core metric from an eventual consistency perspective.
+            self.cluster_resources: Gauge = Gauge(
+                "cluster_resources",
+                "Total logical resources in the cluster.",
+                unit="resources",
+                namespace="autoscaler",
+                registry=self.registry,
+                labelnames=["resource"],
+            )
+            # This represents the pending launches + nodes being set up for the
+            # autoscaler.
+            self.pending_resources: Gauge = Gauge(
+                "pending_resources",
+                "Pending logical resources in the cluster.",
+                unit="resources",
+                namespace="autoscaler",
+                registry=self.registry,
+                labelnames=["resource"],
             )
 
 except ImportError:

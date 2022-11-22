@@ -16,7 +16,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import uuid
 from ray._raylet import Config
 
@@ -540,6 +540,52 @@ async def async_wait_for_condition_async_predicate(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def get_metric_check_condition(
+    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+) -> Callable[[], bool]:
+    """A condition to check if a prometheus metrics reach a certain value.
+    This is a blocking check that can be passed into a `wait_for_condition`
+    style function.
+
+    Args:
+      metrics_to_check: A map of metric lable to values to check, to ensure
+        that certain conditions have been reached. If a value is None, just check
+        that the metric was emitted with any value.
+
+    Returns:
+      A function that returns True if all the metrics are emitted.
+    """
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+    def f():
+        for metric_name, metric_value in metrics_to_check.items():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            found_metric = False
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
+                        found_metric = True
+            if not found_metric:
+                print(
+                    "Didn't find metric, all metric names: ",
+                    metric_names,
+                    "all values",
+                    metric_samples,
+                )
+                return False
+        return True
+
+    return f
 
 
 def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
