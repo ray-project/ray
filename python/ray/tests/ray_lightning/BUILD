@@ -13,3 +13,12 @@ py_test(
  deps = ["//:ray_lib"],
  tags = ["team:ml", "compat", "exclusive"]
 )
+
+py_test(
+ name = "simple_tune",
+ size="small",
+ srcs = ["simple_tune.py"],
+ args = ["--distributed"],
+ deps = ["//:ray_lib"],
+ tags = ["team:ml", "compat", "exclusive"]
+)
