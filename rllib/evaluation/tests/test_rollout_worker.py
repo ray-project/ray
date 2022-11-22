@@ -1,5 +1,5 @@
 import gym
-from gym.spaces import Box, Discrete
+from gym.spaces import Box, Discrete, Dict
 import json
 import numpy as np
 import os
@@ -13,6 +13,7 @@ from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -25,6 +26,7 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -1101,6 +1103,112 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
+
+    def test_determine_obs_space(self):
+        """Test if we find all observation space information were we expect it."""
+
+        CARTPOLE_ORIG_SPACE = gym.make("CartPole-v1").observation_space
+        breakout = gym.make("BreakoutNoFrameskip-v4")
+        ATARI_ORGIN_SPACE = breakout.observation_space
+        ATARI_WRAPPED_SPACE = wrap_deepmind(breakout).observation_space
+        ATARI_RLLIB_PREPROCESSED_SPACE = get_preprocessor(ATARI_ORGIN_SPACE)(
+            ATARI_ORGIN_SPACE
+        ).observation_space
+
+        class NestedDictEnv(gym.Env):
+            def __init__(self):
+                self.action_space = gym.spaces.Discrete(2)
+                self.observation_space = Dict(
+                    {
+                        "a": Dict({"b": gym.spaces.Discrete(2)}),
+                        "c": gym.spaces.Discrete(2),
+                    }
+                )
+
+            def reset(self):
+                self.steps = 0
+                return self.observation_space.sample()
+
+            def step(self, action):
+                return self.observation_space.sample(), 0, False, {}
+
+        DUMMY_DICT_ENV_ORIG_SPACE = NestedDictEnv().observation_space
+        dummy_dict_preprocessor = get_preprocessor(DUMMY_DICT_ENV_ORIG_SPACE)(
+            DUMMY_DICT_ENV_ORIG_SPACE
+        )
+        DUMMY_DICT_ENV_FLATTENED_SPACE = dummy_dict_preprocessor.observation_space
+        assert (
+            DUMMY_DICT_ENV_ORIG_SPACE == DUMMY_DICT_ENV_FLATTENED_SPACE.original_space
+        )
+
+        # Configurations to test in tuples of
+        # (
+        #   <config>,
+        #   <expected space>,
+        #   <expected original space or None>
+        # )
+
+        configs_and_spaces = (
+            (
+                # Ignoring deepmind preprocessor pref
+                AlgorithmConfig()
+                .environment(env="CartPole-v1")
+                .rollouts(preprocessor_pref="deepmind"),
+                CARTPOLE_ORIG_SPACE,
+                None,
+            ),
+            (
+                # Auto-wrapping env in RolloutWorker
+                AlgorithmConfig()
+                .environment(env="BreakoutNoFrameskip-v4")
+                .rollouts(preprocessor_pref="deepmind"),
+                ATARI_WRAPPED_SPACE,
+                ATARI_ORGIN_SPACE,
+            ),
+            (
+                # RLlib's GenericPixelPreprocessor
+                AlgorithmConfig()
+                .environment(env="BreakoutNoFrameskip-v4")
+                .rollouts(preprocessor_pref="rllib"),
+                ATARI_WRAPPED_SPACE,
+                ATARI_RLLIB_PREPROCESSED_SPACE,
+            ),
+            (
+                # Atari env without preprocessing
+                AlgorithmConfig()
+                .environment(env="BreakoutNoFrameskip-v4")
+                .rollouts(preprocessor_pref=None),
+                CARTPOLE_ORIG_SPACE,
+                None,
+            ),
+            (
+                # Dummy dict env with preprocessing
+                AlgorithmConfig().environment(env=NestedDictEnv),
+                DUMMY_DICT_ENV_FLATTENED_SPACE,
+                DUMMY_DICT_ENV_ORIG_SPACE,
+            ),
+        )
+
+        for config, space, orig_space in configs_and_spaces:
+            if config.env == NestedDictEnv:
+
+                def env_creator(_):
+                    return NestedDictEnv()
+
+            else:
+
+                def env_creator(_):
+                    return gym.make(config["env"])
+
+            ev = RolloutWorker(
+                env_creator=env_creator, default_policy_class=MockPolicy, config=config
+            )
+            assert ev.policy_map["default_policy"].observation_space == space
+            policy_obs_space = ev.policy_map["default_policy"].observation_space
+            if hasattr(policy_obs_space, "original_space"):
+                assert orig_space == policy_obs_space.original_space
+            else:
+                self.assertEqual(orig_space, None)
 
 
 if __name__ == "__main__":
