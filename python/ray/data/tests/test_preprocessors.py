@@ -1865,7 +1865,9 @@ class TestTorchVisionPreprocessor:
             def __repr__(self):
                 return "StubTransform()"
 
-        preprocessor = TorchVisionPreprocessor(columns=["spam"], transform=StubTransform())
+        preprocessor = TorchVisionPreprocessor(
+            columns=["spam"], transform=StubTransform()
+        )
         assert (
             repr(preprocessor)
             == "TorchVisionPreprocessor(columns=['spam'], transform=StubTransform())"
