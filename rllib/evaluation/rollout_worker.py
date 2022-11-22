@@ -344,9 +344,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 "batch_mode", "config.rollouts(batch_mode=..)", error=True
             )
         if episode_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "episode_horizon", error=True
-            )
+            deprecation_warning("episode_horizon", error=True)
         if preprocessor_pref != DEPRECATED_VALUE:
             deprecation_warning(
                 "preprocessor_pref", "config.rollouts(preprocessor_pref=..)", error=True
@@ -402,9 +400,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 error=True,
             )
         if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "soft_horizon", error=True
-            )
+            deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
             deprecation_warning(
                 "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True

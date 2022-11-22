@@ -157,6 +157,7 @@ class SyncSampler(SamplerInput):
         multiple_episodes_in_batch: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
+        no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
         render: bool = False,
@@ -166,7 +167,6 @@ class SyncSampler(SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
-        no_done_at_end=None,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
     ):
@@ -196,6 +196,8 @@ class SyncSampler(SamplerInput):
                 action space's bounds.
             clip_actions: Whether to clip actions according to the
                 given action_space's bounds.
+            no_done_at_end: Ignore the done=True at the end of the
+                episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
             sample_collector_class: An optional Samplecollector sub-class to
@@ -248,6 +250,7 @@ class SyncSampler(SamplerInput):
                 multiple_episodes_in_batch=multiple_episodes_in_batch,
                 callbacks=callbacks,
                 perf_stats=self.perf_stats,
+                no_done_at_end=no_done_at_end,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
                 render=self.render,
@@ -264,6 +267,7 @@ class SyncSampler(SamplerInput):
                 multiple_episodes_in_batch,
                 callbacks,
                 self.perf_stats,
+                soft_horizon,
                 observation_fn,
                 self.sample_collector,
                 self.render,
@@ -325,6 +329,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         multiple_episodes_in_batch: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
+        no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
         render: bool = False,
@@ -335,7 +340,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
-        no_done_at_end=None,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
     ):
@@ -365,6 +369,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 given action_space's bounds.
             blackhole_outputs: Whether to collect samples, but then
                 not further process or store them (throw away all samples).
+            no_done_at_end: Ignore the done=True at the end of the
+                episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
             sample_collector_class: An optional SampleCollector sub-class to
@@ -406,6 +412,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
+        self.no_done_at_end = no_done_at_end
         self.perf_stats = _PerfStats(
             ema_coef=worker.config.sampler_perf_stats_ema_coef,
         )
@@ -454,6 +461,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 multiple_episodes_in_batch=self.multiple_episodes_in_batch,
                 callbacks=self.callbacks,
                 perf_stats=self.perf_stats,
+                no_done_at_end=self.no_done_at_end,
                 rollout_fragment_length=self.rollout_fragment_length,
                 count_steps_by=self.count_steps_by,
                 render=self.render,
@@ -468,6 +476,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 self.multiple_episodes_in_batch,
                 self.callbacks,
                 self.perf_stats,
+                self.no_done_at_end,
                 self.observation_fn,
                 self.sample_collector,
                 self.render,
@@ -528,6 +537,7 @@ def _env_runner(
     multiple_episodes_in_batch: bool,
     callbacks: "DefaultCallbacks",
     perf_stats: _PerfStats,
+    no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: Optional[SampleCollector] = None,
     render: bool = None,
@@ -546,6 +556,8 @@ def _env_runner(
         clip_actions: Whether to clip actions to the space range.
         callbacks: User callbacks to run on episode events.
         perf_stats: Record perf stats into this object.
+        no_done_at_end: Ignore the done=True at the end of the episode
+            and instead record done=False.
         observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
         sample_collector: An optional
@@ -560,14 +572,6 @@ def _env_runner(
 
     # May be populated with used for image rendering
     simple_image_viewer: Optional["SimpleImageViewer"] = None
-
-    # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
-    # error and continue with max_episode_steps=None.
-    max_episode_steps = None
-    try:
-        max_episode_steps = base_env.get_sub_environments()[0].spec.max_episode_steps
-    except Exception:
-        pass
 
     def _new_episode(env_id):
         episode = Episode(
@@ -617,6 +621,7 @@ def _env_runner(
             infos=infos,
             multiple_episodes_in_batch=multiple_episodes_in_batch,
             callbacks=callbacks,
+            no_done_at_end=no_done_at_end,
             observation_fn=observation_fn,
             sample_collector=sample_collector,
         )
@@ -700,6 +705,7 @@ def _process_observations(
     infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
     multiple_episodes_in_batch: bool,
     callbacks: "DefaultCallbacks",
+    no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: SampleCollector,
 ) -> Tuple[
@@ -727,6 +733,8 @@ def _process_observations(
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         callbacks: User callbacks to run on episode events.
+        no_done_at_end: Ignore the done=True at the end of the episode
+            and instead record done=False.
         observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
         sample_collector: The SampleCollector object
@@ -882,11 +890,7 @@ def _process_observations(
                     # Reward received after taking a at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (
-                        False
-                        if (no_done_at_end or (hit_horizon and soft_horizon))
-                        else agent_done
-                    ),
+                    SampleBatch.DONES: False if no_done_at_end else agent_done,
                     # Next observation.
                     SampleBatch.NEXT_OBS: filtered_obs,
                 }
@@ -955,7 +959,7 @@ def _process_observations(
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
-                    is_done=is_done or (hit_horizon and not soft_horizon),
+                    is_done=is_done,
                     check_dones=check_dones,
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )

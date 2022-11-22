@@ -1200,7 +1200,7 @@ class AlgorithmConfig:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(horizon=..)",
                 new="You should wrap your gymnasium.Env with a "
-                    "gymnasium.wrappers.TimeLimit wrapper.",
+                "gymnasium.wrappers.TimeLimit wrapper.",
                 error=True,
             )
         if soft_horizon != DEPRECATED_VALUE:

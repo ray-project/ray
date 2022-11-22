@@ -206,6 +206,7 @@ class EnvRunnerV2:
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         perf_stats: _PerfStats,
+        no_done_at_end: bool,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
         render: bool = None,
@@ -219,6 +220,8 @@ class EnvRunnerV2:
                 `rollout_fragment_length` in size.
             callbacks: User callbacks to run on episode events.
             perf_stats: Record perf stats into this object.
+            no_done_at_end: Ignore the done=True at the end of the episode
+                and instead record done=False.
             rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -240,6 +243,7 @@ class EnvRunnerV2:
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
         self._callbacks = callbacks
         self._perf_stats = perf_stats
+        self._no_done_at_end = no_done_at_end
         self._rollout_fragment_length = rollout_fragment_length
         self._count_steps_by = count_steps_by
         self._render = render
@@ -476,8 +480,6 @@ class EnvRunnerV2:
             if not episode.has_init_obs():
                 self._call_on_episode_start(episode, env_id)
 
-            # Episode length after this step.
-            next_episode_length = episode.length + 1
             # Check episode termination conditions.
             if dones[env_id]["__all__"]:
                 all_agents_done = True
@@ -516,11 +518,7 @@ class EnvRunnerV2:
                     # Reward received after taking action at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (
-                        False
-                        if self._no_done_at_end
-                        else agent_done
-                    ),
+                    SampleBatch.DONES: False if self._no_done_at_end else agent_done,
                     SampleBatch.INFOS: infos[env_id].get(agent_id, {}),
                     SampleBatch.NEXT_OBS: obs,
                 }
@@ -623,7 +621,6 @@ class EnvRunnerV2:
             # Episode is terminated/truncated for all agents:
             # dones[__all__] == True.
             if all_agents_done:
-                is_done = dones[env_id]["__all__"]
                 # _handle_done_episode will build a MultiAgentBatch for all
                 # the agents that are done during this step of rollout in
                 # the case of _multiple_episodes_in_batch=False.
@@ -760,7 +757,6 @@ class EnvRunnerV2:
             outputs: Output container for collected sample batches.
         """
         if isinstance(env_obs_or_exception, Exception):
-            is_error = True
             episode_or_exception: Exception = env_obs_or_exception
             # Tell the sampler we have got a faulty episode.
             outputs.append(RolloutMetrics(episode_faulty=True))
@@ -768,7 +764,6 @@ class EnvRunnerV2:
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
-            is_error = False
             # Output the collected episode after adding rollout metrics so that we
             # always fetch metrics with RolloutWorker before we fetch samples.
             # This is because we need to behave like env_runner() for now.
@@ -792,9 +787,7 @@ class EnvRunnerV2:
         while True:
             resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
 
-            if resetted_obs is None or not isinstance(
-                resetted_obs[env_id], Exception
-            ):
+            if resetted_obs is None or not isinstance(resetted_obs[env_id], Exception):
                 break
             else:
                 # Report a faulty episode.
