@@ -479,10 +479,7 @@ class EnvRunnerV2:
             # Episode length after this step.
             next_episode_length = episode.length + 1
             # Check episode termination conditions.
-            if (
-                terminateds[env_id]["__all__"]
-                or truncateds[env_id]["__all__"]
-            ):
+            if dones[env_id]["__all__"]:
                 all_agents_done = True
             else:
                 all_agents_done = False
@@ -495,8 +492,7 @@ class EnvRunnerV2:
             # go through agent connectors together.
             sample_batches_by_policy = defaultdict(list)
             # Whether an agent is done.
-            agent_terminateds = {}
-            agent_truncateds = {}
+            agent_dones = {}
             for agent_id, obs in env_obs.items():
                 assert agent_id != "__all__"
 
@@ -522,9 +518,7 @@ class EnvRunnerV2:
                     # After taking action=a, did we reach terminal?
                     SampleBatch.DONES: (
                         False
-                        if (
-                            self._no_done_at_end or (hit_horizon and self._soft_horizon)
-                        )
+                        if self._no_done_at_end
                         else agent_done
                     ),
                     SampleBatch.INFOS: infos[env_id].get(agent_id, {}),
@@ -601,8 +595,7 @@ class EnvRunnerV2:
                     # Need to evaluate next actions.
                     if not (
                         all_agents_done
-                        or agent_terminateds.get(d.agent_id, False)
-                        or agent_truncateds.get(d.agent_id, False)
+                        or agent_dones.get(d.agent_id, False)
                         or episode.is_done(d.agent_id)
                     ):
                         # Add to eval set if env is not done and this particular agent
@@ -628,7 +621,7 @@ class EnvRunnerV2:
                 )
 
             # Episode is terminated/truncated for all agents:
-            # terminateds[__all__] == True or truncateds[__all__] == True.
+            # dones[__all__] == True.
             if all_agents_done:
                 is_done = dones[env_id]["__all__"]
                 # _handle_done_episode will build a MultiAgentBatch for all
@@ -637,7 +630,7 @@ class EnvRunnerV2:
                 self._handle_done_episode(
                     env_id,
                     env_obs,
-                    terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"],
+                    dones[env_id]["__all__"],
                     active_envs,
                     to_eval,
                     outputs,
