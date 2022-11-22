@@ -82,13 +82,17 @@ class TestDatasetReader(unittest.TestCase):
     def test_dataset_shard_with_task_parallelization(self):
         """Tests whether the dataset_shard function works correctly with parallelism
         for reading the dataset."""
-        config = AlgorithmConfig().offline_data(
-            input_="dataset",
-            input_config={
-                "format": "json",
-                "paths": self.dset_path,
-            },
-        ).rollouts(num_rollout_workers=10)
+        config = (
+            AlgorithmConfig()
+            .offline_data(
+                input_="dataset",
+                input_config={
+                    "format": "json",
+                    "paths": self.dset_path,
+                },
+            )
+            .rollouts(num_rollout_workers=10)
+        )
         NUM_WORKERS = 4
 
         _, shards = get_dataset_and_shards(config, num_workers=NUM_WORKERS)

@@ -375,12 +375,9 @@ class TestRolloutWorker(unittest.TestCase):
 
             # create input reader functions
             def dataset_reader_creator(ioctx):
-                config = (
-                    AlgorithmConfig()
-                    .offline_data(
-                        input_="dataset",
-                        input_config={"format": "json", "paths": data_file},
-                    )
+                config = AlgorithmConfig().offline_data(
+                    input_="dataset",
+                    input_config={"format": "json", "paths": data_file},
                 )
                 _, shards = get_dataset_and_shards(config, num_workers=0)
                 return DatasetReader(shards[0], ioctx)
