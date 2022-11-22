@@ -2243,6 +2243,8 @@ class Algorithm(Trainable):
         autofilled = super().get_auto_filled_metrics(
             now, time_this_iter, debug_metrics_only
         )
+        # If `config` key is no dict (but AlgorithmConfig object) ->
+        # make sure, it's a dict to not break Tune APIs.
         if not isinstance(autofilled["config"], dict):
             assert isinstance(autofilled["config"], AlgorithmConfig)
             autofilled["config"] = autofilled["config"].to_dict()
