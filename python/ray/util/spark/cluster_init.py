@@ -30,6 +30,7 @@ if not sys.platform.startswith("linux"):
     raise RuntimeError("Ray on spark ony supports linux system.")
 
 _logger = logging.getLogger("ray.util.spark")
+_logger.setLevel(logging.INFO)
 
 _spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
 try:
@@ -301,9 +302,8 @@ def init_ray_cluster(
             f"The provided CPU resources for each ray worker are inadequate to start a ray "
             f"cluster. Based on the total cpu resources available and the configured task sizing, "
             f"each ray worker would start with {num_spark_task_cpus} CPU cores. This is "
-            "less than the recommended value of `4` CPUs per worker. Either Increasing the spark "
-            "configuration 'spark.task.cpus' to a minimum of `4` or starting more "
-            "spark worker nodes is recommended."
+            "less than the recommended value of `4` CPUs per worker. Increasing the spark "
+            "configuration 'spark.task.cpus' to a minimum of `4` addresses it."
         )
 
     if ray_worker_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
@@ -320,7 +320,12 @@ def init_ray_cluster(
         )
     if insufficient_resources:
         if safe_mode:
-            raise (ValueError, "\n".join(insufficient_resources))
+            raise ValueError(
+                "You are creating ray cluster on spark with safe mode (it can be disabled by "
+                "setting argument 'safe_mode=False' when calling API 'init_ray_cluster'), "
+                "safe mode requires the spark cluster config satisfying following criterion: "
+                "\n".join(insufficient_resources)
+            )
         else:
             _logger.warning("\n".join(insufficient_resources))
 
