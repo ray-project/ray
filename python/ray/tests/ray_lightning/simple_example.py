@@ -1,6 +1,14 @@
 # This file is duplicated in release/ml_user_tests/ray-lightning
 # flake8: noqa
 
+from importlib_metadata import version
+from packaging.version import parse as v_parse
+
+if v_parse(version("ray_lightning")) < v_parse("0.3.0"):  # Older Ray Lightning Version.
+    import ray_lightning
+
+    ray_lightning.RayStrategy = ray_lightning.RayPlugin
+
 
 def main():
     # __pl_module_init__

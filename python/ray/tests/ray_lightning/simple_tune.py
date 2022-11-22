@@ -1,5 +1,13 @@
 # flake8: noqa
 
+from importlib_metadata import version
+from packaging.version import parse as v_parse
+
+if v_parse(version("ray_lightning")) < v_parse("0.3.0"):  # Older Ray Lightning Version.
+    import ray_lightning
+
+    ray_lightning.RayStrategy = ray_lightning.RayPlugin
+
 from ray.tests.ray_lightning.simple_example import LitAutoEncoder
 
 # __train_func_begin__
