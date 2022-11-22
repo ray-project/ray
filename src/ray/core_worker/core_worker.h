@@ -223,7 +223,7 @@ class TaskCounter {
 
 struct TaskToRetry {
   /// Time when the task should be retried.
-  int64_t exection_time_ms;
+  int64_t execution_time_ms;
 
   /// The details of the task.
   TaskSpecification task_spec;
@@ -239,7 +239,7 @@ struct TaskToRetry {
 class TaskToRetryDescComparator {
  public:
   bool operator()(const TaskToRetry &left, const TaskToRetry &right) {
-    return left.exection_time_ms > right.exection_time_ms;
+    return left.execution_time_ms > right.execution_time_ms;
   }
 };
 

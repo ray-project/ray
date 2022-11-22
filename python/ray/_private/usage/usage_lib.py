@@ -262,6 +262,12 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
+    # Dashboard
+    # Whether a user is running ray with some third party metrics
+    # services (Ex: "True", "False")
+    DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
+    DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
+
     # The count(int) of worker crash with exit type 'system error' since
     # the cluster started, emitted from GCS
     WORKER_CRASH_SYSTEM_ERROR = auto()
