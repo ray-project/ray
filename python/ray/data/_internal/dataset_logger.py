@@ -28,8 +28,9 @@ class DatasetLogger:
 
         # If ray.init() was previously called, add log handler which writes to
         # a separate Datasets log file at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
-        if ray.is_initialized():  
-            # With current implementation, we can only get session_dir after ray.init() is called
+        if ray.is_initialized():
+            # With current implementation, we can only get session_dir
+            # after ray.init() is called. Less hacky way could potentially fix this
             session_dir = ray._private.worker._global_node.get_session_dir_path()
             self.datasets_log_path = os.path.join(
                 session_dir,
