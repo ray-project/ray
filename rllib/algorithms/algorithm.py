@@ -1484,7 +1484,7 @@ class Algorithm(Trainable):
             observation = local_worker.filters[policy_id](observation, update=False)
         else:
             # Just preprocess observations, similar to how it used to be done before.
-            
+
             # Note(Kourosh): The connector with leave the policy's connector in eval
             # mode would that be a problem?
             policy.agent_connectors.in_eval()
@@ -1504,8 +1504,9 @@ class Algorithm(Trainable):
             # make sure the state is reset since we are only applying the preprocessor
             policy.agent_connectors.reset(env_id="0")
             ac_o = policy.agent_connectors([acd])[0]
+            observation = ac_o.data.sample_batch[SampleBatch.OBS]
             # sqeeze(0) to remove the batch dimension
-            observation = ac_o.data.sample_batch[SampleBatch.OBS].squeeze(0)
+            observation = tree.map_structure(lambda x: x.squeeze(0), observation)
 
         # Input-dict.
         if input_dict is not None:
