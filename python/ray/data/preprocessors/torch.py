@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-class TorchPreprocessor(Preprocessor):
+class TorchVisionPreprocessor(Preprocessor):
 
     _is_fittable = False
 

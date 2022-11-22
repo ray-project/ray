@@ -21,7 +21,7 @@ from ray.data.preprocessors import (
     OrdinalEncoder,
     SimpleImputer,
     StandardScaler,
-    TorchPreprocessor,
+    TorchVisionPreprocessor,
     CustomKBinsDiscretizer,
     UniformKBinsDiscretizer,
 )
@@ -1856,7 +1856,7 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
 
 
-class TestTorchPreprocessor:
+class TestTorchVisionPreprocessor:
     def test_repr(self):
         class StubTransform:
             def __call__(self, tensor):
@@ -1865,10 +1865,10 @@ class TestTorchPreprocessor:
             def __repr__(self):
                 return "StubTransform()"
 
-        preprocessor = TorchPreprocessor(columns=["spam"], transform=StubTransform())
+        preprocessor = TorchVisionPreprocessor(columns=["spam"], transform=StubTransform())
         assert (
             repr(preprocessor)
-            == "TorchPreprocessor(columns=['spam'], transform=StubTransform())"
+            == "TorchVisionPreprocessor(columns=['spam'], transform=StubTransform())"
         )
 
     def test_transform_images(self):
@@ -1879,7 +1879,7 @@ class TestTorchPreprocessor:
             ]
         )
         transform = torchvision.transforms.ToTensor()
-        preprocessor = TorchPreprocessor(columns=["image"], transform=transform)
+        preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         transformed_dataset = preprocessor.transform(dataset)
 
@@ -1897,7 +1897,7 @@ class TestTorchPreprocessor:
             ]
         )
         transform = torchvision.transforms.ToTensor()
-        preprocessor = TorchPreprocessor(columns=["image"], transform=transform)
+        preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         transformed_dataset = preprocessor.transform(dataset)
 

@@ -18,7 +18,7 @@ from ray.data.preprocessors.scaler import (
 )
 from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
-from ray.data.preprocessors.torch import TorchPreprocessor
+from ray.data.preprocessors.torch import TorchVisionPreprocessor
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 from ray.data.preprocessors.discretizer import (
@@ -46,7 +46,7 @@ __all__ = [
     "StandardScaler",
     "Concatenator",
     "Tokenizer",
-    "TorchPreprocessor",
+    "TorchVisionPreprocessor",
     "CustomKBinsDiscretizer",
     "UniformKBinsDiscretizer",
 ]
