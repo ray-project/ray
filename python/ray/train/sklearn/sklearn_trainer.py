@@ -433,5 +433,6 @@ class SklearnTrainer(BaseTrainer):
             **validation_set_scores,
             **cv_scores,
             "fit_time": fit_time,
+            "done": True,
         }
         self._report(results)
