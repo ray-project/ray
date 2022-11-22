@@ -2233,6 +2233,21 @@ class Algorithm(Trainable):
             f"The config of this Algorithm is: {config}"
         )
 
+    @override(Trainable)
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
+        autofilled = super().get_auto_filled_metrics(
+            now, time_this_iter, debug_metrics_only
+        )
+        if not isinstance(autofilled["config"], dict):
+            assert isinstance(autofilled["config"], AlgorithmConfig)
+            autofilled["config"] = autofilled["config"].to_dict()
+        return autofilled
+
     @classmethod
     def merge_trainer_configs(
         cls,
