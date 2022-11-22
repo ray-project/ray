@@ -88,7 +88,6 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
-    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -2461,16 +2460,18 @@ class Dataset(Generic[T]):
         To control the number of parallel write tasks, use ``.repartition()``
         before calling this method.
 
-        Notes:
-        - Currently, this supports only a subset of the pyarrow's types, due to the
-          limitation of pymongoarrow which is used underneath. Writing unsupported
-          types will fail on type checking. See all the supported types at:
-          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
-        - The records will be inserted into MongoDB as new documents. If a record has
-          the _id field, this _id must be non-existent in MongoDB, otherwise the write
-          will be rejected and fail (hence preexisting documents are protected from
-          being mutated). It's fine to not have _id field in record and MongoDB will
-          auto generate one at insertion.
+        .. note::
+            Currently, this supports only a subset of the pyarrow's types, due to the
+            limitation of pymongoarrow which is used underneath. Writing unsupported
+            types will fail on type checking. See all the supported types at:
+            https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+
+        .. note::
+            The records will be inserted into MongoDB as new documents. If a record has
+            the _id field, this _id must be non-existent in MongoDB, otherwise the write
+            will be rejected and fail (hence preexisting documents are protected from
+            being mutated). It's fine to not have _id field in record and MongoDB will
+            auto generate one at insertion.
 
         Examples:
             >>> import ray
@@ -2478,11 +2479,11 @@ class Dataset(Generic[T]):
             >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
             >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
             >>> ds.write_mongo( # doctest: +SKIP
-            >>>     MongoDatasource(),
-            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
-            >>>     database="my_db",
-            >>>     collection="my_collection",
-            >>> )
+            >>>     MongoDatasource(), # doctest: +SKIP
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
+            >>>     database="my_db", # doctest: +SKIP
+            >>>     collection="my_collection", # doctest: +SKIP
+            >>> ) # doctest: +SKIP
 
         Args:
             uri: The URI to the destination MongoDB where the dataset will be
@@ -2494,6 +2495,8 @@ class Dataset(Generic[T]):
                 must exist otherwise ValueError will be raised.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        from ray.data.datasource import MongoDatasource
+
         self.write_datasource(
             MongoDatasource(),
             ray_remote_args=ray_remote_args,
