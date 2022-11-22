@@ -95,7 +95,7 @@ class TorchPredictor(DLPredictor):
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def call_model(
-        self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+        self, inputs: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
@@ -106,7 +106,7 @@ class TorchPredictor(DLPredictor):
         output.
 
         Args:
-            tensor: A batch of data to predict on, represented as either a single
+            inputs: A batch of data to predict on, represented as either a single
                 PyTorch tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
@@ -124,8 +124,8 @@ class TorchPredictor(DLPredictor):
 
                 # Use a custom predictor to format model output as a dict.
                 class CustomPredictor(TorchPredictor):
-                    def call_model(self, tensor):
-                        model_output = super().call_model(tensor)
+                    def call_model(self, inputs):
+                        model_output = super().call_model(inputs)
                         return {
                             str(i): model_output[i] for i in range(len(model_output))
                         }
@@ -142,7 +142,7 @@ class TorchPredictor(DLPredictor):
                 Predictions: [1 2], [1 2]
         """
         with torch.no_grad():
-            output = self.model(tensor)
+            output = self.model(inputs)
         return output
 
     def predict(
