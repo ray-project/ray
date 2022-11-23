@@ -550,10 +550,6 @@ class AttentionWrapper(TFModelV2):
         return model_out, memory_outs
 
     @override(ModelV2)
-    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        return []
-
-    @override(ModelV2)
     def value_function(self) -> TensorType:
         assert self._features is not None, "Must call forward() first!"
         return tf.reshape(self._value_branch(self._features), [-1])
@@ -918,3 +914,8 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             memory_outs,
             {SampleBatch.VF_PREDS: tf.reshape(value_outs, [-1])},
         )
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        attention_dim = self.attention_dim
+        return [np.zeros(attention_dim, np.float32)]
