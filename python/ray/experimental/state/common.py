@@ -354,7 +354,7 @@ class ActorState(StateSchema):
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
-    resource_mapping: dict = state_column(filterable=False, detail=True)
+    required_resources: dict = state_column(filterable=False, detail=True)
     #: Actor's death information in detail. None if the actor is not dead yet.
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.

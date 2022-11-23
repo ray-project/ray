@@ -1,6 +1,6 @@
-import asyncio
 import logging
 import os
+from ray._private.utils import get_or_create_event_loop
 import requests
 import shutil
 import sys
@@ -41,7 +41,7 @@ from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
-EVENT_LOOP = asyncio.get_event_loop()
+EVENT_LOOP = get_or_create_event_loop()
 
 
 @pytest.fixture
