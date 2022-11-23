@@ -225,19 +225,23 @@ GCS. To run a large-scale Ray cluster, the GCS usually becomes the bottleneck
 and brings the cluster down in the worst case. Here are some tips to run Ray with
 more than 1k nodes.
 
-## Tuning the OS
+Tuning the OS
+~~~~~~~~~~~~~
 
 Because all nodes and workers connect to the GCS, many network connections will
 be created and the OS has to support that number of connections and nodes.
 
-### Maximum open files
+Maximum open files
+******************
+
 
 The OS has to be configured to support opening many TCP connections since every
 worker and raylet connects to the GCS. In POSIX systems, the current limit can
 be checked by `ulimit -n` and if it's small, it should be increased according to
-the OS mannual. 
+the OS manual. 
 
-### ARP cache
+ARP cache
+*********
 
 Another thing that needs to be configured is the ARP cache. In a large cluster,
 all the worker nodes connect to the head node, which adds a lot of entries to
@@ -250,13 +254,16 @@ In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing
 the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`. 
 For more details, please refer to the OS manual.
 
-## Tuning the Ray
+Tuning the Ray
+~~~~~~~~~~~~~~
 
 When GCS is overloaded, some functions are going to run slowly and thus bring down
 the whole cluster. To run a large cluster, several parameters need to be tuned
 for Ray.
 
-### Health check
+Health check
+************
+
 
 GCS checks the health of the worker nodes by sending ping periodically.
 Sometimes, if the network is poor or the raylet is too busy to response,
@@ -275,7 +282,8 @@ environments can be used to tune this:
   worker node being considered dead, 5 by default. 
 
 
-### Resource broadcasting
+Resource broadcasting
+*********************
 
 Another functionality GCS provided is to ensure each worker node has a view of
 available resources of each other in the Ray cluster. Each raylet is going to
@@ -302,7 +310,8 @@ completion queue. This might become the bottleneck if QPS is too high.
   polling from the client completion queue, by default, 1. 
 
 
-### Benchmark
+Benchmark
+~~~~~~~~~
 
 The machine setup:
 
