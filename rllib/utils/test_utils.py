@@ -597,7 +597,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results):
+def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -649,9 +649,9 @@ def check_train_results(train_results):
     )
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    is_multi_agent = (
-        AlgorithmConfig().from_dict(train_results["config"]).is_multi_agent()
-    )
+    is_multi_agent = AlgorithmConfig().update_from_dict(
+        train_results["config"]["multiagent"]
+    ).is_multi_agent()
 
     # Check in particular the "info" dict.
     info = train_results["info"]
