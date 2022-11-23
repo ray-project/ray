@@ -23,8 +23,16 @@ from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
+def propagate_logs():
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4, configure_logging=False)
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -225,7 +233,7 @@ def test_retry(ray_start_4_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
-def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, caplog):
+def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
     def train_func(config):
         raise RuntimeError("failing!")
 
