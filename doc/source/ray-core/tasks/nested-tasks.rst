@@ -30,7 +30,7 @@ defined yet, the definition will be incomplete.
 Yielding Resources While Blocked
 --------------------------------
 
-Ray task will release CPU resources when being blocked. This prevents
+Ray will release CPU resources when being blocked. This prevents
 deadlock cases where the nested tasks are waiting for the CPU
 resources held by the parent task.
 Consider the following remote function.
