@@ -68,15 +68,15 @@ def _check_job(
 @pytest.fixture(
     scope="module",
     params=[
-        "no_working_dir",
-        "local_working_dir",
-        "s3_working_dir",
-        "local_py_modules",
-        "working_dir_and_local_py_modules_whl",
-        "local_working_dir_zip",
-        "pip_txt",
+        # "no_working_dir",
+        # "local_working_dir",
+        # "s3_working_dir",
+        # "local_py_modules",
+        # "working_dir_and_local_py_modules_whl",
+        # "local_working_dir_zip",
+        # "pip_txt",
         "conda_yaml",
-        "local_py_modules",
+        # "local_py_modules",
     ],
 )
 def runtime_env_option(request):
@@ -230,12 +230,31 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # Conda env takes longer to install, causing flakiness.
     timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
 
-    wait_for_condition(
-        partial(
-            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
-        ),
-        timeout=timeout,
-    )
+    st = time.time()
+    data = []
+    def check_for_conda(*args, **kwargs):
+        try:
+            nonlocal st
+            nonlocal data
+            res = _check_job(*args, **kwargs)
+
+            with open("/tmp/ray/session_latest/logs/dashboard_agent.log", "rt") as f:
+                data = f.readlines()
+        except Exception as ex:
+            raise ex
+
+        return res
+
+    try:
+        wait_for_condition(
+            partial(
+                check_for_conda, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
+            ),
+            timeout=60,
+        )
+    except Exception as ex:
+        out_str = "\n".join(data)
+        raise Exception(out_str)
 
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)
@@ -243,7 +262,7 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_timeout(job_sdk_client):
+async def no_test_timeout(job_sdk_client):
     agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv(
@@ -274,7 +293,7 @@ async def test_timeout(job_sdk_client):
 
 
 @pytest.mark.asyncio
-async def test_runtime_env_setup_failure(job_sdk_client):
+async def no_test_runtime_env_setup_failure(job_sdk_client):
     agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv(working_dir="s3://does_not_exist.zip").to_dict()
@@ -296,7 +315,7 @@ async def test_runtime_env_setup_failure(job_sdk_client):
 
 
 @pytest.mark.asyncio
-async def test_stop_long_running_job(job_sdk_client):
+async def no_test_stop_long_running_job(job_sdk_client):
     """
     Submit a job that runs for a while and stop it in the middle.
     """
@@ -337,7 +356,7 @@ raise RuntimeError('Intentionally failed.')
 
 
 @pytest.mark.asyncio
-async def test_tail_job_logs_with_echo(job_sdk_client):
+async def no_test_tail_job_logs_with_echo(job_sdk_client):
     agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv().to_dict()
@@ -379,7 +398,7 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     ],
     indirect=True,
 )
-async def test_job_log_in_multiple_node(
+async def no_test_job_log_in_multiple_node(
     enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
 ):
     cluster = ray_start_cluster_head
@@ -486,7 +505,7 @@ async def test_job_log_in_multiple_node(
     assert all(job_check_status), job_check_status
 
 
-def test_agent_logs_not_streamed_to_drivers():
+def no_test_agent_logs_not_streamed_to_drivers():
     """Ensure when the job submission is used,
     (ray.init is called from an agent), the agent logs are
     not streamed to drivers.
