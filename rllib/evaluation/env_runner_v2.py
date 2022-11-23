@@ -1116,7 +1116,17 @@ class EnvRunnerV2:
             input_dict = _batch_inference_sample_batches(
                 [d.data.sample_batch for d in eval_data]
             )
-
+            keys_to_delete = []
+            for key, value in input_dict.items():
+                if not (
+                    np.issubdtype(value.dtype, np.number)
+                    or np.issubdtype(value.dtype, np.bool_)
+                ):
+                    keys_to_delete.append(key)
+            for key in keys_to_delete:
+                del input_dict[key]
+            if "agent_index" in input_dict:
+                del input_dict["agent_index"]
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
                 timestep=policy.global_timestep,
