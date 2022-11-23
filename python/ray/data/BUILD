@@ -12,7 +12,7 @@ py_library(
 )
 
 py_test_module_list(
-    files = glob(["tests/preprocessors/test_*.py"])
+    files = glob(["tests/preprocessors/test_*.py"]),
     size = "small",
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = ["//:ray_lib", ":conftest"],
