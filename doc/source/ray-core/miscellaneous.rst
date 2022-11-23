@@ -261,29 +261,13 @@ When GCS is overloaded, some functions are going to run slowly and thus bring do
 the whole cluster. To run a large cluster, several parameters need to be tuned
 for Ray.
 
-Health check
-************
-
-
-GCS checks the health of the worker nodes by sending ping periodically.
-Sometimes, if the network is poor or the raylet is too busy to response,
-the raylet might be marked dead incorrectly. 
-
-GCS uses a similar algorithm as k8s probes to check the healthiness of the
-Raylet: it sends the ping to the worker periodically and if it failed X times
-consecutively, the worker will be marked as dead. Once a worker is marked as
-dead, it'll be considered dead forever even it's not. The following OS
-environments can be used to tune this: 
-
-- `RAY_health_check_initial_delay_ms` The delay of the first health check, 5000ms by default.
-- `RAY_health_check_period_ms` The interval between two health check requests, 3000ms by default.
-- `RAY_health_check_timeout_ms` The timeout to consider a health check failed, 10000ms by default.
-- `RAY_health_check_failure_threshold` The consecutive failure threshold for the
-  worker node being considered dead, 5 by default. 
-
-
 Resource broadcasting
 *********************
+
+.. note::
+  There is an ongoing `project https://github.com/ray-project/ray/issues/30631`_ changing the algorithm to pull-based which doesn't 
+  require tuning these parameters.
+
 
 Another functionality GCS provided is to ensure each worker node has a view of
 available resources of each other in the Ray cluster. Each raylet is going to
@@ -301,6 +285,12 @@ Be aware that this is a trade-off between scheduling performance and GCS loads.
 Decreasing the resource broadcasting frequency might make scheduling slower.
 
 ### gRPC threads for GCS
+
+.. note::
+   There is an ongoing `PR https://github.com/ray-project/ray/pull/30131`_
+   setting it to vCPUs/4 by default. It's not necessary to set this up in ray 2.3+.
+
+
 By default, only one gRPC thread is used for server and client polling from the
 completion queue. This might become the bottleneck if QPS is too high.
 
