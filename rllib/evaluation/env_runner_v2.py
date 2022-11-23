@@ -1016,8 +1016,7 @@ class EnvRunnerV2:
                 raise ValueError(msg)
 
         # Clean up the episode and batch_builder for this env id.
-        if env_id in self._active_episodes:
-            del self._active_episodes[env_id]
+        del self._active_episodes[env_id]
 
     def _try_build_truncated_episode_multi_agent_batch(
         self, batch_builder: _PolicyCollectorGroup, episode: EpisodeV2
