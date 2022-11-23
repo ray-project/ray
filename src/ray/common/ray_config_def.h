@@ -349,9 +349,7 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           1U > std::thread::hardware_concurrency() / 4U
-               ? 1U
-               : std::thread::hardware_concurrency())
+           std::max(1U, std::thread::hardware_concurrency() / 4U))
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
@@ -722,9 +720,7 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// The pool size for grpc server call.
 RAY_CONFIG(uint64_t,
            num_server_call_thread,
-           1U > std::thread::hardware_concurrency() / 4U
-               ? 1U
-               : std::thread::hardware_concurrency())
+           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
 
 /// Use madvise to prevent worker coredump from including the mapped plasma pages
 /// in the worker processes.
