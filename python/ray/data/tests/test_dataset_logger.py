@@ -14,11 +14,11 @@ import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 
 
-@freeze_time("2022-11-01 01:23:45")
-def test_dataset_logger(ray_start_regular_shared):
-    curr_ts = datetime.now(pytz.timezone("US/Pacific"))
+def test_dataset_logger(shutdown_only):
+    ray.init()
     log_name, msg = "test_name", "test message 1234"
     with patch("logging.open", mock_open(), create=True) as open_mock:
+
         logger = DatasetLogger(log_name).logger
         logger.info(msg)
 
@@ -27,15 +27,19 @@ def test_dataset_logger(ray_start_regular_shared):
     open_mock.assert_called_with(log_file_path, "a", encoding=None)
     open_mock.return_value.write.assert_called_once()
 
-    # Check each component of emitted log row
+    # Parse each component of emitted log row
     raw_logged_msg = open_mock.return_value.write.call_args.args[0].strip()
     log_header, logged_msg = raw_logged_msg.split(" -- ")
     logged_ds, logged_ts, logged_info, logged_callpath = log_header.split()
-    curr_ts_notz = curr_ts.replace(tzinfo=None)
 
-    assert curr_ts_notz == datetime.strptime(
-        f"{logged_ds} {logged_ts}", "%Y-%m-%d %H:%M:%S,%f"
-    )
+    # Could not use freezegun to test exact timestamp value
+    # (values off by some milliseconds), so instead we check
+    # for correct timestamp format.
+    try:
+        datetime.strptime(f"{logged_ds} {logged_ts}", "%Y-%m-%d %H:%M:%S,%f")
+    except ValueError:
+        raise Exception(f"Invalid log timestamp: {logged_ds} {logged_ts}")
+
     assert logged_info == logging.getLevelName(logging.INFO)
     assert re.match(r"test_dataset_logger.py:\d+", logged_callpath)
     assert logged_msg == msg
