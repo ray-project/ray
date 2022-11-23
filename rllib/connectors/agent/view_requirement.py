@@ -95,7 +95,13 @@ class ViewRequirementAgentConnector(AgentConnector):
         # since there is no mapping from agent_index to agent_id that exists.
         # need to remove this from the SampleBatch later.
         # fall back to using dummy index if no index is available
-        agent_index = d[SampleBatch.AGENT_INDEX] if SampleBatch.AGENT_INDEX in d else -1
+        if SampleBatch.AGENT_INDEX in d:
+            agent_index = d[SampleBatch.AGENT_INDEX]
+        else:
+            try:
+                agent_index = float(agent_id)
+            except ValueError:
+                agent_index = -1
         if agent_collector.is_empty():
             agent_collector.add_init_obs(
                 episode_id=episode_id,
