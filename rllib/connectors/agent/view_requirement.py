@@ -91,10 +91,15 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         if SampleBatch.NEXT_OBS not in d:
             raise ValueError(f"connector data {d} should contain next_obs.")
+        # TODO(avnishn; kourosh) Unsure how agent_index is necessary downstream
+        # since there is no mapping from agent_index to agent_id that exists.
+        # need to remove this from the SampleBatch later.
+        # fall back to using dummy index if no index is available
+        agent_index = d[SampleBatch.AGENT_INDEX] if SampleBatch.AGENT_INDEX in d else -1
         if agent_collector.is_empty():
             agent_collector.add_init_obs(
                 episode_id=episode_id,
-                agent_index=d[SampleBatch.AGENT_INDEX],
+                agent_index=agent_index,
                 env_id=env_id,
                 init_obs=d[SampleBatch.NEXT_OBS],
             )
