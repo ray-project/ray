@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -107,6 +107,7 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
+    @DeveloperAPI
     def call_model(
         self, inputs: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:

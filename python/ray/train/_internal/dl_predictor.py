@@ -52,6 +52,7 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
+    @DeveloperAPI
     def call_model(
         self, inputs: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType]]:

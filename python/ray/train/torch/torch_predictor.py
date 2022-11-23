@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -94,6 +94,7 @@ class TorchPredictor(DLPredictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
+    @DeveloperAPI
     def call_model(
         self, inputs: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
