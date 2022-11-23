@@ -100,7 +100,7 @@ def run_images_benchmark(benchmark: Benchmark):
 if __name__ == "__main__":
     ray.init()
 
-    benchmark = Benchmark("read")
+    benchmark = Benchmark("read-images")
 
     run_images_benchmark(benchmark)
 

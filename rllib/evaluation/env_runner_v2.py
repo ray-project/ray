@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import numpy as np
-import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
@@ -18,7 +17,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_s
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch, get_original_space
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -637,9 +636,9 @@ class EnvRunnerV2:
                     policy_id: PolicyID = episode.policy_for(agent_id)
                     policy = self._worker.policy_map[policy_id]
 
-                    # Create a fake (all-0s) observation.
-                    obs_space = policy.observation_space
-                    obs_space = getattr(obs_space, "original_space", obs_space)
+                    # Create a fake observation by sampling the original env
+                    # observation space.
+                    obs_space = get_original_space(policy.observation_space)
                     values_dict = {
                         SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
@@ -647,9 +646,7 @@ class EnvRunnerV2:
                         SampleBatch.REWARDS: 0.0,
                         SampleBatch.DONES: True,
                         SampleBatch.INFOS: {},
-                        SampleBatch.NEXT_OBS: tree.map_structure(
-                            np.zeros_like, obs_space.sample()
-                        ),
+                        SampleBatch.NEXT_OBS: obs_space.sample(),
                     }
 
                     # Queue these fake obs for connector preprocessing too.
@@ -1016,7 +1013,8 @@ class EnvRunnerV2:
                 raise ValueError(msg)
 
         # Clean up the episode and batch_builder for this env id.
-        del self._active_episodes[env_id]
+        if env_id in self._active_episodes:
+            del self._active_episodes[env_id]
 
     def _try_build_truncated_episode_multi_agent_batch(
         self, batch_builder: _PolicyCollectorGroup, episode: EpisodeV2
@@ -1115,6 +1113,7 @@ class EnvRunnerV2:
             input_dict = _batch_inference_sample_batches(
                 [d.data.sample_batch for d in eval_data]
             )
+
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
                 timestep=policy.global_timestep,
