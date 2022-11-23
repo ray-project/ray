@@ -305,7 +305,7 @@ The machine setup:
 - 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
 
 The OS setup:
-- Set the maxinum number of opening files to 1048576
+- Set the maximum number of opening files to 1048576
 - Increase the ARP cache size:
   - `net.ipv4.neigh.default.gc_thresh1=2048`
   - `net.ipv4.neigh.default.gc_thresh2=4096`
