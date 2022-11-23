@@ -1233,7 +1233,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 
   if (worker == nullptr) {
-    // There are no more non-actor workers available to execute this task.
+    // There are no more cached workers available to execute this task.
     // Start a new worker process.
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
