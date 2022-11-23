@@ -33,7 +33,9 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+import ray.rllib.connectors.registry
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS

@@ -1,11 +1,29 @@
 """Registry of connector names for global access."""
 
-from typing import Tuple, Type, TYPE_CHECKING, Union, Any
+from typing import Tuple, Any
 
 from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.connectors.connector import Connector, ConnectorContext
+
+# Action Connectors ######
+from ray.rllib.connectors.action.clip import ClipActionsConnector
+from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
+from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
+from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
+
+# Agent Connectors ######
+from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+    ConcurrentMeanStdObservationFilterAgentConnector,
+)
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
+from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
+from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
+from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 
 @PublicAPI(stability="alpha")
@@ -38,12 +56,7 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     return cls.from_state(ctx, params)
 
 
-###### Action Connectors ######
-from ray.rllib.connectors.action.clip import ClipActionsConnector
-from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
-from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
-from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-
+# Action Connectors ######
 register_connector(ClipActionsConnector.__name__, ClipActionsConnector)
 register_connector(ImmutableActionsConnector.__name__, ImmutableActionsConnector)
 register_connector(NormalizeActionsConnector.__name__, NormalizeActionsConnector)
@@ -51,17 +64,7 @@ register_connector(ActionConnectorPipeline.__name__, ActionConnectorPipeline)
 register_connector(ActionConnectorPipeline.__name__, ActionConnectorPipeline)
 
 
-###### Agent Connectors ######
-from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
-from ray.rllib.connectors.agent.mean_std_filter import (
-        MeanStdObservationFilterAgentConnector, ConcurrentMeanStdObservationFilterAgentConnector
-)
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
-from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
-from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
-
+# Agent Connectors ######
 register_connector(ClipRewardAgentConnector.__name__, ClipRewardAgentConnector)
 register_connector(
     MeanStdObservationFilterAgentConnector.__name__,
@@ -74,6 +77,7 @@ register_connector(
 register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)
 register_connector(AgentConnectorPipeline.__name__, AgentConnectorPipeline)
 register_connector(StateBufferConnector.__name__, StateBufferConnector)
-register_connector(ViewRequirementAgentConnector.__name__, ViewRequirementAgentConnector)
+register_connector(
+    ViewRequirementAgentConnector.__name__, ViewRequirementAgentConnector
+)
 register_connector(SyncedFilterAgentConnector.__name__, SyncedFilterAgentConnector)
-
