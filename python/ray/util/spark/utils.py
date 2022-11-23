@@ -406,9 +406,10 @@ def _ray_worker_startup_barrier():
     try:
         lock_fd = acquire_lock(lock_file_path)
     except TimeoutError:
-        # The file might be locked forever because that previous process locked the file
-        # and then crashed.
-        # So here remove the existing lock file and acquire file lock on the file again.
+        # If timeout happens, the file lock might be hold by another process and that process
+        # does not release the lock in time by some unexpected reason.
+        # In this case, remove the existing lock file and create the file again, and then
+        # acquire file lock on the new file.
         try:
             os.remove(lock_file_path)
         except Exception:
@@ -421,3 +422,21 @@ def _ray_worker_startup_barrier():
         os.close(lock_fd)
 
     threading.Thread(target=hold_lock_for_10s_and_release, args=()).start()
+
+
+def _display_databricks_driver_proxy_url(spark_context, port, title):
+    driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
+    commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
+    orgId = commandContextTags.apply("orgId")
+    clusterId = commandContextTags.apply("clusterId")
+
+    template = "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
+    proxy_url = template.format(orgId=orgId, clusterId=clusterId, port=port)
+
+    displayHTML(f"""
+      <div style="margin-bottom: 16px">
+          <a href="{proxy_url}">
+              Open {title} in a new tab
+          </a>
+      </div>
+    """)

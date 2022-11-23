@@ -24,6 +24,7 @@ from .utils import (
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
     _ray_worker_startup_barrier,
+    _display_databricks_driver_proxy_url,
 )
 
 if not sys.platform.startswith("linux"):
@@ -101,9 +102,8 @@ class RayClusterOnSpark:
                         for node in ray.nodes()
                         if node["Alive"]
                     ]
-                ) - 1
-                # The head node is included. If alive count is greater than worker count,
-                # the ray cluster is fully initialized
+                ) - 1  # Minus 1 means excluding the head node.
+
                 if cur_alive_worker_count == self.num_ray_workers:
                     return
 
@@ -361,6 +361,7 @@ def init_ray_cluster(
         f"{ray_temp_dir}/session_latest/logs."
     )
 
+    dashboard_port = 8899
     ray_head_node_cmd = [
         ray_exec_path,
         "start",
@@ -369,7 +370,8 @@ def init_ray_cluster(
         "--head",
         "--disable-usage-stats",
         f"--port={ray_head_port}",
-        "--include-dashboard=false",
+        "--include-dashboard=true",
+        f"--dashboard-port={dashboard_port}",
         # disallow ray tasks with cpu requirements from being scheduled on the head node.
         f"--num-cpus=0",
         # limit the memory allocation to the head node (actual usage may increase beyond this
@@ -382,6 +384,13 @@ def init_ray_cluster(
     ]
 
     _logger.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
+
+    if is_in_databricks_runtime():
+        _display_databricks_driver_proxy_url(
+            spark.sparkContext,
+            dashboard_port,
+            "Ray Cluster Dashboard"
+        )
 
     with open(
         os.path.join(ray_log_dir, "ray-start-head.log"), "w", buffering=1
