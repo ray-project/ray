@@ -352,7 +352,7 @@ class TupleSpyModel(TFModelV2):
 class TestNestedObservationSpaces(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):

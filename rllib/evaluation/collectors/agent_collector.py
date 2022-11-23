@@ -188,6 +188,10 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
+        # convert init_obs to np.array (in case it is a list)
+        if isinstance(init_obs, list):
+            init_obs = np.array(init_obs)
+
         # Check if view requirement dict has the SampleBatch.OBS key and warn once if
         # view requirement does not match init_obs
         self._check_view_requirement(SampleBatch.OBS, init_obs)
@@ -255,6 +259,10 @@ class AgentCollector:
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
+
+        # convert obs to np.array (in case it is a list)
+        if isinstance(values[SampleBatch.OBS], list):
+            values[SampleBatch.OBS] = np.array(values[SampleBatch.OBS])
 
         # Default to next timestep if not provided in input values
         if SampleBatch.T not in input_values:
