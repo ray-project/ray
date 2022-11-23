@@ -15,7 +15,7 @@ class TorchVisionPreprocessor(Preprocessor):
 
     Examples:
         >>> import ray
-        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data/batoidea")
+        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
         >>> dataset  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
 
@@ -33,7 +33,7 @@ class TorchVisionPreprocessor(Preprocessor):
         columns: The columns to apply the TorchVision transform to.
         transform: The TorchVision transform you want to apply. This transform should
             accept an ``np.ndarray`` as input and return a ``torch.Tensor`` as output.
-    """
+    """  # noqa: E501
 
     _is_fittable = False
 
