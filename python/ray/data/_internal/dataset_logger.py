@@ -1,10 +1,8 @@
 import logging
 import os
-from typing import Optional
 
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT
-from ray.util.annotations import DeveloperAPI
 
 
 class DatasetLogger:
