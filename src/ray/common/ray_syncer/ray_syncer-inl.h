@@ -183,7 +183,7 @@ class BidiReactor : public T, public NodeSyncConnection {
     StartRead(receiving_message_.get());
   }
 
-  void OnWriteDone(bool ok) {
+  void OnWriteDone(bool ok) override {
     if (ok) {
       io_context_.dispatch([this]() { SendNext(); }, "");
     } else {
@@ -192,7 +192,7 @@ class BidiReactor : public T, public NodeSyncConnection {
     }
   }
 
-  void OnReadDone(bool ok) {
+  void OnReadDone(bool ok) override {
     if (!ok) {
       return;
     }
