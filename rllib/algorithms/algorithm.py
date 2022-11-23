@@ -33,6 +33,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
@@ -95,6 +96,7 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -1475,11 +1477,50 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
+        else:
+            # Just preprocess observations, similar to how it used to be done before.
+            pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+            # convert the observation to array if possible
+            if not isinstance(observation, (np.ndarray, dict, tuple)):
+                try:
+                    observation = np.asarray(observation)
+                except Exception:
+                    raise ValueError(
+                        f"Observation type {type(observation)} cannot be converted to "
+                        f"np.ndarray."
+                    )
+            if pp:
+                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+                pp = pp[0]
+
+                # Note(Kourosh): The connector will leave the policy's connector in eval
+                # mode. would that be a problem?
+                pp.in_eval()
+                if observation is not None:
+                    _input_dict = {SampleBatch.OBS: observation}
+                elif input_dict is not None:
+                    _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                else:
+                    raise ValueError(
+                        "Either observation or input_dict must be provided."
+                    )
+
+                # TODO (Kourosh): Create a new util method for algorithm that computes
+                # actions based on raw inputs from env and can keep track of its own
+                # internal state.
+                acd = AgentConnectorDataType("0", "0", _input_dict)
+                # make sure the state is reset since we are only applying the
+                # preprocessor
+                pp.reset(env_id="0")
+                ac_o = pp([acd])[0]
+                observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:

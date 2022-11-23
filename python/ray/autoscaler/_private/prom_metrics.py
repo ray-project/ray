@@ -13,6 +13,9 @@ class NullMetric:
     def inc(self, *args, **kwargs):
         pass
 
+    def labels(self, *args, **kwargs):
+        return self
+
 
 try:
 
