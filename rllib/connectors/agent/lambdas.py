@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
 )
-from ray.rllib.connectors.registry import register_connector
+from ray.rllib.connectors import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,

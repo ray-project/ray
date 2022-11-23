@@ -6,7 +6,6 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
@@ -24,6 +23,8 @@ from ray.util import log_once
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
     from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
+    from ray.rllib.policy.policy_map import PolicyMap
+
 
 
 @DeveloperAPI
@@ -60,7 +61,7 @@ class Episode:
 
     def __init__(
         self,
-        policies: PolicyMap,
+        policies: "PolicyMap",
         policy_mapping_fn: Callable[[AgentID, "Episode", "RolloutWorker"], PolicyID],
         batch_builder_factory: Callable[[], "MultiAgentSampleBatchBuilder"],
         extra_batch_callback: Callable[[SampleBatchType], None],
@@ -97,7 +98,7 @@ class Episode:
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
         self.media: Dict[str, Any] = {}
-        self.policy_map: PolicyMap = policies
+        self.policy_map: "PolicyMap" = policies
         self._policies = self.policy_map  # backward compatibility
         self.policy_mapping_fn: Callable[
             [AgentID, "Episode", "RolloutWorker"], PolicyID

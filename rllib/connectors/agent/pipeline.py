@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
     ConnectorPipeline,
 )
-from ray.rllib.connectors.registry import get_connector
+from ray.rllib.connectors import get_connector
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
