@@ -146,7 +146,6 @@ def get_fs_and_path(
         return None, None
 
 
-
 def delete_at_uri(uri: str):
     _assert_pyarrow_installed()
 
