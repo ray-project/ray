@@ -122,6 +122,7 @@ if __name__ == "__main__":
         .rollouts(
             batch_mode="complete_episodes",
             num_rollout_workers=0,
+            # TODO(avnishn) make a new example compatible w connectors.
             enable_connectors=False,
         )
         .callbacks(FillInActions)
