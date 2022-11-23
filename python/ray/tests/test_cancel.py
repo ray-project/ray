@@ -3,6 +3,7 @@ import random
 import signal
 import sys
 import threading
+import _thread
 import time
 
 import pytest
@@ -105,7 +106,9 @@ def test_defer_sigint():
     try:
         with DeferSigint():
             # Send singal to current process.
-            os.kill(os.getpid(), signal.SIGINT)
+            # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
+            # support Windows.
+            _thread.interrupt_main()
             # Wait for signal to be delivered.
             time.sleep(1)
             # Signal should have been delivered by here, so we consider it deferred if
@@ -116,6 +119,8 @@ def test_defer_sigint():
         assert signal_was_deferred
         # Check that original SIGINT handler was restored.
         assert signal.getsignal(signal.SIGINT) is orig_sigint_handler
+    else:
+        pytest.fail("SIGINT signal was never sent in test")
 
 
 def test_defer_sigint_monkey_patch():
@@ -156,7 +161,9 @@ def test_defer_sigint_noop_in_non_main_thread():
             # Check that DeferSigint context manager was NOT returned.
             assert not isinstance(cm, DeferSigint)
             # Send singal to current process.
-            os.kill(os.getpid(), signal.SIGINT)
+            # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
+            # support Windows.
+            _thread.interrupt_main()
             # Wait for signal to be delivered.
             time.sleep(1)
             # Signal should have been delivered by here, so we consider it deferred if
@@ -174,6 +181,8 @@ def test_defer_sigint_noop_in_non_main_thread():
         assert not signal_was_deferred
         # Check that original SIGINT handler was not overridden.
         assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+    else:
+        pytest.fail("SIGINT signal was never sent in test")
 
 
 def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):
