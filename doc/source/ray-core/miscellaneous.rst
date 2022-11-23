@@ -235,7 +235,7 @@ Maximum open files
 
 The OS has to be configured to support opening many TCP connections since every
 worker and raylet connects to the GCS. In POSIX systems, the current limit can
-be checked by `ulimit -n` and if it's small, it should be increased according to
+be checked by ``ulimit -n`` and if it's small, it should be increased according to
 the OS manual. 
 
 ARP cache
@@ -246,14 +246,18 @@ all the worker nodes connect to the head node, which adds a lot of entries to
 the ARP table. Ensure that the ARP cache size is large enough to handle this
 many nodes.
 Failure to do this will result in the head node hanging. When this happens,
-`dmesg` will show errors like `neighbor table overflow message`.
+``dmesg`` will show errors like ``neighbor table overflow message``.
 
-In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing
-the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`. 
+In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
+the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``. 
 For more details, please refer to the OS manual.
 
 Tuning Ray Settings
 ~~~~~~~~~~~~~~~~~~~
+
+.. note::
+  There is an ongoing `project https://github.com/ray-project/ray/projects/15`_ focusing on
+  improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
 
 To run a large cluster, several parameters need to be tuned in Ray.
 
@@ -261,8 +265,8 @@ Resource broadcasting
 *********************
 
 .. note::
-  There is an ongoing `project https://github.com/ray-project/ray/issues/30631`_ changing the algorithm to pull-based which doesn't 
-  require tuning these parameters.
+  There is an ongoing `project https://github.com/ray-project/ray/issues/30631`_ changing the
+  algorithm to pull-based which doesn't require tuning these parameters.
 
 
 Another functionality GCS provided is to ensure each worker node has a view of
@@ -272,9 +276,9 @@ raylet periodically. The time complexity is O(N^2). In a large Ray cluster, this
 is going to be an issue, since most of the time is spent on broadcasting the
 resources. There are several settings we can use to tune this: 
 
-- `RAY_resource_broadcast_batch_size` The maximum number of nodes in a single
+- ``RAY_resource_broadcast_batch_size`` The maximum number of nodes in a single
   request sent by GCS, by default 512.
-- `RAY_raylet_report_resources_period_milliseconds` The interval between two
+- ``RAY_raylet_report_resources_period_milliseconds`` The interval between two
   resources report in raylet, 100ms by default.
 
 Be aware that this is a trade-off between scheduling performance and GCS loads.
@@ -290,9 +294,9 @@ Decreasing the resource broadcasting frequency might make scheduling slower.
 By default, only one gRPC thread is used for server and client polling from the
 completion queue. This might become the bottleneck if QPS is too high.
 
-- `RAY_gcs_server_rpc_server_thread_num` Control the number of threads in GCS
+- ``RAY_gcs_server_rpc_server_thread_num`` Control the number of threads in GCS
   polling from the server completion queue, by default, 1. 
-- `RAY_gcs_server_rpc_client_thread_num` Control the number of threads in GCS
+- ``RAY_gcs_server_rpc_client_thread_num`` Control the number of threads in GCS
   polling from the client completion queue, by default, 1. 
 
 
@@ -307,19 +311,19 @@ The machine setup:
 The OS setup:
 - Set the maximum number of opening files to 1048576
 - Increase the ARP cache size:
-  - `net.ipv4.neigh.default.gc_thresh1=2048`
-  - `net.ipv4.neigh.default.gc_thresh2=4096`
-  - `net.ipv4.neigh.default.gc_thresh3=8192`
+    - ``net.ipv4.neigh.default.gc_thresh1=2048``
+    - ``net.ipv4.neigh.default.gc_thresh2=4096``
+    - ``net.ipv4.neigh.default.gc_thresh3=8192``
 
 
 The Ray setup:
-- `RAY_gcs_server_rpc_client_thread_num=3`
-- `RAY_gcs_server_rpc_server_thread_num=3`
-- `RAY_event_stats=false`
-- `RAY_gcs_resource_report_poll_period_ms=1000`  
+- ``RAY_gcs_server_rpc_client_thread_num=3``
+- ``RAY_gcs_server_rpc_server_thread_num=3``
+- ``RAY_event_stats=false``
+- ``RAY_gcs_resource_report_poll_period_ms=1000``
 
 Test workload:
-- Test script: code https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py
+- Test script: `code https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py`_
 
 
 Result:
