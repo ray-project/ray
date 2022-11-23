@@ -267,6 +267,7 @@ class AlgorithmConfig:
         }
 
         # `self.multi_agent()`
+        self._is_multi_agent = False
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_map_cache = None
@@ -1735,6 +1736,12 @@ class AlgorithmConfig:
                     )
             self.policies_to_train = policies_to_train
 
+        # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
+        # PolicyID found in policies dict.
+        self._is_multi_agent = (
+            len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+        )
+
         return self
 
     def is_multi_agent(self) -> bool:
@@ -1744,7 +1751,7 @@ class AlgorithmConfig:
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+        return self._is_multi_agent
 
     def reporting(
         self,
