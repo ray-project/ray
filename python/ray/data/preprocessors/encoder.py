@@ -394,7 +394,7 @@ class LabelEncoder(Preprocessor):
             :class:`LabelEncoder`.
     """
 
-    def __init__(self, label_column: str):
+    def __init__(self, label_column: str, encoding: Optional[Dict[str, int]] = None):
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
