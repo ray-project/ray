@@ -9,6 +9,7 @@ import tempfile
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
+    get_fs_and_path,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -155,6 +156,18 @@ def test_get_recursive_files_race_con(temp_data_dirs):
 
     assert_file(False, tmp_source, "level0.txt")
     assert_file(True, tmp_source, "level0_exclude.txt")
+
+
+def test_get_fs_and_path():
+    short_uri = "hdfs:///user_folder/mock_folder"
+    try:
+        fs, path = get_fs_and_path(short_uri)
+        # if fsspec not imported, then we will have None
+        assert fs is None
+        assert path is None
+    except Exception as e:
+        # if fsspec imported, checking uri will not find the file
+        assert "No such file or directory" in str(e)
 
 
 if __name__ == "__main__":
