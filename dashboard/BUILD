@@ -17,7 +17,7 @@ py_library(
 )
 
 py_test(
-    name = "test_job_agent_only_conda",
+    name = "test_job_agent",
     size = "medium",
     srcs = ["modules/job/tests/test_job_agent.py"],
     tags = ["team:core"],
