@@ -386,21 +386,19 @@ def _primitive_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayl
     assert _is_primitive(a.type), a.type
     # Buffer scheme: [bitmap, data]
     buffers = a.buffers()
-    assert len(buffers) <= 2, len(buffers)
+    assert len(buffers) == 2, len(buffers)
 
     # Copy bitmap buffer, if needed.
+    bitmap_buf = buffers[0]
     if a.null_count > 0:
-        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(bitmap_buf, a.offset, len(a))
     else:
         bitmap_buf = None
 
     # Copy data buffer, if needed.
-    if len(buffers) > 1:
-        assert len(buffers) == 2, len(buffers)
+    data_buf = buffers[1]
+    if data_buf is not None:
         data_buf = _copy_buffer_if_needed(buffers[1], a.type, a.offset, len(a))
-    else:
-        assert len(buffers) == 1, len(buffers)
-        data_buf = None
 
     return PicklableArrayPayload(
         type=a.type,
