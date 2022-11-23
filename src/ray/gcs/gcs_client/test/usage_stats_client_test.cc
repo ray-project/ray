@@ -53,7 +53,7 @@ class UsageStatsClientTest : public ::testing::Test {
     });
     gcs::GcsClientOptions options("127.0.0.1:" +
                                   std::to_string(config_.grpc_server_port));
-    gcs_client_ = std::make_shared<gcs::GcsClient>(options);
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
@@ -78,11 +78,11 @@ class UsageStatsClientTest : public ::testing::Test {
   // GCS client.
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<instrumented_io_context> client_io_service_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
 };
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
-  gcs::UsageStatsClient usage_stats_client(gcs_client_);
+  gcs::UsageStatsClient usage_stats_client(*gcs_client_);
   usage_stats_client.RecordExtraUsageTag("key1", "value1");
   ASSERT_TRUE(WaitForCondition(
       [this]() {

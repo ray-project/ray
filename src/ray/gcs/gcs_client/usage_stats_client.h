@@ -22,7 +22,9 @@ namespace ray {
 namespace gcs {
 class UsageStatsClient {
  public:
-  explicit UsageStatsClient(std::shared_ptr<GcsClient> gcs_client);
+  /// The caller is responsible for managing the lifecycle of the gcs client.
+  /// The gcs client must be connected before calling this constructor.
+  explicit UsageStatsClient(GcsClient &gcs_client);
 
   /// C++ version of record_extra_usage_tag in usage_lib.py
   ///
@@ -36,7 +38,7 @@ class UsageStatsClient {
   static constexpr char kUsageStatsNamespace[] = "usage_stats";
 
   /// A client connection to the GCS.
-  std::shared_ptr<GcsClient> gcs_client_;
+  GcsClient &gcs_client_;
 };
 }  // namespace gcs
 }  // namespace ray

@@ -141,6 +141,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
 
+  // Init gcs client
+  InitGcsClient();
+
   // Init KV Manager
   InitKVManager();
 
@@ -185,6 +188,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   RAY_CHECK(int(gcs_heartbeat_manager_ != nullptr) +
                 int(gcs_healthcheck_manager_ != nullptr) ==
             1);
+
+  RAY_CHECK_OK(gcs_client_->Connect(main_service_));
 
   RecordMetrics();
 
@@ -552,17 +557,23 @@ void GcsServer::InitFunctionManager() {
   function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
 }
 
+void GcsServer::InitGcsClient() {
+  GcsClientOptions options("127.0.0.1:" + std::to_string(GetPort()));
+  gcs_client_ = std::make_unique<GcsClient>(options);
+}
+
 void GcsServer::InitKVManager() {
+  std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    kv_instance_ = std::make_shared<RedisInternalKV>(GetRedisClientOptions());
+    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    kv_instance_ =
-        std::make_shared<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+    instance =
+        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(kv_instance_);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -616,7 +627,7 @@ void GcsServer::InitRuntimeEnvManager() {
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      gcs_table_storage_, gcs_publisher_, kv_instance_);
+      gcs_table_storage_, gcs_publisher_, *gcs_client_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));

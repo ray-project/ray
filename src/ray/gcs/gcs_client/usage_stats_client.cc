@@ -16,12 +16,11 @@
 
 namespace ray {
 namespace gcs {
-UsageStatsClient::UsageStatsClient(std::shared_ptr<GcsClient> gcs_client)
-    : gcs_client_(gcs_client) {}
+UsageStatsClient::UsageStatsClient(GcsClient &gcs_client) : gcs_client_(gcs_client) {}
 
 void UsageStatsClient::RecordExtraUsageTag(const std::string &key,
                                            const std::string &value) {
-  RAY_CHECK_OK(gcs_client_->InternalKV().AsyncInternalKVPut(
+  RAY_CHECK_OK(gcs_client_.InternalKV().AsyncInternalKVPut(
       kUsageStatsNamespace,
       kExtraUsageTagPrefix + key,
       value,
