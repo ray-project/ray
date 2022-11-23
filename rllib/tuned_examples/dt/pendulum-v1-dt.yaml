@@ -33,6 +33,8 @@ pendulum_dt:
         num_layers: 1
         num_heads: 1
         embed_dim: 64
+        # rollout
+        horizon: 200
         # evaluation
         evaluation_config:
             explore: False
