@@ -648,6 +648,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
     ), "`config` in results not a python dict!"
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict(train_results["config"]["multiagent"])
