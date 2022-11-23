@@ -248,6 +248,16 @@ class MBMPOConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
+    def rollouts(self, *args, **kwargs):
+        if "horizon" in kwargs:
+            raise ValueError(
+                "`horizon` setting no longer supported via "
+                "`config.rollouts(horizon=..)`! This is a MBMPO-only setting now and "
+                "must be specified via `config.training(horizon=..)`."
+            )
+        return super().rollouts(*args, **kwargs)
+
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
