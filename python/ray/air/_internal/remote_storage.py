@@ -94,52 +94,57 @@ def get_fs_and_path(
         fs = _cached_fs[cache_key]
         return fs, path
 
+    if fsspec:
+        # When fsspec presents, use it.  fsspec appeared to
+        # have more consistent behavior than others, such as hdfs
+        # filesystem for pyarrow.
+        try:
+            fsspec_fs = fsspec.filesystem(parsed.scheme)
+        except ValueError:
+            # Raised when protocol not known
+            return None, None
+
+        fsspec_handler = pyarrow.fs.FSSpecHandler
+        if parsed.scheme in ["gs", "gcs"]:
+
+            # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
+            #  resolved.
+            try:
+                import gcsfs
+
+                # For minimal install that only needs python3-setuptools
+                if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+                    "2022.7.1"
+                ):
+                    raise RuntimeError(
+                        "`gcsfs` versions greater than '2022.7.1' are not "
+                        f"compatible with pyarrow. You have gcsfs version "
+                        f"{gcsfs.__version__}. Please downgrade your gcsfs "
+                        f"version. See more details in "
+                        f"https://github.com/fsspec/gcsfs/issues/498."
+                    )
+            except ImportError:
+                pass
+
+            # GS doesn't support `create_parents` arg in `create_dir()`
+            fsspec_handler = _CustomGCSHandler
+
+        fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
+        _cached_fs[cache_key] = fs
+
+        return fs, path
+
     try:
+        # in case of hdfs filesystem, if uri don't have the netloc part below will
+        # failed with hdfs access error.  For example 'hdfs:///user_folder/...' will
+        # fail, while only 'hdfs://namenode_server/user_foler/...' will work
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[cache_key] = fs
         return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
-        if not fsspec:
-            # Only return if fsspec is not installed
-            return None, None
-
-    # Else, try to resolve protocol via fsspec
-    try:
-        fsspec_fs = fsspec.filesystem(parsed.scheme)
-    except ValueError:
-        # Raised when protocol not known
         return None, None
 
-    fsspec_handler = pyarrow.fs.FSSpecHandler
-    if parsed.scheme in ["gs", "gcs"]:
-
-        # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
-        #  resolved.
-        try:
-            import gcsfs
-
-            # For minimal install that only needs python3-setuptools
-            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
-                "2022.7.1"
-            ):
-                raise RuntimeError(
-                    "`gcsfs` versions greater than '2022.7.1' are not "
-                    f"compatible with pyarrow. You have gcsfs version "
-                    f"{gcsfs.__version__}. Please downgrade your gcsfs "
-                    f"version. See more details in "
-                    f"https://github.com/fsspec/gcsfs/issues/498."
-                )
-        except ImportError:
-            pass
-
-        # GS doesn't support `create_parents` arg in `create_dir()`
-        fsspec_handler = _CustomGCSHandler
-
-    fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
-    _cached_fs[cache_key] = fs
-
-    return fs, path
 
 
 def delete_at_uri(uri: str):
