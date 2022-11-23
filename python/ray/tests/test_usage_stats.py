@@ -12,6 +12,7 @@ from jsonschema import validate
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
+from ray._private.usage.usage_lib import TagKey
 from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
@@ -233,6 +234,42 @@ def test_worker_crash_increment_stats():
 
         assert "worker_crash_oom" in result
         assert result["worker_crash_oom"] == "1"
+
+
+def test_core_state_api_tags(shutdown_only):
+    import ray.experimental.state.api as api
+
+    ctx = ray.init()
+    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    api.list_actors()
+    api.list_tasks()
+    api.list_jobs()
+    api.list_cluster_events()
+    api.list_nodes()
+    api.list_objects()
+    api.list_runtime_envs()
+    api.list_workers()
+
+    api.summarize_actors()
+    api.summarize_objects()
+    api.summarize_tasks()
+
+    result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
+
+    expected_tags = [
+        TagKey.CORE_STATE_API_LIST_ACTORS,
+        TagKey.CORE_STATE_API_LIST_TASKS,
+        TagKey.CORE_STATE_API_LIST_JOBS,
+        TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS,
+        TagKey.CORE_STATE_API_LIST_NODES,
+        TagKey.CORE_STATE_API_LIST_OBJECTS,
+        TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS,
+        TagKey.CORE_STATE_API_LIST_WORKERS,
+        TagKey.CORE_STATE_API_SUMMARIZE_ACTORS,
+        TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS,
+        TagKey.CORE_STATE_API_SUMMARIZE_TASKS,
+    ]
+    assert set(result.keys()).issuperset({tag.name.lower() for tag in expected_tags})
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
