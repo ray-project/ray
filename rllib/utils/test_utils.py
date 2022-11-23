@@ -648,7 +648,9 @@ def check_train_results(train_results):
         "`config` in results not a python dict!",
     )
 
-    is_multi_agent = train_results["config"].is_multi_agent()
+    is_multi_agent = (
+        AlgorithmConfig().from_dict(train_results["config"]).is_multi_agent()
+    )
 
     # Check in particular the "info" dict.
     info = train_results["info"]
