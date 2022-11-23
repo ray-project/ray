@@ -46,25 +46,26 @@ Install the Ray Lightning Library with the following commands:
 
 To use, simply pass in the plugin to your Pytorch Lightning ``Trainer``. For full details, you can checkout the `README here <https://github.com/ray-project/ray_lightning#distributed-pytorch-lightning-training-on-ray>`__
 
-Here is an example of using the ``RayPlugin`` for Distributed Data Parallel training on a Ray cluster:
+Here is an example of using the ``RayStrategy`` for Distributed Data Parallel training on a Ray cluster:
 
-.. TODO: code snippet untested
+First, let's define our PyTorch Lightning module.
 
-.. code-block:: python
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_example.py
+    :language: python
+    :dedent:
+    :start-after: __pl_module_init__
+    :end-before: __pl_module_end__
 
-    import pytorch_lightning as pl
-    from ray_lightning import RayPlugin
 
-    # Create your PyTorch Lightning model here.
-    ptl_model = MNISTClassifier(...)
-    plugin = RayPlugin(num_workers=4, num_cpus_per_worker=1, use_gpu=True)
+Then, we create a PyTorch Lightning Trainer, passing in ``RayStrategy``. We can also configure the number of training workers we want to use and whether to use GPU.
 
-    # If using GPUs, set the ``gpus`` arg to a value > 0.
-    # The actual number of GPUs is determined by ``num_workers``.
-    trainer = pl.Trainer(..., gpus=1, plugins=[plugin])
-    trainer.fit(ptl_model)
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_example.py
+    :language: python
+    :dedent:
+    :start-after: __train_begin__
+    :end-before: __train_end__
 
-With this plugin, Pytorch DDP is used as the distributed training communication protocol, but Ray is used to launch and manage the training worker processes.
+With this strategy, Pytorch DDP is used as the distributed training communication protocol, but Ray is used to launch and manage the training worker processes.
 
 Multi-node Distributed Training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -97,47 +98,22 @@ Hyperparameter Tuning with non-distributed training
 If you only want distributed hyperparameter tuning, but each training run doesn't need to be distributed,
 you can use the ready-to-use Pytorch Lightning callbacks that Ray Tune provides.
 
-To report metrics back to Tune after each validation epoch, we can use the ``TuneReportCallback``:
+We first wrap our training code into a function. To report metrics back to Tune after each validation epoch, we make sure to add the ``TuneReportCallback`` to the PyTorch Lightning Trainer. The learning rate is read from the provided ``config`` argument.
 
-.. code-block:: python
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_tune.py
+    :language: python
+    :dedent:
+    :start-after: __train_func_begin__
+    :end-before: __train_func_end__
 
-    from ray import air, tune
-    from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
-    def train_mnist(config):
+Then, we use the Ray Tune ``Tuner`` to run our hyperparameter tuning experiment. We define a hyperparameter search space, and in this case we will try out different learning rate values. These hyperparameters get passed in as the ``config`` argument to the training function that we defined earlier.
 
-        # Create your PTL model.
-        model = MNISTClassifier(config)
-
-        # Create the Tune Reporting Callback
-        metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
-        callbacks = [TuneReportCallback(metrics, on="validation_end")]
-
-        trainer = pl.Trainer(max_epochs=4, callbacks=callbacks)
-        trainer.fit(model)
-
-    config = {
-        "layer_1": tune.choice([32, 64, 128]),
-        "layer_2": tune.choice([64, 128, 256]),
-        "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([32, 64, 128]),
-    }
-
-    # Make sure to specify how many actors each training run will create via the "extra_cpu" field.
-    tuner = tune.Tuner(
-        train_mnist,
-        tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
-            num_samples=num_samples
-        ),
-        param_space=config,
-        run_config=air.RunConfig(name="tune_mnist"),
-    )
-    
-    results = tuner.fit()
-
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_tune.py
+    :language: python
+    :dedent:
+    :start-after: __tune_run_begin__
+    :end-before: __tune_run_end__
 
 
 And if you want to add periodic checkpointing as well, you can use the ``TuneReportCheckpointCallback`` instead.
@@ -165,47 +141,21 @@ All you have to do is move your training code to a function, pass the function t
 
 .. warning:: Make sure to use the callbacks from the Ray Lightning library and not the one from the Tune library, i.e. use ``ray_lightning.tune.TuneReportCallback`` and not ``ray.tune.integrations.pytorch_lightning.TuneReportCallback``.
 
-Example using Ray Lightning with Tune:
 
-.. code-block:: python
+As before, we first define our training function, this time making sure we specify ``RayStrategy`` and using the ``TuneReportCallback`` from the ``ray_lightning`` library.
 
-    from ray import air, tune
-    from ray_lightning import RayStrategy
-    from ray_lightning.tune import TuneReportCallback
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_tune.py
+    :language: python
+    :start-after: __train_func_distributed_begin__
+    :end-before: __train_func_distributed_end__
 
-    def train_mnist(config):
 
-    # Create your PTL model.
-    model = MNISTClassifier(config)
+Then, we use the ``Tuner`` to run our hyperparameter tuning experiment. We have to make sure we wrap our training function with ``tune.with_resources`` to tell Tune that each of the trials will also be distributed.
 
-    # Create the Tune Reporting Callback
-    metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
-    callbacks = [TuneReportCallback(metrics, on="validation_end")]
+.. literalinclude:: /../../python/ray/tests/ray_lightning/simple_tune.py
+    :language: python
+    :dedent:
+    :start-after: __tune_run_distributed_begin__
+    :end-before: __tune_run_distributed_end__
 
-    trainer = pl.Trainer(
-        max_epochs=4,
-        callbacks=callbacks,
-        plugins=[RayStrategy(num_workers=4, use_gpu=False)])
-    trainer.fit(model)
-
-    config = {
-        "layer_1": tune.choice([32, 64, 128]),
-        "layer_2": tune.choice([64, 128, 256]),
-        "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([32, 64, 128]),
-    }
-
-    # Make sure to specify how many actors each training run will create via the "extra_cpu" field.
-    tuner = tune.Tuner(
-        tune.with_resources(train_mnist, {"cpu": 1, "extra_cpu": 4}),
-        tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
-            num_samples=num_samples,
-        ),
-        param_space=config
-    )
     
-    results = tuner.fit()
-
-    print("Best hyperparameters found were: ", results.get_best_result().config)
