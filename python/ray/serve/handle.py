@@ -8,6 +8,7 @@ from typing import Coroutine, Dict, Optional, Union
 import threading
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 
 from ray import serve
@@ -163,7 +164,7 @@ class RayServeHandle:
         return Router(
             self.controller_handle,
             self.deployment_name,
-            event_loop=asyncio.get_event_loop(),
+            event_loop=get_or_create_event_loop(),
         )
 
     def stop_metrics_pusher(self):
@@ -182,7 +183,7 @@ class RayServeHandle:
 
         This is only useful for async handles.
         """
-        return asyncio.get_event_loop() == self.router._event_loop
+        return get_or_create_event_loop() == self.router._event_loop
 
     def options(
         self,

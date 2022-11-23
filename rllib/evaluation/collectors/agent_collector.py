@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -8,7 +10,10 @@ from typing import Any, Dict, List, Optional
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.spaces.space_utils import (
+    flatten_to_single_ndarray,
+    get_dummy_batch_for_space,
+)
 from ray.rllib.utils.typing import (
     EpisodeID,
     EnvID,
@@ -16,7 +21,10 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -120,6 +128,38 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
+    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
+        """Warns if data does not fit the view requirement.
+
+        Should raise an AssertionError if data does not fit the view requirement in the
+        future.
+        """
+
+        if view_requirement_name in self.view_requirements:
+            vr = self.view_requirements[view_requirement_name]
+            # We only check for the shape here, because conflicting dtypes are often
+            # because of float conversion
+            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
+            #  space that is not a gym.Space
+            if (
+                hasattr(vr.space, "shape")
+                and not vr.space.shape == np.shape(data)
+                and log_once(
+                    f"view_requirement"
+                    f"_{view_requirement_name}_checked_in_agent_collector"
+                )
+            ):
+
+                # TODO (Artur): Enforce VR shape
+                # TODO (Artur): Enforce dtype as well
+                logger.warning(
+                    f"Provided tensor\n{data}\n does not match space of view "
+                    f"requirements {view_requirement_name}.\n"
+                    f"Provided tensor has shape {np.shape(data)} and view requirement "
+                    f"has shape shape {vr.space.shape}."
+                    f"Make sure dimensions match to resolve this warning."
+                )
+
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -148,17 +188,48 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
+        # convert init_obs to np.array (in case it is a list)
+        if isinstance(init_obs, list):
+            init_obs = np.array(init_obs)
+
+        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
+        # view requirement does not match init_obs
+        self._check_view_requirement(SampleBatch.OBS, init_obs)
+
         if SampleBatch.OBS not in self.buffers:
-            self._build_buffers(
-                single_row={
-                    SampleBatch.OBS: init_obs,
-                    SampleBatch.AGENT_INDEX: agent_index,
-                    SampleBatch.ENV_ID: env_id,
-                    SampleBatch.T: t,
-                    SampleBatch.EPS_ID: self.episode_id,
-                    SampleBatch.UNROLL_ID: self.unroll_id,
-                }
-            )
+            single_row = {
+                SampleBatch.OBS: init_obs,
+                SampleBatch.AGENT_INDEX: agent_index,
+                SampleBatch.ENV_ID: env_id,
+                SampleBatch.T: t,
+                SampleBatch.EPS_ID: self.episode_id,
+                SampleBatch.UNROLL_ID: self.unroll_id,
+            }
+
+            # TODO (Artur): Remove when PREV_ACTIONS and PREV_REWARDS get deprecated.
+            # Note (Artur): As long as we have these in our default view requirements,
+            # we should  build buffers with neutral elements instead of building them
+            # on the first AgentCollector.build_for_inference call if present.
+            # This prevents us from accidentally building buffers with duplicates of
+            # the first incoming value.
+            if SampleBatch.PREV_REWARDS in self.view_requirements:
+                single_row[SampleBatch.REWARDS] = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.REWARDS].space,
+                    batch_size=0,
+                    fill_value=0.0,
+                )
+            if SampleBatch.PREV_ACTIONS in self.view_requirements:
+                potentially_flattened_batch = get_dummy_batch_for_space(
+                    space=self.view_requirements[SampleBatch.ACTIONS].space,
+                    batch_size=0,
+                    fill_value=0.0,
+                )
+                if not self.disable_action_flattening:
+                    potentially_flattened_batch = flatten_to_single_ndarray(
+                        potentially_flattened_batch
+                    )
+                single_row[SampleBatch.ACTIONS] = potentially_flattened_batch
+            self._build_buffers(single_row)
 
         # Append data to existing buffers.
         flattened = tree.flatten(init_obs)
@@ -189,6 +260,10 @@ class AgentCollector:
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
+        # convert obs to np.array (in case it is a list)
+        if isinstance(values[SampleBatch.OBS], list):
+            values[SampleBatch.OBS] = np.array(values[SampleBatch.OBS])
+
         # Default to next timestep if not provided in input values
         if SampleBatch.T not in input_values:
             values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
@@ -204,16 +279,32 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            # Check if view requirement dict has k and warn once if
+            # view requirement does not match v
+            self._check_view_requirement(k, v)
+
             if k not in self.buffers:
-                self._build_buffers(single_row=values)
+                if self.training and k.startswith("state_out_"):
+                    vr = self.view_requirements[k]
+                    data_col = vr.data_col or k
+                    self._fill_buffer_with_initial_values(
+                        data_col, vr, build_for_inference=False
+                    )
+                else:
+                    self._build_buffers({k: v})
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
+            should_flatten_action_key = (
+                k == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
-                or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or should_flatten_action_key
             ):
+                if should_flatten_action_key:
+                    v = flatten_to_single_ndarray(v)
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -313,7 +404,6 @@ class AgentCollector:
             SampleBatch: The built SampleBatch for this agent, ready to go into
             postprocessing.
         """
-
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
@@ -455,11 +545,16 @@ class AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
+            should_flatten_action_key = (
+                col == SampleBatch.ACTIONS and not self.disable_action_flattening
+            )
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
-                or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
+                or should_flatten_action_key
             ):
+                if should_flatten_action_key:
+                    data = flatten_to_single_ndarray(data)
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [
@@ -548,9 +643,11 @@ class AgentCollector:
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
+                    #  state_out_x assumes the values do not have a batch dimension
+                    #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space

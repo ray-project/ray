@@ -210,7 +210,7 @@ class CQL(SAC):
 
         # Update remote workers's weights after learning on local worker
         # (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(policies=list(train_results.keys()))
 

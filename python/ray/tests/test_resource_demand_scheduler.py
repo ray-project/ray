@@ -9,7 +9,6 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
-import subprocess
 
 import pytest
 import yaml
@@ -65,7 +64,6 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
-from ray.cluster_utils import AutoscalingCluster
 from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
@@ -1928,6 +1926,11 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
+        assert summary.pending_resources == {
+            "GPU": 1,
+            "CPU": 144,
+        }, summary.pending_resources
+
         # Check dict conversion
         summary_dict = asdict(summary)
         assert summary_dict["active_nodes"]["m4.large"] == 2
@@ -3397,54 +3400,6 @@ Demands:
     )
     print(actual)
     assert expected.strip() == actual
-
-
-def test_ray_status_e2e(shutdown_only):
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "type-i": {
-                "resources": {"CPU": 1, "fun": 1},
-                "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
-            },
-            "type-ii": {
-                "resources": {"CPU": 1, "fun": 100},
-                "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
-            },
-        },
-    )
-
-    try:
-        cluster.start()
-        ray.init(address="auto")
-
-        @ray.remote(num_cpus=0, resources={"fun": 2})
-        class Actor:
-            def ping(self):
-                return None
-
-        actor = Actor.remote()
-        ray.get(actor.ping.remote())
-
-        assert "Demands" in subprocess.check_output("ray status", shell=True).decode()
-        assert (
-            "Total Demands"
-            not in subprocess.check_output("ray status", shell=True).decode()
-        )
-        assert (
-            "Total Demands"
-            in subprocess.check_output("ray status -v", shell=True).decode()
-        )
-        assert (
-            "Total Demands"
-            in subprocess.check_output("ray status --verbose", shell=True).decode()
-        )
-    finally:
-        cluster.shutdown()
 
 
 def test_placement_group_match_string():
