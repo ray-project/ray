@@ -33,12 +33,12 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
 
             return os.getpid()
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_cpus=0, resources={"infeasible_actor": 1})
     class InfeasibleActor:
         pass
 
     foo_actors = [Foo.options(name="first").remote(4), Foo.remote(5)]
-    infeasible_actor = InfeasibleActor.remote()  # noqa
+    infeasible_actor = InfeasibleActor.options(name="infeasible").remote()  # noqa
     dead_actor = Foo.options(name="dead").remote(1)
     ray.kill(dead_actor)
     results = [actor.do_task.remote() for actor in foo_actors]  # noqa
@@ -76,20 +76,28 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert actor_response["requiredResources"] == {}
             assert actor_response["endTime"] == 0
             assert actor_response["exitDetail"] == "-"
-
             for a in actors.values():
                 # "exitDetail always exits from the response"
                 assert "exitDetail" in a
 
+            # Check the dead actor metadata.
             for a in actors.values():
                 if a["name"] == "dead":
                     dead_actor_response = a
-
             assert dead_actor_response["endTime"] > 0
             assert "ray.kill" in dead_actor_response["exitDetail"]
             assert dead_actor_response["state"] == "DEAD"
             assert dead_actor_response["name"] == "dead"
 
+            # Check the infeasible actor metadata.
+            for a in actors.values():
+                if a["name"] == "infeasible":
+                    infeasible_actor_response = a
+            # Make sure the infeasible actor's resource name is correct.
+            assert infeasible_actor_response["requiredResources"] == {
+                "infeasible_actor": 1
+            }
+            assert infeasible_actor_response["pid"] == 0
             all_pids = {entry["pid"] for entry in actors.values()}
             assert 0 in all_pids  # The infeasible actor
             assert len(all_pids) > 1
