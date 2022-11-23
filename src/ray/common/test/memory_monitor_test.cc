@@ -16,6 +16,8 @@
 
 #include <sys/sysinfo.h>
 
+#include <boost/filesystem.hpp>
+#include <filesystem>
 #include <fstream>
 
 #include "gtest/gtest.h"
@@ -24,6 +26,7 @@
 #include "ray/util/process.h"
 
 namespace ray {
+
 class MemoryMonitorTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -38,6 +41,21 @@ class MemoryMonitorTest : public ::testing::Test {
   }
   std::unique_ptr<std::thread> thread_;
   instrumented_io_context io_context_;
+
+  void MakeMemoryUsage(pid_t pid,
+                       const std::string usage_kb,
+                       const std::string proc_dir) {
+    boost::filesystem::create_directory(proc_dir);
+    boost::filesystem::create_directory(proc_dir + "/" + std::to_string(pid));
+
+    std::string usage_filename = proc_dir + "/" + std::to_string(pid) + "/smaps_rollup";
+
+    std::ofstream usage_file;
+    usage_file.open(usage_filename);
+    usage_file << "SomeHeader" << std::endl;
+    usage_file << "Private_Clean: " << usage_kb << " kB" << std::endl;
+    usage_file.close();
+  }
 };
 
 TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
@@ -365,6 +383,135 @@ TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, MemoryMonitor::kNull), 0);
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, MemoryMonitor::kNull), 50);
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, MemoryMonitor::kNull), 100);
+}
+
+TEST_F(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
+  std::string proc_dir = UniqueID::FromRandom().Hex();
+  boost::filesystem::create_directory(proc_dir);
+
+  std::string num_filename = proc_dir + "/123";
+  std::string non_num_filename = proc_dir + "/123b";
+
+  std::ofstream num_file;
+  num_file.open(num_filename);
+  num_file << num_filename;
+  num_file.close();
+
+  std::ofstream non_num_file;
+  non_num_file.open(non_num_filename);
+  non_num_file << non_num_filename;
+  non_num_file.close();
+
+  auto pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+
+  boost::filesystem::remove_all(proc_dir);
+
+  ASSERT_EQ(pids.size(), 1);
+  ASSERT_EQ(pids[0], 123);
+}
+
+TEST_F(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty) {
+  std::string proc_dir = UniqueID::FromRandom().Hex();
+  auto pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+  ASSERT_EQ(pids.size(), 0);
+}
+
+TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
+  std::string proc_dir = UniqueID::FromRandom().Hex();
+  std::string pid_dir = proc_dir + "/123";
+  boost::filesystem::create_directories(pid_dir);
+
+  std::string cmdline_filename = pid_dir + "/" + MemoryMonitor::kCommandlinePath;
+
+  std::ofstream cmdline_file;
+  cmdline_file.open(cmdline_filename);
+  cmdline_file << "/my/very/custom/command --test passes!     ";
+  cmdline_file.close();
+
+  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+
+  boost::filesystem::remove_all(proc_dir);
+
+  ASSERT_EQ(commandline, "/my/very/custom/command --test passes!");
+}
+
+TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
+  {
+    std::string proc_dir = UniqueID::FromRandom().Hex();
+    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    boost::filesystem::remove_all(proc_dir);
+    ASSERT_EQ(commandline, "");
+  }
+
+  {
+    std::string proc_dir = UniqueID::FromRandom().Hex();
+    boost::filesystem::create_directory(proc_dir);
+    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    boost::filesystem::remove_all(proc_dir);
+    ASSERT_EQ(commandline, "");
+  }
+
+  {
+    std::string proc_dir = UniqueID::FromRandom().Hex();
+    std::string pid_dir = proc_dir + "/123";
+    boost::filesystem::create_directories(pid_dir);
+    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    boost::filesystem::remove_all(proc_dir);
+    ASSERT_EQ(commandline, "");
+  }
+}
+
+TEST_F(MemoryMonitorTest, TestShortStringNotTruncated) {
+  std::string out = MemoryMonitor::TruncateString("im short", 20);
+  ASSERT_EQ(out, "im short");
+}
+
+TEST_F(MemoryMonitorTest, TestLongStringTruncated) {
+  std::string out = MemoryMonitor::TruncateString(std::string(7, 'k'), 5);
+  ASSERT_EQ(out, "kkkkk...");
+}
+
+TEST_F(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
+  absl::flat_hash_map<pid_t, int64_t> usage;
+  usage.insert({1, 111});
+  usage.insert({2, 222});
+  usage.insert({3, 333});
+
+  auto list = MemoryMonitor::GetTopNMemoryUsage(2, usage);
+
+  ASSERT_EQ(list.size(), 2);
+  ASSERT_EQ(std::get<0>(list[0]), 3);
+  ASSERT_EQ(std::get<1>(list[0]), 333);
+  ASSERT_EQ(std::get<0>(list[1]), 2);
+  ASSERT_EQ(std::get<1>(list[1]), 222);
+}
+
+TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
+  absl::flat_hash_map<pid_t, int64_t> usage;
+  usage.insert({1, 111});
+  usage.insert({2, 222});
+
+  auto list = MemoryMonitor::GetTopNMemoryUsage(3, usage);
+
+  ASSERT_EQ(list.size(), 2);
+  ASSERT_EQ(std::get<0>(list[0]), 2);
+  ASSERT_EQ(std::get<1>(list[0]), 222);
+  ASSERT_EQ(std::get<0>(list[1]), 1);
+  ASSERT_EQ(std::get<1>(list[1]), 111);
+}
+
+TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
+  std::string proc_dir = UniqueID::FromRandom().Hex();
+  MakeMemoryUsage(1, "111", proc_dir);
+
+  // Invalid pids with no memory usage file.
+  boost::filesystem::create_directory(proc_dir + "/2");
+  boost::filesystem::create_directory(proc_dir + "/3");
+
+  auto usage = MemoryMonitor::GetProcessMemoryUsage(proc_dir);
+
+  ASSERT_EQ(usage.size(), 1);
+  ASSERT_TRUE(usage.contains(1));
 }
 
 }  // namespace ray

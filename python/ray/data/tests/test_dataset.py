@@ -4941,19 +4941,16 @@ def test_read_write_local_node(ray_start_cluster):
     # Plain read.
     ds = ray.data.read_parquet(local_path).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
     ).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # With fusion.
     ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # Write back to local scheme.
     output = os.path.join(local_path, "test_read_write_local_node")
@@ -5279,6 +5276,19 @@ def test_default_batch_format(shutdown_only):
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
     assert ds.default_batch_format() == pd.DataFrame
+
+
+def test_dataset_schema_after_read_stats(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(cluster.address)
+    cluster.add_node(num_cpus=1, resources={"foo": 1})
+    ds = ray.data.read_csv(
+        "example://iris.csv", ray_remote_args={"resources": {"foo": 1}}
+    )
+    schema = ds.schema()
+    ds.stats()
+    assert schema == ds.schema()
 
 
 if __name__ == "__main__":

@@ -219,7 +219,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             num_cpus: The number of CPUs to allocate for the remote actor.
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
-            memory: The heap memory request for the remote actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -305,8 +306,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)
@@ -456,6 +455,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         global _global_worker
         _global_worker = self
 
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         # Default config needed?
         if config is None or isinstance(config, dict):
             config = AlgorithmConfig().update_from_dict(config or {})
@@ -539,7 +540,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
             # TODO(sven): Make this per-policy!
-            "timesteps": 0,
+            "timestep": 0,
             # Counter for performed gradient updates per policy in `self.policy_map`.
             # Allows for compiling metrics on the off-policy'ness of an update given
             # that the number of gradient updates of the sampling policies are known
