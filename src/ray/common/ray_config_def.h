@@ -351,7 +351,9 @@ RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
            std::max(1U, std::thread::hardware_concurrency() / 4U))
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
+RAY_CONFIG(uint32_t,
+           gcs_server_rpc_client_thread_num,
+           std::max(1U, std::thread::hardware_concurrency() / 4U))
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -721,7 +723,6 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 RAY_CONFIG(int64_t,
            num_server_call_thread,
            std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
-
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
