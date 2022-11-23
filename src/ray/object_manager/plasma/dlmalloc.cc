@@ -219,6 +219,21 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     initial_region_ptr = static_cast<char *>(*pointer);
     initial_region_size = size;
   }
+
+#ifdef __linux__
+  if (RayConfig::instance().raylet_core_dump_exclude_plasma_store()) {
+    int rval = madvise(initial_region_ptr, initial_region_size, MADV_DONTDUMP);
+    if (rval) {
+      RAY_LOG(WARNING) << "madvise(MADV_DONTDUMP) call failed: " << rval << ", "
+                       << strerror(errno);
+    } else {
+      RAY_LOG(DEBUG) << "madvise(MADV_DONTDUMP) call succeeded.";
+    }
+  } else {
+    RAY_LOG(DEBUG) << "worker_core_dump_exclude_plasma_store disabled, raylet coredumps "
+                      "will contain the object store mappings.";
+  }
+#endif /* __linux__ */
 }
 
 #endif
