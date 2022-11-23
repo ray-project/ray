@@ -50,7 +50,6 @@ import re
 import sys
 import time
 import uuid
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -355,23 +354,6 @@ def record_library_usage(library_usage: str):
         or ray.util.client.ray.is_connected()
     ):
         _put_library_usage(library_usage)
-
-
-@contextmanager
-def record_usage(tag_key: TagKey):
-    """A simple contextmanager fo recording existence of an extra usage tag
-
-    Args:
-        tag_key: TagKey defined
-
-    Example:
-        @record_usage(TagKey.MY_KEY)
-        def func(a, b):
-            ...
-
-    """
-    record_extra_usage_tag(tag_key, "1")
-    yield
 
 
 def _put_pre_init_library_usages():

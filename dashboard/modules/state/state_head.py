@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 import aiohttp.web
 from abc import ABC, abstractmethod
-from ray._private.usage.usage_lib import TagKey, record_usage
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import (
@@ -260,15 +260,15 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/actors")
-    @record_usage(TagKey.CORE_STATE_API_LIST_ACTORS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_ACTORS, "1")
         return await self._handle_list_api(self._state_api.list_actors, req)
 
     @routes.get("/api/v0/jobs")
-    @record_usage(TagKey.CORE_STATE_API_LIST_JOBS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
         try:
             result = await self._state_api.list_jobs(option=self._options_from_req(req))
             return self._reply(
@@ -280,53 +280,52 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/nodes")
-    @record_usage(TagKey.CORE_STATE_API_LIST_NODES)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_nodes(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_NODES, "1")
         return await self._handle_list_api(self._state_api.list_nodes, req)
 
     @routes.get("/api/v0/placement_groups")
-    @record_usage(TagKey.CORE_STATE_API_LIST_PLACEMENT_GROUPS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_placement_groups(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_PLACEMENT_GROUPS, "1")
         return await self._handle_list_api(self._state_api.list_placement_groups, req)
 
     @routes.get("/api/v0/workers")
-    @record_usage(TagKey.CORE_STATE_API_LIST_WORKERS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_workers(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_WORKERS, "1")
         return await self._handle_list_api(self._state_api.list_workers, req)
 
     @routes.get("/api/v0/tasks")
-    @record_usage(TagKey.CORE_STATE_API_LIST_TASKS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_TASKS, "1")
         return await self._handle_list_api(self._state_api.list_tasks, req)
 
     @routes.get("/api/v0/objects")
-    @record_usage(TagKey.CORE_STATE_API_LIST_OBJECTS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_OBJECTS, "1")
         return await self._handle_list_api(self._state_api.list_objects, req)
 
     @routes.get("/api/v0/runtime_envs")
-    @record_usage(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     @routes.get("/api/v0/cluster_events")
-    @record_usage(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
         return await self._handle_list_api(self._state_api.list_cluster_events, req)
 
     @routes.get("/api/v0/logs")
-    @record_usage(TagKey.CORE_STATE_API_LIST_LOGS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Return a list of log files on a given node id.
@@ -334,6 +333,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         Unlike other list APIs that display all existing resources in the cluster,
         this API always require to specify node id and node ip.
         """
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_LOGS, "1")
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
@@ -369,9 +369,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         return self._reply(success=True, error_message="", result=result)
 
     @routes.get("/api/v0/logs/{media_type}")
-    @record_usage(TagKey.CORE_STATE_API_GET_LOG)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
+        record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
             node_id=req.query.get("node_id", None),
@@ -429,21 +429,21 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
 
     @routes.get("/api/v0/tasks/summarize")
-    @record_usage(TagKey.CORE_STATE_API_SUMMARIZE_TASKS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_TASKS, "1")
         return await self._handle_summary_api(self._state_api.summarize_tasks, req)
 
     @routes.get("/api/v0/actors/summarize")
-    @record_usage(TagKey.CORE_STATE_API_SUMMARIZE_ACTORS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_ACTORS, "1")
         return await self._handle_summary_api(self._state_api.summarize_actors, req)
 
     @routes.get("/api/v0/objects/summarize")
-    @record_usage(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
 
     @routes.get("/api/v0/delay/{delay_s}")
