@@ -1113,6 +1113,7 @@ class EnvRunnerV2:
             input_dict = _batch_inference_sample_batches(
                 [d.data.sample_batch for d in eval_data]
             )
+
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
                 timestep=policy.global_timestep,
