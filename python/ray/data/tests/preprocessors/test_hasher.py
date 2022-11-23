@@ -1,7 +1,6 @@
 import pandas as pd
 import pytest
 
-import ray
 from ray.data.preprocessors import FeatureHasher, HashingVectorizer
 
 
