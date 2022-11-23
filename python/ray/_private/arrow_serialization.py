@@ -1,3 +1,7 @@
+# arrow_serialization.py must resides outside of ray.data, otherwise
+# it causes circular dependency issues for AsyncActors due to
+# ray.data's lazy import.
+# see https://github.com/ray-project/ray/issues/30498 for more context.
 import logging
 import os
 import sys

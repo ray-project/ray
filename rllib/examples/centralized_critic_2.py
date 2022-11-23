@@ -119,7 +119,12 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .rollouts(
+            batch_mode="complete_episodes",
+            num_rollout_workers=0,
+            # TODO(avnishn) make a new example compatible w connectors.
+            enable_connectors=False,
+        )
         .callbacks(FillInActions)
         .training(model={"custom_model": "cc_model"})
         .multi_agent(
