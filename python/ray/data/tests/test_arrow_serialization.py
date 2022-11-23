@@ -13,7 +13,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.utils import _get_pyarrow_version
 from ray.tests.conftest import *  # noqa
-from ray.data._internal.arrow_serialization import (
+from ray._private.arrow_serialization import (
     _bytes_for_bits,
     _align_bit_offset,
     _copy_buffer_if_needed,
