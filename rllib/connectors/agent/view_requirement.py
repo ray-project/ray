@@ -91,11 +91,10 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         if SampleBatch.NEXT_OBS not in d:
             raise ValueError(f"connector data {d} should contain next_obs.")
-
         if agent_collector.is_empty():
             agent_collector.add_init_obs(
                 episode_id=episode_id,
-                agent_index=agent_id,
+                agent_index=d[SampleBatch.AGENT_INDEX],
                 env_id=env_id,
                 init_obs=d[SampleBatch.NEXT_OBS],
             )
