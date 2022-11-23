@@ -254,6 +254,7 @@ class EpisodeV2:
         #  batches from the same policy to the postprocess methods.
         # Build SampleBatches for the given episode.
         pre_batches = {}
+
         for agent_id, collector in self._agent_collectors.items():
             # Build only if there is data and agent is part of given episode.
             if collector.agent_steps == 0:
@@ -261,9 +262,9 @@ class EpisodeV2:
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
             pre_batch = collector.build_for_training(policy.view_requirements)
-            pre_batches[agent_id] = (pid, policy, pre_batch)
+            pre_batches[agent_id] = (policy, pre_batch)
 
-        for agent_id, (pid, policy, pre_batch) in pre_batches.items():
+        for agent_id, (policy, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
             if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
