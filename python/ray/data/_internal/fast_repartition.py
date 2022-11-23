@@ -23,7 +23,7 @@ def fast_repartition(blocks, num_blocks):
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
-    dataset_format = wrapped_ds._dataset_format()
+    dataset_format = wrapped_ds.dataset_format()
     indices = []
     cur_idx = 0
     for _ in range(num_blocks - 1):

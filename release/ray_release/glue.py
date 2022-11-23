@@ -270,6 +270,8 @@ def run_release_test(
 
         is_long_running = test["run"].get("long_running", False)
 
+        start_time_unix = time.time()
+
         try:
             command_runner.run_command(
                 command, env=command_env, timeout=command_timeout
@@ -289,6 +291,13 @@ def run_release_test(
             logger.exception(e)
             command_results = {}
 
+        try:
+            command_runner.save_metrics(start_time_unix)
+            metrics = command_runner.fetch_metrics()
+        except Exception as e:
+            logger.exception(f"Could not fetch metrics for test command: {e}")
+            metrics = {}
+
         # Postprocess result:
         if "last_update" in command_results:
             command_results["last_update_diff"] = time.time() - command_results.get(
@@ -304,6 +313,7 @@ def run_release_test(
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
+        metrics = {}
 
     try:
         last_logs = command_runner.get_last_logs()
@@ -322,6 +332,7 @@ def run_release_test(
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken
+    result.prometheus_metrics = metrics
 
     os.chdir(old_wd)
 

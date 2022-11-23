@@ -144,10 +144,6 @@ MYPY_FILES=(
     'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
     'autoscaler/_private/autoscaler.py'
-    # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
-    # in the CI. Type check once we get serious about type checking:
-    #'ray_operator/operator.py'
-    'ray_operator/operator_utils.py'
     '_private/gcs_utils.py'
 )
 

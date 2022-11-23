@@ -83,8 +83,9 @@ class NodeSyncConnection {
  public:
   NodeSyncConnection(
       instrumented_io_context &io_context,
-      std::string remote_node_id,
-      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor);
+      const std::string &remote_node_id,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb);
 
   /// Push a message to the sending queue to be sent later. Some message
   /// might be dropped if the module think the target node has already got the
@@ -96,9 +97,6 @@ class NodeSyncConnection {
   /// \return true if push to queue successfully.
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
-  /// Send the message queued.
-  virtual void DoSend() = 0;
-
   virtual ~NodeSyncConnection() {}
 
   /// Return the remote node id of this connection.
@@ -107,9 +105,24 @@ class NodeSyncConnection {
   /// Handle the udpates sent from the remote node.
   ///
   /// \param messages The message received.
-  void ReceiveUpdate(RaySyncMessages messages);
+  void ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message);
+
+  virtual void Disconnect() = 0;
 
  protected:
+  /// The io context
+  instrumented_io_context &io_context_;
+
+  /// Handler of a message update.
+  const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
+  void SendNext();
+
+ private:
+  void StartSend();
+
+  virtual void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) = 0;
+
   // For testing
   FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
   friend struct SyncerServerTest;
@@ -117,14 +130,8 @@ class NodeSyncConnection {
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
 
-  /// The io context
-  instrumented_io_context &io_context_;
-
   /// The remote node id.
-  std::string remote_node_id_;
-
-  /// Handler of a message update.
-  std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
+  const std::string remote_node_id_;
 
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
@@ -136,58 +143,123 @@ class NodeSyncConnection {
   /// We'll filter the received or sent messages when the message is stale.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;
+
+  bool sending_ = false;
+};
+
+template <typename T>
+class BidiReactor : public T, public NodeSyncConnection {
+ public:
+  BidiReactor(
+      instrumented_io_context &io_context,
+      const std::string &remote_node_id,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb)
+      : NodeSyncConnection(io_context,
+                           remote_node_id,
+                           std::move(message_processor),
+                           std::move(cleanup_cb)) {}
+
+  using T::StartRead;
+  using T::StartWrite;
+
+  void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) override {
+    sending_message_ = std::move(message);
+    grpc::WriteOptions opts;
+    if (flush) {
+      opts.clear_buffer_hint();
+    } else {
+      opts.set_buffer_hint();
+    }
+    RAY_LOG(DEBUG) << "[BidiReactor] Sending message to "
+                   << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
+                   << NodeID::FromBinary(sending_message_->node_id());
+    StartWrite(sending_message_.get(), opts);
+  }
+
+  void StartPull() {
+    receiving_message_ = std::make_shared<RaySyncMessage>();
+    RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
+    StartRead(receiving_message_.get());
+  }
+
+  void OnWriteDone(bool ok) override {
+    if (ok) {
+      io_context_.dispatch([this]() { SendNext(); }, "");
+    } else {
+      RAY_LOG(ERROR) << "Failed to send the message to: "
+                     << NodeID::FromBinary(GetRemoteNodeID());
+    }
+  }
+
+  void OnReadDone(bool ok) override {
+    if (!ok) {
+      return;
+    }
+    io_context_.dispatch(
+        [this, msg = std::move(receiving_message_)]() mutable {
+          RAY_CHECK(!msg->node_id().empty());
+          ReceiveUpdate(std::move(msg));
+          StartPull();
+        },
+        "");
+  }
+
+ protected:
+  /// grpc requests for sending and receiving
+  std::shared_ptr<const RaySyncMessage> sending_message_;
+  std::shared_ptr<RaySyncMessage> receiving_message_;
 };
 
 /// SyncConnection for gRPC server side. It has customized logic for sending.
-class ServerSyncConnection : public NodeSyncConnection {
+class RayServerBidiReactor : public BidiReactor<ServerBidiReactor> {
  public:
-  ServerSyncConnection(
+  RayServerBidiReactor(
+      grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
-      const std::string &remote_node_id,
-      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor);
+      const std::string &local_node_id,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb);
 
-  ~ServerSyncConnection() override;
+  ~RayServerBidiReactor() override = default;
 
-  void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
-                                RaySyncMessages *response);
+  void Disconnect() override;
 
  protected:
-  /// Send the message from the pending queue to the target node.
-  /// It'll send nothing unless there is a long-polling request.
-  /// TODO (iycheng): Unify the sending algorithm when we migrate to gRPC streaming
-  void DoSend() override;
+  void OnCancel() override;
+  void OnDone() override;
 
-  /// These two fields are RPC related. When the server got long-polling requests,
-  /// these two fields will be set so that it can be used to send message.
-  /// After the message being sent, these two fields will be set to be empty again.
-  /// When the periodical timer wake up, it'll check whether these two fields are set
-  /// and it'll only send data when these are set.
-  std::vector<RaySyncMessages *> responses_;
-  std::vector<grpc::ServerUnaryReactor *> unary_reactors_;
+  /// grpc callback context
+  grpc::CallbackServerContext *server_context_;
 };
 
 /// SyncConnection for gRPC client side. It has customized logic for sending.
-class ClientSyncConnection : public NodeSyncConnection {
+class RayClientBidiReactor : public BidiReactor<ClientBidiReactor> {
  public:
-  ClientSyncConnection(
+  RayClientBidiReactor(
+      const std::string &remote_node_id,
+      const std::string &local_node_id,
       instrumented_io_context &io_context,
-      const std::string &node_id,
-      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
-      std::shared_ptr<grpc::Channel> channel);
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb,
+      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+
+  ~RayClientBidiReactor() override = default;
+
+  void Disconnect() override;
 
  protected:
-  /// Send the message from the pending queue to the target node.
-  /// It'll use gRPC to send the message directly.
-  void DoSend() override;
+  /// Callback from gRPC
+  void OnDone(const grpc::Status &status) override;
 
-  /// Start to send long-polling request to remote nodes.
-  void StartLongPolling();
+  /// grpc callback context
+  grpc::ClientContext client_context_;
 
-  /// Stub for this connection.
+  /// grpc requests for sending and receiving
+  std::shared_ptr<const RaySyncMessage> sending_message_;
+  std::shared_ptr<RaySyncMessage> receiving_message_;
+
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-
-  /// Dummy request for long-polling.
-  DummyRequest dummy_;
 };
 
 }  // namespace syncer

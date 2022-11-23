@@ -46,7 +46,10 @@ namespace syncer {
 class MockNodeSyncConnection : public NodeSyncConnection {
  public:
   using NodeSyncConnection::NodeSyncConnection;
-  MOCK_METHOD(void, DoSend, (), (override));
+
+  MOCK_METHOD(void, Disconnect, (), (override));
+
+  MOCK_METHOD(void, Send, (std::shared_ptr<const RaySyncMessage>, bool), (override));
 };
 
 }  // namespace syncer

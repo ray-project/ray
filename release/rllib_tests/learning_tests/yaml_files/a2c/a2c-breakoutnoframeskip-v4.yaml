@@ -8,7 +8,8 @@ a2c-breakoutnoframeskip-v4:
     stop:
         time_total_s: 7200
     config:
-        rollout_fragment_length: 20
+        train_batch_size: 500
+        rollout_fragment_length: auto
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5

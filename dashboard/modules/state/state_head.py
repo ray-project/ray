@@ -152,9 +152,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             success=False,
             error_message=(
                 "Max number of in-progress requests="
-                f"{self.max_num_call_} reached."
+                f"{self.max_num_call_} reached. "
                 "To set a higher limit, set environment variable: "
-                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'."
+                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'. "
                 f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
             ),
             result=None,
@@ -371,6 +371,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
+            suffix=req.query.get("suffix", None),
         )
 
         response = aiohttp.web.StreamResponse()

@@ -47,6 +47,8 @@ cc_library(
         ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -873,6 +875,18 @@ cc_test(
 )
 
 cc_test(
+    name = "core_worker_resubmit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/core_worker_resubmit_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
@@ -1534,6 +1548,18 @@ cc_test(
 )
 
 cc_test(
+    name = "exponential_backoff_test",
+    size = "small",
+    srcs = ["src/ray/util/exponential_backoff_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["src/ray/util/sample_test.cc"],
@@ -1608,6 +1634,7 @@ cc_test(
     ],
     deps = [
         ":ray_common",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2553,6 +2580,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":grpc_common_lib",
         ":ray_common",
         ":ray_mock",
         "@com_google_googletest//:gtest",

@@ -11,6 +11,11 @@ from ray._private.test_utils import chdir
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 from ray.exceptions import RuntimeEnvSetupError
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -236,6 +241,41 @@ def test_ray_worker_dev_flow(start_cluster):
         print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     assert ray.get(test_tune.remote()) != serve.__path__[0]
+
+
+def test_concurrent_downloads(shutdown_only):
+    # https://github.com/ray-project/ray/issues/30369
+    def upload_dir(tmpdir):
+        # Create an arbitrary nonempty directory to upload.
+        path = Path(tmpdir)
+        dir_to_upload = path / "dir_to_upload"
+        dir_to_upload.mkdir(parents=True)
+        filepath = dir_to_upload / "file"
+        with filepath.open("w") as file:
+            file.write("F" * 100)
+
+        uri = get_uri_for_directory(dir_to_upload)
+        assert get_directory_size_bytes(dir_to_upload) > 0
+
+        uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+        assert uploaded
+        return uri
+
+    ray.init()
+
+    tmpdir = tempfile.mkdtemp()
+    uri = upload_dir(tmpdir)
+
+    @ray.remote(runtime_env={"working_dir": uri, "env_vars": {"A": "B"}})
+    def f():
+        print("f")
+
+    @ray.remote(runtime_env={"working_dir": uri})
+    def g():
+        print("g")
+
+    refs = [f.remote(), g.remote()]
+    ray.get(refs)
 
 
 if __name__ == "__main__":

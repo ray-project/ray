@@ -238,6 +238,7 @@ class GcsServer {
 
   /// Ray Syncer realted fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
   std::unique_ptr<std::thread> ray_syncer_thread_;
   instrumented_io_context ray_syncer_io_context_;
 
@@ -277,6 +278,7 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  std::shared_ptr<InternalKVInterface> kv_instance_;
 };
 
 }  // namespace gcs
