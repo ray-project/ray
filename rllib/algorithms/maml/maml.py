@@ -23,7 +23,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -309,7 +308,7 @@ class MAML(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfig, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0
@@ -319,19 +318,19 @@ class MAML(Algorithm):
         workers.sync_weights()
 
         # Samples and sets worker tasks
-        use_meta_env = config["use_meta_env"]
+        use_meta_env = config.use_meta_env
         set_worker_tasks(workers, use_meta_env)
 
         # Metric Collector
         metric_collect = CollectMetrics(
             workers,
-            min_history=config["metrics_num_episodes_for_smoothing"],
-            timeout_seconds=config["metrics_episode_collection_timeout_s"],
+            min_history=config.metrics_num_episodes_for_smoothing,
+            timeout_seconds=config.metrics_episode_collection_timeout_s,
         )
 
         # Iterator for Inner Adaptation Data gathering (from pre->post
         # adaptation)
-        inner_steps = config["inner_adaptation_steps"]
+        inner_steps = config.inner_adaptation_steps
 
         def inner_adaptation_steps(itr):
             buf = []
@@ -375,7 +374,7 @@ class MAML(Algorithm):
         # Metaupdate Step
         train_op = rollouts.for_each(
             MetaUpdate(
-                workers, config["maml_optimizer_steps"], metric_collect, use_meta_env
+                workers, config.maml_optimizer_steps, metric_collect, use_meta_env
             )
         )
         return train_op

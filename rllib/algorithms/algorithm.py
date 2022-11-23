@@ -127,19 +127,12 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
-    """Returns the given config dict merged with common agent confs.
-
-    Args:
-        extra_config: A user defined partial config
-            which will get merged with a default AlgorithmConfig() object and returned
-            as plain python dict.
-
-    Returns:
-        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
-            plus `extra_config`.
-    """
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=False,
+)
+def with_common_config(extra_config):
     return Algorithm.merge_trainer_configs(
         AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
     )

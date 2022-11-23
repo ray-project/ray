@@ -17,10 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
-    ResultDict,
-)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +187,7 @@ class CRR(Algorithm):
     #  default config. config -> Trainer -> config
     #  defining Config class in the same file for now as a workaround.
 
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         self.target_network_update_freq = self.config.target_network_update_freq

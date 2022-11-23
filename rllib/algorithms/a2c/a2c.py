@@ -20,10 +20,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
-    ResultDict,
-)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +154,7 @@ class A2C(A3C):
         return A2CConfig()
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create a microbatch variable for collecting gradients on microbatches'.

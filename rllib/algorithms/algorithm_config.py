@@ -1555,15 +1555,25 @@ class AlgorithmConfig:
             msg = "{} should not be set in the input_config. RLlib will use {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
                 raise ValueError(
-                    msg.format("num_cpus_per_read_task", "num_cpus_per_worker")
+                    msg.format(
+                        "num_cpus_per_read_task",
+                        "config.resources(num_cpus_per_worker=..)",
+                    )
                 )
             if input_config.get("parallelism") is not None:
                 if self.in_evaluation:
                     raise ValueError(
-                        msg.format("parallelism", "evaluation_num_workers")
+                        msg.format(
+                            "parallelism",
+                            "config.evaluation(evaluation_num_workers=..)",
+                        )
                     )
                 else:
-                    raise ValueError(msg.format("parallelism", "num_rollout_workers"))
+                    raise ValueError(
+                        msg.format(
+                            "parallelism", "config.rollouts(num_rollout_workers=..)"
+                        )
+                    )
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
