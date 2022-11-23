@@ -94,12 +94,21 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+    # See the `timeout` arg in https://pytorch.org/docs/master/
+    # distributed.html#torch.distributed.init_process_group for description of
+    # NCCL_ASYNC_ERROR_HANDLING. We do not use NCCL_BLOCKING_WAIT due to performance
+    # overhead.
+    if (
+        backend == "nccl"
+        and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ
+        and "NCCL_BLOCKING_WAIT" not in os.environ
+    ):
         logger.debug(
-            "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+            "Setting NCCL_ASYNC_ERROR_HANDLING to fail if NCCL collective "
+            "communication operations are timing out. "
+            "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
         )
-        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
     dist.init_process_group(
         backend=backend,

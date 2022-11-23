@@ -371,6 +371,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
+            suffix=req.query.get("suffix", None),
         )
 
         response = aiohttp.web.StreamResponse()
