@@ -74,6 +74,7 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
@@ -157,6 +158,7 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
