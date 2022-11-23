@@ -32,7 +32,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 from ray.tune import CLIReporter, run_experiments
 
 
