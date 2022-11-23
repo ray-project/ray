@@ -2261,28 +2261,6 @@ class Algorithm(Trainable):
             f"The config of this Algorithm is: {config}"
         )
 
-    @override(Trainable)
-    def get_auto_filled_metrics(
-        self,
-        now: Optional[datetime] = None,
-        time_this_iter: Optional[float] = None,
-        debug_metrics_only: bool = False,
-    ) -> dict:
-        # Override this method to make sure, the `config` key of the returned results
-        # contains the proper Tune config dict (instead of an AlgorithmConfig object).
-        auto_filled = super().get_auto_filled_metrics(
-            now, time_this_iter, debug_metrics_only
-        )
-        if "config" not in auto_filled:
-            raise KeyError("`config` key not found in auto-filled results dict!")
-
-        # If `config` key is no dict (but AlgorithmConfig object) ->
-        # make sure, it's a dict to not break Tune APIs.
-        if not isinstance(auto_filled["config"], dict):
-            assert isinstance(auto_filled["config"], AlgorithmConfig)
-            auto_filled["config"] = auto_filled["config"].to_dict()
-        return auto_filled
-
     @classmethod
     def merge_trainer_configs(
         cls,

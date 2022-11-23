@@ -608,7 +608,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
+def check_train_results(train_results):
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -653,18 +653,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
-    assert isinstance(
-        train_results["config"], dict
-    ), "`config` in results not a python dict!"
-
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
-    is_multi_agent = (
-        AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
-        .is_multi_agent()
-    )
+    is_multi_agent = train_results["config"].is_multi_agent()
 
     # Check in particular the "info" dict.
     info = train_results["info"]
