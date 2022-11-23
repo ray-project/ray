@@ -217,23 +217,21 @@ To get information about the current available resource capacity of your cluster
 .. autofunction:: ray.available_resources
     :noindex:
 
-Run large Ray cluster
----------------------
+Running Large Ray Clusters
+--------------------------
 
-The GCS plays an important role in Ray. Every node and worker connects to the
-GCS. To run a large-scale Ray cluster, the GCS usually becomes the bottleneck
-and brings the cluster down in the worst case. Here are some tips to run Ray with
-more than 1k nodes.
+Here are some tips to run Ray with more than 1k nodes. When running Ray with such
+a large number of nodes, several system settings may need to be tuned to enable
+communication between such a large number of machines.
 
-Tuning the OS
-~~~~~~~~~~~~~
+Tuning Operating System Settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Because all nodes and workers connect to the GCS, many network connections will
-be created and the OS has to support that number of connections and nodes.
+be created and the operating system has to support that number of connections.
 
 Maximum open files
 ******************
-
 
 The OS has to be configured to support opening many TCP connections since every
 worker and raylet connects to the GCS. In POSIX systems, the current limit can
@@ -245,28 +243,25 @@ ARP cache
 
 Another thing that needs to be configured is the ARP cache. In a large cluster,
 all the worker nodes connect to the head node, which adds a lot of entries to
-the ARP table. It needs to ensure that the ARP cache size is bigger than that.
-Failure to do this will result in the head node hanging and thus no to response
-to any requests. When it happens, `dmesg` will show errors like
-`neighbor table overflow message`.
+the ARP table. Ensure that the ARP cache size is large enough to handle this
+many nodes.
+Failure to do this will result in the head node hanging. When this happens,
+`dmesg` will show errors like `neighbor table overflow message`.
 
 In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing
 the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`. 
 For more details, please refer to the OS manual.
 
-Tuning the Ray
-~~~~~~~~~~~~~~
+Tuning Ray Settings
+~~~~~~~~~~~~~~~~~~~
 
-When GCS is overloaded, some functions are going to run slowly and thus bring down
-the whole cluster. To run a large cluster, several parameters need to be tuned
-for Ray.
+To run a large cluster, several parameters need to be tuned in Ray.
 
 Health check
 ************
 
-
 GCS checks the health of the worker nodes by sending ping periodically.
-Sometimes, if the network is poor or the raylet is too busy to response,
+Sometimes, if the network is poor or the raylet is too busy to respond,
 the raylet might be marked dead incorrectly. 
 
 GCS uses a similar algorithm as k8s probes to check the healthiness of the
@@ -290,7 +285,7 @@ available resources of each other in the Ray cluster. Each raylet is going to
 push its local available resource to GCS and GCS will broadcast it to all the
 raylet periodically. The time complexity is O(N^2). In a large Ray cluster, this
 is going to be an issue, since most of the time is spent on broadcasting the
-resources. There are several OS environments we can use to tune this: 
+resources. There are several settings we can use to tune this: 
 
 - `RAY_resource_broadcast_batch_size` The maximum number of nodes in a single
   request sent by GCS, by default 512.
