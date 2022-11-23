@@ -7,7 +7,6 @@ import tree  # dm_tree
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -76,6 +75,3 @@ class StateBufferConnector(AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return StateBufferConnector(ctx)
-
-
-register_connector(StateBufferConnector.__name__, StateBufferConnector)

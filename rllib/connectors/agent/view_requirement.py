@@ -4,7 +4,6 @@ from typing import Any
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import (
@@ -114,8 +113,3 @@ class ViewRequirementAgentConnector(AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return ViewRequirementAgentConnector(ctx)
-
-
-register_connector(
-    ViewRequirementAgentConnector.__name__, ViewRequirementAgentConnector
-)

@@ -5,7 +5,6 @@ import tree  # pip install dm_tree
 from ray.rllib.connectors.connector import (
     ActionConnector,
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.typing import ActionConnectorDataType
@@ -35,6 +34,3 @@ class ImmutableActionsConnector(ActionConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return ImmutableActionsConnector(ctx)
-
-
-register_connector(ImmutableActionsConnector.__name__, ImmutableActionsConnector)

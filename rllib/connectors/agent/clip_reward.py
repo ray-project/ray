@@ -5,7 +5,6 @@ import numpy as np
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentConnectorDataType
@@ -51,6 +50,3 @@ class ClipRewardAgentConnector(AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return ClipRewardAgentConnector(ctx, **params)
-
-
-register_connector(ClipRewardAgentConnector.__name__, ClipRewardAgentConnector)

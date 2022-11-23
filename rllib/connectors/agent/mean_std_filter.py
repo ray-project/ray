@@ -8,7 +8,6 @@ from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 from ray.rllib.connectors.connector import AgentConnector
 from ray.rllib.connectors.connector import (
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import Filter
@@ -175,13 +174,3 @@ class ConcurrentMeanStdObservationFilterAgentConnector(
         self.filter = ConcurrentMeanStdFilter(
             filter_shape, demean=True, destd=True, clip=10.0
         )
-
-
-register_connector(
-    MeanStdObservationFilterAgentConnector.__name__,
-    MeanStdObservationFilterAgentConnector,
-)
-register_connector(
-    ConcurrentMeanStdObservationFilterAgentConnector.__name__,
-    ConcurrentMeanStdObservationFilterAgentConnector,
-)

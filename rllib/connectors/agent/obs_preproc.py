@@ -3,7 +3,6 @@ from typing import Any
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
-    register_connector,
 )
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -63,6 +62,3 @@ class ObsPreprocessorConnector(AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return ObsPreprocessorConnector(ctx)
-
-
-register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)

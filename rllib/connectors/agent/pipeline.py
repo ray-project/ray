@@ -6,9 +6,8 @@ from ray.rllib.connectors.connector import (
     Connector,
     ConnectorContext,
     ConnectorPipeline,
-    get_connector,
-    register_connector,
 )
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
@@ -63,6 +62,3 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
                 logger.error(f"Failed to de-serialize connector state: {state}")
                 raise e
         return AgentConnectorPipeline(ctx, connectors)
-
-
-register_connector(AgentConnectorPipeline.__name__, AgentConnectorPipeline)
