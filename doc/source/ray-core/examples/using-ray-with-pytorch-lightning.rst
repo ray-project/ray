@@ -170,7 +170,7 @@ Example using Ray Lightning with Tune:
 .. code-block:: python
 
     from ray import air, tune
-    from ray_lightning import RayPlugin
+    from ray_lightning import RayStrategy
     from ray_lightning.tune import TuneReportCallback
 
     def train_mnist(config):
@@ -185,7 +185,7 @@ Example using Ray Lightning with Tune:
     trainer = pl.Trainer(
         max_epochs=4,
         callbacks=callbacks,
-        plugins=[RayPlugin(num_workers=4, use_gpu=False)])
+        plugins=[RayStrategy(num_workers=4, use_gpu=False)])
     trainer.fit(model)
 
     config = {

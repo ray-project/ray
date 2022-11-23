@@ -396,6 +396,10 @@ RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
+/// The base retry delay for exponential backoff when the task fails due to OOM.
+/// No delay if this value is zero.
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 0)
+
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
@@ -493,7 +497,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
@@ -710,3 +714,7 @@ RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
+
+/// Use madvise to prevent worker coredump from including the mapped plasma pages
+/// in the worker processes.
+RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)

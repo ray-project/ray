@@ -148,6 +148,7 @@ parser.add_argument(
 )
 
 
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method

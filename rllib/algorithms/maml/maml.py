@@ -13,7 +13,10 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import concat_samples
+from ray.rllib.policy.sample_batch import (
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
@@ -32,10 +35,10 @@ class MAMLConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
@@ -43,14 +46,15 @@ class MAMLConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = MAMLConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     grad_clip=tune.grid_search([10.0, 40.0]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "MAML",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -263,7 +267,7 @@ def post_process_metrics(adapt_iter, workers, metrics):
     name = "_adapt_" + str(adapt_iter) if adapt_iter > 0 else ""
 
     # Only workers are collecting data
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
 
     metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
     metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]
@@ -338,10 +342,11 @@ class MAML(Algorithm):
                 # Processing Samples (Standardize Advantages)
                 split_lst = []
                 for sample in samples:
+                    sample = convert_ma_batch_to_sample_batch(sample)
                     sample["advantages"] = standardized(sample["advantages"])
                     split_lst.append(sample.count)
+                    buf.append(sample)
 
-                buf.extend(samples)
                 split.append(split_lst)
 
                 adapt_iter = len(split) - 1

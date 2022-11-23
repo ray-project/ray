@@ -59,6 +59,15 @@ class JobRunner(CommandRunner):
             os.unlink("wait_cluster.py")
         os.link(wait_script, "wait_cluster.py")
 
+        # Copy prometheus metrics script to working dir
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        # Copy prometheus metrics script to working dir
+        if os.path.exists("prometheus_metrics.py"):
+            os.unlink("prometheus_metrics.py")
+        os.link(metrics_script, "prometheus_metrics.py")
+
         try:
             self.file_manager.upload()
         except Exception as e:
@@ -78,6 +87,11 @@ class JobRunner(CommandRunner):
             raise ClusterNodesWaitTimeout(
                 f"Not all {num_nodes} nodes came up within {timeout} seconds."
             ) from e
+
+    def save_metrics(self, start_time: float, timeout: float = 900):
+        self.run_prepare_command(
+            f"python prometheus_metrics.py {start_time}", timeout=timeout
+        )
 
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -115,11 +129,11 @@ class JobRunner(CommandRunner):
         except Exception as e:
             raise LogsError(f"Could not get last logs: {e}") from e
 
-    def fetch_results(self) -> Dict[str, Any]:
+    def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
-            self.file_manager.download(self.result_output_json, tmpfile)
+            self.file_manager.download(path, tmpfile)
 
             with open(tmpfile, "rt") as f:
                 data = json.load(f)
@@ -128,3 +142,9 @@ class JobRunner(CommandRunner):
             return data
         except Exception as e:
             raise ResultsError(f"Could not fetch results from session: {e}") from e
+
+    def fetch_results(self) -> Dict[str, Any]:
+        return self._fetch_json(self.result_output_json)
+
+    def fetch_metrics(self) -> Dict[str, Any]:
+        return self._fetch_json(self.metrics_output_json)

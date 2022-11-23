@@ -19,7 +19,7 @@
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
-#         they cover the same functionaliy.
+#         they cover the same functionality.
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
@@ -578,6 +578,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_multi_agent_pendulum_ppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
@@ -805,7 +815,7 @@ py_test(
 
 py_test(
     name = "test_worker_failures",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
@@ -1301,7 +1311,7 @@ py_test(
 py_test(
     name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
         "--env", "FrozenLake-v1",
@@ -1314,7 +1324,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -1341,7 +1351,7 @@ py_test(
     name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train", "external_files"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     args = [
@@ -1589,13 +1599,6 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
-py_test(
-    name = "env/tests/test_multi_agent_pendulum",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["env/tests/test_multi_agent_pendulum.py"]
-)
-
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env", "exclusive"],
@@ -1716,8 +1719,15 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_worker_set",
+    tags = ["team:rllib", "evaluation", "exclusive"],
+    size = "small",
+    srcs = ["evaluation/tests/test_worker_set.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
-    tags = ["team:rllib", "evaluation"],
+    tags = ["team:rllib", "evaluation", "exclusive"],
     size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
@@ -3417,7 +3427,6 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
-    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
@@ -3671,14 +3680,6 @@ py_test(
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
-
-py_test(
-    name = "examples/documentation/rllib_in_60s",
-    main = "examples/documentation/rllib_in_60s.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/rllib_in_60s.py"],
 )
 
 py_test(

@@ -24,13 +24,13 @@ class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
     Example:
-        >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = SACConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -137,7 +137,7 @@ class SACConfig(AlgorithmConfig):
                 MODEL_DEFAULTS. This is treated just as the top-level `model` dict in
                 setting up the Q-network(s) (2 if twin_q=True).
                 That means, you can do for different observation spaces:
-                obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
+                `obs=Box(1D)` -> `Tuple(Box(1D) + Action)` -> `concat` -> `post_fcnet`
                 obs=Box(3D) -> Tuple(Box(3D) + Action) -> vision-net -> concat w/ action
                 -> post_fcnet
                 obs=Tuple(Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action)
@@ -152,7 +152,7 @@ class SACConfig(AlgorithmConfig):
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             initial_alpha: Initial value to use for the entropy weight alpha.
             target_entropy: Target entropy lower bound. If "auto", will be set
-                to -|A| (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
+                to `-|A|` (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
@@ -161,9 +161,9 @@ class SACConfig(AlgorithmConfig):
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                 - This is True AND restoring from a checkpoint that contains no buffer
-                    data.
+                data.
                 - This is False AND restoring from a checkpoint that does contain
-                    buffer data.
+                buffer data.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {

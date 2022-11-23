@@ -898,6 +898,14 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.parquet")
+    table = pa.table({})
+    pq.write_table(table, path)
+    ds = ray.data.read_parquet(path)
+    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+
 if __name__ == "__main__":
     import sys
 
