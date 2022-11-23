@@ -38,8 +38,6 @@ class DTConfig(AlgorithmConfig):
         # Required settings during training and evaluation:
         # Initial return to go used as target during rollout.
         self.target_return = None
-        # Rollout horizon/maximum episode length.
-        self.horizon = None
 
         # Model settings:
         self.model = {
