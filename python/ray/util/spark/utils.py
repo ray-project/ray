@@ -425,6 +425,7 @@ def _ray_worker_startup_barrier():
 
 
 def _display_databricks_driver_proxy_url(spark_context, port, title):
+    from dbruntime.display import displayHTML
     driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
     commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
     orgId = commandContextTags.apply("orgId")
