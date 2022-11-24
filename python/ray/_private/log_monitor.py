@@ -452,10 +452,9 @@ class LogMonitor:
 
 def is_proc_alive(pid):
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        # If OSError is raised, the process is not alive.
+        return psutil.Process(pid).is_running()
+    except Exception:
+        # If OSError is raised, the process does not exist.
         return False
 
 
