@@ -284,7 +284,8 @@ resources. There are several settings we can use to tune this:
 Be aware that this is a trade-off between scheduling performance and GCS loads.
 Decreasing the resource broadcasting frequency might make scheduling slower.
 
-### gRPC threads for GCS
+gRPC threads for GCS
+********************
 
 .. note::
    There is an ongoing `PR https://github.com/ray-project/ray/pull/30131`_
@@ -309,6 +310,7 @@ The machine setup:
 - 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
 
 The OS setup:
+
 - Set the maximum number of opening files to 1048576
 - Increase the ARP cache size:
     - ``net.ipv4.neigh.default.gc_thresh1=2048``
@@ -317,16 +319,17 @@ The OS setup:
 
 
 The Ray setup:
+
 - ``RAY_gcs_server_rpc_client_thread_num=3``
 - ``RAY_gcs_server_rpc_server_thread_num=3``
 - ``RAY_event_stats=false``
 - ``RAY_gcs_resource_report_poll_period_ms=1000``
 
 Test workload:
+
 - Test script: `code https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py`_
 
 
-Result:
 
 .. list-table:: Benchmark result
    :header-rows: 1
