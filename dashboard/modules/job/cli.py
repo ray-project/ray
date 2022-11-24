@@ -1,29 +1,28 @@
-import asyncio
 import os
 import pprint
 import time
 from subprocess import list2cmdline
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import click
 
 import ray._private.ray_constants as ray_constants
 from ray._private.storage import _load_class
+from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
+from ray._private.utils import parse_resources_json
 
 
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
 ) -> JobSubmissionClient:
-
-    if address is None and "RAY_ADDRESS" in os.environ:
-        address = os.environ["RAY_ADDRESS"]
-
-    cli_logger.labeled_value("Job submission server address", address)
-    return JobSubmissionClient(address, create_cluster_if_needed)
+    client = JobSubmissionClient(address, create_cluster_if_needed)
+    client_address = client.get_address()
+    cli_logger.labeled_value("Job submission server address", client_address)
+    return client
 
 
 def _log_big_success_msg(success_msg):
@@ -87,7 +86,7 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help=("DEPRECATED: Use -- submission-id instead."),
+    help=("DEPRECATED: Use `--submission-id` instead."),
 )
 @click.option(
     "--submission-id",
@@ -121,8 +120,30 @@ def job_cli_group():
     help=(
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
-        "If specified, this overrides the option in --runtime-env."
+        "If specified, this overrides the option in `--runtime-env`."
     ),
+)
+@click.option(
+    "--entrypoint-num-cpus",
+    required=False,
+    type=float,
+    help="the quantity of CPU cores to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
+)
+@click.option(
+    "--entrypoint-num-gpus",
+    required=False,
+    type=float,
+    help="the quantity of GPUs to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
+)
+@click.option(
+    "--entrypoint-resources",
+    required=False,
+    type=str,
+    help="a JSON-serialized dictionary mapping resource name to resource quantity "
+    "describing resources to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
 )
 @click.option(
     "--no-wait",
@@ -142,17 +163,24 @@ def submit(
     runtime_env_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
+    entrypoint_num_cpus: Optional[Union[int, float]],
+    entrypoint_num_gpus: Optional[Union[int, float]],
+    entrypoint_resources: Optional[str],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.
 
     Example:
-        ray job submit -- python my_script.py --arg=val
+        `ray job submit -- python my_script.py --arg=val`
     """
 
     if job_id:
         cli_logger.warning(
-            "--job-id option is deprecated. " "Please use --submission-id instead."
+            "--job-id option is deprecated. Please use --submission-id instead."
+        )
+    if entrypoint_resources is not None:
+        entrypoint_resources = parse_resources_json(
+            entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
         )
 
     submission_id = submission_id or job_id
@@ -167,6 +195,9 @@ def submit(
             runtime_env_json=runtime_env_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
             no_wait=no_wait,
         )
 
@@ -177,11 +208,13 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
+        entrypoint_num_cpus=entrypoint_num_cpus,
+        entrypoint_num_gpus=entrypoint_num_gpus,
+        entrypoint_resources=entrypoint_resources,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
@@ -207,11 +240,11 @@ def submit(
             cli_logger.print(
                 "Tailing logs until the job exits " "(disable with --no-wait):"
             )
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                f"{sdk_version}. Please upgrade Ray to the latest version "
                 "for this feature."
             )
 
@@ -224,17 +257,17 @@ def submit(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the `RAY_ADDRESS` environment variable."
     ),
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
-        ray job status <my_job_id>
+        `ray job status <my_job_id>`
     """
     client = _get_sdk_client(address)
     _log_job_status(client, job_id)
@@ -248,7 +281,7 @@ def status(address: Optional[str], job_id: str):
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the `RAY_ADDRESS` environment variable."
     ),
 )
 @click.option(
@@ -260,15 +293,15 @@ def status(address: Optional[str], job_id: str):
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
-        ray job stop <my_job_id>
+        `ray job stop <my_job_id>`
     """
     client = _get_sdk_client(address)
-    cli_logger.print(f"Attempting to stop job {job_id}")
+    cli_logger.print(f"Attempting to stop job '{job_id}'")
     client.stop_job(job_id)
 
     if no_wait:
@@ -300,6 +333,37 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     ),
 )
 @click.argument("job-id", type=str)
+@add_click_logging_options
+@PublicAPI(stability="alpha")
+def delete(address: Optional[str], job_id: str):
+    """Deletes a stopped job and its associated data from memory.
+
+    Only supported for jobs that are already in a terminal state.
+    Fails with exit code 1 if the job is not already stopped.
+    Does not delete job logs from disk.
+    Submitting a job with the same submission ID as a previously
+    deleted job is not supported and may lead to unexpected behavior.
+
+    Example:
+        ray job delete <my_job_id>
+    """
+    client = _get_sdk_client(address)
+    client.delete_job(job_id)
+    cli_logger.print(f"Job '{job_id}' deleted successfully")
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.argument("job-id", type=str)
 @click.option(
     "-f",
     "--follow",
@@ -309,23 +373,23 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     help="If set, follow the logs (like `tail -f`).",
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
-        ray job logs <my_job_id>
+        `ray job logs <my_job_id>`
     """
     client = _get_sdk_client(address)
     sdk_version = client.get_version()
     # sdk version 0 did not have log streaming
     if follow:
         if int(sdk_version) > 0:
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
-                "Tailing logs is not enabled for job sdk client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                "Tailing logs is not enabled for the Jobs SDK client version "
+                f"{sdk_version}. Please upgrade Ray to latest version "
                 "for this feature."
             )
     else:
@@ -346,12 +410,12 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     ),
 )
 @add_click_logging_options
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def list(address: Optional[str]):
     """Lists all running jobs and their information.
 
     Example:
-        ray job list
+        `ray job list`
     """
     client = _get_sdk_client(address)
     # Set no_format to True because the logs may have unescaped "{" and "}"

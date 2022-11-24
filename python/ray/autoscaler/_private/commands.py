@@ -18,9 +18,7 @@ import click
 import yaml
 
 import ray
-import ray._private.services as services
 from ray._private.usage import usage_lib
-from ray._private.worker import global_worker  # type: ignore
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -83,22 +81,11 @@ except ImportError:  # py2
 
 logger = logging.getLogger(__name__)
 
-redis_client = None
-
 RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 POLL_INTERVAL = 5
 
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
-
-
-def _redis():
-    global redis_client
-    if redis_client is None:
-        redis_client = services.create_redis_client(
-            global_worker.node.redis_address, password=global_worker.node.redis_password
-        )
-    return redis_client
 
 
 def try_logging_config(config: Dict[str, Any]) -> None:
@@ -125,7 +112,7 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error) -> str:
+def debug_status(status, error, verbose: bool = False) -> str:
     """Return a debug string for the autoscaler."""
     if status:
         status = status.decode("utf-8")
@@ -133,6 +120,8 @@ def debug_status(status, error) -> str:
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
+        gcs_request_time = status_dict.get("gcs_request_time")
+        non_terminated_nodes_time = status_dict.get("non_terminated_nodes_time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
             node_availability_summary_dict = autoscaler_summary_dict.pop(
@@ -147,7 +136,12 @@ def debug_status(status, error) -> str:
             )
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
-                lm_summary, autoscaler_summary, time=report_time
+                lm_summary,
+                autoscaler_summary,
+                time=report_time,
+                gcs_request_time=gcs_request_time,
+                non_terminated_nodes_time=non_terminated_nodes_time,
+                verbose=verbose,
             )
         else:
             status = "No cluster status."

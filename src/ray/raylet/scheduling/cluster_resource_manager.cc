@@ -24,6 +24,15 @@ namespace ray {
 
 ClusterResourceManager::ClusterResourceManager() : nodes_{} {}
 
+std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(
+    scheduling::NodeID node_id) const {
+  auto iter = nodes_.find(node_id);
+  if (iter == nodes_.end()) {
+    return std::nullopt;
+  }
+  return iter->second.GetViewModifiedTs();
+}
+
 void ClusterResourceManager::AddOrUpdateNode(
     scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &resources_total,

@@ -22,7 +22,7 @@ from ray.tune.search.flaml import CFO, BlendSearch
 from ray.tune.search.skopt import SkOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch, load_sigopt_key
 from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.search.hebo import HEBOSearch
 from ray.tune.search.ax import AxSearch
@@ -316,6 +316,10 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def setUp(self):
+        AbstractWarmStartTest.setUp(self)
+        load_sigopt_key()
+
     def set_basic_conf(self):
         space = [
             {

@@ -6,7 +6,6 @@ from ray._private.ray_constants import (  # noqa F401
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
     LOGGER_FORMAT,
-    MEMORY_RESOURCE_UNIT_BYTES,
     RESOURCES_ENVIRONMENT_VARIABLE,
 )
 
@@ -20,6 +19,9 @@ def env_integer(key, default):
             return int(val)
     return default
 
+
+# The name of the environment variable for plugging in a utilization scorer.
+AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"
 
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
@@ -58,6 +60,10 @@ AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 
 AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S = env_integer(
     "AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S", 30 * 60
+)
+
+AUTOSCALER_REPORT_PER_NODE_STATUS = (
+    env_integer("AUTOSCALER_REPORT_PER_NODE_STATUS", 1) == 1
 )
 
 # The maximum allowed resource demand vector size to guarantee the resource
@@ -102,8 +108,8 @@ RAY_PROCESSES = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
-    [os.path.join("dashboard", "dashboard.py"), False],
     [os.path.join("dashboard", "agent.py"), False],
+    [os.path.join("dashboard", "dashboard.py"), False],
     ["ray_process_reaper.py", False],
 ]
 

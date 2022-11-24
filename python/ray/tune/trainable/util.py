@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import shutil
+import types
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pandas as pd
@@ -13,6 +14,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
@@ -101,7 +103,7 @@ class TrainableUtil:
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
@@ -356,18 +358,27 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
-            trainable(config, **fn_kwargs)
+            return trainable(config, **fn_kwargs)
 
         inner.__name__ = trainable_name
+
+        # If the trainable has been wrapped with `tune.with_resources`, we should
+        # keep the `_resources` attribute around
+        if hasattr(trainable, "_resources"):
+            inner._resources = trainable._resources
 
         # Use correct function signature if no `checkpoint_dir` parameter
         # is set
         if not use_checkpoint:
 
             def _inner(config):
-                inner(config, checkpoint_dir=None)
+                return inner(config, checkpoint_dir=None)
 
             _inner.__name__ = trainable_name
+
+            # Again, pass along the resource specification if it exists
+            if hasattr(inner, "_resources"):
+                _inner._resources = inner._resources
 
             if hasattr(trainable, "__mixins__"):
                 _inner.__mixins__ = trainable.__mixins__
@@ -383,7 +394,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 def with_resources(
     trainable: Union[Type["Trainable"], Callable],
     resources: Union[
-        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+        Dict[str, float],
+        PlacementGroupFactory,
+        ScalingConfig,
+        Callable[[dict], PlacementGroupFactory],
     ],
 ):
     """Wrapper for trainables to specify resource requests.
@@ -400,8 +414,9 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, or callable that takes
-            in a config dict and returns a placement group factory.
+        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+            or callable that takes in a config dict and returns a placement
+            group factory.
 
     Example:
 
@@ -433,6 +448,8 @@ def with_resources(
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
+    elif isinstance(resources, ScalingConfig):
+        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):
@@ -443,8 +460,31 @@ def with_resources(
         )
 
     if not inspect.isclass(trainable):
+        if isinstance(trainable, types.MethodType):
+            # Methods cannot set arbitrary attributes, so we have to wrap them
+            use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
+            if use_checkpoint:
+
+                def _trainable(config, checkpoint_dir):
+                    return trainable(config, checkpoint_dir=checkpoint_dir)
+
+            else:
+
+                def _trainable(config):
+                    return trainable(config)
+
+            _trainable._resources = pgf
+            return _trainable
+
         # Just set an attribute. This will be resolved later in `wrap_function()`.
-        trainable._resources = pgf
+        try:
+            trainable._resources = pgf
+        except AttributeError as e:
+            raise RuntimeError(
+                "Could not use `tune.with_resources()` on the supplied trainable. "
+                "Wrap your trainable in a regular function before passing it "
+                "to Ray Tune."
+            ) from e
     else:
 
         class ResourceTrainable(trainable):

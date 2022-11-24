@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import subprocess
 
 import pytest
 
@@ -178,6 +179,48 @@ ray.get(ready.remote())
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
+
+
+def test_worker_sys_path_contains_driver_script_directory(tmp_path, monkeypatch):
+    package_folder = tmp_path / "package"
+    package_folder.mkdir()
+    init_file = tmp_path / "package" / "__init__.py"
+    init_file.write_text("")
+
+    module1_file = tmp_path / "package" / "module1.py"
+    module1_file.write_text(
+        f"""
+import sys
+import ray
+ray.init()
+
+@ray.remote
+def sys_path():
+    return sys.path
+
+assert r'{str(tmp_path / "package")}' in ray.get(sys_path.remote())
+"""
+    )
+    subprocess.check_call(["python", str(module1_file)])
+
+    # If the driver script is run via `python -m`,
+    # the script directory is not included in sys.path.
+    module2_file = tmp_path / "package" / "module2.py"
+    module2_file.write_text(
+        f"""
+import sys
+import ray
+ray.init()
+
+@ray.remote
+def sys_path():
+    return sys.path
+
+assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
+"""
+    )
+    monkeypatch.chdir(str(tmp_path))
+    subprocess.check_call(["python", "-m", "package.module2"])
 
 
 if __name__ == "__main__":

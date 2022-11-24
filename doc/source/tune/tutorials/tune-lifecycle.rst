@@ -15,7 +15,11 @@ When calling the following:
 .. code-block:: python
 
     space = {"x": tune.uniform(0, 1)}
-    tuner = tune.Tuner(my_trainable, param_space=space, tune_config=tune.TuneConfig(num_samples=10))
+    tuner = tune.Tuner(
+        my_trainable, 
+        param_space=space, 
+        tune_config=tune.TuneConfig(num_samples=10),
+    )
     results = tuner.fit()
 
 The provided ``my_trainable`` is evaluated multiple times in parallel
@@ -124,7 +128,7 @@ This is an illustration of the high-level training flow and how some of the comp
 
 TrialRunner
 ~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_runner.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/trial_runner.py>`__]
 This is the main driver of the training loop. This component
 uses the TrialScheduler to prioritize and execute trials,
 queries the SearchAlgorithm for new
@@ -144,7 +148,7 @@ See the docstring at :ref:`trialrunner-docstring`.
 
 Trial objects
 ~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/experiment/trial.py>`__]
 This is an internal data structure that contains metadata about each training run. Each Trial
 object is mapped one-to-one with a Trainable object but are not themselves
 distributed/remote. Trial objects transition among
@@ -155,7 +159,7 @@ See the docstring at :ref:`trial-docstring`.
 
 RayTrialExecutor
 ~~~~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/ray_trial_executor.py>`__]
 The RayTrialExecutor is a component that interacts with the underlying execution framework.
 It also manages resources to ensure the cluster isn't overloaded.
 

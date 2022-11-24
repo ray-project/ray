@@ -22,9 +22,27 @@ RLlib Feature Guides
     :img-top: /rllib/images/rllib-logo.svg
 
     +++
+    .. link-button:: rllib-advanced-api-doc
+        :type: ref
+        :text: Advanced Feautures of the RLlib Python API
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
     .. link-button:: rllib-models
         :type: ref
         :text: Working With Models, Preprocessors and Action Distributions
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
+    .. link-button:: rllib-saving-and-loading-algos-and-policies
+        :type: ref
+        :text: Checkpointing your Algorithms and Policies, and Exporting your NN Models
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -72,3 +90,11 @@ RLlib Feature Guides
         :text: How To Contribute To RLlib?
         :classes: btn-link btn-block stretched-link
 
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
+    .. link-button:: rllib-cli
+        :type: ref
+        :text: How To Work With the RLlib CLI?
+        :classes: btn-link btn-block stretched-link

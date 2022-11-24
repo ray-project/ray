@@ -98,7 +98,7 @@ void GcsHeartbeatManager::AddNodeInternal(const rpc::GcsNodeInfo &node_info,
 }
 
 void GcsHeartbeatManager::HandleReportHeartbeat(
-    const rpc::ReportHeartbeatRequest &request,
+    rpc::ReportHeartbeatRequest request,
     rpc::ReportHeartbeatReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
@@ -111,17 +111,6 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
-void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
-                                           rpc::CheckAliveReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_ray_version(kRayVersion);
-  for (const auto &addr : request.raylet_address()) {
-    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
-  }
-
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

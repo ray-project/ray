@@ -80,6 +80,7 @@ void ReplyCancelled(const internal::Work &work,
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
+  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
@@ -112,14 +113,23 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
             !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
-          ReplyCancelled(
-              *work,
-              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-              "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
-              "any more or is infeasible, and soft=False was specified.");
-          // We don't want to trigger the normal infeasible task logic (i.e. waiting),
-          // but rather we want to fail the task immediately.
-          work_it = work_queue.erase(work_it);
+          if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
+            ReplyCancelled(
+                *work,
+                rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                "any more or is infeasible, and soft=False was specified.");
+            // We don't want to trigger the normal infeasible task logic (i.e. waiting),
+            // but rather we want to fail the task immediately.
+            work_it = work_queue.erase(work_it);
+          } else {
+            // If scheduling is done by gcs, we can not `ReplyCancelled` now because it
+            // would synchronously call `ClusterTaskManager::CancelTask`, where
+            // `task_to_schedule_`'s iterator will be invalidated. So record this work and
+            // it will be handled below (out of the loop).
+            works_to_cancel.push_back(*work_it);
+            work_it++;
+          }
           is_infeasible = false;
           continue;
         }
@@ -151,6 +161,18 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
+
+  for (const auto &work : works_to_cancel) {
+    // All works in `works_to_cancel` are scheduled by gcs. So `ReplyCancelled`
+    // will synchronously call `ClusterTaskManager::CancelTask`, where works are
+    // erased from the pending queue.
+    ReplyCancelled(*work,
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                   "any more or is infeasible, and soft=False was specified.");
+  }
+  works_to_cancel.clear();
+
   local_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -234,10 +256,6 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
-void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
-}
-
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<NodeResources> &last_reported_resources) {
@@ -295,7 +313,10 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::RecordMetrics() const { internal_stats_.RecordMetrics(); }
+void ClusterTaskManager::RecordMetrics() const {
+  internal_stats_.RecordMetrics();
+  cluster_resource_scheduler_->GetLocalResourceManager().RecordMetrics();
+}
 
 std::string ClusterTaskManager::DebugStr() const {
   return internal_stats_.ComputeAndReportDebugStr();

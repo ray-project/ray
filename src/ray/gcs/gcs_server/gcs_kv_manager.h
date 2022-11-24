@@ -138,33 +138,33 @@ class RedisInternalKV : public InternalKVInterface {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
+  explicit GcsInternalKVManager(std::shared_ptr<InternalKVInterface> kv_instance)
       : kv_instance_(std::move(kv_instance)) {}
 
-  void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
+  void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleInternalKVPut(const rpc::InternalKVPutRequest &request,
+  void HandleInternalKVPut(rpc::InternalKVPutRequest request,
                            rpc::InternalKVPutReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleInternalKVDel(const rpc::InternalKVDelRequest &request,
+  void HandleInternalKVDel(rpc::InternalKVDelRequest request,
                            rpc::InternalKVDelReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
+  void HandleInternalKVExists(rpc::InternalKVExistsRequest request,
                               rpc::InternalKVExistsReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleInternalKVKeys(const rpc::InternalKVKeysRequest &request,
+  void HandleInternalKVKeys(rpc::InternalKVKeysRequest request,
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
  private:
-  std::unique_ptr<InternalKVInterface> kv_instance_;
+  std::shared_ptr<InternalKVInterface> kv_instance_;
   Status ValidateKey(const std::string &key) const;
 };
 

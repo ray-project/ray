@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import import_attr
+from ray._private.utils import get_or_create_event_loop, import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
@@ -90,6 +90,7 @@ class ServeController:
         http_config: HTTPOptions,
         head_node_id: str,
         detached: bool = False,
+        _disable_http_proxy: bool = False,
     ):
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
@@ -112,13 +113,17 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
-        self.http_state = HTTPState(
-            controller_name,
-            detached,
-            http_config,
-            head_node_id,
-            gcs_client,
-        )
+        if _disable_http_proxy:
+            self.http_state = None
+        else:
+            self.http_state = HTTPState(
+                controller_name,
+                detached,
+                http_config,
+                head_node_id,
+                gcs_client,
+            )
+
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
         # Fetch all running actors in current cluster as source of current
@@ -144,7 +149,7 @@ class ServeController:
         # Unix timestamp of latest config deployment request. Defaults to 0.
         self.deployment_timestamp = 0
 
-        asyncio.get_event_loop().create_task(self.run_control_loop())
+        get_or_create_event_loop().create_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
 
@@ -215,10 +220,15 @@ class ServeController:
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
+        if self.http_state is None:
+            return {}
         return self.http_state.get_http_proxy_handles()
 
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
+        if self.http_state is None:
+            return None
+
         from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
@@ -233,11 +243,11 @@ class ServeController:
         while True:
 
             async with self.write_lock:
-                try:
-                    self.http_state.update()
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-
+                if self.http_state:
+                    try:
+                        self.http_state.update()
+                    except Exception:
+                        logger.exception("Exception updating HTTP state.")
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
@@ -304,10 +314,14 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
+        if self.http_state is None:
+            return None
         return self.http_state.get_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
+        if self.http_state is None:
+            return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
             if SERVE_ROOT_URL_ENV_KEY in os.environ:
@@ -325,7 +339,8 @@ class ServeController:
             self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
             self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
-            self.http_state.shutdown()
+            if self.http_state:
+                self.http_state.shutdown()
 
     def deploy(
         self,
@@ -334,6 +349,7 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union["ray._raylet.JobID", bytes],
+        is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -348,8 +364,13 @@ class ServeController:
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
-            # TODO: is this the desired behaviour? Should this be a setting?
-            deployment_config.num_replicas = autoscaling_config.min_replicas
+            previous_deployment = self.deployment_state_manager.get_deployment(name)
+            if previous_deployment is None:
+                deployment_config.num_replicas = autoscaling_config.min_replicas
+            else:
+                deployment_config.num_replicas = (
+                    previous_deployment.deployment_config.num_replicas
+                )
 
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
@@ -366,6 +387,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
+            is_driver_deployment=is_driver_deployment,
         )
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.

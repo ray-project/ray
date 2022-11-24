@@ -9,6 +9,10 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 import requests
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.utils import (
+    get_address_for_submission_client,
+    ray_address_to_api_server_url,
+)
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
@@ -27,7 +31,6 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
-    ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -118,9 +121,11 @@ class StateApiClient(SubmissionClient):
         """Initialize a StateApiClient and check the connection to the cluster.
 
         Args:
-            address: Ray bootstrap address. E.g. `127.0.0.0:6379`, `auto`.
+            address: Ray bootstrap address (e.g. `127.0.0.0:6379`, `auto`), or Ray
+                Client adress (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
+                address (e.g. `http://<head-node-ip>:8265`).
                 If not provided, it will be detected automatically from any running
-                local ray cluster.
+                local Ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
@@ -134,7 +139,7 @@ class StateApiClient(SubmissionClient):
             headers = {"Content-Type": "application/json"}
 
         # Resolve API server URL
-        api_server_url = ray_address_to_api_server_url(address)
+        api_server_url = get_address_for_submission_client(address)
 
         super().__init__(
             address=api_server_url,
@@ -193,25 +198,30 @@ class StateApiClient(SubmissionClient):
                     timeout=timeout,
                     params=params,
                 )
-
-                response.raise_for_status()
-            except Exception as e:
+                # If we have a valid JSON error, don't raise a generic exception but
+                # instead let the caller parse it to raise a more precise exception.
+                if (
+                    response.status_code == 500
+                    and "application/json"
+                    not in response.headers.get("Content-Type", "")
+                ):
+                    response.raise_for_status()
+            except requests.exceptions.RequestException as e:
                 err_str = f"Failed to make request to {self._address}{endpoint}. "
 
                 # Best-effort to give hints to users on potential reasons of connection
                 # failure.
-                if isinstance(e, requests.exceptions.ConnectionError):
-                    err_str += (
-                        "Failed to connect to API server. Please check the API server "
-                        "log for details. Make sure dependencies are installed with "
-                        "`pip install ray[default]`."
-                    )
+                err_str += (
+                    "Failed to connect to API server. Please check the API server "
+                    "log for details. Make sure dependencies are installed with "
+                    "`pip install ray[default]`. Please also check dashboard is "
+                    "available, and included when starting ray cluster, "
+                    "i.e. `ray start --include-dashboard=True --head`. "
+                )
+                if response is None:
                     raise ServerUnavailable(err_str)
 
-                if response is not None:
-                    err_str += (
-                        f"Response(url={response.url},status={response.status_code})"
-                    )
+                err_str += f"Response(url={response.url},status={response.status_code})"
                 raise RayStateApiException(err_str) from e
 
         # Process the response.
@@ -1071,6 +1081,25 @@ def list_runtime_envs(
     )
 
 
+def list_cluster_events(
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[Dict]:
+    return StateApiClient(address=address).list(
+        StateResource.CLUSTER_EVENTS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
 """
 Log APIs
 """
@@ -1087,6 +1116,7 @@ def get_log(
     follow: bool = False,
     tail: int = DEFAULT_LOG_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    suffix: Optional[str] = None,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
@@ -1111,11 +1141,13 @@ def get_log(
         filename: Name of the file (relative to the ray log directory) to be retrieved.
         actor_id: Id of the actor if getting logs from an actor.
         task_id: Id of the task if getting logs generated by a task.
-        pid: PID of the worker if getting logs generated by a worker.
+        pid: PID of the worker if getting logs generated by a worker. When querying
+            with pid, either node_id or node_ip must be supplied.
         follow: When set to True, logs will be streamed and followed.
         tail: Number of lines to get from the end of the log file. Set to -1 for getting
             the entire log.
         timeout: Max timeout for requests made when getting the logs.
+        suffix: The suffix of the log file if query by id of tasks/workers/actors.
         _interval: The interval in secs to print new logs when `follow=True`.
 
     Return:
@@ -1140,6 +1172,7 @@ def get_log(
         interval=_interval,
         media_type=media_type,
         timeout=timeout,
+        suffix=suffix,
     )
     options_dict = {}
     for field in fields(options):
@@ -1179,9 +1212,8 @@ def list_logs(
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
-        node_id: Id of the node containing the logs .
-        node_ip: Ip of the node containing the logs. (At least one of the node_id and
-            node_ip have to be supplied when identifying a node).
+        node_id: Id of the node containing the logs.
+        node_ip: Ip of the node containing the logs.
         glob_filter: Name of the file (relative to the ray log directory) to be
             retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
         actor_id: Id of the actor if getting logs from an actor.
@@ -1194,8 +1226,12 @@ def list_logs(
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
-            failed to query the data.
+            failed to query the data, or ConnectionError if failed to resolve the
+            ray address.
     """
+    assert (
+        node_ip is not None or node_id is not None
+    ), "At least one of node ip and node id is required"
 
     api_server_url = ray_address_to_api_server_url(address)
 

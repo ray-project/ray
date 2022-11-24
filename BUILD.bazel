@@ -47,6 +47,8 @@ cc_library(
         ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -546,6 +548,7 @@ cc_library(
         ":scheduler",
         ":worker_rpc",
         "@boost//:bimap",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -872,6 +875,18 @@ cc_test(
 )
 
 cc_test(
+    name = "core_worker_resubmit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/core_worker_resubmit_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
@@ -1096,6 +1111,21 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "local_resource_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/local_resource_manager_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1452,6 +1482,18 @@ cc_test(
 )
 
 cc_test(
+    name = "counter_test",
+    size = "small",
+    srcs = ["src/ray/util/counter_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "filesystem_test",
     size = "small",
     srcs = ["src/ray/util/filesystem_test.cc"],
@@ -1501,6 +1543,18 @@ cc_test(
     deps = [
         ":ray_util",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "exponential_backoff_test",
+    size = "small",
+    srcs = ["src/ray/util/exponential_backoff_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1580,6 +1634,25 @@ cc_test(
     ],
     deps = [
         ":ray_common",
+        "@boost//:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "worker_killing_policy_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1762,6 +1835,20 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs_client_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_health_check_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2228,6 +2315,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",

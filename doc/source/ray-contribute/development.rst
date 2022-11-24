@@ -79,9 +79,9 @@ You will probably want to have some type of Python virtual environment. For exam
 
 .. code-block:: shell
 
-    python -m venv env
+    python -m venv venv
 
-That will create a virtual environment called ``env`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
+That will create a virtual environment called ``venv`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
 Next, you need to activate the environment to tell your shell/terminal to use this particular Python. This will also depend on the system you use to set up your virtual environment (conda, venv, or other methods).
 
@@ -89,7 +89,7 @@ If you are using the example from above using ``venv``, you would activate your 
 
 .. code-block:: shell
 
-    source env/bin/activate
+    source venv/bin/activate
 
 You will need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
@@ -215,7 +215,7 @@ Then you can install the dependencies and build the dashboard:
 
 .. code-block:: bash
 
-  npm install
+  npm ci
   npm run build
 
 After that, you can now move back to the top level Ray directory:
@@ -233,6 +233,10 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
+  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # See https://github.com/grpc/grpc/issues/25082 for more details.
+  # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+  # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 The ``-e`` means "editable", so changes you make to files in the Ray
@@ -343,7 +347,7 @@ Dependencies for running Ray unit tests under ``python/ray/tests`` can be instal
 
 .. code-block:: shell
 
- pip install -r python/requirements.txt
+ pip install -c python/requirements.txt -r python/requirements_test.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 

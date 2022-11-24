@@ -5,8 +5,8 @@ from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
-redis_max_memory = 10 ** 8
-object_store_memory = 10 ** 9
+redis_max_memory = 10**8
+object_store_memory = 10**9
 num_nodes = 3
 
 message = (
@@ -47,9 +47,9 @@ run_experiments(
                     "capacity": 10000,
                 },
                 "num_steps_sampled_before_learning_starts": 0,
-                "rollout_fragment_length": 1,
+                "rollout_fragment_length": "auto",
                 "train_batch_size": 1,
-                "min_iter_time_s": 10,
+                "min_time_s_per_iteration": 10,
                 "min_sample_timesteps_per_iteration": 10,
             },
         }

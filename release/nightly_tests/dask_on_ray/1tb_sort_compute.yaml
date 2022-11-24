@@ -1,4 +1,5 @@
-cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
+# cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
 aws:
@@ -6,6 +7,7 @@ aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
+            DeleteOnTermination: true
             VolumeSize: 2000
 
 head_node_type:

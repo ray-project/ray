@@ -426,7 +426,11 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status NodeInfoAccessor::DrainSelf() {
-  RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already drained.";
+    // This node is already drained.
+    return Status::OK();
+  }
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::DrainNodeRequest request;
@@ -1012,12 +1016,12 @@ Status PlacementGroupInfoAccessor::AsyncGetAll(
 }
 
 Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
-    const PlacementGroupID &placement_group_id) {
+    const PlacementGroupID &placement_group_id, int64_t timeout_seconds) {
   rpc::WaitPlacementGroupUntilReadyRequest request;
   rpc::WaitPlacementGroupUntilReadyReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncWaitPlacementGroupUntilReady(
-      request, &reply, GetGcsTimeoutMs());
+      request, &reply, absl::ToInt64Milliseconds(absl::Seconds(timeout_seconds)));
   RAY_LOG(DEBUG) << "Finished waiting placement group until ready, placement group id = "
                  << placement_group_id;
   return status;

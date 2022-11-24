@@ -40,6 +40,13 @@ from ray.tune.error import TuneError
 logger = logging.getLogger(__name__)
 
 
+HYPEROPT_UNDEFINED_DETAILS = (
+    " This issue can also come up with HyperOpt if your search space only "
+    "contains constant variables, which is not supported by HyperOpt. In that case, "
+    "don't pass any searcher or add sample variables to the search space."
+)
+
+
 class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
@@ -192,6 +199,14 @@ class HyperOptSearch(Searcher):
     def _setup_hyperopt(self) -> None:
         from hyperopt.fmin import generate_trials_to_calculate
 
+        if not self._space:
+            raise RuntimeError(
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"
+                )
+                + HYPEROPT_UNDEFINED_DETAILS
+            )
+
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -283,6 +298,7 @@ class HyperOptSearch(Searcher):
                 UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"
                 )
+                + HYPEROPT_UNDEFINED_DETAILS
             )
         if not self._metric or not self._mode:
             raise RuntimeError(
@@ -305,7 +321,7 @@ class HyperOptSearch(Searcher):
                 new_ids,
                 self.domain,
                 self._hpopt_trials,
-                self.rstate.randint(2 ** 31 - 1),
+                self.rstate.randint(2**31 - 1),
             )
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()

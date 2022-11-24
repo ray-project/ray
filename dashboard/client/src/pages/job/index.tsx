@@ -1,4 +1,5 @@
 import {
+  Box,
   Switch,
   Table,
   TableBody,
@@ -6,32 +7,59 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
-import dayjs from "dayjs";
 import React from "react";
-import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
 import { useJobList } from "./hook/useJobList";
+import { JobRow } from "./JobRow";
 
 const useStyles = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
     width: "100%",
   },
+  progressError: {
+    marginTop: theme.spacing(1),
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
 const columns = [
-  "Job ID",
-  "Submission ID",
-  "Status",
-  "Logs",
-  "StartTime",
-  "EndTime",
-  "Driver Pid",
+  { label: "Job ID" },
+  { label: "Submission ID" },
+  { label: "Entrypoint" },
+  { label: "Status" },
+  { label: "Duration" },
+  {
+    label: "Tasks",
+    helpInfo: (
+      <Typography>
+        The progress of the all submitted tasks per job. Tasks that are not yet
+        submitted will not show up in the progress bar.
+        <br />
+        <br />
+        Note: This column requires that prometheus is running. See{" "}
+        <a href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#exporting-metrics">
+          here
+        </a>{" "}
+        for instructions.
+      </Typography>
+    ),
+  },
+  {
+    label: "Logs",
+  },
+  { label: "StartTime" },
+  { label: "EndTime" },
+  { label: "Driver Pid" },
 ];
 
 const JobList = () => {
@@ -44,7 +72,6 @@ const JobList = () => {
     changeFilter,
     page,
     setPage,
-    ipLogMap,
   } = useJobList();
 
   return (
@@ -54,7 +81,9 @@ const JobList = () => {
         Auto Refresh:
         <Switch
           checked={isRefreshing}
-          onChange={onSwitchChange}
+          onChange={(event) => {
+            onSwitchChange(event);
+          }}
           name="refresh"
           inputProps={{ "aria-label": "secondary checkbox" }}
         />
@@ -83,9 +112,20 @@ const JobList = () => {
           <Table>
             <TableHead>
               <TableRow>
-                {columns.map((col) => (
-                  <TableCell align="center" key={col}>
-                    {col}
+                {columns.map(({ label, helpInfo }) => (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo className={classes.helpInfo}>
+                          {helpInfo}
+                        </HelpInfo>
+                      )}
+                    </Box>
                   </TableCell>
                 ))}
               </TableRow>
@@ -96,64 +136,12 @@ const JobList = () => {
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,
                 )
-                .map(
-                  (
-                    {
-                      job_id,
-                      submission_id,
-                      driver_info,
-                      type,
-                      status,
-                      start_time,
-                      end_time,
-                    },
-                    index,
-                  ) => (
-                    <TableRow key={job_id ?? submission_id ?? index}>
-                      <TableCell align="center">{job_id ?? "-"}</TableCell>
-                      <TableCell align="center">
-                        {submission_id ?? "-"}
-                      </TableCell>
-                      <TableCell align="center">{status}</TableCell>
-                      <TableCell align="center">
-                        {/* TODO(aguo): Also show logs for the job id instead
-                        of just the submission's logs */}
-                        {driver_info &&
-                        ipLogMap[driver_info.node_ip_address] ? (
-                          <Link
-                            to={`/log/${encodeURIComponent(
-                              ipLogMap[driver_info.node_ip_address],
-                            )}?fileName=${
-                              type === "DRIVER"
-                                ? job_id
-                                : `driver-${submission_id}`
-                            }`}
-                            target="_blank"
-                          >
-                            Log
-                          </Link>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {dayjs(Number(start_time)).format(
-                          "YYYY/MM/DD HH:mm:ss",
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {end_time && end_time > 0
-                          ? dayjs(Number(end_time)).format(
-                              "YYYY/MM/DD HH:mm:ss",
-                            )
-                          : "-"}
-                      </TableCell>
-                      <TableCell align="center">
-                        {driver_info?.pid ?? "-"}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
+                .map((job, index) => {
+                  const { job_id, submission_id } = job;
+                  return (
+                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                  );
+                })}
             </TableBody>
           </Table>
         </TableContainer>

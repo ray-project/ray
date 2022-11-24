@@ -10,6 +10,7 @@ from ray.serve.config import (
     ReplicaConfig,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.serve._private.utils import DEFAULT
 
 
 def test_autoscaling_config_validation():
@@ -66,51 +67,32 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError):
             b.num_replicas = -1
 
-    @pytest.mark.parametrize("ignore_none", [True, False])
-    def test_from_default(self, ignore_none):
+    def test_from_default(self):
         """Check from_default() method behavior."""
 
         # Valid parameters
-        dc = DeploymentConfig.from_default(
-            ignore_none=ignore_none, num_replicas=5, is_cross_language=True
-        )
+        dc = DeploymentConfig.from_default(num_replicas=5, is_cross_language=True)
         assert dc.num_replicas == 5
         assert dc.is_cross_language is True
 
         # Invalid parameters should raise TypeError
         with pytest.raises(TypeError):
-            DeploymentConfig.from_default(
-                ignore_none=ignore_none, num_replicas=5, is_xlang=True
-            )
+            DeploymentConfig.from_default(num_replicas=5, is_xlang=True)
 
         # Validation should still be performed
         with pytest.raises(ValidationError):
-            DeploymentConfig.from_default(
-                ignore_none=ignore_none, num_replicas="hello world"
-            )
+            DeploymentConfig.from_default(num_replicas="hello world")
 
-    def test_from_default_ignore_none(self):
-        """Check from_default()'s ignore_none parameter"""
+    def test_from_default_ignore_default(self):
+        """Check that from_default() ignores DEFAULT.VALUE kwargs."""
 
         default = DeploymentConfig()
 
-        # Valid parameter with None passed in should be ignored
-        dc = DeploymentConfig.from_default(ignore_none=True, num_replicas=None)
-
-        # Invalid parameter should raise TypeError no matter what
-        with pytest.raises(TypeError):
-            DeploymentConfig.from_default(ignore_none=True, fake=5)
-        with pytest.raises(TypeError):
-            DeploymentConfig.from_default(ignore_none=False, fake=5)
+        # Valid parameter with DEFAULT.VALUE passed in should be ignored
+        dc = DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
 
         # Validators should run no matter what
-        dc = DeploymentConfig.from_default(
-            ignore_none=True, max_concurrent_queries=None
-        )
-        assert dc.max_concurrent_queries == default.max_concurrent_queries
-        dc = DeploymentConfig.from_default(
-            ignore_none=False, max_concurrent_queries=None
-        )
+        dc = DeploymentConfig.from_default(max_concurrent_queries=None)
         assert dc.max_concurrent_queries is not None
         assert dc.max_concurrent_queries == default.max_concurrent_queries
 

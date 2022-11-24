@@ -1,7 +1,7 @@
-import { blue, blueGrey, grey, lightBlue } from "@material-ui/core/colors";
-import { createMuiTheme } from "@material-ui/core/styles";
+import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
+import { createTheme, ThemeOptions } from "@material-ui/core/styles";
 
-const basicTheme = {
+const basicTheme: ThemeOptions = {
   typography: {
     fontSize: 12,
     fontFamily: [
@@ -16,6 +16,9 @@ const basicTheme = {
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
     ].join(","),
+    body1: {
+      fontSize: "0.75rem",
+    },
   },
   props: {
     MuiPaper: {
@@ -24,11 +27,19 @@ const basicTheme = {
   },
 };
 
-export const lightTheme = createMuiTheme({
+export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
-    primary: blue,
+    primary: {
+      main: "#538DF9",
+    },
     secondary: lightBlue,
+    success: {
+      main: "#43A047",
+    },
+    error: {
+      main: "#D32F2F",
+    },
     text: {
       primary: grey[900],
       secondary: grey[800],
@@ -42,11 +53,19 @@ export const lightTheme = createMuiTheme({
   },
 });
 
-export const darkTheme = createMuiTheme({
+export const darkTheme = createTheme({
   ...basicTheme,
   palette: {
-    primary: blue,
+    primary: {
+      main: "#538DF9",
+    },
     secondary: lightBlue,
+    success: {
+      main: "#43A047",
+    },
+    error: {
+      main: "#D32F2F",
+    },
     text: {
       primary: blueGrey[50],
       secondary: blueGrey[100],

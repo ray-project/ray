@@ -19,6 +19,7 @@ from ray.util.placement_group import (
     placement_group_table,
     remove_placement_group,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -52,6 +53,21 @@ def _get_tune_pg_prefix():
     # Else: create and store unique prefix
     _tune_pg_prefix = f"__tune_{uuid.uuid4().hex[:8]}__"
     return _tune_pg_prefix
+
+
+def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
+    """Sum all resources in a list of resource bundles.
+
+    Args:
+        bundles: List of resource bundles.
+
+    Returns: Dict containing all resources summed up.
+    """
+    resources = {}
+    for bundle in bundles:
+        for k, v in bundle.items():
+            resources[k] = resources.get(k, 0) + v
+    return resources
 
 
 @PublicAPI(stability="beta")
@@ -145,9 +161,10 @@ class PlacementGroupFactory:
         *args,
         **kwargs,
     ):
-        assert (
-            len(bundles) > 0
-        ), "Cannot initialize a PlacementGroupFactory with zero bundles."
+        if not bundles:
+            raise ValueError(
+                "Cannot initialize a PlacementGroupFactory with zero bundles."
+            )
 
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
@@ -157,6 +174,12 @@ class PlacementGroupFactory:
             # This is when trainable itself doesn't need resources.
             self._head_bundle_is_empty = True
             self._bundles.pop(0)
+
+            if not self._bundles:
+                raise ValueError(
+                    "Cannot initialize a PlacementGroupFactory with an empty head "
+                    "and zero worker bundles."
+                )
         else:
             self._head_bundle_is_empty = False
 
@@ -192,11 +215,7 @@ class PlacementGroupFactory:
     @property
     def required_resources(self) -> Dict[str, float]:
         """Returns a dict containing the sums of all resources"""
-        resources = {}
-        for bundle in self._bundles:
-            for k, v in bundle.items():
-                resources[k] = resources.get(k, 0) + v
-        return resources
+        return _sum_bundles(self._bundles)
 
     @property
     @DeveloperAPI
@@ -270,10 +289,9 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
 
     spec = spec.copy()
 
-    cpus = spec.pop("cpu", 0.0)
-    gpus = spec.pop("gpu", 0.0)
+    cpus = spec.pop("cpu", spec.pop("CPU", 0.0))
+    gpus = spec.pop("gpu", spec.pop("GPU", 0.0))
     memory = spec.pop("memory", 0.0)
-    object_store_memory = spec.pop("object_store_memory", 0.0)
 
     bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
 
@@ -282,7 +300,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
             "CPU": cpus,
             "GPU": gpus,
             "memory": memory,
-            "object_store_memory": object_store_memory,
         }
     )
 
@@ -525,24 +542,26 @@ class _PlacementGroupManager:
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
             memory = head_bundle.pop("memory", None)
-            object_store_memory = head_bundle.pop("object_store_memory", None)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
             return actor_cls.options(
-                placement_group=pg,
-                placement_group_bundle_index=0,
-                placement_group_capture_child_tasks=True,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                    placement_group_capture_child_tasks=True,
+                ),
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 memory=memory,
-                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:
             return actor_cls.options(
-                placement_group=pg,
-                placement_group_capture_child_tasks=True,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=True,
+                ),
                 num_cpus=0,
                 num_gpus=0,
                 resources={},

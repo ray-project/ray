@@ -6,6 +6,8 @@ from time import sleep
 import pytest
 
 import ray
+from ray._private.utils import get_or_create_event_loop
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     convert_actor_state,
@@ -103,7 +105,17 @@ def test_gcs_server_restart_during_actor_creation(
         generate_system_config_map(
             gcs_failover_worker_reconnect_timeout=2,
             gcs_rpc_server_reconnect_timeout_s=60,
-        )
+            num_heartbeats_timeout=3,
+            pull_based_healthcheck=False,
+        ),
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=2,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
+            pull_based_healthcheck=True,
+        ),
     ],
     indirect=True,
 )
@@ -440,7 +452,7 @@ def test_gcs_aio_client_reconnect(
         import asyncio
 
         asyncio.set_event_loop(asyncio.new_event_loop())
-        passed[0] = asyncio.get_event_loop().run_until_complete(async_kv_get())
+        passed[0] = get_or_create_event_loop().run_until_complete(async_kv_get())
 
     ray._private.worker._global_node.kill_gcs_server()
     t = threading.Thread(target=kv_get)
@@ -594,7 +606,9 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
             return os.getpid()
 
-    c = Counter.options(placement_group=pg).remote()
+    c = Counter.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
     r = ray.get(c.r.remote(10))
     assert r == 10
 

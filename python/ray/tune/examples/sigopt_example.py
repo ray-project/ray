@@ -11,6 +11,7 @@ from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.sigopt import SigOptSearch
+from ray.tune.search.sigopt.sigopt_search import load_sigopt_key
 
 
 def evaluate(step, width, height):
@@ -38,6 +39,8 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
     args, _ = parser.parse_known_args()
+
+    load_sigopt_key()
 
     if "SIGOPT_KEY" not in os.environ:
         if args.smoke_test:

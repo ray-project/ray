@@ -39,6 +39,7 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
+    # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
@@ -52,6 +53,7 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
+    # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
     for sys_platform in ["darwin", "linux", "win32"]:
@@ -183,6 +185,7 @@ def test_container_option_serialize(runtime_env_class):
     assert job_config_serialized.count(b"--name=test") == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     """Test that no extra workers start up during a long env installation."""
@@ -412,6 +415,10 @@ def enable_dev_mode(local_env_var_enabled):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 10, 0),
+    reason=("Currently not passing for Python 3.10"),
 )
 @pytest.mark.parametrize("local_env_var_enabled", [False, True])
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])

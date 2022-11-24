@@ -18,6 +18,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     run_string_as_driver,
     wait_for_condition,
+    kill_raylet,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
@@ -315,8 +316,18 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
             "_system_config": {
                 "num_heartbeats_timeout": 10,
                 "raylet_heartbeat_period_milliseconds": 100,
+                "pull_based_healthcheck": False,
             },
-        }
+        },
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 100,
+                "health_check_failure_threshold": 10,
+                "pull_based_healthcheck": True,
+            },
+        },
     ],
     indirect=True,
 )
@@ -359,7 +370,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
             assert not graceful
 
     """
-    Kill the first worker non-gracefully.
+    Kill the first worker ungracefully.
     """
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)
@@ -652,6 +663,26 @@ def test_actor_task_fast_fail(ray_start_cluster):
     time.sleep(1)
     # An actor task should succeed.
     ray.get(actor.ping.remote())
+
+
+def test_task_crash_after_raylet_dead_throws_node_died_error():
+    @ray.remote(max_retries=0)
+    def sleeper():
+        import os
+
+        time.sleep(3)
+        os.kill(os.getpid(), 9)
+
+    with ray.init():
+        ref = sleeper.remote()
+
+        raylet = ray.nodes()[0]
+        kill_raylet(raylet)
+
+        with pytest.raises(ray.exceptions.NodeDiedError) as error:
+            ray.get(ref)
+        message = str(error)
+        assert raylet["NodeManagerAddress"] in message
 
 
 if __name__ == "__main__":

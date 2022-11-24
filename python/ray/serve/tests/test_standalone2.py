@@ -4,7 +4,8 @@ import sys
 import time
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Dict
+from typing import Dict, Set
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import pytest
 import requests
@@ -12,8 +13,15 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
+from ray.experimental.state.api import list_actors
+
 from ray import serve
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+    SignalActor,
+)
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
@@ -34,6 +42,32 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture()
+def ray_instance(request):
+    """Starts and stops a Ray instance for this test.
+
+    Args:
+        request: request.param should contain a dictionary of env vars and
+            their values. The Ray instance will be started with these env vars.
+    """
+
+    original_env_vars = os.environ.copy()
+
+    try:
+        requested_env_vars = request.param
+    except AttributeError:
+        requested_env_vars = {}
+
+    os.environ.update(requested_env_vars)
+
+    yield ray.init()
+
+    ray.shutdown()
+
+    os.environ.clear()
+    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -97,7 +131,7 @@ def test_memory_omitted_option(ray_shutdown):
 def test_serve_namespace(shutdown_ray, detached, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
-    with ray.init(namespace=ray_namespace):
+    with ray.init(namespace=ray_namespace) as ray_context:
 
         @serve.deployment
         def f(*args):
@@ -105,10 +139,18 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 
         serve.run(f.bind())
 
-        actors = ray.util.list_named_actors(all_namespaces=True)
+        actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         assert len(actors) == 3
-        assert all(actor["namespace"] == SERVE_NAMESPACE for actor in actors)
+
+        # All actors should be in the SERVE_NAMESPACE, so none of these calls
+        # should throw an error.
+        for actor in actors:
+            ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
+
         assert requests.get("http://localhost:8000/f").text == "got f"
 
         serve.shutdown()
@@ -118,7 +160,7 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 def test_update_num_replicas(shutdown_ray, detached):
     """Test updating num_replicas."""
 
-    with ray.init():
+    with ray.init() as ray_context:
 
         @serve.deployment(num_replicas=2)
         def f(*args):
@@ -126,16 +168,25 @@ def test_update_num_replicas(shutdown_ray, detached):
 
         serve.run(f.bind())
 
-        actors = ray.util.list_named_actors(all_namespaces=True)
+        actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         serve.run(f.options(num_replicas=4).bind())
-        updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        updated_actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         # Check that only 2 new replicas were created
         assert len(updated_actors) == len(actors) + 2
 
         serve.run(f.options(num_replicas=1).bind())
-        updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        updated_actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         # Check that all but 1 replica has spun down
         assert len(updated_actors) == len(actors) - 1
@@ -385,7 +436,7 @@ class TestDeployApp:
             == "9 pizzas please!"
         )
 
-        actors = ray.util.list_named_actors(all_namespaces=True)
+        actors = list_actors(filters=[("state", "=", "ALIVE")])
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -424,7 +475,7 @@ class TestDeployApp:
             timeout=15,
         )
 
-        updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        updated_actors = list_actors(filters=[("state", "=", "ALIVE")])
         assert len(updated_actors) == len(actors) + 3
 
     def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
@@ -645,7 +696,7 @@ class TestDeployApp:
 def test_controller_recover_and_delete(shutdown_ray):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
-    ray.init()
+    ray_context = ray.init()
     client = serve.start()
 
     @serve.deployment(
@@ -657,7 +708,9 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     f.deploy()
 
-    actors = ray.util.list_named_actors(all_namespaces=True)
+    actors = list_actors(
+        address=ray_context.address_info["address"], filters=[("state", "=", "ALIVE")]
+    )
 
     # Try to delete the deployments and kill the controller right after
     client.delete_deployments(["f"], blocking=False)
@@ -665,11 +718,23 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     # All replicas should be removed already or after the controller revives
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) < len(actors)
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
+        < len(actors)
     )
 
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == len(actors) - 50
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
+        == len(actors) - 50
     )
 
     # The deployment should be deleted, meaning its state should not be stored
@@ -679,6 +744,70 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     serve.shutdown()
     ray.shutdown()
+
+
+class TestServeRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
+
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
+
+        serve.run(f.bind())
+
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
+
+    @pytest.mark.parametrize(
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}], indirect=True
+    )
+    def test_hanging_request(self, ray_instance):
+        """Checks that the env var mitigates the hang."""
+
+        @ray.remote
+        class PidTracker:
+            def __init__(self):
+                self.pids = set()
+
+            def add_pid(self, pid: int) -> None:
+                self.pids.add(pid)
+
+            def get_pids(self) -> Set[int]:
+                return self.pids
+
+        pid_tracker = PidTracker.remote()
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(num_replicas=2)
+        async def waiter(*args):
+            import os
+
+            ray.get(pid_tracker.add_pid.remote(os.getpid()))
+            await signal_actor.wait.remote()
+            return "Success!"
+
+        serve.run(waiter.bind())
+
+        with ThreadPoolExecutor() as pool:
+            response_fut = pool.submit(requests.get, "http://localhost:8000")
+
+            # Force request to hang
+            time.sleep(0.5)
+            ray.get(signal_actor.send.remote())
+
+            wait_for_condition(lambda: response_fut.done())
+            assert response_fut.result().text == "Success!"
+
+        # Hanging request should have been retried
+        assert len(ray.get(pid_tracker.get_pids.remote())) == 2
+
+        serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
@@ -766,6 +895,15 @@ def test_handle_early_detect_failure(shutdown_ray):
     serve.shutdown()
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Raylet-based scheduler favors (http proxy) actors' owner "
+    + "nodes (the head one), so the `EveryNode` option is actually not "
+    + "enforced. Besides, the second http proxy does not die with the "
+    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
+    + "may collocate the second http proxy and the place holder) "
+    + "can not shutdown the worker node.",
+)
 def test_autoscaler_shutdown_node_http_everynode(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):

@@ -49,7 +49,8 @@ class RemoteFunction:
             remote function.
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
-        _memory: The heap memory request for this task.
+        _memory: The heap memory request in bytes for this task/actor,
+            rounded down to the nearest integer.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -89,10 +90,16 @@ class RemoteFunction:
         if inspect.iscoroutinefunction(function):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
-                "async function with `asyncio.get_event_loop.run_until(f())`. "
-                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
+                "async function with `asyncio.run(f())`. See more at:"
+                "https://docs.ray.io/en/latest/ray-core/actors/async_api.html "
             )
         self._default_options = task_options
+
+        # When gpu is used, set the task non-recyclable by default.
+        # https://github.com/ray-project/ray/issues/29624 for more context.
+        num_gpus = self._default_options.get("num_gpus") or 0
+        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
+            self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
         # They are being used in some other places, mostly tests. Need cleanup later.
@@ -149,7 +156,8 @@ class RemoteFunction:
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_calls: This specifies the
                 maximum number of times that a given worker can execute
@@ -157,7 +165,8 @@ class RemoteFunction:
                 (this can be used to address memory leaks in third-party
                 libraries or to reclaim resources that cannot easily be
                 released, e.g., GPU memory that was acquired by TensorFlow).
-                By default this is infinite.
+                By default this is infinite for CPU tasks and 1 for GPU tasks
+                (to force GPU tasks to release resources after finishing).
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
@@ -165,8 +174,7 @@ class RemoteFunction:
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             retry_exceptions: This specifies whether application-level errors
                 should be retried up to max_retries times.
             scheduling_strategy: Strategy about how to
@@ -299,6 +307,8 @@ class RemoteFunction:
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
         num_returns = task_options["num_returns"]
+        if num_returns == "dynamic":
+            num_returns = -1
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
         if isinstance(retry_exceptions, (list, tuple)):

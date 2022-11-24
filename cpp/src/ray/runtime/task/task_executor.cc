@@ -119,20 +119,23 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
 }
 
 Status TaskExecutor::ExecuteTask(
+    const rpc::Address &caller_address,
     ray::TaskType task_type,
     const std::string task_name,
     const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
-    const std::vector<ObjectID> &return_ids,
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
-    std::vector<std::shared_ptr<ray::RayObject>> *results,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
+    bool *is_application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-    const std::string name_of_concurrency_group_to_execute) {
+    const std::string name_of_concurrency_group_to_execute,
+    bool is_reattempt) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
@@ -146,6 +149,7 @@ Status TaskExecutor::ExecuteTask(
   // TODO(Clark): Support exception allowlist for retrying application-level
   // errors for C++.
   *is_retryable_error = false;
+  *is_application_error = false;
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
@@ -194,6 +198,7 @@ Status TaskExecutor::ExecuteTask(
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
     meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
+    *is_application_error = true;
 
     msgpack::sbuffer buf;
     if (cross_lang) {
@@ -209,11 +214,10 @@ Status TaskExecutor::ExecuteTask(
     data = std::make_shared<msgpack::sbuffer>(std::move(buf));
   }
 
-  results->resize(return_ids.size(), nullptr);
   if (task_type != ray::TaskType::ACTOR_CREATION_TASK) {
     size_t data_size = data->size();
-    auto &result_id = return_ids[0];
-    auto result_ptr = &(*results)[0];
+    auto &result_id = (*returns)[0].first;
+    auto result_ptr = &(*returns)[0].second;
     int64_t task_output_inlined_bytes = 0;
 
     if (cross_lang && meta_buffer == nullptr) {
@@ -250,7 +254,10 @@ Status TaskExecutor::ExecuteTask(
       }
     }
 
-    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+        result_id,
+        result,
+        /*generator_id=*/ObjectID::Nil()));
   } else {
     if (!status.ok()) {
       return ray::Status::CreationTaskError("");

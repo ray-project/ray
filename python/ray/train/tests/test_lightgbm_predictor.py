@@ -16,19 +16,7 @@ from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from typing import Tuple
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
@@ -52,14 +40,13 @@ def test_repr():
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
-    preprocessor.attr = 1
 
     checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
 
     return checkpoint, preprocessor
 
 
-def test_init():
+def test_lightgbm_checkpoint():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
     predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
@@ -67,13 +54,10 @@ def test_init():
     checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert (
-        checkpoint_predictor.get_preprocessor().attr
-        == predictor.get_preprocessor().attr
-    )
+    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     preprocessor = DummyPreprocessor()
     predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
@@ -83,10 +67,10 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint, _ = create_checkpoint_preprocessor()
     predictor = BatchPredictor.from_checkpoint(checkpoint, LightGBMPredictor)
@@ -116,7 +100,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_feature_columns_pandas():
@@ -133,7 +117,31 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
+
+
+@pytest.mark.parametrize("to_string", [True, False])
+def test_predict_feature_columns_pandas_categorical(to_string: bool):
+    pandas_data = pd.DataFrame(dummy_data, columns=["A", "B"])
+    if to_string:
+        pandas_data["A"] = [str(x) for x in pandas_data["A"]]
+    pandas_data["A"] = pandas_data["A"].astype("category")
+    pandas_target = pd.Series(dummy_target)
+    pandas_model = (
+        lgbm.LGBMClassifier(n_estimators=10).fit(pandas_data, pandas_target).booster_
+    )
+    preprocessor = DummyPreprocessor()
+    predictor = LightGBMPredictor(model=pandas_model, preprocessor=preprocessor)
+    data_batch = pd.DataFrame(
+        np.array([[1, 2, 2], [3, 4, 8], [5, 6, 9]]), columns=["A", "B", "C"]
+    )
+    if to_string:
+        data_batch["A"] = [str(x) for x in data_batch["A"]]
+    data_batch["A"] = data_batch["A"].astype("category")
+    predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
+
+    assert len(predictions) == 3
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_no_preprocessor_no_training():

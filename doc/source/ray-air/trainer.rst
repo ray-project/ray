@@ -59,8 +59,8 @@ which provides functionality for reporting metrics, saving checkpoints, and more
 You can provide multiple datasets to a trainer via the ``datasets`` parameter.
 If ``datasets`` includes a training dataset (denoted by the "train" key), then it will be split into multiple dataset
 shards, with each worker training on a single shard. All other datasets will not be split.
-You can access the data shard within a worker via ``session.get_dataset_shard()``, and use `iter_tf_batches` or `iter_torch_batches`
-to generate batches of Tensorflow or Pytorch tensors.
+You can access the data shard within a worker via :func:`~ray.air.session.get_dataset_shard()`, and use 
+:meth:`~ray.data.Dataset.to_tf` or `iter_torch_batches` to generate batches of Tensorflow or Pytorch tensors.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
 Read more about :ref:`Ray Train's Deep Learning Trainers <train-dl-guide>`.
