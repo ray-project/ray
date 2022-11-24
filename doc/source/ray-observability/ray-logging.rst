@@ -150,7 +150,8 @@ By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory.
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 
-Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/stderr and ``.err`` is logs from stderr. The backward compatibility of log directories is not maintained.
+Here's a Ray log directory structure.
+Note that ``.out`` is outputs from stdout, ``.err`` is outputs from stderr, `_[pid].log` is logs from ``RAY_LOG()`` and ``_[pid].{number}.log`` is the rotated logs. The backward compatibility of log directories is not maintained.
 
 - ``dashboard.log``: A log file of a Ray dashboard.
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
