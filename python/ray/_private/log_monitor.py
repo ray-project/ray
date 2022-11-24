@@ -450,6 +450,15 @@ class LogMonitor:
                 time.sleep(0.1)
 
 
+def is_proc_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        # If OSError is raised, the process is not alive.
+        return False
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=("Parse GCS server address for the log monitor to connect to.")
@@ -513,14 +522,6 @@ if __name__ == "__main__":
         max_bytes=args.logging_rotate_bytes,
         backup_count=args.logging_rotate_backup_count,
     )
-
-    def is_proc_alive(pid):
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            # If OSError is raised, the process is not alive.
-            return False
 
     log_monitor = LogMonitor(
         args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
