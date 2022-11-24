@@ -40,14 +40,15 @@ class GcsWorkerManagerTest : public Test {
     // Needs a separate thread to run io service.
     // Alternatively, we can manually run io service. In this test, we chose to
     // start a new thread as other GCS tests do.
-    thread_io_service_.reset(new std::thread([this] {
+    thread_io_service_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
-    }));
-    usage_stats_client_.reset(new gcs::UsageStatsClient("127.0.0.1:6379", io_service_));
-    worker_manager_.reset(new gcs::GcsWorkerManager(
-        gcs_table_storage_, gcs_publisher_, *usage_stats_client_));
+    });
+    usage_stats_client_ =
+        std::make_unique<gcs::UsageStatsClient>("127.0.0.1:6379", io_service_);
+    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(
+        gcs_table_storage_, gcs_publisher_, *usage_stats_client_);
   }
 
   void TearDown() override {
