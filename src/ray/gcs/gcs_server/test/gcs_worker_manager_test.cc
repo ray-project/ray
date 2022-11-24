@@ -45,10 +45,8 @@ class GcsWorkerManagerTest : public Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     });
-    usage_stats_client_ =
-        std::make_unique<gcs::UsageStatsClient>("127.0.0.1:6379", io_service_);
-    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(
-        gcs_table_storage_, gcs_publisher_, *usage_stats_client_);
+    worker_manager_ =
+        std::make_shared<gcs::GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
   }
 
   void TearDown() override {
@@ -72,7 +70,6 @@ class GcsWorkerManagerTest : public Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<gcs::UsageStatsClient> usage_stats_client_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
 

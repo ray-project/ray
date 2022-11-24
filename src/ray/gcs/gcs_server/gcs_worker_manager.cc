@@ -102,7 +102,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       key = "worker_crash_oom";
       count = worker_crash_oom_count_;
     }
-    usage_stats_client_.RecordExtraUsageTag(key, std::to_string(count));
+    if (usage_stats_client_) {
+      usage_stats_client_->RecordExtraUsageTag(key, std::to_string(count));
+    }
   }
 }
 

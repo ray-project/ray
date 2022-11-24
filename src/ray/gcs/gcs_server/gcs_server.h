@@ -154,13 +154,6 @@ class GcsServer {
   /// Gets the type of KV storage to use from config.
   std::string StorageType() const;
 
-  /// Store the address of GCS server in Redis.
-  ///
-  /// Clients will look up this address in Redis and use it to connect to GCS server.
-  /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
-  /// server address directly to raylets and get rid of this lookup.
-  void StoreGcsServerAddressInRedis();
-
   /// Print debug info periodically.
   std::string GetDebugState() const;
 
