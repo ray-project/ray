@@ -1,12 +1,11 @@
 #!/bin/bash
 # Test Ray Data bulk ingestion performance as the size of input files change.
 
-set -x
+# Exit if any of the test commands fail.
+set -x -e pipeline
 
 NUM_IMAGES_PER_FILE="512"
-NUM_FILES="1 128"
-# TODO(swang): 512 currently fails due to Ray core hanging when out of disk space.
-# NUM_FILES="1 128 512"
+NUM_FILES="1 128 512"
 NUM_EPOCHS=1
 BATCH_SIZE=64
 SHUFFLE_BUFFER_SIZE=0
@@ -19,14 +18,14 @@ MAX_FILES=$( \
         | python -c "import sys; print(max([int(line) for line in sys.stdin]))")
 rm -rf $DATA_DIR
 mkdir -p $DATA_DIR
-python make_fake_dataset.py \
+time python make_fake_dataset.py \
     --num-shards "$MAX_FILES" \
     --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$NUM_IMAGES_PER_FILE-times" \
     --output-directory $DATA_DIR
 
 for num_files in $NUM_FILES; do
     num_images_per_epoch=$((num_files * NUM_IMAGES_PER_FILE))
-    python resnet50_ray_air.py \
+    time python resnet50_ray_air.py \
         --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
         --num-epochs $NUM_EPOCHS \
         --batch-size $BATCH_SIZE \

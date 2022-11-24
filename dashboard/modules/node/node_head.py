@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+import grpc
 
 import aiohttp.web
 
@@ -17,7 +18,6 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.dashboard.datacenter import DataOrganizer, DataSource
-from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
@@ -180,13 +180,18 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 agents = dict(DataSource.agents)
                 for node_id in alive_node_ids:
-                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
-                    # TODO: Use async version if performance is an issue
-                    agent_port = ray.experimental.internal_kv._internal_kv_get(
-                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-                    )
-                    if agent_port:
-                        agents[node_id] = json.loads(agent_port)
+                    # Since the agent fate shares with a raylet,
+                    # the agent port will never change once it is discovered.
+                    if node_id not in agents:
+                        key = (
+                            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}"
+                            f"{node_id}"
+                        )
+                        agent_port = await self._gcs_aio_client.internal_kv_get(
+                            key.encode(), namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+                        )
+                        if agent_port:
+                            agents[node_id] = json.loads(agent_port)
                 for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 
@@ -239,13 +244,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=True, message="Node summary fetched.", summary=all_node_summary
             )
-        elif view == "details":
-            all_node_details = await DataOrganizer.get_all_node_details()
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message="All node details fetched",
-                clients=all_node_details,
-            )
         elif view is not None and view.lower() == "hostNameList".lower():
             alive_hostnames = set()
             for node in DataSource.nodes.values():
@@ -270,67 +268,56 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message="Node details fetched.", detail=node_info
         )
 
-    @routes.get("/memory/memory_table")
-    async def get_memory_table(self, req) -> aiohttp.web.Response:
-        group_by = req.query.get("group_by")
-        sort_by = req.query.get("sort_by")
-        kwargs = {}
-        if group_by:
-            kwargs["group_by"] = GroupByType(group_by)
-        if sort_by:
-            kwargs["sort_by"] = SortingType(sort_by)
-
-        memory_table = await DataOrganizer.get_memory_table(**kwargs)
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetched memory table",
-            memory_table=memory_table.as_dict(),
-        )
-
-    @routes.get("/memory/set_fetch")
-    async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
-        should_fetch = req.query["shouldFetch"]
-        if should_fetch == "true":
-            self._collect_memory_info = True
-        elif should_fetch == "false":
-            self._collect_memory_info = False
-        else:
-            return dashboard_optional_utils.rest_response(
-                success=False, message=f"Unknown argument to set_fetch {should_fetch}"
-            )
-        return dashboard_optional_utils.rest_response(
-            success=True, message=f"Successfully set fetching to {should_fetch}"
-        )
-
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
-        for node_id, stub in list(self._stubs.items()):
+        get_node_stats_tasks = []
+        nodes = list(self._stubs.items())
+        TIMEOUT = node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS - 1
+
+        for node_id, stub in nodes:
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
-            try:
-                reply = await stub.GetNodeStats(
+            get_node_stats_tasks.append(
+                stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
                         include_memory_info=self._collect_memory_info
                     ),
-                    timeout=2,
+                    timeout=min(2, TIMEOUT),
                 )
+            )
+
+        replies = await asyncio.gather(
+            *get_node_stats_tasks,
+            return_exceptions=True,
+        )
+
+        for node_info, reply in zip(nodes, replies):
+            node_id, _ = node_info
+            if isinstance(reply, asyncio.CancelledError):
+                pass
+            elif isinstance(reply, grpc.RpcError):
+                if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    logger.exception(
+                        f"Cannot reach the node, {node_id}, after timeout {TIMEOUT}. "
+                        "This node may have been overloaded, terminated, or "
+                        "the network is slow."
+                    )
+                elif reply.code() == grpc.StatusCode.UNAVAILABLE:
+                    logger.exception(
+                        f"Cannot reach the node, {node_id}. "
+                        "The node may have been terminated."
+                    )
+                else:
+                    logger.exception(f"Error updating node stats of {node_id}.")
+                    logger.exception(reply)
+            elif isinstance(reply, Exception):
+                logger.exception(f"Error updating node stats of {node_id}.")
+                logger.exception(reply)
+            else:
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[node_id] = reply_dict
-            except Exception:
-                logger.exception(f"Error updating node stats of {node_id}.")
-
-        # Update scheduling stats (e.g., pending actor creation tasks) of gcs.
-        try:
-            reply = await self._gcs_node_resource_info_stub.GetGcsSchedulingStats(
-                gcs_service_pb2.GetGcsSchedulingStatsRequest(),
-                timeout=2,
-            )
-            if reply.status.code == 0:
-                DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
-        except Exception:
-            logger.exception("Error updating gcs stats.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

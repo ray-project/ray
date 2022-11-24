@@ -144,8 +144,8 @@ def maybe_get_filters_for_syncing(rollout_worker, policy_id):
     ]
     # There can only be one filter at a time
     if filter_connectors:
-        assert len(SyncedFilterAgentConnector) == 1, (
-            "ConnectorPipeline has two connectors of type "
+        assert len(filter_connectors) == 1, (
+            "ConnectorPipeline has multiple connectors of type "
             "SyncedFilterAgentConnector but can only have one."
         )
         rollout_worker.filters[policy_id] = filter_connectors[0].filter

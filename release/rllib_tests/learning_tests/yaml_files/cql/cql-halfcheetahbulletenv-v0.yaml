@@ -27,7 +27,7 @@ cql-halfcheetahbulletenv-v0:
         target_entropy: auto
         no_done_at_end: false
         n_step: 3
-        rollout_fragment_length: 1
+        rollout_fragment_length: auto
         num_workers: 8
         grad_clip: 40
         train_batch_size: 256
