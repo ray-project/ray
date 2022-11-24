@@ -200,14 +200,16 @@ void WorkerPool::AddWorkerProcess(
     const rpc::WorkerType worker_type,
     const Process &proc,
     const std::chrono::high_resolution_clock::time_point &start,
-    const rpc::RuntimeEnvInfo &runtime_env_info) {
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    const std::vector<std::string> &dynamic_options) {
   state.worker_processes.emplace(worker_startup_token_counter_,
                                  WorkerProcessInfo{/*is_pending_registration=*/true,
                                                    {},
                                                    worker_type,
                                                    proc,
                                                    start,
-                                                   runtime_env_info});
+                                                   runtime_env_info,
+                                                   dynamic_options});
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -473,7 +475,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   }
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);
+  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info, dynamic_options);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -537,22 +539,13 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       bool found;
       bool used;
       TaskID task_id;
-      InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
+      InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                         proc_startup_token,
                                         nullptr,
                                         status,
                                         &found,
                                         &used,
                                         &task_id);
-      if (!found) {
-        InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
-                                          proc_startup_token,
-                                          nullptr,
-                                          status,
-                                          &found,
-                                          &used,
-                                          &task_id);
-      }
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
@@ -979,27 +972,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   bool found;
   bool used;
   TaskID task_id;
-  InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
-                                    worker->GetStartupToken(),
-                                    worker,
-                                    PopWorkerStatus::OK,
-                                    &found,
-                                    &used,
-                                    &task_id);
-  if (found) {
-    // The worker is used for the actor creation task with dynamic options.
-    if (!used) {
-      // Put it into idle dedicated worker pool.
-      // TODO(SongGuyang): This worker will not be used forever. We should kill it.
-      state.idle_dedicated_workers[task_id] = worker;
-    }
-    // We either have an idle worker or a slot to start a new worker.
-    if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      TryPendingPopWorkerRequests(worker->GetLanguage());
-    }
-    return;
-  }
-
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                     worker->GetStartupToken(),
                                     worker,
@@ -1007,7 +979,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &found,
                                     &used,
                                     &task_id);
-  // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
@@ -1204,11 +1175,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
       auto task_info = TaskWaitingForWorkerInfo{task_spec.TaskId(), callback};
-      if (dedicated) {
-        state.starting_dedicated_workers_to_tasks[startup_token] = std::move(task_info);
-      } else {
-        state.starting_workers_to_tasks[startup_token] = std::move(task_info);
-      }
+      state.starting_workers_to_tasks[startup_token] = std::move(task_info);
     } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
       // TODO(jjyao) As an optimization, we don't need to delete the runtime env
       // but reuse it the next time we retry the request.
@@ -1224,122 +1191,87 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  } else if (task_spec.IsActorCreationTask() &&
-             !task_spec.DynamicWorkerOptions().empty()) {
-    // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options.
-    // Try to pop it from idle dedicated pool.
-    auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
-    if (it != state.idle_dedicated_workers.end()) {
-      // There is an idle dedicated worker for this task.
-      worker = std::move(it->second);
-      state.idle_dedicated_workers.erase(it);
+  }
+
+  bool is_actor_creation = task_spec.IsActorCreationTask();
+  std::vector<std::string> dynamic_options{};
+  if (is_actor_creation && !task_spec.DynamicWorkerOptions().empty()) {
+    dynamic_options = task_spec.DynamicWorkerOptions();
+  }
+
+  const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
+  for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
+       it++) {
+    if (task_spec.GetLanguage() != it->first->GetLanguage() ||
+        it->first->GetAssignedJobId() != task_spec.JobId() ||
+        state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+      continue;
+    }
+
+    // Skip if the dynamic_options doesn't match.
+    if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
+      continue;
+    }
+
+    // These workers are exiting. So skip them.
+    if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
+      continue;
+    }
+    // Skip if the runtime env doesn't match.
+    if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
+      continue;
+    }
+
+    state.idle.erase(it->first);
+    // We can't erase a reverse_iterator.
+    auto lit = it.base();
+    lit--;
+    worker = std::move(lit->first);
+    idle_of_all_languages_.erase(lit);
+    idle_of_all_languages_map_.erase(worker);
+    break;
+  }
+
+  if (worker == nullptr) {
+    // There are no more cached workers available to execute this task.
+    // Start a new worker process.
+    if (task_spec.HasRuntimeEnv()) {
+      // create runtime env.
+      RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
+      GetOrCreateRuntimeEnv(
+          task_spec.SerializedRuntimeEnv(),
+          task_spec.RuntimeEnvConfig(),
+          task_spec.JobId(),
+          [this,
+           start_worker_process_fn,
+           callback,
+           &state,
+           task_spec,
+           dynamic_options,
+           is_actor_creation](bool successful,
+                              const std::string &serialized_runtime_env_context,
+                              const std::string &setup_error_message) {
+            if (successful) {
+              start_worker_process_fn(task_spec,
+                                      state,
+                                      dynamic_options,
+                                      is_actor_creation,
+                                      serialized_runtime_env_context,
+                                      callback);
+            } else {
+              process_failed_runtime_env_setup_failed_++;
+              callback(nullptr,
+                       PopWorkerStatus::RuntimeEnvCreationFailed,
+                       /*runtime_env_setup_error_message*/ setup_error_message);
+              RAY_LOG(WARNING) << "Create runtime env failed for task "
+                               << task_spec.TaskId()
+                               << " and couldn't create the worker.";
+            }
+          },
+          allocated_instances_serialized_json);
     } else {
-      // We are not pending a registration from a worker for this task,
-      // so start a new worker process for this task.
-      std::vector<std::string> dynamic_options = task_spec.DynamicWorkerOptions();
-
-      if (task_spec.HasRuntimeEnv()) {
-        // create runtime env.
-        RAY_LOG(DEBUG) << "[dedicated] Creating runtime env for task "
-                       << task_spec.TaskId();
-        GetOrCreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            task_spec.RuntimeEnvConfig(),
-            task_spec.JobId(),
-            [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
-                bool successful,
-                const std::string &serialized_runtime_env_context,
-                const std::string &setup_error_message) {
-              if (successful) {
-                start_worker_process_fn(task_spec,
-                                        state,
-                                        dynamic_options,
-                                        true,
-                                        serialized_runtime_env_context,
-                                        callback);
-              } else {
-                process_failed_runtime_env_setup_failed_++;
-                callback(nullptr,
-                         PopWorkerStatus::RuntimeEnvCreationFailed,
-                         /*runtime_env_setup_error_message*/ setup_error_message);
-                RAY_LOG(WARNING)
-                    << "Create runtime env failed for task " << task_spec.TaskId()
-                    << " and couldn't create the dedicated worker.";
-              }
-            },
-            allocated_instances_serialized_json);
-      } else {
-        start_worker_process_fn(task_spec, state, dynamic_options, true, "", callback);
-      }
-    }
-  } else {
-    // Find an available worker which is already assigned to this job and which has
-    // the specified runtime env.
-    // Try to pop the most recently pushed worker.
-    const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
-    for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
-         it++) {
-      if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-          it->first->GetAssignedJobId() != task_spec.JobId() ||
-          state.pending_disconnection_workers.count(it->first) > 0 ||
-          it->first->IsDead()) {
-        continue;
-      }
-      // These workers are exiting. So skip them.
-      if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
-        continue;
-      }
-      // Skip if the runtime env doesn't match.
-      if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
-        continue;
-      }
-
-      state.idle.erase(it->first);
-      // We can't erase a reverse_iterator.
-      auto lit = it.base();
-      lit--;
-      worker = std::move(lit->first);
-      idle_of_all_languages_.erase(lit);
-      idle_of_all_languages_map_.erase(worker);
-      break;
-    }
-
-    if (worker == nullptr) {
-      // There are no more non-actor workers available to execute this task.
-      // Start a new worker process.
-      if (task_spec.HasRuntimeEnv()) {
-        // create runtime env.
-        RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
-        GetOrCreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            task_spec.RuntimeEnvConfig(),
-            task_spec.JobId(),
-            [this, start_worker_process_fn, callback, &state, task_spec](
-                bool successful,
-                const std::string &serialized_runtime_env_context,
-                const std::string &setup_error_message) {
-              if (successful) {
-                start_worker_process_fn(task_spec,
-                                        state,
-                                        {},
-                                        false,
-                                        serialized_runtime_env_context,
-                                        callback);
-              } else {
-                process_failed_runtime_env_setup_failed_++;
-                callback(nullptr,
-                         PopWorkerStatus::RuntimeEnvCreationFailed,
-                         /*runtime_env_setup_error_message*/ setup_error_message);
-                RAY_LOG(WARNING)
-                    << "Create runtime env failed for task " << task_spec.TaskId()
-                    << " and couldn't create the worker.";
-              }
-            },
-            allocated_instances_serialized_json);
-      } else {
-        start_worker_process_fn(task_spec, state, {}, false, "", callback);
-      }
+      start_worker_process_fn(
+          task_spec, state, dynamic_options, is_actor_creation, "", callback);
     }
   }
 
@@ -1691,6 +1623,18 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
           }
         });
   }
+}
+
+const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
+    StartupToken token) const {
+  for (const auto &[lang, state] : states_by_lang_) {
+    auto it = state.worker_processes.find(token);
+    if (it != state.worker_processes.end()) {
+      return it->second.dynamic_options;
+    }
+  }
+  static std::vector<std::string> kNoDynamicOptions;
+  return kNoDynamicOptions;
 }
 
 }  // namespace raylet
