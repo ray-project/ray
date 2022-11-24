@@ -24,9 +24,9 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+JOB_LOG_PATTERN = re.compile(r".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
-RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+RUNTIME_ENV_SETUP_PATTERN = re.compile(r".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
 # We need it because log name update is CPU intensive and uses 100%
 # of cpu when there are many log files.
@@ -390,13 +390,19 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                if "/raylet" in file_info.filename:
+
+                def is_logfile(key, file_info):
+                    #Allow both windows and posix file separators
+                    normpath = os.path.normpath(file_info.filename)
+                    return os.path.split(normpath)[1].startswith(key)
+
+                if is_logfile("raylet", file_info):
                     file_info.worker_pid = "raylet"
-                elif "/gcs_server" in file_info.filename:
+                elif is_logfile("gcs_server", file_info):
                     file_info.worker_pid = "gcs_server"
-                elif "/monitor" in file_info.filename:
+                elif is_logfile("monitor", file_info):
                     file_info.worker_pid = "autoscaler"
-                elif "/runtime_env" in file_info.filename:
+                elif is_logfile("runtime_env", file_info):
                     file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.

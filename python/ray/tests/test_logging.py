@@ -521,10 +521,6 @@ def create_file(dir, filename, content):
     f.write_text(content)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -684,10 +680,6 @@ def test_log_monitor(tmp_path):
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor_actor_task_name(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -758,10 +750,6 @@ def mock_timer():
     time.time = f
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
