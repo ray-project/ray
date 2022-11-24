@@ -38,10 +38,13 @@ export const JobRow = ({
   newIA = false,
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
-  const { progress, error } = useJobProgress(job_id ?? undefined);
+  const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
   const classes = useStyles();
 
   const progressBar = (() => {
+    if (!driverExists) {
+      return "-";
+    }
     if (!progress || error) {
       if (status === "SUCCEEDED" || status === "FAILED") {
         // Show a fake all-green progress bar.

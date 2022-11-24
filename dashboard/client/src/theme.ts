@@ -1,5 +1,5 @@
 import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
-import { createMuiTheme, ThemeOptions } from "@material-ui/core/styles";
+import { createTheme, ThemeOptions } from "@material-ui/core/styles";
 
 const basicTheme: ThemeOptions = {
   typography: {
@@ -30,7 +30,7 @@ const basicTheme: ThemeOptions = {
   },
 };
 
-export const lightTheme = createMuiTheme({
+export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {
@@ -56,7 +56,7 @@ export const lightTheme = createMuiTheme({
   },
 });
 
-export const darkTheme = createMuiTheme({
+export const darkTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {

@@ -95,6 +95,17 @@ const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
+        <Link
+          to={
+            newIA
+              ? `/new/logs/${encodeURIComponent(logUrl)}`
+              : `/log/${encodeURIComponent(logUrl)}`
+          }
+        >
+          Log
+        </Link>
+      </TableCell>
+      <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
         </PercentageBar>
@@ -137,17 +148,6 @@ const NodeRow = ({
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
-      <TableCell>
-        <Link
-          to={
-            newIA
-              ? `/new/logs/${encodeURIComponent(logUrl)}`
-              : `/log/${encodeURIComponent(logUrl)}`
-          }
-        >
-          Log
-        </Link>
-      </TableCell>
     </TableRow>
   );
 };
@@ -208,30 +208,6 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <PercentageBar num={Number(cpu)} total={100}>
-          {cpu}%
-        </PercentageBar>
-      </TableCell>
-      <TableCell>
-        {mem && (
-          <PercentageBar num={memoryInfo.rss} total={mem[0]}>
-            {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-            {(memoryInfo.rss / mem[0]).toFixed(1)}
-            %)
-          </PercentageBar>
-        )}
-      </TableCell>
-      <TableCell>
-        <WorkerGPU worker={worker} />
-      </TableCell>
-      <TableCell>
-        <WorkerGRAM worker={worker} node={node} />
-      </TableCell>
-      <TableCell>N/A</TableCell>
-      <TableCell>N/A</TableCell>
-      <TableCell align="center">N/A</TableCell>
-      <TableCell align="center">N/A</TableCell>
-      <TableCell>
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
@@ -255,6 +231,30 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
         </a>
         <br />
       </TableCell>
+      <TableCell>
+        <PercentageBar num={Number(cpu)} total={100}>
+          {cpu}%
+        </PercentageBar>
+      </TableCell>
+      <TableCell>
+        {mem && (
+          <PercentageBar num={memoryInfo.rss} total={mem[0]}>
+            {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
+            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            %)
+          </PercentageBar>
+        )}
+      </TableCell>
+      <TableCell>
+        <WorkerGPU worker={worker} />
+      </TableCell>
+      <TableCell>
+        <WorkerGRAM worker={worker} node={node} />
+      </TableCell>
+      <TableCell>N/A</TableCell>
+      <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
     </TableRow>
   );
 };
@@ -287,9 +287,9 @@ export const NodeRows = ({
   const [isExpanded, setExpanded] = useState(startExpanded);
 
   const { data } = useSWR(
-    "getNodeDetail",
-    async () => {
-      const { data } = await getNodeDetail(node.raylet.nodeId);
+    ["getNodeDetail", node.raylet.nodeId],
+    async (_, nodeId) => {
+      const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 
       if (result === false) {

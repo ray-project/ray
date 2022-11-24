@@ -34,7 +34,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EnvType, AlgorithmConfigDict
+from ray.rllib.utils.typing import EnvType
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -460,7 +460,7 @@ def sync_stats(workers: WorkerSet) -> None:
             e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 
-def post_process_samples(samples, config: AlgorithmConfigDict):
+def post_process_samples(samples, config: AlgorithmConfig):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
@@ -512,7 +512,7 @@ class MBMPO(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfig, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0
@@ -535,10 +535,10 @@ class MBMPO(Algorithm):
         metric_collect = CollectMetrics(
             workers,
             min_history=0,
-            timeout_seconds=config["metrics_episode_collection_timeout_s"],
+            timeout_seconds=config.metrics_episode_collection_timeout_s,
         )
 
-        num_inner_steps = config["inner_adaptation_steps"]
+        num_inner_steps = config.inner_adaptation_steps
 
         def inner_adaptation_steps(itr):
             buf = []
@@ -579,8 +579,8 @@ class MBMPO(Algorithm):
         train_op = rollouts.combine(
             MetaUpdate(
                 workers,
-                config["num_maml_steps"],
-                config["maml_optimizer_steps"],
+                config.num_maml_steps,
+                config.maml_optimizer_steps,
                 metric_collect,
             )
         )
