@@ -17,7 +17,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
@@ -132,8 +132,8 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
-  /// Initialize GCS client.
-  void InitGcsClient();
+  /// Initialize usage stats client.
+  void InitUsageStatsClient();
 
   /// Initialize KV manager.
   void InitKVManager();
@@ -248,8 +248,8 @@ class GcsServer {
   /// The node id of GCS.
   NodeID gcs_node_id_;
 
-  /// The gcs client that connects to this gcs server.
-  std::unique_ptr<GcsClient> gcs_client_;
+  /// The usage stats client.
+  std::unique_ptr<UsageStatsClient> usage_stats_client_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

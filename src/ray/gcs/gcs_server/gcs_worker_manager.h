@@ -29,10 +29,10 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
   explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                             std::shared_ptr<GcsPublisher> &gcs_publisher,
-                            GcsClient &gcs_client)
+                            UsageStatsClient &usage_stats_client)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
-        usage_stats_client_(gcs_client) {}
+        usage_stats_client_(usage_stats_client) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -56,7 +56,7 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
-  UsageStatsClient usage_stats_client_;
+  UsageStatsClient &usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
 

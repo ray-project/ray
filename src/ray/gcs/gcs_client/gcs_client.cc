@@ -134,6 +134,8 @@ void GcsClient::Disconnect() {
   }
 }
 
+bool GcsClient::IsConnected() { return gcs_rpc_client_.get() != nullptr; }
+
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }

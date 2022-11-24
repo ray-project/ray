@@ -82,7 +82,8 @@ class UsageStatsClientTest : public ::testing::Test {
 };
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
-  gcs::UsageStatsClient usage_stats_client(*gcs_client_);
+  gcs::UsageStatsClient usage_stats_client(
+      "127.0.0.1:" + std::to_string(config_.grpc_server_port), *client_io_service_);
   usage_stats_client.RecordExtraUsageTag("key1", "value1");
   ASSERT_TRUE(WaitForCondition(
       [this]() {

@@ -141,8 +141,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
 
-  // Init gcs client
-  InitGcsClient();
+  // Init usage stats client
+  InitUsageStatsClient();
 
   // Init KV Manager
   InitKVManager();
@@ -188,8 +188,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   RAY_CHECK(int(gcs_heartbeat_manager_ != nullptr) +
                 int(gcs_healthcheck_manager_ != nullptr) ==
             1);
-
-  RAY_CHECK_OK(gcs_client_->Connect(main_service_));
 
   RecordMetrics();
 
@@ -557,9 +555,9 @@ void GcsServer::InitFunctionManager() {
   function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
 }
 
-void GcsServer::InitGcsClient() {
-  GcsClientOptions options("127.0.0.1:" + std::to_string(GetPort()));
-  gcs_client_ = std::make_unique<GcsClient>(options);
+void GcsServer::InitUsageStatsClient() {
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
 }
 
 void GcsServer::InitKVManager() {
@@ -627,7 +625,7 @@ void GcsServer::InitRuntimeEnvManager() {
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      gcs_table_storage_, gcs_publisher_, *gcs_client_);
+      gcs_table_storage_, gcs_publisher_, *usage_stats_client_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
