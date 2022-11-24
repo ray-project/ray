@@ -24,8 +24,12 @@ class RayExecutor(Executor):
 
     def map(self, func, *iterables, timeout=None, chunksize=1):
         self.timeout = timeout
+        # Use map for remote jobs
         # https://docs.ray.io/en/releases-1.10.0/ray-design-patterns/map-reduce.html
-        return [ray.get(self.__remote_fn.remote(func, i)) for i in iterables]
+        # Don't use ray.get inside loops:
+        # https://docs.ray.io/en/releases-1.10.0/ray-design-patterns/ray-get-loop.html
+        map_remote = [self.__remote_fn.remote(func, i)) for i in iterables]
+        return ray.get(map_remote)
 
     def shutdown(self, wait=True, *, cancel_futures=False):
         ray.shutdown()
