@@ -3,7 +3,6 @@ from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.algorithm import with_common_config
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -121,25 +120,25 @@ class LeelaZeroConfig(AlgorithmConfig):
         self.lr_schedule = None
         self.vf_share_layers = False
         self.mcts_config = {
-        "puct_coefficient": 1.0,
-        "num_simulations": 30,
-        "temperature": 1.5,
-        "dirichlet_epsilon": 0.25,
-        "dirichlet_noise": 0.03,
-        "argmax_tree_policy": False,
-        "add_dirichlet_noise": True,
-        "epsilon": 0.05,
-        "turn_based_flip":True,
-        "argmax_child_value":True,
+            "puct_coefficient": 1.0,
+            "num_simulations": 30,
+            "temperature": 1.5,
+            "dirichlet_epsilon": 0.25,
+            "dirichlet_noise": 0.03,
+            "argmax_tree_policy": False,
+            "add_dirichlet_noise": True,
+            "epsilon": 0.05,
+            "turn_based_flip": True,
+            "argmax_child_value": True,
         },
         self.ranked_rewards = {
-        "enable": True,
-        "percentile": 75,
-        "buffer_max_length": 1000,
-        # add rewards obtained from random policy to
-        # "warm start" the buffer
-        "initialize_buffer": True,
-        "num_init_rewards": 100,
+            "enable": True,
+            "percentile": 75,
+            "buffer_max_length": 1000,
+            # add rewards obtained from random policy to
+            # "warm start" the buffer
+            "initialize_buffer": True,
+            "num_init_rewards": 100,
         }
 
         # Override some of AlgorithmConfig's default values with AlphaZero-specific
