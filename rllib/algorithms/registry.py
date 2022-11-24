@@ -215,6 +215,11 @@ def _import_td3():
 
     return td3.TD3, td3.TD3.get_default_config()
 
+def _import_leela_zero():
+    import ray.rllib.algorithms.leela_zero as leela_zero
+    
+    return leela_zero.LeelaZero, leela_zero.LeelaZeroConfig().to_dict()
+
 
 ALGORITHMS = {
     "A2C": _import_a2c,
@@ -251,6 +256,7 @@ ALGORITHMS = {
     "SimpleQ": _import_simple_q,
     "SlateQ": _import_slate_q,
     "TD3": _import_td3,
+    "LeelaZero": _import_leela_zero,
 }
 
 
