@@ -162,7 +162,6 @@ def get_random_port(min_port=20000, max_port=60000):
 def check_port_open(host, port):
     import socket
     from contextlib import closing
-
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
 

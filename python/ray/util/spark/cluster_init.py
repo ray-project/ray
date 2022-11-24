@@ -371,6 +371,7 @@ def init_ray_cluster(
         "--disable-usage-stats",
         f"--port={ray_head_port}",
         "--include-dashboard=true",
+        "--dashboard-host=0.0.0.0",
         f"--dashboard-port={dashboard_port}",
         # disallow ray tasks with cpu requirements from being scheduled on the head node.
         f"--num-cpus=0",
