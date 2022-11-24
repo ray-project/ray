@@ -1,7 +1,7 @@
 """This is the module that is in charge of Ray usage report (telemetry) APIs.
 
-NOTE: Ray's usage report is currently "off by default".
-      But we are planning to make it opt-in by default.
+NOTE: Ray's usage report is currently "on by default".
+      One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
 https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
@@ -261,6 +261,24 @@ class TagKey(Enum):
 
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
+
+    # Ray Core State API
+    # NOTE(rickyxx): Currently only setting "1" for tracking existence of
+    # invocations only.
+    CORE_STATE_API_LIST_ACTORS = auto()
+    CORE_STATE_API_LIST_TASKS = auto()
+    CORE_STATE_API_LIST_JOBS = auto()
+    CORE_STATE_API_LIST_NODES = auto()
+    CORE_STATE_API_LIST_PLACEMENT_GROUPS = auto()
+    CORE_STATE_API_LIST_WORKERS = auto()
+    CORE_STATE_API_LIST_OBJECTS = auto()
+    CORE_STATE_API_LIST_RUNTIME_ENVS = auto()
+    CORE_STATE_API_LIST_CLUSTER_EVENTS = auto()
+    CORE_STATE_API_LIST_LOGS = auto()
+    CORE_STATE_API_GET_LOG = auto()
+    CORE_STATE_API_SUMMARIZE_TASKS = auto()
+    CORE_STATE_API_SUMMARIZE_ACTORS = auto()
+    CORE_STATE_API_SUMMARIZE_OBJECTS = auto()
 
     # Dashboard
     # Whether a user is running ray with some third party metrics
