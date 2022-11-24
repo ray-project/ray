@@ -256,7 +256,7 @@ Tuning Ray Settings
 ~~~~~~~~~~~~~~~~~~~
 
 .. note::
-  There is an ongoing `project https://github.com/ray-project/ray/projects/15`_ focusing on
+  There is an ongoing `project <https://github.com/ray-project/ray/projects/15>`_ focusing on
   improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
 
 To run a large cluster, several parameters need to be tuned in Ray.
@@ -265,7 +265,7 @@ Resource broadcasting
 *********************
 
 .. note::
-  There is an ongoing `project https://github.com/ray-project/ray/issues/30631`_ changing the
+  There is an ongoing `project <https://github.com/ray-project/ray/issues/30631>`_ changing the
   algorithm to pull-based which doesn't require tuning these parameters.
 
 
@@ -288,7 +288,7 @@ gRPC threads for GCS
 ********************
 
 .. note::
-   There is an ongoing `PR https://github.com/ray-project/ray/pull/30131`_
+   There is an ongoing `PR <https://github.com/ray-project/ray/pull/30131>`_
    setting it to vCPUs/4 by default. It's not necessary to set this up in ray 2.3+.
 
 
@@ -327,7 +327,7 @@ The Ray setup:
 
 Test workload:
 
-- Test script: `code https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py`_
+- Test script: `code <https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py>`_
 
 
 
