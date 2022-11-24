@@ -61,6 +61,7 @@ def _register_all():
             register_trainable(alias, _see_contrib(alias))
 
 
+_register_all()
 _setup_logger()
 
 usage_lib.record_library_usage("rllib")
