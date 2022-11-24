@@ -6,25 +6,14 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.algorithm import with_common_config
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
-"""from ray.rllib.execution.replay_ops import (
-    SimpleReplayBuffer,
-    Replay,
-    StoreToReplayBuffer,
-    WaitUntilTimestepsElapsed,
-)
-from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting"""
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.tune.registry import ENV_CREATOR, _global_registry
-from ray.util.iter import LocalIterator
 
 from ray.rllib.algorithms.leela_zero.leela_zero_policy import LeelaZeroPolicy
 from ray.rllib.algorithms.leela_zero.mcts import MCTS
@@ -144,13 +133,13 @@ class LeelaZeroConfig(AlgorithmConfig):
         "argmax_child_value":True,
         },
         self.ranked_rewards = {
-            "enable": True,
-            "percentile": 75,
-            "buffer_max_length": 1000,
-            # add rewards obtained from random policy to
-            # "warm start" the buffer
-            "initialize_buffer": True,
-            "num_init_rewards": 100,
+        "enable": True,
+        "percentile": 75,
+        "buffer_max_length": 1000,
+        # add rewards obtained from random policy to
+        # "warm start" the buffer
+        "initialize_buffer": True,
+        "num_init_rewards": 100,
         }
 
         # Override some of AlgorithmConfig's default values with AlphaZero-specific
@@ -299,85 +288,6 @@ class LeelaZeroConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
         validate_buffer_config(self)
-
-
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    # Size of batches collected from each worker
-    "rollout_fragment_length": 200,
-    # Number of timesteps collected for each SGD round
-    "train_batch_size": 4000,
-    # Total SGD batch size across all devices for SGD
-    "sgd_minibatch_size": 128,
-    # Whether to shuffle sequences in the batch when training (recommended)
-    "shuffle_sequences": True,
-    # Number of SGD iterations in each outer loop
-    "num_sgd_iter": 30,
-    # IN case a buffer optimizer is used
-    "learning_starts": 1000,
-    # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": 1000,
-    # Stepsize of SGD
-    "lr": 5e-5,
-    # Learning rate schedule
-    "lr_schedule": None,
-    # Share layers for value function. If you set this to True, it"s important
-    # to tune vf_loss_coeff.
-    "vf_share_layers": False,
-    # Whether to rollout "complete_episodes" or "truncate_episodes"
-    "batch_mode": "complete_episodes",
-    # Which observation filter to apply to the observation
-    "observation_filter": "NoFilter",
-    # Uses the sync samples optimizer instead of the multi-gpu one. This does
-    # not support minibatches.
-    "simple_optimizer": True,
-
-    # === MCTS ===
-    "mcts_config": {
-        "puct_coefficient": 1.0,
-        "num_simulations": 30,
-        "temperature": 1.5,
-        "dirichlet_epsilon": 0.25,
-        "dirichlet_noise": 0.03,
-        "argmax_tree_policy": False,
-        "add_dirichlet_noise": True,
-        "epsilon": 0.05,
-        "turn_based_flip":True,
-        "argmax_child_value":True,
-    },
-
-    # === Ranked Rewards ===
-    # implement the ranked reward (r2) algorithm
-    # from: https://arxiv.org/pdf/1807.01672.pdf
-    "ranked_rewards": {
-        "enable": False,
-        "percentile": 75,
-        "buffer_max_length": 1000,
-        # add rewards obtained from random policy to
-        # "warm start" the buffer
-        "initialize_buffer": True,
-        "num_init_rewards": 100,
-    },
-
-    # === Evaluation ===
-    # Extra configuration that disables exploration.
-    "evaluation_config": {
-        "mcts_config": {
-            "argmax_tree_policy": True,
-            "add_dirichlet_noise": False,
-        },
-    },
-
-    # === Callbacks ===
-    "callbacks": LeelaZeroDefaultCallbacks,
-
-    "framework": "torch",  # Only PyTorch supported so far.
-})
-
-
-# __sphinx_doc_end__
-# fmt: on
 
 
 def leela_zero_loss(policy, model, dist_class, train_batch):
