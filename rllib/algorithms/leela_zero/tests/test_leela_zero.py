@@ -22,12 +22,12 @@ class TestAlphaZero(unittest.TestCase):
 
     def test_leela_zero_compilation(self):
         """Test whether LeelaZero can be built with PyTorch frameworks."""
-        register_env('ChessMultiAgent', lambda config: MultiAgentChess())
+        register_env("ChessMultiAgent", lambda config: MultiAgentChess())
         config = (
             lz.LeelaZeroConfig()
             .environment(env="ChessMultiAgent")
             .training(model={"custom_model": LeelaZeroModel})
-            .resources(num_gpus = 0)
+            .resources(num_gpus=0)
         )
         num_iterations = 1
         # Only working for torch right now.
