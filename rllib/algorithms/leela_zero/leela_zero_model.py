@@ -11,15 +11,26 @@ from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.preprocessors import get_preprocessor
 import collections
 
+
 def convert_to_tensor(arr):
     tensor = torch.from_numpy(np.asarray(arr))
     if tensor.dtype == torch.double:
         tensor = tensor.float()
     return tensor
 
-class LeelaZeroModel(TorchModelV2,nn.Module):
-    def __init__(self,obs_space: gym.spaces.Space,action_space: gym.spaces.Space,num_outputs: int,model_config: ModelConfigDict,name: str):
-        TorchModelV2.__init__(self, obs_space,action_space,num_outputs,model_config,name)
+
+class LeelaZeroModel(TorchModelV2, nn.Module):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
         try:
             self.preprocessor = get_preprocessor(obs_space.original_space)(
@@ -51,19 +62,22 @@ class LeelaZeroModel(TorchModelV2,nn.Module):
         self.se_channels = se_channels
         self.policy_conv_size = policy_conv_size
         self.policy_output_size = policy_output_size
-        self.pre_conv = nn.Conv2d(self.input_channel_size, self.filters, 3,padding = "same")
-        self.conv1 = nn.Conv2d(self.filters, self.filters, 3,padding = "same")
-        self.conv2 = nn.Conv2d(self.filters, self.filters, 3,padding = "same")
+        self.pre_conv = nn.Conv2d(
+            self.input_channel_size, self.filters, 3, padding="same"
+        )
+        self.conv1 = nn.Conv2d(self.filters, self.filters, 3, padding="same")
+        self.conv2 = nn.Conv2d(self.filters, self.filters, 3, padding="same")
         self.pool = nn.AvgPool2d(8)
-        self.se1 = nn.Linear(self.filters , self.se_channels)
-        self.se2 = nn.Linear(self.se_channels,self.filters*2)
-        self.fc_head = nn.Linear(self.filters*64,128)
+        self.se1 = nn.Linear(self.filters, self.se_channels)
+        self.se2 = nn.Linear(self.se_channels, self.filters * 2)
+        self.fc_head = nn.Linear(self.filters * 64, 128)
         self.value_head = nn.Linear(128, 1)
-        self.policy_conv1 = nn.Conv2d(self.filters, self.policy_conv_size, 3,padding = "same")
-        self.policy_fc = nn.Linear(self.policy_conv_size*64, self.policy_output_size)
+        self.policy_conv1 = nn.Conv2d(
+            self.filters, self.policy_conv_size, 3, padding="same"
+        )
+        self.policy_fc = nn.Linear(self.policy_conv_size * 64, self.policy_output_size)
         self._value = None
 
-    
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         try:
@@ -85,13 +99,13 @@ class LeelaZeroModel(TorchModelV2,nn.Module):
                 obs = torch.from_numpy(obs.astype(np.float32))
                 action_mask = torch.from_numpy(action_mask.astype(np.float32))
             try:
-                obs = torch.transpose(obs,3,1)
-                obs = torch.transpose(obs,3,2)
+                obs = torch.transpose(obs, 3, 1)
+                obs = torch.transpose(obs, 3, 2)
             except IndexError:
-                obs = torch.reshape(obs,(1,8,8,self.input_channel_size))
-                obs = torch.transpose(obs,3,1)
-                obs = torch.transpose(obs,3,2)
-            
+                obs = torch.reshape(obs, (1, 8, 8, self.input_channel_size))
+                obs = torch.transpose(obs, 3, 1)
+                obs = torch.transpose(obs, 3, 2)
+
         x = self.pre_conv(obs)
         residual = x
         for i in range(self.res_blocks):
@@ -102,10 +116,10 @@ class LeelaZeroModel(TorchModelV2,nn.Module):
                 x = torch.flatten(x, 1)
                 x = F.relu(self.se1(x))
                 x = self.se2(x)
-                w,b = torch.tensor_split(x, 2,dim = -1)
-                print(w.size(),b.size(),residual.size())
-                residual = torch.reshape(residual, (-1,self.filters,64))
-                x = torch.mul(w,residual) + b
+                w, b = torch.tensor_split(x, 2, dim=-1)
+                print(w.size(), b.size(), residual.size())
+                residual = torch.reshape(residual, (-1, self.filters, 64))
+                x = torch.mul(w, residual) + b
             x += residual
             residual = x
             x = torch.relu(x)
@@ -116,29 +130,35 @@ class LeelaZeroModel(TorchModelV2,nn.Module):
         policy = torch.flatten(policy, 1)
         policy = self.policy_fc(policy)
         self._value = value.squeeze(1)
-        
+
         if self.action_masking:
-            masked_policy = self.apply_action_mask(policy,action_mask)
-            return masked_policy,state
+            masked_policy = self.apply_action_mask(policy, action_mask)
+            return masked_policy, state
         else:
-            return policy,state
+            return policy, state
 
     @override(TorchModelV2)
     def value_function(self) -> TensorType:
         return self._value
 
-    def apply_action_mask(self,policy,action_mask):
-        masked_policy = torch.mul(policy,action_mask)
+    def apply_action_mask(self, policy, action_mask):
+        masked_policy = torch.mul(policy, action_mask)
         action_mask = torch.clamp(torch.log(action_mask), -1e10, 3.4e38)
-        return masked_policy+action_mask
+        return masked_policy + action_mask
 
     def get_board_evaluation(board):
         return self.compute_priors_and_value(obs)
 
     def compute_priors_and_value(self, obs):
-        new_obs = torch.from_numpy(obs["observation"].astype(np.float32).reshape([1,8,8,self.input_channel_size]))
-        new_action_mask = torch.from_numpy(obs["action_mask"].astype(np.float32).reshape([1,self.num_outputs]))
-        input_dict = {"obs":{"observation":new_obs,"action_mask":new_action_mask}}
+        new_obs = torch.from_numpy(
+            obs["observation"]
+            .astype(np.float32)
+            .reshape([1, 8, 8, self.input_channel_size])
+        )
+        new_action_mask = torch.from_numpy(
+            obs["action_mask"].astype(np.float32).reshape([1, self.num_outputs])
+        )
+        input_dict = {"obs": {"observation": new_obs, "action_mask": new_action_mask}}
         with torch.no_grad():
             model_out = self.forward(input_dict, None, [1])
             logits, _ = model_out
@@ -146,12 +166,7 @@ class LeelaZeroModel(TorchModelV2,nn.Module):
             logits, value = torch.squeeze(logits), torch.squeeze(value)
             priors = nn.Softmax(dim=-1)(logits)
             value = nn.Tanh()(value)
-            
+
             priors = priors.cpu().numpy()
             value = value.cpu().numpy()
             return priors, value
-
-
-
-    
-

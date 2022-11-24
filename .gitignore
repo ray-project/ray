@@ -224,3 +224,4 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+.pre-commit-config.yaml

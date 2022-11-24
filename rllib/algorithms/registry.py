@@ -215,9 +215,10 @@ def _import_td3():
 
     return td3.TD3, td3.TD3.get_default_config()
 
+
 def _import_leela_zero():
     import ray.rllib.algorithms.leela_zero as leela_zero
-    
+
     return leela_zero.LeelaZero, leela_zero.LeelaZeroConfig().to_dict()
 
 
