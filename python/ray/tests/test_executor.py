@@ -18,20 +18,20 @@ def f(i, **kwargs):
 # )
 # def test_remote_function_runs_on_local_instance(call_ray_start):
 def test_remote_function_runs_on_local_instance():
-    ex = RayExecutor()
-    result = ex.submit(f, 1_000)
-    assert result == 1000
+    with RayExecutor() as ex:
+        result = ex.submit(f, 1_000)
+        assert result.result() == 1000
 
 @ray.remote
 class ActorTest:
     def __init__(self, name):
         self.name = name
 
-    def actor_function(self, number):
-        return f"{self.name}-Actor-{number}"
+    def actor_function(self, args):
+        return f"{self.name}-Actor-{args[0]}"
 
 def test_remote_actor_on_local_instance():
-    a = ActorTest.options(get_if_exists=True).remote("A")
+    a = ActorTest.options(name="A", get_if_exists=True).remote("A")
     with RayExecutor() as ex:
         name = ex.submit_actors(a.actor_function, 0)
     result = name.result()
