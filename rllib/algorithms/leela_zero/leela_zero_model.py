@@ -1,15 +1,12 @@
 import torch.nn as nn
 import torch
-import ray
 import gym
 import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, ModelConfigDict
 from ray.rllib.utils.annotations import override
-from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.preprocessors import get_preprocessor
-import collections
 
 
 def convert_to_tensor(arr):
@@ -36,7 +33,7 @@ class LeelaZeroModel(TorchModelV2, nn.Module):
             self.preprocessor = get_preprocessor(obs_space.original_space)(
                 obs_space.original_space
             )
-        except:
+        except Exception:
             self.preprocessor = get_preprocessor(obs_space)(obs_space)
 
         self.action_masking = False
