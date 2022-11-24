@@ -5,6 +5,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.algorithm import with_common_config
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
 """from ray.rllib.execution.replay_ops import (
     SimpleReplayBuffer,
     Replay,
@@ -38,6 +39,7 @@ class LeelaZeroDefaultCallbacks(DefaultCallbacks):
     If you use custom callbacks, you must extend this class and call super()
     for on_episode_start.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -50,21 +52,25 @@ class LeelaZeroDefaultCallbacks(DefaultCallbacks):
         episode.user_data["current_state"] = [state]
 
     @override(DefaultCallbacks)
-    def on_episode_step(
-        self, worker, base_env, policies,
-        episode, **kwargs) -> None:
+    def on_episode_step(self, worker, base_env, policies, episode, **kwargs) -> None:
         env = base_env.get_sub_environments()[0]
         state = env.get_state()
         episode.user_data["current_state"].append(state)
 
     @override(DefaultCallbacks)
-    def on_episode_end(self,worker,base_env,policies,episode,**kwargs):
+    def on_episode_end(self, worker, base_env, policies, episode, **kwargs):
         env = base_env.get_sub_environments()[0]
         if env.env.board.outcome():
             winner = env.env.board.outcome().winner
         else:
             winner = "Draw"
-        logging.info("Game Over:"+str(winner)+"Reward:"+str(policies)+str(episode.agent_rewards))
+        logging.info(
+            "Game Over:"
+            + str(winner)
+            + "Reward:"
+            + str(policies)
+            + str(episode.agent_rewards)
+        )
 
 
 class LeelaZeroConfig(AlgorithmConfig):
@@ -168,11 +174,10 @@ class LeelaZeroConfig(AlgorithmConfig):
 
         self.buffer_size = DEPRECATED_VALUE
 
-
     @override(AlgorithmConfig)
     def callbacks(
         self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided
-    )-> "LeelaZeroConfig":
+    ) -> "LeelaZeroConfig":
         super().callbacks(**kwargs)
 
         if callbacks_class is not NotProvided:
@@ -442,7 +447,6 @@ class LeelaZero(Algorithm):
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return LeelaZeroPolicyWrapperClass
-
 
     # @staticmethod
     # @override(Algorithm)
