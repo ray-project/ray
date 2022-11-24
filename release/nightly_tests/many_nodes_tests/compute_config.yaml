@@ -1,5 +1,5 @@
-cloud_id: cld_4F7k8814aZzGG8TNUGPKnc
-
+# cloud_id: cld_4F7k8814aZzGG8TNUGPKnc
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
 head_node_type:
