@@ -1,6 +1,5 @@
 import io
 import os
-import psutil
 import re
 import subprocess
 import sys
@@ -533,7 +532,7 @@ def live_dead_pids():
     yield p1.pid, p2.pid
     p1.kill()
     p1.wait()
- 
+
 
 def test_log_monitor(tmp_path, live_dead_pids):
     log_dir = tmp_path / "logs"
@@ -545,7 +544,9 @@ def test_log_monitor(tmp_path, live_dead_pids):
     alive_pid, dead_pid = live_dead_pids
 
     mock_publisher = MagicMock()
-    log_monitor = LogMonitor(str(log_dir), mock_publisher, is_proc_alive, max_files_open=5)
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
 
     # files
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"

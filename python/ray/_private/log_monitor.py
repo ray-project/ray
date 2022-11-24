@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import platform
+import psutil
 import re
 import shutil
 import time
@@ -392,7 +393,7 @@ class LogMonitor:
             if file_info.file_position == 0:
 
                 def is_logfile(key, file_info):
-                    #Allow both windows and posix file separators
+                    # Allow both windows and posix file separators
                     normpath = os.path.normpath(file_info.filename)
                     return os.path.split(normpath)[1].startswith(key)
 

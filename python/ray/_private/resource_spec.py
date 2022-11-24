@@ -277,7 +277,7 @@ def _autodetect_num_gpus():
     if importlib.util.find_spec("GPUtil"):
         try:
             gpu_list = GPUtil.getGPUs()
-        except ValueError as e:
+        except ValueError:
             # gputil issue gh-26
             return 0
         result = len(gpu_list)
