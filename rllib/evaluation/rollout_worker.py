@@ -29,7 +29,6 @@ from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
 )
-import ray.rllib.connectors.registry
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv

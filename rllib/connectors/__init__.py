@@ -29,7 +29,6 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     Returns:
         Constructed connector.
     """
-    breakpoint()
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     cls = _global_registry.get(RLLIB_CONNECTOR, name)

@@ -2,18 +2,20 @@
 
 from ray.rllib.connectors import register_connector
 
-# Action Connectors #
+# Action Connectors
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
+from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
 
-# Agent Connectors #
+# Agent Connectors
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
 )
+from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
@@ -22,6 +24,7 @@ from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 ACTION_CONNECTORS = {
     ClipActionsConnector,
+    ConvertToNumpyConnector,
     ImmutableActionsConnector,
     NormalizeActionsConnector,
     ActionConnectorPipeline,
@@ -36,10 +39,13 @@ AGENT_CONNECTORS = {
     StateBufferConnector,
     ViewRequirementAgentConnector,
     SyncedFilterAgentConnector,
+    FlattenDataAgentConnector,
 }
 
-def __register_connectors():
+
+def _register_all_connectors():
     for connector in ACTION_CONNECTORS | AGENT_CONNECTORS:
         register_connector(connector.__name__, connector)
 
-__register_connectors()
+
+_register_all_connectors()

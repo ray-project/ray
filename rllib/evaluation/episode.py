@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from ray.rllib.policy.policy_map import PolicyMap
 
 
-
 @DeveloperAPI
 class Episode:
     """Tracks the current state of a (possibly multi-agent) episode.
