@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 import gym
 import numpy as np
 
@@ -80,15 +81,15 @@ class LeelaZeroModel(TorchModelV2, nn.Module):
         try:
             obs = input_dict["obs"]["observation"]
             action_mask = input_dict["obs"]["action_mask"]
-        except:
+        except KeyError:
             try:
                 obs = input_dict["obs"]
                 action_mask = input_dict["action_mask"]
-            except:
+            except KeyError:
                 try:
                     obs = input_dict["observation"]
                     action_mask = input_dict["action_mask"]
-                except:
+                except KeyError:
                     print(input_dict)
                     raise Exception("No observation in input_dict")
         if self.alpha_zero_obs:
@@ -114,7 +115,6 @@ class LeelaZeroModel(TorchModelV2, nn.Module):
                 x = F.relu(self.se1(x))
                 x = self.se2(x)
                 w, b = torch.tensor_split(x, 2, dim=-1)
-                print(w.size(), b.size(), residual.size())
                 residual = torch.reshape(residual, (-1, self.filters, 64))
                 x = torch.mul(w, residual) + b
             x += residual
