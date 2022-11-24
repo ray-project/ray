@@ -10,7 +10,9 @@ import copy
 
 
 class Node:
-    def __init__(self, action, obs, done, reward, state, mcts, parent=None,multi_agent = False):
+    def __init__(
+        self, action, obs, done, reward, state, mcts, parent=None, multi_agent=False
+    ):
         self.env = parent.env
         self.action = action  # Action used to go to this state
 
@@ -19,14 +21,14 @@ class Node:
         self.children = {}
 
         self.action_space_size = self.env.action_space.n
-        self.child_total_value = np.ones(
-            [self.action_space_size], dtype=np.float32
-        ) * 1e4  # Q
+        self.child_total_value = (
+            np.ones([self.action_space_size], dtype=np.float32) * 1e4
+        )  # Q
         self.child_priors = np.zeros([self.action_space_size], dtype=np.float32)  # P
         self.child_number_visits = np.zeros(
             [self.action_space_size], dtype=np.float32
         )  # N
-        
+
         self.reward = reward
         self.done = done
         self.state = state
@@ -47,9 +49,8 @@ class Node:
             self.valid_actions = obs["action_mask"].astype(bool)
             self.obs = obs
 
-
         self.mcts = mcts
-        
+
         self.multi_agent = multi_agent
 
     @property
@@ -92,7 +93,10 @@ class Node:
             return action
         else:
             masked_child_score += 1e28
-            action = np.random.choice(np.arange(len(masked_child_score)),p = masked_child_score/np.sum(masked_child_score))
+            action = np.random.choice(
+                np.arange(len(masked_child_score)),
+                p=masked_child_score / np.sum(masked_child_score),
+            )
             assert self.valid_actions[action] == 1
             return action
 
@@ -127,19 +131,17 @@ class Node:
 
     def backup(self, value):
         current = self
-        
+
         while current.parent is not None:
             if self.mcts.turn_based_flip:
                 value = -value
             current.number_visits += 1
             current.total_value += value
             current = current.parent
-        
-            
 
 
 class RootParentNode:
-    def __init__(self, env,state=None):
+    def __init__(self, env, state=None):
         self.parent = None
         self.child_total_value = collections.defaultdict(float)
         self.child_number_visits = collections.defaultdict(float)
@@ -190,7 +192,9 @@ class MCTS:
         tree_policy = np.power(tree_policy, self.temperature)
         tree_policy *= node.valid_actions
         tree_policy = tree_policy / np.sum(tree_policy)
-        epsilon_exploration = np.random.choice([True,False], p = [self.epsilon, 1-self.epsilon])
+        epsilon_exploration = np.random.choice(
+            [True, False], p=[self.epsilon, 1 - self.epsilon]
+        )
         if self.exploit and not epsilon_exploration:
             # if exploit then choose action that has the maximum
             # tree policy probability
