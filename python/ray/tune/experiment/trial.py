@@ -956,13 +956,6 @@ class Trial:
         if not self.stub:
             validate_trainable(self.trainable_name)
 
-        # Update the resource specification
-        trainable_cls = self.get_trainable_cls()
-        if trainable_cls:
-            default_resources = trainable_cls.default_resource_request(self.config)
-            if default_resources:
-                self.update_resources(default_resources)
-
         assert self.placement_group_factory
 
         # Avoid creating logdir in client mode for returned trial results,
