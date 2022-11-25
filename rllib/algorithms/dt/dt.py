@@ -232,7 +232,7 @@ class DTConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # target_return must be specified
+        # `target_return` must be specified.
         assert (
             self.target_return is not None
         ), "Must specify a target return (total sum of rewards)."
