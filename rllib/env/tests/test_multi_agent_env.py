@@ -207,26 +207,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
 
-    def test_multi_agent_sample_with_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                horizon=10,  # test with episode horizon set
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwarg: "p{}".format(agent_id % 2)
-                ),
-            ),
-        )
-        batch = ev.sample()
-        self.assertEqual(batch.count, 50)
-
     def test_sample_from_early_done_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),

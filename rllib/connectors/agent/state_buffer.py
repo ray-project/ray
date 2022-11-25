@@ -20,14 +20,13 @@ class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
 
-        self._soft_horizon = ctx.config.get("soft_horizon", False)
         self._initial_states = ctx.initial_states
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
 
     def reset(self, env_id: str):
-        # If soft horizon, states should be carried over between episodes.
-        if not self._soft_horizon and env_id in self._states:
+        # States should not be carried over between episodes.
+        if env_id in self._states:
             del self._states[env_id]
 
     def on_policy_output(self, ac_data: ActionConnectorDataType):

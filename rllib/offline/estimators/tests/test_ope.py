@@ -177,7 +177,7 @@ class TestOPE(unittest.TestCase):
             .debugging(seed=seed)
         )
 
-        # Read n_episodes of data, assuming that one line is one episode
+        # Read n episodes of data, assuming that one line is one episode.
         reader = DatasetReader(read_json(train_data))
         batches = [reader.next() for _ in range(n_episodes)]
         cls.batch = concat_samples(batches)

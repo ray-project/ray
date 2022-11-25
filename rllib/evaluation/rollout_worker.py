@@ -344,9 +344,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 "batch_mode", "config.rollouts(batch_mode=..)", error=True
             )
         if episode_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "episode_horizon", "config.rollouts(horizon=..)", error=True
-            )
+            deprecation_warning("episode_horizon", error=True)
         if preprocessor_pref != DEPRECATED_VALUE:
             deprecation_warning(
                 "preprocessor_pref", "config.rollouts(preprocessor_pref=..)", error=True
@@ -402,9 +400,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 error=True,
             )
         if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "soft_horizon", "config.rollouts(soft_horizon=..)", error=True
-            )
+            deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
             deprecation_warning(
                 "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
@@ -796,11 +792,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
@@ -816,11 +810,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,

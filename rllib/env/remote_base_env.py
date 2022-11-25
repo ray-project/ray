@@ -196,10 +196,10 @@ class RemoteBaseEnv(BaseEnv):
                         ob = {_DUMMY_AGENT_ID: ret[0]}
                         rew = {_DUMMY_AGENT_ID: ret[1]}
                         done = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
-                        info = {_DUMMY_AGENT_ID: ret[3]}
+                        info = {_DUMMY_AGENT_ID: ret[4]}
                     # `reset()` result: Only obs.
                     else:
-                        ob = {_DUMMY_AGENT_ID: ret}
+                        ob = {_DUMMY_AGENT_ID: ret[0]}
 
                 # If this is a `reset()` return value, we only have the initial
                 # observations: Set rewards, dones, and infos to dummy values.

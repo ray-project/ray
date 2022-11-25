@@ -912,16 +912,13 @@ class TestWorkerFailures(unittest.TestCase):
         # horizon -> Expect warning and no proper evaluation results.
         config = (
             PGConfig()
-            .rollouts(num_rollout_workers=2, horizon=100)
-            .reporting(metrics_episode_collection_timeout_s=5.0)
             .environment(env=RandomEnv, env_config={"p_done": 0.0})
+            .rollouts(num_rollout_workers=2)
+            .reporting(metrics_episode_collection_timeout_s=5.0)
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
                 evaluation_sample_timeout_s=5.0,
-                evaluation_config={
-                    "horizon": None,
-                },
             )
         )
         algo = config.build()

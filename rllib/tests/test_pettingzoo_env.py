@@ -49,9 +49,6 @@ class TestPettingZooEnv(unittest.TestCase):
                 # Fragment length, collected at once from each worker
                 # and for each agent!
                 rollout_fragment_length=30,
-                # After n steps, force reset simulation.
-                horizon=200,
-                no_done_at_end=False,
             )
             # Training batch size -> Fragments are concatenated up to this point.
             .training(train_batch_size=200)
@@ -71,7 +68,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("simple_spread")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=30, horizon=200)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(

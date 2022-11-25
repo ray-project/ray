@@ -29,8 +29,8 @@ cartpole_dt:
         num_layers: 1
         num_heads: 1
         embed_dim: 64
-        # rollout
-        horizon: 200
+        # Episode horizon: Must match environment's time limit, if any.
+        horizon: 500
         # evaluation
         evaluation_config:
             explore: False

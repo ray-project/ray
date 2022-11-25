@@ -8,8 +8,6 @@ sac-halfcheetahbulletenv-v0:
     stop:
         time_total_s: 1800
     config:
-        horizon: 1000
-        soft_horizon: false
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256]

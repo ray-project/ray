@@ -165,7 +165,7 @@ if __name__ == "__main__":
         # process, but evaluation will be done in parallel with two
         # workers. Hence, this run will use 3 CPUs total (1 for the
         # learner + 2 more for evaluation workers).
-        .rollouts(horizon=20, num_rollout_workers=0)
+        .rollouts(num_rollout_workers=0)
         .evaluation(
             evaluation_num_workers=2,
             # Enable evaluation, once per training iteration.
