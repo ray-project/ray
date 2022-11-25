@@ -35,14 +35,21 @@ class RayExecutor(Executor):
     def submit_actor_function(self, fn, *args, **kwargs):
         return self.__actor_fn(fn, *args, **kwargs).future()
 
+    def map(self, fn, *iterables, timeout=None, chunksize=1):
+        return self._map(self.submit, fn, *iterables, timeout=timeout, chunksize=chunksize)
+
     def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
+        return self._map(self.submit_actor_function, fn, *iterables, timeout=timeout, chunksize=chunksize)
+
+    @staticmethod
+    def _map(submit_fn, fn, *iterables, timeout=None, chunksize=1):
         """
         This was adapted from concurrent.futures.Executor.map.
         """
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
-        fs = [self.submit_actor_function(fn, *args) for args in zip(*iterables)]
+        fs = [submit_fn(fn, *args) for args in zip(*iterables)]
 
         # Yield must be hidden in closure so that the futures are submitted
         # before the first iterator value is required.
