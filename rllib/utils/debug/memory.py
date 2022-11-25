@@ -340,7 +340,7 @@ def _find_memory_leaks_in_table(table):
         #   increase > n bytes -> error.
         # - If stronger positive slope -> error.
         if memory_increase > 1000 and (
-            (line.slope > 40.0 and line.rvalue > 0.85)
+            (line.slope > 60.0 and line.rvalue > 0.875)
             or (line.slope > 20.0 and line.rvalue > 0.9)
             or (line.slope > 10.0 and line.rvalue > 0.95)
         ):
