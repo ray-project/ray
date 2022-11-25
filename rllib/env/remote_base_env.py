@@ -387,32 +387,19 @@ class _RemoteMultiAgentEnv:
         self.agent_ids = set()
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        obs_and_info = self.env.reset(seed=seed, options=options)
-
-        if check_old_gym_env(self.env, reset_results=obs_and_info):
-            obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
-
-        obs, info = obs_and_info
+        obs, info = self.env.reset(seed=seed, options=options)
 
         # each keyed by agent_id in the env
         rew = {}
         for agent_id in obs.keys():
             self.agent_ids.add(agent_id)
             rew[agent_id] = 0.0
-        done = {"__all__": False}
-        truncated = {}
-        return obs, rew, done, truncated, info
+        terminated = {"__all__": False}
+        truncated = {"__all__": False}
+        return obs, rew, terminated, truncated, info
 
     def step(self, action_dict):
-        results = self.env.step(action_dict)
-        # Gym < 0.26 support.
-        if len(results) == 4:
-            obs, rew, done, info = results
-            truncated = {k: False for k in done.keys() if k != "__all__"}
-        else:
-            obs, rew, done, truncated, info = results
-
-        return obs, rew, done, truncated, info
+        return self.env.step(action_dict)
 
     # Defining these 2 functions that way this information can be queried
     # with a call to ray.get().
@@ -443,24 +430,21 @@ class _RemoteSingleAgentEnv:
         info = {_DUMMY_AGENT_ID: obs_and_info[1]}
 
         rew = {_DUMMY_AGENT_ID: 0.0}
-        done = {"__all__": False}
-        truncated = {}
-        return obs, rew, done, truncated, info
+        terminated = {"__all__": False}
+        truncated = {"__all__": False}
+        return obs, rew, terminated, truncated, info
 
     def step(self, action):
         results = self.env.step(action[_DUMMY_AGENT_ID])
 
-        if check_old_gym_env(self.env, step_results=results):
-            obs, rew, done, info = results
-            truncated = False
-        else:
-            obs, rew, done, truncated, info = results
+        obs, rew, terminated, truncated, info = results
 
-        obs, rew, done, truncated, info = [
-            {_DUMMY_AGENT_ID: x} for x in [obs, rew, done, truncated, info]
+        obs, rew, terminated, truncated, info = [
+            {_DUMMY_AGENT_ID: x} for x in [obs, rew, terminated, truncated, info]
         ]
-        done["__all__"] = done[_DUMMY_AGENT_ID]
-        return obs, rew, done, truncated, info
+        terminated["__all__"] = terminated[_DUMMY_AGENT_ID]
+        truncated["__all__"] = truncated[_DUMMY_AGENT_ID]
+        return obs, rew, terminated, truncated, info
 
     # Defining these 2 functions that way this information can be queried
     # with a call to ray.get().

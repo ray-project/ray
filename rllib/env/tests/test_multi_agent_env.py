@@ -326,7 +326,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             [100, 100, 100, 100, 0] * 2,
         )
         self.assertEqual(
-            batch.policy_batches["p0"]["dones"].tolist()[:10],
+            batch.policy_batches["p0"]["terminateds"].tolist()[:10],
+            [False, False, False, False, True] * 2,
+        )
+        self.assertEqual(
+            batch.policy_batches["p0"]["truncateds"].tolist()[:10],
             [False, False, False, False, True] * 2,
         )
         self.assertEqual(
@@ -423,7 +427,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 t=t,
                                 actions=0,
                                 rewards=0,
-                                dones=t == 3,
+                                terminateds=False,
+                                truncateds=t == 3,
                                 infos={},
                                 new_obs=obs_batch[0],
                             ),

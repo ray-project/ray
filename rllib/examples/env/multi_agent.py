@@ -74,6 +74,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.agents = [MockEnv(3), MockEnv(5)]
         self._agent_ids = set(range(len(self.agents)))
         self.terminateds = set()
+        self.truncateds = set()
         self.last_obs = {}
         self.last_rew = {}
         self.last_terminated = {}
@@ -85,6 +86,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
 
     def reset(self, *, seed=None, options=None):
         self.terminateds = set()
+        self.truncateds = set()
         self.last_obs = {}
         self.last_rew = {}
         self.last_terminated = {}
@@ -119,6 +121,9 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         if terminated[self.i]:
             rew[self.i] = 0
             self.terminateds.add(self.i)
+        if truncated[self.i]:
+            rew[self.i] = 0
+            self.truncateds.add(self.i)
         self.i = (self.i + 1) % len(self.agents)
         terminated["__all__"] = len(self.terminateds) == len(self.agents) - 1
         truncated["__all__"] = len(self.truncateds) == len(self.agents) - 1
@@ -212,35 +217,45 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         self.agents = [MockEnv(25) for _ in range(self.num_agents)]
         self._agent_ids = set(range(self.num_agents))
         self._observations = {}
-        self.dones = set()
+        self._infos = {}
+        self.terminateds = set()
+        self.truncateds = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
-        self.dones = set()
-        self._observations = {
-            aid: self.agents[aid].reset() for aid in self._get_random_agents()
-        }
-        return self._observations
+    def reset(self, *, seed=None, options=None):
+        self.terminateds = set()
+        self.truncateds = set()
+        self._observations = {}
+        self._infos = {}
+        for aid in self._get_random_agents():
+            self._observations[aid], self._infos[aid] = self.agents[aid].reset()
+        return self._observations, self._infos
 
     def step(self, action_dict):
-        rew, done = {}, {}
+        rew, terminated, truncated = {}, {}, {}
         # Step those agents, for which we have actions from RLlib.
         for aid, action in action_dict.items():
-            self._observations[aid], rew[aid], done[aid], _ = self.agents[aid].step(
+            self._observations[aid], rew[aid], terminated[aid], truncated[aid], self._infos[aid] = self.agents[aid].step(
                 action
             )
-            if done[aid]:
-                self.dones.add(aid)
+            if terminated[aid]:
+                self.terminateds.add(aid)
+            if truncated[aid]:
+                self.truncateds.add(aid)
         # Must add the __all__ flag.
-        done["__all__"] = len(self.dones) == self.num_agents
+        terminated["__all__"] = len(self.terminateds) == self.num_agents
+        truncated["__all__"] = len(self.truncateds) == self.num_agents
 
         # Select some of our observations to be published next (randomly).
         obs = {}
+        infos = {}
         for aid in self._get_random_agents():
             if aid not in self._observations:
                 self._observations[aid] = self.observation_space.sample()
+                self._infos[aid] = {"fourty-two": 42}
             obs[aid] = self._observations.pop(aid)
+            infos[aid] = self._infos.pop(aid)
 
         # Override some of the rewards. Rewards and dones should be always publishable,
         # even if no observation/action for an agent was sent/received.
@@ -250,12 +265,15 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         for aid in self._get_random_agents():
             rew[aid] = np.random.rand()
 
-        return obs, rew, done, {}
+        return obs, rew, terminated, truncated, infos
 
     def _get_random_agents(self):
         num_observing_agents = np.random.randint(self.num_agents)
         aids = np.random.permutation(self.num_agents)[:num_observing_agents]
-        return {aid for aid in aids if aid not in self.dones}
+        return {
+            aid for aid in aids
+            if aid not in self.terminateds and aid not in self.truncateds
+        }
 
 
 class RoundRobinMultiAgent(MultiAgentEnv):

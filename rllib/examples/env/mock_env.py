@@ -26,8 +26,8 @@ class MockEnv(gym.Env):
 
     def step(self, action):
         self.i += 1
-        done = self.i >= self.episode_length
-        return 0, 1.0, done, done, {}
+        terminated = truncated = self.i >= self.episode_length
+        return 0, 1.0, terminated, truncated, {}
 
 
 class MockEnv2(gym.Env):
@@ -56,8 +56,8 @@ class MockEnv2(gym.Env):
 
     def step(self, action):
         self.i += 1
-        done = truncated = self.i >= self.episode_length
-        return self.i, 100.0, done, truncated, {}
+        terminated = truncated = self.i >= self.episode_length
+        return self.i, 100.0, terminated, truncated, {}
 
     def render(self):
         # Just generate a random image here for demonstration purposes.
