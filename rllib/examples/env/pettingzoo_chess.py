@@ -8,6 +8,8 @@ from pettingzoo.classic.chess import chess_utils
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
+from typing import Dict,Any
+
 
 def PettingChessEnvWrapper():
     env = PettingChessEnv()
@@ -245,7 +247,7 @@ class MultiAgentChess(MultiAgentEnv):
 
     def __init__(
         self,
-        config: dict = {},
+        config: Dict[Any,Any] = None,
         env: PettingChessEnv = PettingChessEnv(),
     ):
         super().__init__()
