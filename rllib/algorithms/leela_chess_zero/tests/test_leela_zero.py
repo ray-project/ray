@@ -40,7 +40,6 @@ class TestAlphaZero(unittest.TestCase):
                 check_train_results(results)
                 print(results)
             algo.stop()
-        assert True
 
 
 if __name__ == "__main__":
