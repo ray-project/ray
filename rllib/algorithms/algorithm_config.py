@@ -1098,17 +1098,7 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
-            no_done_at_end: Don't set 'done' at the end of the episode.
-                In combination with `soft_horizon`, this works as follows:
-                - no_done_at_end=False soft_horizon=False:
-                Reset env and add `done=True` at end of each episode.
-                - no_done_at_end=True soft_horizon=False:
-                Reset env, but do NOT add `done=True` at end of the episode.
-                - no_done_at_end=False soft_horizon=True:
-                Do NOT reset env at horizon, but add `done=True` at the horizon
-                (pretending the episode has terminated).
-                - no_done_at_end=True soft_horizon=True:
-                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
+            no_done_at_end: If True, don't set a 'done=True' at the end of the episode.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the

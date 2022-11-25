@@ -221,7 +221,7 @@ class SyncSampler(SamplerInput):
             if horizon != DEPRECATED_VALUE:
                 deprecation_warning(old="horizon")
             if soft_horizon != DEPRECATED_VALUE:
-                deprecation_warning(old="soft_horizon")
+                deprecation_warning(old="soft_horizon", error=True)
 
         self.base_env = convert_to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
@@ -391,6 +391,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 deprecation_warning(old="obs_filters")
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
+            if horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="horizon", error=True)
+            if soft_horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="soft_horizon", error=True)
 
         self.worker = worker
 
