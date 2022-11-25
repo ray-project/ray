@@ -235,7 +235,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
                 f"raylet_{raylet_proc_info.process.pid}.log",
             )
         )
-        < 1 * 1024 ** 2
+        < 1 * 1024**2
     )
 
 

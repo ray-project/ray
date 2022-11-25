@@ -208,7 +208,9 @@ class DashboardAgent:
                             continue
                         
                         raylet_pid = curr_proc.parent().pid
-                        log_path = os.path.join(self.log_dir, f"raylet_{raylet_pid}.log")
+                        log_path = os.path.join(
+                            self.log_dir, f"raylet_{raylet_pid}.log"
+                        )
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
                         try:
