@@ -283,7 +283,7 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
         assert os.popen(
-            f"python {rllib_dir}/scripts.py example run cartpole-ppo"
+            f"python {rllib_dir}/scripts.py example run cartpole-simpleq-test"
         ).read()
 
     def test_yaml_run(self):
