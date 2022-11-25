@@ -85,8 +85,8 @@ class MockEnv3(gym.Env):
 
     def step(self, action):
         self.i += 1
-        done = truncated = self.i >= self.episode_length
-        return self.i, self.i, done, truncated, {"timestep": self.i}
+        terminated = truncated = self.i >= self.episode_length
+        return self.i, self.i, terminated, truncated, {"timestep": self.i}
 
 
 class VectorizedMockEnv(VectorEnv):
@@ -119,7 +119,7 @@ class VectorizedMockEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_step(self, actions):
-        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+        obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch = (
             [],
             [],
             [],

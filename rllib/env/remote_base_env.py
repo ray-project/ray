@@ -216,7 +216,7 @@ class RemoteBaseEnv(BaseEnv):
                             ob = {_DUMMY_AGENT_ID: ret[0]}
                             rew = {_DUMMY_AGENT_ID: ret[1]}
                             terminated = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
-                            truncated = {_DUMMY_AGENT_ID: ret[3]}
+                            truncated = {_DUMMY_AGENT_ID: ret[3], "__all__": ret[3]}
                             info = {_DUMMY_AGENT_ID: ret[4]}
                         # `reset()` result: Obs and infos.
                         elif len(ret) == 2:
@@ -437,13 +437,13 @@ class _RemoteSingleAgentEnv:
     def step(self, action):
         results = self.env.step(action[_DUMMY_AGENT_ID])
 
-        obs, rew, terminated, truncated, info = results
-
         obs, rew, terminated, truncated, info = [
-            {_DUMMY_AGENT_ID: x} for x in [obs, rew, terminated, truncated, info]
+            {_DUMMY_AGENT_ID: x} for x in results
         ]
+
         terminated["__all__"] = terminated[_DUMMY_AGENT_ID]
         truncated["__all__"] = truncated[_DUMMY_AGENT_ID]
+
         return obs, rew, terminated, truncated, info
 
     # Defining these 2 functions that way this information can be queried

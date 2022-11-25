@@ -391,7 +391,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 deprecation_warning(old="horizon", error=True)
             if soft_horizon != DEPRECATED_VALUE:
                 deprecation_warning(old="soft_horizon", error=True)
-            if no_done_at_end is not None:
+            if no_done_at_end != DEPRECATED_VALUE:
                 deprecation_warning(old="no_done_at_end", error=True)
 
         self.worker = worker

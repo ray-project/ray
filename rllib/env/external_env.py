@@ -262,7 +262,7 @@ class _ExternalEnvEpisode:
             self.new_action_dict = None
             self.cur_reward_dict = {}
             self.cur_terminated_dict = {"__all__": False}
-            self.cur_truncated_dict = {}
+            self.cur_truncated_dict = {"__all__": False}
             self.cur_info_dict = {}
         else:
             self.new_observation = None
@@ -302,7 +302,7 @@ class _ExternalEnvEpisode:
             # TODO(sven): External env API does not currently support truncated,
             #  but we should deprecate external Env anyways in favor of a client-only
             #  approach.
-            self.cur_truncated_dict = {}
+            self.cur_truncated_dict = {"__all__": False}
         else:
             self.new_observation = observation
             self.cur_terminated = True
@@ -419,12 +419,17 @@ class ExternalEnvWrapper(BaseEnv):
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = (
-                episode.cur_done_dict["__all__"]
+            cur_terminated = (
+                episode.cur_terminated_dict["__all__"]
                 if self.multiagent
-                else episode.cur_done
+                else episode.cur_terminated
             )
-            if cur_done:
+            cur_truncated = (
+                episode.cur_truncated_dict["__all__"]
+                if self.multiagent
+                else episode.cur_truncated
+            )
+            if cur_terminated or cur_truncated:
                 del self.external_env._episodes[eid]
             if data:
                 if self.prep:
@@ -464,7 +469,7 @@ class ExternalEnvWrapper(BaseEnv):
                 with_dummy_agent_id(all_obs),
                 with_dummy_agent_id(all_rewards),
                 with_dummy_agent_id(all_terminateds, "__all__"),
-                with_dummy_agent_id(all_truncateds),
+                with_dummy_agent_id(all_truncateds, "__all__"),
                 with_dummy_agent_id(all_infos),
                 with_dummy_agent_id(off_policy_actions),
             )
