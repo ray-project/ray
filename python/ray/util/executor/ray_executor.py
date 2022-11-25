@@ -1,6 +1,7 @@
 import ray
 import time
-from concurrent.futures import Executor
+from concurrent.futures import Executor, ProcessPoolExecutor
+
 
 def _result_or_cancel(fut, timeout=None):
     """
@@ -18,6 +19,7 @@ def _result_or_cancel(fut, timeout=None):
 class RayExecutor(Executor):
 
     _shutdown_lock = False
+    _futures = {}
 
     def __init__(self, **kwargs):
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
@@ -33,11 +35,17 @@ class RayExecutor(Executor):
 
     def submit(self, fn, /, *args, **kwargs):
         self._check_shutdown_lock()
-        return self.__remote_fn.remote(fn, *args, **kwargs).future()
+        oref = self.__remote_fn.remote(fn, *args, **kwargs)
+        future = oref.future()
+        self._futures[oref] = future
+        return future
 
     def submit_actor_function(self, fn, *args, **kwargs):
         self._check_shutdown_lock()
-        return self.__actor_fn(fn, *args, **kwargs).future()
+        oref = self.__actor_fn(fn, *args, **kwargs)
+        future = oref.future()
+        self._futures[oref] = future
+        return future
 
     def map(self, fn, *iterables, timeout=None, chunksize=1):
         self._check_shutdown_lock()
@@ -89,7 +97,17 @@ class RayExecutor(Executor):
                 cancelled.
         """
         self._shutdown_lock = True
+
         ray.shutdown()
+
+        if cancel_futures:
+            for future in self._futures.values():
+                _ = future.cancel()
+
+        if wait:
+            for future in self._futures.values():
+                _ = future.result()
+
 
     def _check_shutdown_lock(self):
         if self._shutdown_lock:
