@@ -4,6 +4,7 @@ import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from typing import Dict, Any
 
+
 class MultiAgentChess(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
     See: https://github.com/Farama-Foundation/PettingZoo
