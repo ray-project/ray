@@ -13,7 +13,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import register_env
 
 
-class TestAlphaZero(unittest.TestCase):
+class TestLeelaChessZero(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
