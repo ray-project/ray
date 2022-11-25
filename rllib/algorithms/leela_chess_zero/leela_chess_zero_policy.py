@@ -2,20 +2,17 @@ import numpy as np
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.algorithms.leela_zero.mcts import Node, RootParentNode
+from ray.rllib.algorithms.leela_chess_zero.mcts import Node, RootParentNode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
-# from search.search import MonteCarloSearchNode
 from pettingzoo.classic.chess import chess_utils
 
 torch, _ = try_import_torch()
 
-import gc
 
-
-class LeelaZeroPolicy(TorchPolicy):
+class LeelaChessZeroPolicy(TorchPolicy):
     def __init__(
         self,
         observation_space,

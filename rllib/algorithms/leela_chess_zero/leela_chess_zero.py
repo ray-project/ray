@@ -14,16 +14,16 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
-from ray.rllib.algorithms.leela_zero.leela_zero_policy import LeelaZeroPolicy
-from ray.rllib.algorithms.leela_zero.mcts import MCTS
+from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_policy import LeelaChessZeroPolicy
+from ray.rllib.algorithms.leela_chess_zero.mcts import MCTS
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-class LeelaZeroDefaultCallbacks(DefaultCallbacks):
-    """LeelaZero callbacks.
+class LeelaChessZeroDefaultCallbacks(DefaultCallbacks):
+    """LeelaChessZero callbacks.
     If you use custom callbacks, you must extend this class and call super()
     for on_episode_start.
     """
@@ -61,12 +61,12 @@ class LeelaZeroDefaultCallbacks(DefaultCallbacks):
         )
 
 
-class LeelaZeroConfig(AlgorithmConfig):
-    """Defines a configuration class from which a LeelaZero Algorithm can be built.
+class LeelaChessZeroConfig(AlgorithmConfig):
+    """Defines a configuration class from which a LeelaChessZero Algorithm can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.leela_zero import LeelaZeroConfig
-        >>> config = LeelaZeroConfig()   # doctest: +SKIP
+        >>> from ray.rllib.algorithms.leela_chess_zero import LeelaChessZeroConfig
+        >>> config = LeelaChessZeroConfig()   # doctest: +SKIP
         >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
         >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
         >>> config = config..rollouts(num_rollout_workers=4)   # doctest: +SKIP
@@ -76,10 +76,10 @@ class LeelaZeroConfig(AlgorithmConfig):
         >>> algo.train() # doctest: +SKIP
 
     Example:
-        >>> from ray.rllib.algorithms.leela_zero import LeelaZeroConfig
+        >>> from ray.rllib.algorithms.leela_chess_zero import LeelaChessZeroConfig
         >>> from ray import air
         >>> from ray import tune
-        >>> config = LeelaZeroConfig()
+        >>> config = LeelaChessZeroConfig()
         >>> # Print out some default values.
         >>> print(config.shuffle_sequences) # doctest: +SKIP
         >>> # Update the config object.
@@ -89,19 +89,19 @@ class LeelaZeroConfig(AlgorithmConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP
-        ...     "LeelaZero",
+        ...     "LeelaChessZero",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """
 
     def __init__(self, algo_class=None):
-        """Initializes a LeelaZeroConfig instance."""
-        super().__init__(algo_class=algo_class or LeelaZero)
+        """Initializes a LeelaChessZeroConfig instance."""
+        super().__init__(algo_class=algo_class or LeelaChessZero)
 
         # fmt: off
         # __sphinx_doc_begin__
-        # LeelaZero specific config settings:
+        # LeelaChessZero specific config settings:
         self.sgd_minibatch_size = 256
         self.shuffle_sequences = True
         self.num_sgd_iter = 1
@@ -144,7 +144,7 @@ class LeelaZeroConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with AlphaZero-specific
         # values.
         self.framework_str = "torch"
-        self.callbacks_class = LeelaZeroDefaultCallbacks
+        self.callbacks_class = LeelaChessZeroDefaultCallbacks
         self.lr = 5e-5
         self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
@@ -165,7 +165,7 @@ class LeelaZeroConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def callbacks(
         self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided
-    ) -> "LeelaZeroConfig":
+    ) -> "LeelaChessZeroConfig":
         super().callbacks(**kwargs)
 
         if callbacks_class is not NotProvided:
@@ -186,7 +186,7 @@ class LeelaZeroConfig(AlgorithmConfig):
         ranked_rewards: Optional[dict] = NotProvided,
         num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
-    ) -> "LeelaZeroConfig":
+    ) -> "LeelaChessZeroConfig":
         """Sets the training related configuration.
 
         Args:
@@ -272,7 +272,7 @@ class LeelaZeroConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
-    def update_from_dict(self, config_dict) -> "LeelaZeroConfig":
+    def update_from_dict(self, config_dict) -> "LeelaChessZeroConfig":
         config_dict = config_dict.copy()
 
         if "ranked_rewards" in config_dict:
@@ -289,7 +289,7 @@ class LeelaZeroConfig(AlgorithmConfig):
         validate_buffer_config(self)
 
 
-def leela_zero_loss(policy, model, dist_class, train_batch):
+def leela_chess_zero_loss(policy, model, dist_class, train_batch):
     # get inputs unflattened inputs
     input_dict = restore_original_dimensions(
         train_batch["obs"], policy.observation_space, "torch"
@@ -310,23 +310,12 @@ def leela_zero_loss(policy, model, dist_class, train_batch):
     return total_loss, policy_loss, value_loss
 
 
-class LeelaZeroPolicyWrapperClass(LeelaZeroPolicy):
+class LeelaChessZeroPolicyWrapperClass(LeelaChessZeroPolicy):
     def __init__(self, obs_space, action_space, config):
         model = ModelCatalog.get_model_v2(
             obs_space, action_space, action_space.n, config["model"], "torch"
         )
         _, env_creator = Algorithm._get_env_id_and_creator(config["env"], config)
-        # if config["ranked_rewards"]["enable"]:
-        #     # if r2 is enabled, tne env is wrapped to include a rewards buffer
-        #     # used to normalize rewards
-        #     env_cls = get_r2_env_wrapper(env_creator, config["ranked_rewards"])
-
-        #     # the wrapped env is used only in the mcts, not in the
-        #     # rollout workers
-        #     def _env_creator():
-        #         return env_cls(config["env_config"])
-
-        # else:
 
         def _env_creator():
             return env_creator(config["env_config"])
@@ -340,62 +329,20 @@ class LeelaZeroPolicyWrapperClass(LeelaZeroPolicy):
             action_space,
             config,
             model,
-            leela_zero_loss,
+            leela_chess_zero_loss,
             TorchCategorical,
             mcts_creator,
             _env_creator,
         )
 
 
-class LeelaZero(Algorithm):
+class LeelaChessZero(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
-        return LeelaZeroConfig()
+        return LeelaChessZeroConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
-        return LeelaZeroPolicyWrapperClass
+        return LeelaChessZeroPolicyWrapperClass
 
-    # @staticmethod
-    # @override(Algorithm)
-    # def execution_plan(
-    #     workers: WorkerSet, config: AlgorithmConfig, **kwargs
-    # ) -> LocalIterator[dict]:
-    #     assert (
-    #         len(kwargs) == 0
-    #     ), "Alpha zero execution_plan does NOT take any additional parameters"
-
-    #     rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-    #     if config["simple_optimizer"]:
-    #         train_op = rollouts.combine(
-    #             ConcatBatches(
-    #                 min_batch_size=config["train_batch_size"],
-    #                 count_steps_by=config["multiagent"]["count_steps_by"],
-    #             )
-    #         ).for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-    #     else:
-    #         replay_buffer = SimpleReplayBuffer(config["buffer_size"])
-
-    #         store_op = rollouts.for_each(
-    #             StoreToReplayBuffer(local_buffer=replay_buffer)
-    #         )
-
-    #         replay_op = (
-    #             Replay(local_buffer=replay_buffer)
-    #             .filter(WaitUntilTimestepsElapsed(config["learning_starts"]))
-    #             .combine(
-    #                 ConcatBatches(
-    #                     min_batch_size=config["train_batch_size"],
-    #                     count_steps_by=config["multiagent"]["count_steps_by"],
-    #                 )
-    #             )
-    #             .for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-    #         )
-
-    #         train_op = Concurrently(
-    #             [store_op, replay_op], mode="round_robin", output_indexes=[1]
-    #         )
-
-    #     return StandardMetricsReporting(train_op, workers, config)

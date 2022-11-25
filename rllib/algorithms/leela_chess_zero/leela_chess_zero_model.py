@@ -17,7 +17,7 @@ def convert_to_tensor(arr):
     return tensor
 
 
-class LeelaZeroModel(TorchModelV2, nn.Module):
+class LeelaChessZeroModel(TorchModelV2, nn.Module):
     def __init__(
         self,
         obs_space: gym.spaces.Space,
