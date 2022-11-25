@@ -844,7 +844,7 @@ Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob
 .. _leelachesszero:
 
 MultiAgent LeelaChessZero (LeelaChessZero)
-------------------------------------
+------------------------------------------
 |pytorch|
 `[paper] <https://lczero.org/>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/leela_chess_zero>`__ LeelaChessZero is an RL agent originally inspired by AlphaZero for playing chess. This version adapts it to handle a MultiAgent competitive environment of chess. The code can be scaled to any number of workers.
 
