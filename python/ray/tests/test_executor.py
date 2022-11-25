@@ -143,6 +143,11 @@ def test_cannot_map_actor_function_after_shutdown():
     with pytest.raises(RuntimeError):
         ex.map_actor_function(a.actor_function, [0, 0, 0])
 
+def test_waits_on_shutdown():
+    ex = RayExecutor()
+    ex.submit(input).result()
+    ex.shutdown()
+    raise NotImplemented
 
 
 
