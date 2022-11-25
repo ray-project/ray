@@ -4,15 +4,6 @@ import sys
 import pytest
 from ray.util.executor.ray_executor import RayExecutor
 
-# @pytest.mark.skipif(
-#     sys.platform == "win32", reason="PSUtil does not work the same on windows."
-# )
-# @pytest.mark.parametrize(
-#     "call_ray_start",
-#     ["ray start --head --ray-client-server-port 25001 --port 0"],
-#     indirect=True,
-# )
-# def test_remote_function_runs_on_local_instance(call_ray_start):
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
         result = ex.submit(lambda x: len([i for i in range(x)]), 100).result()
@@ -23,6 +14,16 @@ def test_remote_function_runs_on_local_instance_with_map():
         futures_iter = ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
     for result in futures_iter:
         assert result == 100
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    indirect=True,
+)
+def test_remote_function_runs_on_specified_instance(call_ray_start):
+    with RayExecutor(address="ray://127.0.0.1:25001") as ex:
+        result = ex.submit(lambda x: len([i for i in range(x)]), 100).result()
+    assert result == 100
 
 @ray.remote
 class ActorTest0:
