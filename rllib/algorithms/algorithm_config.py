@@ -233,8 +233,6 @@ class AlgorithmConfig:
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
-        self.horizon = None
-        self.soft_horizon = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
@@ -266,7 +264,6 @@ class AlgorithmConfig:
         }
 
         # `self.multi_agent()`
-        self._is_multi_agent = False
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_map_cache = None
@@ -361,6 +358,8 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
+        self.horizon = DEPRECATED_VALUE
+        self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
@@ -996,14 +995,14 @@ class AlgorithmConfig:
         recreate_failed_workers: Optional[bool] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
-        horizon: Optional[int] = NotProvided,
-        soft_horizon: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        horizon=DEPRECATED_VALUE,
+        soft_horizon=DEPRECATED_VALUE,
         no_done_at_end=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
@@ -1099,12 +1098,6 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
-            horizon: Number of steps after which the episode is forced to terminate.
-                Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
-            soft_horizon: Calculate rewards but don't reset the environment when the
-                horizon is hit. This allows value estimation and RNN state to span
-                across logical episodes denoted by horizon. This only has an effect
-                if horizon != inf.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1181,10 +1174,6 @@ class AlgorithmConfig:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
-        if horizon is not NotProvided:
-            self.horizon = horizon
-        if soft_horizon is not NotProvided:
-            self.soft_horizon = soft_horizon
         if preprocessor_pref is not NotProvided:
             assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
@@ -1200,6 +1189,19 @@ class AlgorithmConfig:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
+        if horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(horizon=..)",
+                new="You should wrap your gymnasium.Env with a "
+                "gymnasium.wrappers.TimeLimit wrapper.",
+                error=True,
+            )
+        if soft_horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(soft_horizon=..)",
+                new="Your gymnasium.Env.step() should handle soft resets internally.",
+                error=True,
+            )
         if no_done_at_end != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(no_done_at_end=..)",
@@ -1550,15 +1552,25 @@ class AlgorithmConfig:
             msg = "{} should not be set in the input_config. RLlib will use {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
                 raise ValueError(
-                    msg.format("num_cpus_per_read_task", "num_cpus_per_worker")
+                    msg.format(
+                        "num_cpus_per_read_task",
+                        "config.resources(num_cpus_per_worker=..)",
+                    )
                 )
             if input_config.get("parallelism") is not None:
                 if self.in_evaluation:
                     raise ValueError(
-                        msg.format("parallelism", "evaluation_num_workers")
+                        msg.format(
+                            "parallelism",
+                            "config.evaluation(evaluation_num_workers=..)",
+                        )
                     )
                 else:
-                    raise ValueError(msg.format("parallelism", "num_rollout_workers"))
+                    raise ValueError(
+                        msg.format(
+                            "parallelism", "config.rollouts(num_rollout_workers=..)"
+                        )
+                    )
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
@@ -1721,12 +1733,6 @@ class AlgorithmConfig:
                     )
             self.policies_to_train = policies_to_train
 
-        # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
-        # PolicyID found in policies dict.
-        self._is_multi_agent = (
-            len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
-        )
-
         return self
 
     def is_multi_agent(self) -> bool:
@@ -1736,7 +1742,7 @@ class AlgorithmConfig:
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return self._is_multi_agent
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -2250,6 +2256,56 @@ class AlgorithmConfig:
                 return pid in pols
 
         return policies, is_policy_to_train
+
+    def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
+        """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
+
+        Only applicable for algorithms, whose train_batch_size should be directly
+        dependent on rollout_fragment_length (synchronous sampling, on-policy PG algos).
+
+        If rollout_fragment_length != "auto", makes sure that the product of
+        `rollout_fragment_length` x `num_rollout_workers` x `num_envs_per_worker`
+        roughly (10%) matches the provided `train_batch_size`. Otherwise, errors with
+        asking the user to set rollout_fragment_length to `auto` or to a matching
+        value.
+
+        Also, only checks this if `train_batch_size` > 0 (DDPPO sets this
+        to -1 to auto-calculate the actual batch size later).
+
+        Raises:
+            ValueError: If there is a mismatch between user provided
+            `rollout_fragment_length` and `train_batch_size`.
+        """
+        if (
+            self.rollout_fragment_length != "auto"
+            and not self.in_evaluation
+            and self.train_batch_size > 0
+        ):
+            min_batch_size = (
+                max(self.num_rollout_workers, 1)
+                * self.num_envs_per_worker
+                * self.rollout_fragment_length
+            )
+            batch_size = min_batch_size
+            while batch_size < self.train_batch_size:
+                batch_size += min_batch_size
+            if (
+                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+                or batch_size - min_batch_size - self.train_batch_size
+                > (0.1 * self.train_batch_size)
+            ):
+                suggested_rollout_fragment_length = self.train_batch_size // (
+                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                )
+                raise ValueError(
+                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
+                    "value 10% off of that cannot be achieved with your other "
+                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length})! "
+                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    f"{suggested_rollout_fragment_length}."
+                )
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

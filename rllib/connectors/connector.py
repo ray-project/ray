@@ -33,7 +33,7 @@ class ConnectorContext:
     """
 
     # TODO(jungong) : figure out how to fetch these in a remote setting.
-    # Probably from a policy server when initializing a policy client.
+    #  Probably from a policy server when initializing a policy client.
 
     def __init__(
         self,

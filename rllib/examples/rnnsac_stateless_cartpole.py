@@ -17,7 +17,6 @@ param_space = {
     "num_cpus_per_worker": 1,
     "log_level": "INFO",
     "env": StatelessCartPole,
-    "horizon": 1000,
     "gamma": 0.95,
     "batch_mode": "complete_episodes",
     "replay_buffer_config": {

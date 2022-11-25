@@ -15,8 +15,6 @@ halfcheetah_cql:
 
         # Works for both torch and tf.
         framework: tf
-        soft_horizon: False
-        horizon: 1000
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]

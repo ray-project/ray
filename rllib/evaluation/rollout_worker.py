@@ -306,8 +306,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)
@@ -346,9 +344,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 "batch_mode", "config.rollouts(batch_mode=..)", error=True
             )
         if episode_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "episode_horizon", "config.rollouts(horizon=..)", error=True
-            )
+            deprecation_warning("episode_horizon", error=True)
         if preprocessor_pref != DEPRECATED_VALUE:
             deprecation_warning(
                 "preprocessor_pref", "config.rollouts(preprocessor_pref=..)", error=True
@@ -404,9 +400,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 error=True,
             )
         if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "soft_horizon", "config.rollouts(soft_horizon=..)", error=True
-            )
+            deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
             deprecation_warning("no_done_at_end", error=True)
         if fake_sampler != DEPRECATED_VALUE:
@@ -454,6 +448,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         global _global_worker
         _global_worker = self
+
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Default config needed?
         if config is None or isinstance(config, dict):
@@ -538,7 +534,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
             # TODO(sven): Make this per-policy!
-            "timesteps": 0,
+            "timestep": 0,
             # Counter for performed gradient updates per policy in `self.policy_map`.
             # Allows for compiling metrics on the off-policy'ness of an update given
             # that the number of gradient updates of the sampling policies are known
@@ -797,11 +793,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -816,11 +810,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,

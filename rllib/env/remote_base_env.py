@@ -218,11 +218,11 @@ class RemoteBaseEnv(BaseEnv):
                             terminated = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
                             truncated = {_DUMMY_AGENT_ID: ret[3]}
                             info = {_DUMMY_AGENT_ID: ret[4]}
-                        # Gym >= 0.26: `reset()` result: Obs and infos.
+                        # `reset()` result: Obs and infos.
                         elif len(ret) == 2:
                             ob = {_DUMMY_AGENT_ID: ret[0]}
                             info = {_DUMMY_AGENT_ID: ret[1]}
-                    # Gym < 0.26: `reset()` result: Only obs.
+                    # Gym < 0.26?
                     else:
                         raise AssertionError(
                             "Your gymnasium.Env seems to only return a single value "

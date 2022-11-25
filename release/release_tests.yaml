@@ -580,7 +580,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: true
+  stable: false
   env: staging
 
   frequency: nightly
@@ -1878,7 +1878,7 @@
   team: rl
   env: staging
   cluster:
-    cluster_env: app_config_np.yaml
+    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -2816,7 +2816,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 32cpus.yaml
 
   run:
     timeout: 18000
@@ -3935,7 +3935,7 @@
 
   run:
     timeout: 500
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.5
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
     type: sdk_command
     file_manager: sdk
@@ -4445,11 +4445,11 @@
     type: sdk_command
     file_manager: sdk
 
-- name: read_benchmark_single_node
+- name: read_images_benchmark_single_node
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
 
-  frequency: multi
+  frequency: nightly
   team: data
   cluster:
     cluster_env: app_config.yaml
@@ -4457,7 +4457,25 @@
 
   run:
     timeout: 1800
-    script: python read_benchmark.py
+    script: python read_images_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: read_tfrecords_benchmark_single_node
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 22 minutes.
+    timeout: 1800
+    script: python read_tfrecords_benchmark.py
 
     type: sdk_command
     file_manager: sdk

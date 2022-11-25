@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import numpy as np
-import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
@@ -18,7 +17,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_s
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch, get_original_space
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -203,11 +202,9 @@ class EnvRunnerV2:
         self,
         worker: "RolloutWorker",
         base_env: BaseEnv,
-        horizon: Optional[int],
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         perf_stats: _PerfStats,
-        soft_horizon: bool,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
         render: bool = None,
@@ -216,14 +213,11 @@ class EnvRunnerV2:
         Args:
             worker: Reference to the current rollout worker.
             base_env: Env implementing BaseEnv.
-            horizon: Horizon of the episode.
             multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be exactly
                 `rollout_fragment_length` in size.
             callbacks: User callbacks to run on episode events.
             perf_stats: Record perf stats into this object.
-            soft_horizon: Calculate rewards but don't reset the
-                environment when the horizon is hit.
             rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -245,12 +239,10 @@ class EnvRunnerV2:
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
         self._callbacks = callbacks
         self._perf_stats = perf_stats
-        self._soft_horizon = soft_horizon
         self._rollout_fragment_length = rollout_fragment_length
         self._count_steps_by = count_steps_by
         self._render = render
 
-        self._horizon = self._get_horizon(horizon)
         # May be populated for image rendering.
         self._simple_image_viewer: Optional[
             "SimpleImageViewer"
@@ -267,60 +259,6 @@ class EnvRunnerV2:
             if self._rollout_fragment_length != float("inf")
             else DEFAULT_LARGE_BATCH_THRESHOLD
         )
-
-    def _get_horizon(self, horizon: Optional[int]):
-        """Try figuring out the proper horizon to use for rollout.
-
-        Args:
-            base_env: Env implementing BaseEnv.
-            horizon: Horizon of the episode.
-        """
-        # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
-        # error and continue with max_episode_steps=None.
-        max_episode_steps = None
-        try:
-            max_episode_steps = self._base_env.get_sub_environments()[
-                0
-            ].spec.max_episode_steps
-        except Exception:
-            pass
-
-        # Trainer has a given `horizon` setting.
-        if horizon:
-            # `horizon` is larger than env's limit.
-            if max_episode_steps and horizon > max_episode_steps:
-                # Try to override the env's own max-step setting with our horizon.
-                # If this won't work, throw an error.
-                try:
-                    self._base_env.get_sub_environments()[
-                        0
-                    ].spec.max_episode_steps = horizon
-                    self._base_env.get_sub_environments()[
-                        0
-                    ]._max_episode_steps = horizon
-                except Exception:
-                    raise ValueError(
-                        "Your `horizon` setting ({}) is larger than the Env's own "
-                        "timestep limit ({}), which seems to be unsettable! Try "
-                        "to increase the Env's built-in limit to be at least as "
-                        "large as your wanted `horizon`.".format(
-                            horizon, max_episode_steps
-                        )
-                    )
-        # Otherwise, set Trainer's horizon to env's max-steps.
-        elif max_episode_steps:
-            horizon = max_episode_steps
-            logger.debug(
-                "No episode horizon specified, setting it to Env's limit ({}).".format(
-                    max_episode_steps
-                )
-            )
-        # No horizon/max_episode_steps -> Episodes may be infinitely long.
-        else:
-            horizon = float("inf")
-            logger.debug("No episode horizon specified, assuming inf.")
-
-        return horizon
 
     def _get_simple_image_viewer(self):
         """Maybe construct a SimpleImageViewer instance for episode rendering."""
@@ -466,27 +404,6 @@ class EnvRunnerV2:
             )
         ]
 
-    def __needs_policy_eval(self, agent_done: bool, hit_horizon: bool) -> bool:
-        """Decide whether an obs should get queued for policy eval.
-
-        Args:
-            agent_done: Whether the agent is done.
-            hit_horizon: Whether the env simply hit horizon.
-
-        Returns:
-            Whether this obs should get queued for policy eval.
-        """
-        if hit_horizon:
-            # Things are pretty tricky.
-            # We still need to evaluate the obs for action if soft horizon is enabled.
-            # Note that hit_horizon will only be True if agent itself is not done,
-            # and __all__ are not done.
-            return self._soft_horizon
-        if agent_done:
-            return False
-        # Otherwise, agent is alive.
-        return True
-
     def _process_observations(
         self,
         unfiltered_obs: MultiEnvDict,
@@ -549,7 +466,6 @@ class EnvRunnerV2:
                     env_id=env_id,
                     env_obs_or_exception=env_obs,
                     is_done=True,
-                    hit_horizon=False,
                     active_envs=active_envs,
                     to_eval=to_eval,
                     outputs=outputs,
@@ -566,22 +482,13 @@ class EnvRunnerV2:
             if not episode.has_init_obs():
                 self._call_on_episode_start(episode, env_id)
 
-            # Episode length after this step.
-            next_episode_length = episode.length + 1
             # Check episode termination conditions.
             if (
                 terminateds[env_id]["__all__"]
                 or truncateds["__all__"]
-                or next_episode_length >= self._horizon
             ):
-                hit_horizon = (
-                    next_episode_length >= self._horizon
-                    and not terminateds[env_id]["__all__"]
-                    and not truncateds[env_id]["__all__"]
-                )
                 all_agents_done = True
             else:
-                hit_horizon = False
                 all_agents_done = False
                 active_envs.add(env_id)
 
@@ -656,9 +563,9 @@ class EnvRunnerV2:
                     policy_id: PolicyID = episode.policy_for(agent_id)
                     policy = self._worker.policy_map[policy_id]
 
-                    # Create a fake (all-0s) observation.
-                    obs_space = policy.observation_space
-                    obs_space = getattr(obs_space, "original_space", obs_space)
+                    # Create a fake observation by sampling the original env
+                    # observation space.
+                    obs_space = get_original_space(policy.observation_space)
                     values_dict = {
                         SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
@@ -669,9 +576,7 @@ class EnvRunnerV2:
                         SampleBatch.TERMINATEDS: True,
                         SampleBatch.TRUNCATEDS: truncateds[env_id].get(agent_id, False),
                         SampleBatch.INFOS: {},
-                        SampleBatch.NEXT_OBS: tree.map_structure(
-                            np.zeros_like, obs_space.sample()
-                        ),
+                        SampleBatch.NEXT_OBS: obs_space.sample(),
                     }
 
                     # Queue these fake obs for connector preprocessing too.
@@ -709,14 +614,12 @@ class EnvRunnerV2:
                             d.agent_id, d.data.raw_dict
                         )
 
-                    if self.__needs_policy_eval(
-                        (
-                            all_agents_done
-                            or agent_terminateds.get(d.agent_id, False)
-                            or agent_truncateds.get(d.agent_id, False)
-                            or episode.is_done(d.agent_id)
-                        ),
-                        hit_horizon,
+                    # Need to evaluate next actions.
+                    if not (
+                        all_agents_done
+                        or agent_terminateds.get(d.agent_id, False)
+                        or agent_truncateds.get(d.agent_id, False)
+                        or episode.is_done(d.agent_id)
                     ):
                         # Add to eval set if env is not done and this particular agent
                         # is also not done.
@@ -741,8 +644,7 @@ class EnvRunnerV2:
                 )
 
             # Episode is terminated/truncated for all agents
-            # (terminateds[__all__] == True or truncateds[__all__] == True) or
-            # we hit the horizon.
+            # (terminateds[__all__] == True or truncateds[__all__] == True).
             if all_agents_done:
                 # _handle_done_episode will build a MultiAgentBatch for all
                 # the agents that are done during this step of rollout in
@@ -752,7 +654,6 @@ class EnvRunnerV2:
                     env_obs,
                     infos[env_id],
                     terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"],
-                    hit_horizon,
                     active_envs,
                     to_eval,
                     outputs,
@@ -776,7 +677,6 @@ class EnvRunnerV2:
         self,
         env_id: EnvID,
         is_done: bool,
-        hit_horizon: bool,
         outputs: List[SampleBatchType],
     ):
         """Builds a MultiAgentSampleBatch from the episode and adds it to outputs.
@@ -784,7 +684,6 @@ class EnvRunnerV2:
         Args:
             env_id: The env id.
             is_done: Whether the env is done.
-            hit_horizon: Whether the episode hit the horizon.
             outputs: The list of outputs to add the
         """
         episode: EpisodeV2 = self._active_episodes[env_id]
@@ -794,7 +693,7 @@ class EnvRunnerV2:
 
         episode.postprocess_episode(
             batch_builder=batch_builder,
-            is_done=is_done or (hit_horizon and not self._soft_horizon),
+            is_done=is_done,
             check_dones=check_dones,
         )
 
@@ -865,10 +764,9 @@ class EnvRunnerV2:
     def _handle_done_episode(
         self,
         env_id: EnvID,
-        env_obs: MultiAgentDict,
+        env_obs_or_exception: MultiAgentDict,
         env_infos: MultiAgentDict,
         is_done: bool,
-        hit_horizon: bool,
         active_envs: Set[EnvID],
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
         outputs: List[SampleBatchType],
@@ -882,23 +780,22 @@ class EnvRunnerV2:
             env_obs: Last per-environment observation or Exception.
             env_infos: Last per-environment infos.
             is_done: If all agents are done.
-            hit_horizon: Whether the episode ended because it hit horizon.
             active_envs: Set of active env ids.
             to_eval: Output container for policy eval data.
             outputs: Output container for collected sample batches.
         """
-        if isinstance(env_obs, Exception):
-            is_error = True
-            episode_or_exception: Exception = env_obs
+        if isinstance(env_obs_or_exception, Exception):
+            episode_or_exception: Exception = env_obs_or_exception
             # Tell the sampler we have got a faulty episode.
             outputs.append(RolloutMetrics(episode_faulty=True))
         else:
-            is_error = False
-            # Output the collected episode.
-            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
             outputs.extend(self._get_rollout_metrics(episode_or_exception))
+            # Output the collected episode after adding rollout metrics so that we
+            # always fetch metrics with RolloutWorker before we fetch samples.
+            # This is because we need to behave like env_runner() for now.
+            self._build_done_episode(env_id, is_done, outputs)
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
@@ -906,63 +803,41 @@ class EnvRunnerV2:
         # Create a new episode instance (before we reset the sub-environment).
         new_episode: EpisodeV2 = self.create_episode(env_id)
 
-        # Horizon hit and we have a soft horizon (no hard env reset).
-        soft_reset = not is_error and hit_horizon and self._soft_horizon
-        if soft_reset:
-            resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {env_id: env_obs}
-            resetted_infos = {env_id: env_infos}
-            # Do not reset connector state if this is a soft reset.
-            # Basically carry RNN and other buffered state to the
-            # next episode from the same env.
-        else:
-            # The sub environment at index `env_id` might throw an exception
-            # during the following `try_reset()` attempt. If configured with
-            # `restart_failed_sub_environments=True`, the BaseEnv will restart
-            # the affected sub environment (create a new one using its c'tor) and
-            # must reset the recreated sub env right after that.
-            # Should the sub environment fail indefinitely during these
-            # repeated reset attempts, the entire worker will be blocked.
-            # This would be ok, b/c the alternative would be the worker crashing
-            # entirely.
-            while True:
-                resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
-                if resetted_obs is None or not isinstance(
-                    resetted_obs[env_id], Exception
-                ):
-                    break
-                else:
-                    # Failed to reset, add metrics about a faulty episode.
-                    outputs.append(RolloutMetrics(episode_faulty=True))
-            # Reset connector state if this is a hard reset.
-            for p in self._worker.policy_map.cache.values():
-                p.agent_connectors.reset(env_id)
+        # The sub environment at index `env_id` might throw an exception
+        # during the following `try_reset()` attempt. If configured with
+        # `restart_failed_sub_environments=True`, the BaseEnv will restart
+        # the affected sub environment (create a new one using its c'tor) and
+        # must reset the recreated sub env right after that.
+        # Should the sub environment fail indefinitely during these
+        # repeated reset attempts, the entire worker will be blocked.
+        # This would be ok, b/c the alternative would be the worker crashing
+        # entirely.
+        while True:
+            resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
 
-        # Reset not supported, drop this env from the ready list.
-        if resetted_obs is None:
-            if self._horizon != float("inf"):
-                raise ValueError(
-                    "Setting episode horizon requires reset() support "
-                    "from the environment."
-                )
+            if resetted_obs is None or not isinstance(resetted_obs[env_id], Exception):
+                break
+            else:
+                # Report a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
+
+        # Reset connector state if this is a hard reset.
+        for p in self._worker.policy_map.cache.values():
+            p.agent_connectors.reset(env_id)
+
         # Creates a new episode if this is not async return.
         # If reset is async, we will get its result in some future poll.
-        elif resetted_obs != ASYNC_RESET_RETURN:
+        if resetted_obs is not None and resetted_obs != ASYNC_RESET_RETURN:
             self._active_episodes[env_id] = new_episode
             self._call_on_episode_start(new_episode, env_id)
 
-            if not soft_reset:
-                self.__process_resetted_obs_for_eval(
-                    env_id,
-                    resetted_obs,
-                    resetted_infos,
-                    new_episode,
-                    to_eval,
-                )
-            else:
-                # This Env was soft-reset. to_eval should already have the
-                # processed obs for this env. Check logics related to
-                # __needs_policy_eval.
-                pass
+            self.__process_resetted_obs_for_eval(
+                env_id,
+                resetted_obs,
+                resetted_infos,
+                new_episode,
+                to_eval,
+            )
 
             # Step after adding initial obs. This will give us 0 env and agent step.
             new_episode.step()

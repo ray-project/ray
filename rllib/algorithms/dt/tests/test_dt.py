@@ -74,6 +74,7 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
@@ -86,7 +87,6 @@ class TestDT(unittest.TestCase):
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .reporting(
                 min_train_timesteps_per_iteration=10,
@@ -158,13 +158,13 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .experimental(_disable_preprocessor_api=True)
         )

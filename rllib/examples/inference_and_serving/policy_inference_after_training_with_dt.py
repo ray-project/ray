@@ -74,6 +74,7 @@ if __name__ == "__main__":
             actions_in_input_normalized=True,
         )
         .training(
+            horizon=max_ep_len,  # This needs to be specified for DT to work.
             lr=0.01,
             optimizer={
                 "weight_decay": 0.1,
@@ -102,8 +103,6 @@ if __name__ == "__main__":
         )
         .rollouts(
             num_rollout_workers=0,
-            # This needs to be specified
-            horizon=max_ep_len,
         )
         .reporting(
             min_train_timesteps_per_iteration=5000,

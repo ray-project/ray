@@ -536,7 +536,9 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             Scalar cross entropy loss.
         """
         losses = F.cross_entropy(
-            preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none"
+            preds.reshape(-1, preds.shape[-1]),
+            targets.reshape(-1).long(),
+            reduction="none",
         )
         losses = losses * masks.reshape(-1)
         return losses.mean()
