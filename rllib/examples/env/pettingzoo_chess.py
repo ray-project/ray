@@ -245,7 +245,7 @@ class MultiAgentChess(MultiAgentEnv):
 
     def __init__(
         self,
-        config: dict = {"random_start": 4},
+        config: dict = {},
         env: PettingChessEnv = PettingChessEnv(),
     ):
         super().__init__()
@@ -255,6 +255,7 @@ class MultiAgentChess(MultiAgentEnv):
         #  check_env.
         self._skip_env_checking = True
         self.config = config
+        self.config["random_start"] = 4
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
 
