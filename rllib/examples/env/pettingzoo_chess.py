@@ -243,7 +243,11 @@ class MultiAgentChess(MultiAgentEnv):
         }
     """
 
-    def __init__(self, config:dict={"random_start": 4}, env:PettingChessEnv=PettingChessEnv()):
+    def __init__(
+        self,
+        config: dict = {"random_start": 4},
+        env: PettingChessEnv = PettingChessEnv(),
+    ):
         super().__init__()
         self.env = env
         env.reset()

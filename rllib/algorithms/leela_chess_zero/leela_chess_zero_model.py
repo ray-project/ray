@@ -143,7 +143,7 @@ class LeelaChessZeroModel(TorchModelV2, nn.Module):
         action_mask = torch.clamp(torch.log(action_mask), -1e10, 3.4e38)
         return masked_policy + action_mask
 
-    def get_board_evaluation(self,obs):
+    def get_board_evaluation(self, obs):
         return self.compute_priors_and_value(obs)
 
     def compute_priors_and_value(self, obs):

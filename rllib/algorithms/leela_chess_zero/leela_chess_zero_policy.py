@@ -7,7 +7,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
-from pettingzoo.classic.chess import chess_utils
 
 torch, _ = try_import_torch()
 

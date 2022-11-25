@@ -166,7 +166,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def callbacks(
-        self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided,**kwargs
+        self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided, **kwargs
     ) -> "LeelaChessZeroConfig":
         super().callbacks(**kwargs)
 
