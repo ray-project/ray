@@ -347,3 +347,5 @@ class LeelaChessZero(Algorithm):
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return LeelaChessZeroPolicyWrapperClass
+
+DEFAULT_CONFIG = LeelaChessZeroConfig().to_dict()

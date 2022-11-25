@@ -7,7 +7,6 @@ from pettingzoo.utils.agent_selector import agent_selector
 from pettingzoo.classic.chess import chess_utils
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-
 from typing import Dict,Any
 
 
@@ -247,7 +246,7 @@ class MultiAgentChess(MultiAgentEnv):
 
     def __init__(
         self,
-        config: Dict[Any,Any] = None,
+        config: Dict[Any, Any] = {"random_start": 4},
         env: PettingChessEnv = PettingChessEnv(),
     ):
         super().__init__()
@@ -257,7 +256,6 @@ class MultiAgentChess(MultiAgentEnv):
         #  check_env.
         self._skip_env_checking = True
         self.config = config
-        self.config["random_start"] = 4
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
 
