@@ -24,6 +24,7 @@ from ray.rllib.utils.typing import (
     AgentID,
     EnvActionType,
     EnvID,
+    EnvInfoDict,
     EnvObsType,
     MultiAgentDict,
     MultiEnvDict,
@@ -485,7 +486,7 @@ class EnvRunnerV2:
             # Check episode termination conditions.
             if (
                 terminateds[env_id]["__all__"]
-                or truncateds["__all__"]
+                or truncateds[env_id]["__all__"]
             ):
                 all_agents_done = True
             else:
@@ -720,6 +721,7 @@ class EnvRunnerV2:
         self,
         env_id: EnvID,
         obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
+        infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
         episode: EpisodeV2,
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
     ):
@@ -745,6 +747,7 @@ class EnvRunnerV2:
                     agent_id,
                     {
                         SampleBatch.NEXT_OBS: obs,
+                        SampleBatch.INFOS: infos,
                         SampleBatch.T: episode.length,
                     },
                 )
@@ -757,6 +760,7 @@ class EnvRunnerV2:
                 episode.add_init_obs(
                     agent_id=d.agent_id,
                     init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                    init_infos=d.data.raw_dict[SampleBatch.INFOS],
                     t=d.data.raw_dict[SampleBatch.T],
                 )
                 to_eval[policy_id].append(d)

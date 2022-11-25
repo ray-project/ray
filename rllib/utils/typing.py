@@ -109,7 +109,8 @@ EnvObsType = Any
 # Represents an action passed to the env.
 EnvActionType = Any
 
-# Info dictionary returned by calling step() on gym envs. Commonly empty dict.
+# Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
+# instances. Might be an empty dict.
 EnvInfoDict = dict
 
 # Represents a File object

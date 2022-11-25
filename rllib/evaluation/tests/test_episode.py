@@ -38,11 +38,14 @@ class LastInfoCallback(DefaultCallbacks):
         }
         last_raw_obs = episode._agent_to_last_raw_obs
         last_info = episode._agent_to_last_info
-        last_done = episode._agent_to_last_done
+        last_terminated = episode._agent_to_last_terminated
+        last_truncated = episode._agent_to_last_truncated
         last_action = episode._agent_to_last_action
         last_reward = {k: v[-1] for k, v in episode._agent_reward_history.items()}
         if self.step == 0:
-            for last in [last_obs, last_done, last_action, last_reward]:
+            for last in [
+                last_obs, last_terminated, last_truncated, last_action, last_reward
+            ]:
                 self.tc.assertEqual(last, {})
             self.tc.assertTrue("__common__" in last_info)
             self.tc.assertTrue(len(last_raw_obs) > 0)
@@ -55,7 +58,8 @@ class LastInfoCallback(DefaultCallbacks):
                 index = int(str(agent).replace("agent", ""))
                 self.tc.assertEqual(last_obs[agent], self.step + index)
                 self.tc.assertEqual(last_reward[agent], self.step + index)
-                self.tc.assertEqual(last_done[agent], self.step == NUM_STEPS)
+                self.tc.assertEqual(last_terminated[agent], self.step == NUM_STEPS)
+                self.tc.assertEqual(last_truncated[agent], self.step == NUM_STEPS)
                 if self.step == 1:
                     self.tc.assertEqual(last_action[agent], 0)
                 else:
