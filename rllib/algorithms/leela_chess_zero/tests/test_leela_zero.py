@@ -2,7 +2,9 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.leela_chess_zero.leela_chess_zero as lz
-from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_model import LeelaChessZeroModel
+from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_model import (
+    LeelaChessZeroModel,
+)
 from ray.rllib.examples.env.pettingzoo_chess import MultiAgentChess
 from ray.rllib.utils.test_utils import (
     check_train_results,
