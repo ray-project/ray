@@ -3,6 +3,9 @@ import time
 from concurrent.futures import Executor
 
 def _result_or_cancel(fut, timeout=None):
+    """
+    From concurrent.futures
+    """
     try:
         try:
             return fut.result(timeout)
@@ -33,6 +36,9 @@ class RayExecutor(Executor):
         return self.__actor_fn(fn, *args, **kwargs).future()
 
     def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
+        """
+        This was adapted from concurrent.futures.Executor.map.
+        """
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
@@ -54,15 +60,6 @@ class RayExecutor(Executor):
                 for future in fs:
                     future.cancel()
         return result_iterator()
-
-    # def map(self, func, *iterables, timeout=None, chunksize=1):
-    #     self.timeout = timeout
-    #     # Use map for remote jobs
-    #     # https://docs.ray.io/en/releases-1.10.0/ray-design-patterns/map-reduce.html
-    #     # Don't use ray.get inside loops:
-    #     # https://docs.ray.io/en/releases-1.10.0/ray-design-patterns/ray-get-loop.html
-    #     futures = [self.__remote_fn.remote(func, i) for i in iterables]
-    #     return ray.get(futures)
 
     def shutdown(self, wait=True, *, cancel_futures=False):
         ray.shutdown()
