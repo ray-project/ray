@@ -877,7 +877,7 @@ py_test(
 # LeelaChessZero
 py_test(
     name = "test_leela_chess_zero",
-    tags = ["torch_only", "algorithms_dir"],
+    tags = ["team:rllib","torch_only", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/leela_chess_zero/tests/test_leela_zero.py"]
 )
