@@ -5,6 +5,7 @@ from unittest import mock
 
 from pkg_resources._vendor.packaging.version import parse as parse_version
 import pytest
+from pytest_lazyfixture import lazy_fixture
 import pyarrow as pa
 import pyarrow.parquet as pq
 import numpy as np
@@ -149,187 +150,279 @@ def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
     assert truncated_offset_arr.equals(expected_offset_arr)
 
 
+@pytest.fixture
+def null_array():
+    return pa.array([])
+
+
+@pytest.fixture
+def int_array():
+    return pa.array(list(range(1000)))
+
+
+@pytest.fixture
+def int_array_with_nulls():
+    return pa.array((list(range(9)) + [None]) * 100)
+
+
+@pytest.fixture
+def float_array():
+    return pa.array([float(i) for i in range(1000)])
+
+
+@pytest.fixture
+def boolean_array():
+    return pa.array([True, False] * 500)
+
+
+@pytest.fixture
+def string_array():
+    return pa.array(["foo", "bar", "bz", None, "quux"] * 200)
+
+
+@pytest.fixture
+def large_string_array():
+    return pa.array(["foo", "bar", "bz", None, "quux"] * 200, type=pa.large_string())
+
+
+@pytest.fixture
+def binary_array():
+    return pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200)
+
+
+@pytest.fixture
+def fixed_size_binary_array():
+    return pa.array([b"foo", b"bar", b"baz", None, b"qux"] * 200, type=pa.binary(3))
+
+
+@pytest.fixture
+def large_binary_array():
+    return pa.array(
+        [b"foo", b"bar", b"bz", None, b"quux"] * 200, type=pa.large_binary()
+    )
+
+
+@pytest.fixture
+def list_array():
+    return pa.array(([None] + [list(range(9)) + [None]] * 9) * 100)
+
+
+@pytest.fixture
+def large_list_array():
+    # Large list array with nulls
+    return pa.array(
+        ([None] + [list(range(9)) + [None]] * 9) * 100,
+        type=pa.large_list(pa.int64()),
+    )
+
+
+@pytest.fixture
+def fixed_size_list_array():
+    # Fixed size list array
+    return pa.FixedSizeListArray.from_arrays(
+        pa.array((list(range(9)) + [None]) * 1000), 10
+    )
+
+
+@pytest.fixture
+def map_array():
+    return pa.array(
+        [
+            [(key, item) for key, item in zip("abcdefghij", range(10))]
+            for _ in range(1000)
+        ],
+        type=pa.map_(pa.string(), pa.int64()),
+    )
+
+
+@pytest.fixture
+def struct_array():
+    # Struct array
+    return pa.array({"a": i} for i in range(1000))
+
+
+@pytest.fixture
+def sparse_union_array():
+    return pa.UnionArray.from_sparse(
+        pa.array([0, 1] * 500, type=pa.int8()),
+        [pa.array(list(range(1000))), pa.array([True, False] * 500)],
+    )
+
+
+@pytest.fixture
+def dense_union_array():
+    return pa.UnionArray.from_dense(
+        pa.array([0, 1] * 500, type=pa.int8()),
+        pa.array(
+            [i if i % 2 == 0 else (i % 3) % 2 for i in range(1000)], type=pa.int32()
+        ),
+        [pa.array(list(range(1000))), pa.array([True, False])],
+    )
+
+
+@pytest.fixture
+def dictionary_array():
+    return pa.DictionaryArray.from_arrays(
+        pa.array((list(range(9)) + [None]) * 100),
+        pa.array(["a", "b", "c", "d", "e", "f", "g", "h", "i"]),
+    )
+
+
+@pytest.fixture
+def tensor_array():
+    return ArrowTensorArray.from_numpy(np.arange(1000 * 4 * 4).reshape((1000, 4, 4)))
+
+
+@pytest.fixture
+def boolean_tensor_array():
+    return ArrowTensorArray.from_numpy(
+        np.array(
+            [True, False, False, True, False, False, True, True] * 2 * 1000
+        ).reshape((1000, 4, 4))
+    )
+
+
+@pytest.fixture
+def variable_shaped_tensor_array():
+    return ArrowVariableShapedTensorArray.from_numpy(
+        np.array(
+            [
+                np.arange(4).reshape((2, 2)),
+                np.arange(4, 13).reshape((3, 3)),
+            ]
+            * 500,
+            dtype=object,
+        ),
+    )
+
+
+@pytest.fixture
+def boolean_variable_shaped_tensor_array():
+    return ArrowVariableShapedTensorArray.from_numpy(
+        np.array(
+            [
+                np.array([[True, False], [False, True]]),
+                np.array(
+                    [
+                        [False, True, False],
+                        [True, True, False],
+                        [False, False, False],
+                    ],
+                ),
+            ]
+            * 500,
+            dtype=object,
+        )
+    )
+
+
+@pytest.fixture
+def list_of_struct_array():
+    return pa.array([{"a": i}, {"a": -i}] for i in range(1000))
+
+
+@pytest.fixture
+def list_of_empty_struct_array():
+    return pa.array([{}, {}] for i in range(1000))
+
+
+@pytest.fixture
+def complex_nested_array():
+    return pa.UnionArray.from_sparse(
+        pa.array([0, 1] * 500, type=pa.int8()),
+        [
+            pa.array(
+                [
+                    {
+                        "a": i % 2 == 0,
+                        "b": i,
+                        "c": "bar",
+                    }
+                    for i in range(1000)
+                ]
+            ),
+            pa.array(
+                [
+                    [(key, item) for key, item in zip("abcdefghij", range(10))]
+                    for _ in range(1000)
+                ],
+                type=pa.map_(pa.string(), pa.int64()),
+            ),
+        ],
+    )
+
+
 pytest_custom_serialization_arrays = [
     # Null array
-    (pa.array([]), 1.0),
+    (lazy_fixture("null_array"), 1.0),
     # Int array
-    (pa.array(list(range(1000))), 0.1),
+    (lazy_fixture("int_array"), 0.1),
     # Array with nulls
-    (pa.array((list(range(9)) + [None]) * 100), 0.1),
+    (lazy_fixture("int_array_with_nulls"), 0.1),
     # Float array
-    (pa.array([float(i) for i in range(1000)]), 0.1),
+    (lazy_fixture("float_array"), 0.1),
     # Boolean array
     # Due to bit-packing, most of the pickle bytes are metadata.
-    (pa.array([True, False] * 500), 0.8),
+    (lazy_fixture("boolean_array"), 0.8),
     # String array
-    (pa.array(["foo", "bar", "bz", None, "quux"] * 200), 0.1),
+    (lazy_fixture("string_array"), 0.1),
     # Large string array
-    (pa.array(["foo", "bar", "bz", None, "quux"] * 200, type=pa.large_string()), 0.1),
+    (lazy_fixture("large_string_array"), 0.1),
     # Binary array
-    (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200), 0.1),
+    (lazy_fixture("binary_array"), 0.1),
+    # Fixed size binary array
+    (lazy_fixture("fixed_size_binary_array"), 0.1),
     # Large binary array
-    (
-        pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200, type=pa.large_binary()),
-        0.1,
-    ),
+    (lazy_fixture("large_binary_array"), 0.1),
     # List array with nulls
-    (pa.array(([None] + [list(range(9)) + [None]] * 9) * 100), 0.1),
+    (lazy_fixture("list_array"), 0.1),
     # Large list array with nulls
-    (
-        pa.array(
-            ([None] + [list(range(9)) + [None]] * 9) * 100,
-            type=pa.large_list(pa.int64()),
-        ),
-        0.1,
-    ),
+    (lazy_fixture("large_list_array"), 0.1),
     # Fixed size list array
-    (
-        pa.FixedSizeListArray.from_arrays(
-            pa.array((list(range(9)) + [None]) * 1000), 10
-        ),
-        0.1,
-    ),
+    (lazy_fixture("fixed_size_list_array"), 0.1),
     # Map array
-    (
-        pa.array(
-            [
-                [(key, item) for key, item in zip("abcdefghij", range(10))]
-                for _ in range(1000)
-            ],
-            type=pa.map_(pa.string(), pa.int64()),
-        ),
-        0.1,
-    ),
+    (lazy_fixture("map_array"), 0.1),
     # Struct array
-    (pa.array({"a": i} for i in range(1000)), 0.1),
+    (lazy_fixture("struct_array"), 0.1),
     # Union array (sparse)
-    (
-        pa.UnionArray.from_sparse(
-            pa.array([0, 1] * 500, type=pa.int8()),
-            [pa.array(list(range(1000))), pa.array([True, False] * 500)],
-        ),
-        0.1,
-    ),
+    (lazy_fixture("sparse_union_array"), 0.1),
     # Union array (dense)
-    (
-        pa.UnionArray.from_dense(
-            pa.array([0, 1] * 500, type=pa.int8()),
-            pa.array(
-                [i if i % 2 == 0 else (i % 3) % 2 for i in range(1000)], type=pa.int32()
-            ),
-            [pa.array(list(range(1000))), pa.array([True, False])],
-        ),
-        0.1,
-    ),
+    (lazy_fixture("dense_union_array"), 0.1),
     # Dictionary array
-    (
-        pa.DictionaryArray.from_arrays(
-            pa.array((list(range(9)) + [None]) * 100),
-            pa.array(["a", "b", "c", "d", "e", "f", "g", "h", "i"]),
-        ),
-        0.1,
-    ),
+    (lazy_fixture("dictionary_array"), 0.1),
     # Tensor extension array
-    (
-        ArrowTensorArray.from_numpy(np.arange(1000 * 4 * 4).reshape((1000, 4, 4))),
-        0.1,
-    ),
+    (lazy_fixture("tensor_array"), 0.1),
     # Boolean tensor extension array
-    (
-        ArrowTensorArray.from_numpy(
-            np.array(
-                [True, False, False, True, False, False, True, True] * 2 * 1000
-            ).reshape((1000, 4, 4))
-        ),
-        0.25,
-    ),
+    (lazy_fixture("boolean_tensor_array"), 0.25),
     # Variable-shaped tensor extension array
-    (
-        ArrowVariableShapedTensorArray.from_numpy(
-            np.array(
-                [
-                    np.arange(4).reshape((2, 2)),
-                    np.arange(4, 13).reshape((3, 3)),
-                ]
-                * 500,
-                dtype=object,
-            ),
-        ),
-        0.1,
-    ),
+    (lazy_fixture("variable_shaped_tensor_array"), 0.1),
     # Boolean variable-shaped tensor extension array
-    (
-        ArrowVariableShapedTensorArray.from_numpy(
-            np.array(
-                [
-                    np.array([[True, False], [False, True]]),
-                    np.array(
-                        [
-                            [False, True, False],
-                            [True, True, False],
-                            [False, False, False],
-                        ],
-                    ),
-                ]
-                * 500,
-                dtype=object,
-            )
-        ),
-        0.25,
-    ),
+    (lazy_fixture("boolean_variable_shaped_tensor_array"), 0.25),
+    # List of struct array
+    (lazy_fixture("list_of_struct_array"), 0.1),
+    # List of empty struct array
+    (lazy_fixture("list_of_empty_struct_array"), 0.1),
     # Complex nested array
-    (
-        pa.UnionArray.from_sparse(
-            pa.array([0, 1] * 500, type=pa.int8()),
-            [
-                pa.array(
-                    [
-                        {
-                            "a": i % 2 == 0,
-                            "b": i,
-                            "c": "bar",
-                        }
-                        for i in range(1000)
-                    ]
-                ),
-                pa.array(
-                    [
-                        [(key, item) for key, item in zip("abcdefghij", range(10))]
-                        for _ in range(1000)
-                    ],
-                    type=pa.map_(pa.string(), pa.int64()),
-                ),
-            ],
-        ),
-        0.1,
-    ),
+    (lazy_fixture("complex_nested_array"), 0.1),
 ]
 
-pytest_custom_serialization_data = []
-for arr, cap in pytest_custom_serialization_arrays:
-    if len(arr) == 0:
-        pytest_custom_serialization_data.append((pa.table({"a": []}), cap))
-    else:
-        pytest_custom_serialization_data.append(
-            (
-                pa.Table.from_arrays(
-                    [arr, arr, pa.array(range(1000), type=pa.int32())],
-                    schema=pa.schema(
-                        [
-                            pa.field("arr1", arr.type),
-                            pa.field("arr2", arr.type),
-                            pa.field("arr3", pa.int32()),
-                        ],
-                        metadata={b"foo": b"bar"},
-                    ),
-                ),
-                cap,
-            )
-        )
 
-
-@pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_data)
+@pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
+    if len(data) == 0:
+        data = pa.table({"a": []})
+    else:
+        data = pa.Table.from_arrays(
+            [data, data, pa.array(range(1000), type=pa.int32())],
+            schema=pa.schema(
+                [
+                    pa.field("arr1", data.type),
+                    pa.field("arr2", data.type),
+                    pa.field("arr3", pa.int32()),
+                ],
+                metadata={b"foo": b"bar"},
+            ),
+        )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
     pyarrow_version = parse_version(_get_pyarrow_version())
@@ -374,7 +467,7 @@ def test_custom_arrow_data_serializer_fallback(
     ray_start_regular_shared, propagate_logs, caplog
 ):
     # Reset serialization fallback set so warning is logged.
-    import ray.data._internal.arrow_serialization as arrow_ser_module
+    import ray._private.arrow_serialization as arrow_ser_module
 
     arrow_ser_module._serialization_fallback_set = set()
 

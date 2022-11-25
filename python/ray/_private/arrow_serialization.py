@@ -2,6 +2,7 @@
 # it causes circular dependency issues for AsyncActors due to
 # ray.data's lazy import.
 # see https://github.com/ray-project/ray/issues/30498 for more context.
+from dataclasses import dataclass
 import logging
 import os
 import sys
@@ -9,7 +10,7 @@ from typing import List, Tuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+    from ray.data.extensions import ArrowTensorArray
 
 RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
     "RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION"
@@ -179,44 +180,129 @@ def _reconstruct_table(
 
     # Reconstruct each reduced column.
     columns = []
-    for chunks, type_ in reduced_columns:
-        columns.append(_reconstruct_chunked_array(chunks, type_))
+    for chunks_payload, type_ in reduced_columns:
+        columns.append(_reconstruct_chunked_array(chunks_payload, type_))
 
     return pa.Table.from_arrays(columns, schema=schema)
 
 
 def _arrow_chunked_array_reduce(
     ca: "pyarrow.ChunkedArray",
-) -> Tuple[List["pyarrow.Array"], "pyarrow.DataType"]:
+) -> Tuple[List["PicklableArrayPayload"], "pyarrow.DataType"]:
     """Custom reducer for Arrow ChunkedArrays that works around a zero-copy slice
     pickling bug. This reducer does not return a reconstruction function, since it's
     expected to be reconstructed by the Arrow Table reconstructor.
     """
-    truncated_chunks = []
+    # Convert chunks to serialization payloads.
+    chunk_payloads = []
     for chunk in ca.chunks:
-        chunk = _copy_array_if_needed(chunk)
-        truncated_chunks.append(chunk)
-    return truncated_chunks, ca.type
+        chunk_payload = PicklableArrayPayload.from_array(chunk)
+        chunk_payloads.append(chunk_payload)
+    return chunk_payloads, ca.type
 
 
 def _reconstruct_chunked_array(
-    chunks: List["pyarrow.Array"], type_: "pyarrow.DataType"
+    chunks: List["PicklableArrayPayload"], type_: "pyarrow.DataType"
 ) -> "pyarrow.ChunkedArray":
     """Restore a serialized Arrow ChunkedArray from chunks and type."""
     import pyarrow as pa
 
+    # Reconstruct chunks from serialization payloads.
+    chunks = [chunk.to_array() for chunk in chunks]
+
     return pa.chunked_array(chunks, type_)
 
 
-def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
-    """Copy the provided Arrow array, if needed.
-    This method recursively traverses the array and subarrays, translating array-level
-    slices to buffer-level slices, thereby ensuring a copy at pickle time.
+@dataclass
+class PicklableArrayPayload:
+    """Picklable array payload, holding data buffers and array metadata.
+
+    This is a helper container for pickling and reconstructing nested Arrow Arrays while
+    ensuring that the buffers that underly zero-copy slice views are properly truncated.
     """
-    # See the Arrow buffer layouts for each type for information on how this buffer
-    # traversal and copying works:
-    # https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
+
+    # Array type.
+    type: "pyarrow.DataType"
+    # Length of array.
+    length: int
+    # Underlying data buffers.
+    buffers: List["pyarrow.Buffer"]
+    # Cached null count.
+    null_count: int
+    # Slice offset into base array.
+    offset: int
+    # Serialized array payloads for nested (child) arrays.
+    children: List["PicklableArrayPayload"]
+
+    @classmethod
+    def from_array(self, a: "pyarrow.Array") -> "PicklableArrayPayload":
+        """Create a picklable array payload from an Arrow Array.
+
+        This will recursively accumulate data buffer and metadata payloads that are
+        ready for pickling; namely, the data buffers underlying zero-copy slice views
+        will be properly truncated.
+        """
+        return _array_to_array_payload(a)
+
+    def to_array(self) -> "pyarrow.Array":
+        """Reconstruct an Arrow Array from this picklable payload."""
+        return _array_payload_to_array(self)
+
+
+def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array":
+    """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
+
+    children = [child_payload.to_array() for child_payload in payload.children]
+    if pa.types.is_dictionary(payload.type):
+        # Dedicated path for reconstructing a DictionaryArray, since
+        # Array.from_buffers() doesn't work for DictionaryArrays.
+        assert len(children) == 2, len(children)
+        indices, dictionary = children
+        return pa.DictionaryArray.from_arrays(indices, dictionary)
+    elif pa.types.is_map(payload.type) and len(children) > 1:
+        # In pyarrow<7.0.0, the underlying map child array is not exposed, so we work
+        # with the key and item arrays.
+        assert len(children) == 3, len(children)
+        offsets, keys, items = children
+        return pa.MapArray.from_arrays(offsets, keys, items)
+    elif isinstance(payload.type, ArrowTensorType) or isinstance(
+        payload.type, ArrowVariableShapedTensorType
+    ):
+        # Dedicated path for reconstructing an ArrowTensorArray or
+        # ArrowVariableShapedTensorArray, both of which can't be reconstructed by the
+        # Array.from_buffers() API.
+        assert len(children) == 1, len(children)
+        storage = children[0]
+        return pa.ExtensionArray.from_storage(payload.type, storage)
+    else:
+        # Common case: use Array.from_buffers() to construct an array of a certain type.
+        return pa.Array.from_buffers(
+            type=payload.type,
+            length=payload.length,
+            buffers=payload.buffers,
+            null_count=payload.null_count,
+            offset=payload.offset,
+            children=children,
+        )
+
+
+def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize an Arrow Array to an PicklableArrayPayload for later pickling.
+
+    This function's primary purpose is to dispatch to the handler for the input array
+    type.
+    """
+    import pyarrow as pa
+
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
 
     if _is_dense_union(a.type):
         # Dense unions are not supported.
@@ -226,195 +312,349 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
             "supported."
         )
 
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorArray,
-        ArrowVariableShapedTensorArray,
-    )
-
-    if isinstance(a, ArrowTensorArray):
-        # Custom path for copying the buffers underlying our tensor column extension
-        # array.
-        return _copy_tensor_array_if_needed(a)
-
-    if isinstance(a, ArrowVariableShapedTensorArray):
-        # Custom path for copying the buffers underlying our variable-shaped tensor
-        # column extension array.
-        return _copy_variable_shaped_tensor_array_if_needed(a)
-
-    if pa.types.is_dictionary(a.type):
-        # Custom path for dictionary arrays.
-        dictionary = _copy_array_if_needed(a.dictionary)
-        indices = _copy_array_if_needed(a.indices)
-        return pa.DictionaryArray.from_arrays(indices, dictionary)
-
+    # Dispatch to handler for array type.
     if pa.types.is_null(a.type):
-        # Return NullArray as is.
-        return a
-
-    buffers = a.buffers()
-    bitmap = buffers[0]
-    buf = buffers[1]
-    # Let remaining buffers be handled downstream.
-    buffers = buffers[2:]
-    children = None
-    if pa.types.is_struct(a.type) or pa.types.is_union(a.type):
-        # Struct and union arrays directly expose children arrays, which are easier
-        # to work with than the raw buffers.
-        children = [a.field(i) for i in range(a.type.num_fields)]
-        buffers = None
-    if pa.types.is_map(a.type):
-        if isinstance(a, pa.lib.ListArray):
-            # Map arrays directly expose the one child array in pyarrow>=7.0.0, which
-            # is easier to work with than the raw buffers.
-            children = [a.values]
-            buffers = None
-        else:
-            # In pyarrow<7.0.0, the child array is not exposed, so we work with the key
-            # and item arrays.
-            if bitmap is not None:
-                bitmap = _copy_bitpacked_buffer_if_needed(bitmap, a.offset, len(a))
-            offset_buf, data_offset, data_length = _copy_offsets_buffer_if_needed(
-                buf, a.type, a.offset, len(a)
-            )
-            offsets = pa.Array.from_buffers(
-                pa.int32(), len(a) + 1, [bitmap, offset_buf]
-            )
-            keys = _copy_array_if_needed(a.keys.slice(data_offset, data_length))
-            items = _copy_array_if_needed(a.items.slice(data_offset, data_length))
-            return pa.MapArray.from_arrays(offsets, keys, items)
-    return _copy_array_buffers_if_needed(
-        bitmap,
-        buf,
-        a.type,
-        a.offset,
-        len(a),
-        a.null_count,
-        buffers=buffers,
-        children=children,
-    )
+        return _null_array_to_array_payload(a)
+    elif _is_primitive(a.type):
+        return _primitive_array_to_array_payload(a)
+    elif _is_binary(a.type):
+        return _binary_array_to_array_payload(a)
+    elif pa.types.is_list(a.type) or pa.types.is_large_list(a.type):
+        return _list_array_to_array_payload(a)
+    elif pa.types.is_fixed_size_list(a.type):
+        return _fixed_size_list_array_to_array_payload(a)
+    elif pa.types.is_struct(a.type):
+        return _struct_array_to_array_payload(a)
+    elif pa.types.is_union(a.type):
+        return _union_array_to_array_payload(a)
+    elif pa.types.is_dictionary(a.type):
+        return _dictionary_array_to_array_payload(a)
+    elif pa.types.is_map(a.type):
+        return _map_array_to_array_payload(a)
+    elif isinstance(a.type, ArrowTensorType) or isinstance(
+        a.type, ArrowVariableShapedTensorType
+    ):
+        return _tensor_array_to_array_payload(a)
+    else:
+        raise ValueError("Unhandled Arrow array type:", a.type)
 
 
-def _copy_array_buffers_if_needed(
-    bitmap: "pyarrow.Buffer",
-    buf: "pyarrow.Buffer",
-    type_: "pyarrow.DataType",
-    offset: int,
-    length: int,
-    null_count: int,
-    *,
-    buffers: Optional[List["pyarrow.Buffer"]] = None,
-    children: Optional[List["pyarrow.Array"]] = None,
-) -> "pyarrow.Array":
-    """
-    Copy provided array buffers, if needed.
-    """
+def _is_primitive(type_: "pyarrow.DataType") -> bool:
+    """Whether the provided Array type is primitive (boolean, numeric, temporal or
+    fixed-size binary)."""
     import pyarrow as pa
 
-    new_buffers = []
-    new_children = None
+    return (
+        pa.types.is_integer(type_)
+        or pa.types.is_floating(type_)
+        or pa.types.is_decimal(type_)
+        or pa.types.is_boolean(type_)
+        or pa.types.is_temporal(type_)
+        or pa.types.is_fixed_size_binary(type_)
+    )
 
-    # Copy bitmap buffer, if needed.
-    if bitmap is not None:
-        bitmap = _copy_bitpacked_buffer_if_needed(bitmap, offset, length)
-    new_buffers.append(bitmap)
 
-    if pa.types.is_list(type_) or pa.types.is_large_list(type_):
-        # Dedicated path for ListArrays. These arrays have a nested set of bitmap and
-        # offset buffers, eventually bottoming out on a data buffer.
-        # However, pyarrow doesn't expose the children arrays in the Python API, so we
-        # have to work directly with the underlying buffers.
-        # Buffer scheme for nested ListArray:
-        # [bitmap, offsets, bitmap, offsets, ..., bitmap, data]
-        assert buffers is not None
-        assert children is None
-        buf, child_offset, child_length = _copy_offsets_buffer_if_needed(
-            buf, type_, offset, length
-        )
-        # Recursively construct child array based on remaining buffers.
-        # Assumption: Every ListArray has 2 buffers (bitmap, offsets) and 1 child.
-        child = _copy_array_buffers_if_needed(
-            bitmap=buffers[0],
-            buf=buffers[1],
-            type_=type_.value_type,
-            offset=child_offset,
-            length=child_length,
-            # Null count not known without the child arrays exposed in the Python API.
-            null_count=-1,
-            buffers=buffers[2:],
-        )
-        new_children = [child]
-        new_buffers.append(buf)
-    elif pa.types.is_fixed_size_list(type_):
-        # Dedicated path for fixed-size lists.
-        # Buffer scheme for FixedSizeListArray:
-        # [bitmap, values_bitmap, values_data, values_subbuffers...]
-        child = _copy_array_buffers_if_needed(
-            bitmap=buf,
-            buf=buffers[0],
-            type_=type_.value_type,
-            offset=type_.list_size * offset,
-            length=type_.list_size * length,
-            # Null count not known.
-            null_count=-1,
-            buffers=buffers[1:],
-        )
-        new_children = [child]
-    elif pa.types.is_map(type_):
-        # Dedicated path for MapArrays.
-        # Buffer scheme for MapArrays:
-        # [bitmap, offsets, child_struct_array_buffers...]
-        buf, child_offset, child_length = _copy_offsets_buffer_if_needed(
-            buf, type_, offset, length
-        )
-        # We copy the children arrays (should be single child struct array).
-        assert len(children) == 1
-        new_children = []
-        for child in children:
-            child = child.slice(child_offset, child_length)
-            new_children.append(_copy_array_if_needed(child))
-        new_buffers.append(buf)
-    elif pa.types.is_struct(type_) or pa.types.is_union(type_):
-        # Dedicated path for StructArrays and UnionArrays.
-        # StructArrays have a top-level bitmap buffer and one or more children arrays.
-        # UnionArrays have a top-level bitmap buffer and type code buffer, and one or
-        # more children arrays.
-        assert children is not None
-        assert buffers is None
-        if pa.types.is_union(type_):
-            # Only sparse unions are supported.
-            assert not _is_dense_union(type_)
-            assert buf is not None
-            buf = _copy_buffer_if_needed(buf, pa.int8(), offset, length)
-            new_buffers.append(buf)
-        else:
-            assert buf is None
-        # We copy the children arrays.
-        new_children = []
-        for child in children:
-            new_children.append(_copy_array_if_needed(child))
-    elif (
+def _is_binary(type_: "pyarrow.DataType") -> bool:
+    """Whether the provided Array type is a variable-sized binary type."""
+    import pyarrow as pa
+
+    return (
         pa.types.is_string(type_)
         or pa.types.is_large_string(type_)
         or pa.types.is_binary(type_)
         or pa.types.is_large_binary(type_)
-    ):
-        # Dedicated path for StringArrays.
-        assert len(buffers) == 1
-        # StringArray buffer scheme: [bitmap, value_offsets, data]
-        offset_buf, data_offset, data_length = _copy_offsets_buffer_if_needed(
-            buf, type_, offset, length
-        )
-        data_buf = _copy_buffer_if_needed(buffers[0], None, data_offset, data_length)
-        new_buffers.append(offset_buf)
-        new_buffers.append(data_buf)
+    )
+
+
+def _null_array_to_array_payload(a: "pyarrow.NullArray") -> "PicklableArrayPayload":
+    """Serialize null array to PicklableArrayPayload."""
+    # Buffer scheme: [None]
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[None],  # Single null buffer is expected.
+        null_count=a.null_count,
+        offset=0,
+        children=[],
+    )
+
+
+def _primitive_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize primitive (numeric, temporal, boolean) arrays to
+    PicklableArrayPayload.
+    """
+    assert _is_primitive(a.type), a.type
+    # Buffer scheme: [bitmap, data]
+    buffers = a.buffers()
+    assert len(buffers) == 2, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    bitmap_buf = buffers[0]
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(bitmap_buf, a.offset, len(a))
     else:
-        # If not a nested Array, buf is a plain data buffer.
-        # Copy data buffer, if needed.
-        if buf is not None:
-            buf = _copy_buffer_if_needed(buf, type_, offset, length)
-        new_buffers.append(buf)
-    return pa.Array.from_buffers(
-        type_, length, buffers=new_buffers, null_count=null_count, children=new_children
+        bitmap_buf = None
+
+    # Copy data buffer, if needed.
+    data_buf = buffers[1]
+    if data_buf is not None:
+        data_buf = _copy_buffer_if_needed(buffers[1], a.type, a.offset, len(a))
+
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf, data_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=[],
+    )
+
+
+def _binary_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize binary (variable-sized binary, string) arrays to
+    PicklableArrayPayload.
+    """
+    assert _is_binary(a.type), a.type
+    # Buffer scheme: [bitmap, value_offsets, data]
+    buffers = a.buffers()
+    assert len(buffers) == 3, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Copy offset buffer, if needed.
+    offset_buf = buffers[1]
+    offset_buf, data_offset, data_length = _copy_offsets_buffer_if_needed(
+        offset_buf, a.type, a.offset, len(a)
+    )
+    data_buf = buffers[2]
+    data_buf = _copy_buffer_if_needed(data_buf, None, data_offset, data_length)
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf, offset_buf, data_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=[],
+    )
+
+
+def _list_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize list (regular and large) arrays to PicklableArrayPayload."""
+    # Dedicated path for ListArrays. These arrays have a nested set of bitmap and
+    # offset buffers, eventually bottoming out on a data buffer.
+    # Buffer scheme:
+    # [bitmap, offsets, bitmap, offsets, ..., bitmap, data]
+    buffers = a.buffers()
+    assert len(buffers) > 1, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Copy offset buffer, if needed.
+    offset_buf = buffers[1]
+    offset_buf, child_offset, child_length = _copy_offsets_buffer_if_needed(
+        offset_buf, a.type, a.offset, len(a)
+    )
+
+    # Propagate slice to child.
+    child = a.values.slice(child_offset, child_length)
+
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf, offset_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=[_array_to_array_payload(child)],
+    )
+
+
+def _fixed_size_list_array_to_array_payload(
+    a: "pyarrow.FixedSizeListArray",
+) -> "PicklableArrayPayload":
+    """Serialize fixed size list arrays to PicklableArrayPayload."""
+    # Dedicated path for fixed-size lists.
+    # Buffer scheme:
+    # [bitmap, values_bitmap, values_data, values_subbuffers...]
+    buffers = a.buffers()
+    assert len(buffers) >= 1, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Propagate slice to child.
+    child_offset = a.type.list_size * a.offset
+    child_length = a.type.list_size * len(a)
+    child = a.values.slice(child_offset, child_length)
+
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=[_array_to_array_payload(child)],
+    )
+
+
+def _struct_array_to_array_payload(a: "pyarrow.StructArray") -> "PicklableArrayPayload":
+    """Serialize struct arrays to PicklableArrayPayload."""
+    # Dedicated path for StructArrays.
+    # StructArrays have a top-level bitmap buffer and one or more children arrays.
+    # Buffer scheme: [bitmap, None, child_bitmap, child_data, ...]
+    buffers = a.buffers()
+    assert len(buffers) >= 1, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Get field children payload.
+    # Offsets and truncations are already propagated to the field arrays, so we can
+    # serialize them as-is.
+    children = [_array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)]
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=children,
+    )
+
+
+def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPayload":
+    """Serialize union arrays to PicklableArrayPayload."""
+    import pyarrow as pa
+
+    # Dedicated path for UnionArrays.
+    # UnionArrays have a top-level bitmap buffer and type code buffer, and one or
+    # more children arrays.
+    # Buffer scheme: [None, typecodes, child_bitmap, child_data, ...]
+    assert not _is_dense_union(a.type)
+    buffers = a.buffers()
+    assert len(buffers) > 1, len(buffers)
+
+    bitmap_buf = buffers[0]
+    assert bitmap_buf is None, bitmap_buf
+
+    # Copy type code buffer, if needed.
+    type_code_buf = buffers[1]
+    type_code_buf = _copy_buffer_if_needed(type_code_buf, pa.int8(), a.offset, len(a))
+
+    # Get field children payload.
+    # Offsets and truncations are already propagated to the field arrays, so we can
+    # serialize them as-is.
+    children = [_array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)]
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf, type_code_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=children,
+    )
+
+
+def _dictionary_array_to_array_payload(
+    a: "pyarrow.DictionaryArray",
+) -> "PicklableArrayPayload":
+    """Serialize dictionary arrays to PicklableArrayPayload."""
+    # Dedicated path for DictionaryArrays.
+    # Buffer scheme: [indices_bitmap, indices_data] (dictionary stored separately)
+    indices_payload = _array_to_array_payload(a.indices)
+    dictionary_payload = _array_to_array_payload(a.dictionary)
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[],
+        null_count=a.null_count,
+        offset=0,
+        children=[indices_payload, dictionary_payload],
+    )
+
+
+def _map_array_to_array_payload(a: "pyarrow.MapArray") -> "PicklableArrayPayload":
+    """Serialize map arrays to PicklableArrayPayload."""
+    import pyarrow as pa
+
+    # Dedicated path for MapArrays.
+    # Buffer scheme: [bitmap, offsets, child_struct_array_buffers, ...]
+    buffers = a.buffers()
+    assert len(buffers) > 0, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    new_buffers = [bitmap_buf]
+
+    # Copy offsets buffer, if needed.
+    offset_buf = buffers[1]
+    offset_buf, data_offset, data_length = _copy_offsets_buffer_if_needed(
+        offset_buf, a.type, a.offset, len(a)
+    )
+
+    if isinstance(a, pa.lib.ListArray):
+        # Map arrays directly expose the one child struct array in pyarrow>=7.0.0, which
+        # is easier to work with than the raw buffers.
+        new_buffers.append(offset_buf)
+        children = [_array_to_array_payload(a.values.slice(data_offset, data_length))]
+    else:
+        # In pyarrow<7.0.0, the child struct array is not exposed, so we work with the
+        # key and item arrays.
+        buffers = a.buffers()
+        assert len(buffers) > 2, len(buffers)
+        # Reconstruct offsets array.
+        offsets = pa.Array.from_buffers(
+            pa.int32(), len(a) + 1, [bitmap_buf, offset_buf]
+        )
+        # Propagate slice to keys.
+        keys = a.keys.slice(data_offset, data_length)
+        # Propagate slice to items.
+        items = a.items.slice(data_offset, data_length)
+        children = [
+            _array_to_array_payload(offsets),
+            _array_to_array_payload(keys),
+            _array_to_array_payload(items),
+        ]
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=new_buffers,
+        null_count=a.null_count,
+        offset=0,
+        children=children,
+    )
+
+
+def _tensor_array_to_array_payload(a: "ArrowTensorArray") -> "PicklableArrayPayload":
+    """Serialize tensor arrays to PicklableArrayPayload."""
+    # Offset is propagated to storage array, and the storage array items align with the
+    # tensor elements, so we only need to do the straightforward creation of the storage
+    # array payload.
+    storage_payload = _array_to_array_payload(a.storage)
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[],
+        null_count=a.null_count,
+        offset=0,
+        children=[storage_payload],
     )
 
 
@@ -530,42 +770,6 @@ def _align_bit_offset(
     bytes_as_int >>= bit_offset
     bytes_ = bytes_as_int.to_bytes(byte_length, sys.byteorder)
     return pa.py_buffer(bytes_)
-
-
-def _copy_tensor_array_if_needed(a: "ArrowTensorArray") -> "ArrowTensorArray":
-    """Copy tensor array if it's a zero-copy slice. This is to circumvent an Arrow
-    serialization bug, where a zero-copy slice serializes the entire underlying array
-    buffer.
-    """
-    import pyarrow as pa
-    from ray.data.extensions import ArrowTensorType
-
-    # Offset is propagated to storage array, and the storage array items align with the
-    # tensor elements, so we only need to do the straightforward copy of the storage
-    # array.
-    storage = _copy_array_if_needed(a.storage)
-    type_ = ArrowTensorType(a.type.shape, storage.type.value_type)
-    return pa.ExtensionArray.from_storage(type_, storage)
-
-
-def _copy_variable_shaped_tensor_array_if_needed(
-    a: "ArrowVariableShapedTensorArray",
-) -> "ArrowVariableShapedTensorArray":
-    """Copy variable-shaped tensor array if it's a zero-copy slice. This is to
-    circumvent an Arrow serialization bug, where a zero-copy slice serializes the entire
-    underlying array buffer.
-    """
-    import pyarrow as pa
-    from ray.data.extensions import ArrowVariableShapedTensorType
-
-    # Offset is propagated to storage struct array, and both the data and shape fields
-    # items align with tensor elements, so we only need to do the straightforward copy
-    # of the storage array.
-    storage = _copy_array_if_needed(a.storage)
-    type_ = ArrowVariableShapedTensorType(
-        storage.field("data").type.value_type, a.type.ndim
-    )
-    return pa.ExtensionArray.from_storage(type_, storage)
 
 
 def _arrow_table_ipc_reduce(table: "pyarrow.Table"):
