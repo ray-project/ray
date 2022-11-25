@@ -6,6 +6,7 @@ from typing import Dict, Any
 import chess as ch
 import numpy as np
 
+
 class MultiAgentChess(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
     See: https://github.com/Farama-Foundation/PettingZoo
