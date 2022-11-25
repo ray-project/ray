@@ -48,7 +48,6 @@ class LeelaChessZeroDefaultCallbacks(DefaultCallbacks):
         episode.user_data["current_state"].append(state)
 
 
-
 class LeelaChessZeroConfig(AlgorithmConfig):
     """Defines a configuration class from which a LeelaChessZero Algorithm can be built.
 

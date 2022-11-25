@@ -1,9 +1,9 @@
-
 from pettingzoo import AECEnv
 from pettingzoo.classic import chess_v5
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from typing import Dict, Any
+
 
 class MultiAgentChess(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
@@ -114,7 +114,7 @@ class MultiAgentChess(MultiAgentEnv):
 
     def reset(self):
         self.env.reset()
-        #if self.config["random_start"] > 0:
+        # if self.config["random_start"] > 0:
         #    self.env.random_start(self.config["random_start"])
         return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
 
