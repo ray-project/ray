@@ -111,10 +111,10 @@ class PettingChessEnv(AECEnv):
             return self._was_done_step(action)
         current_agent = self.agent_selection
         current_index = self.agents.index(current_agent)
-        ### This current index mirrors the move
+        # This current index mirrors the move
         try:
             chosen_move = chess_utils.action_to_move(self.board, action, current_index)
-        except:
+        except Exception:
             chosen_move = chess_utils.action_to_move(
                 self.board, action["player_" + str(current_index)], current_index
             )
@@ -243,7 +243,7 @@ class MultiAgentChess(MultiAgentEnv):
         }
     """
 
-    def __init__(self, config={"random_start": 4}, env=PettingChessEnv()):
+    def __init__(self, config:dict={"random_start": 4}, env:PettingChessEnv=PettingChessEnv()):
         super().__init__()
         self.env = env
         env.reset()

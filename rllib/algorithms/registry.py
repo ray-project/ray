@@ -217,9 +217,9 @@ def _import_td3():
 
 
 def _import_leela_chess_zero():
-    import ray.rllib.algorithms.leela_chess_zero as leela_chess_zero
+    import ray.rllib.algorithms.leela_chess_zero as lc0
 
-    return leela_chess_zero.LeelaChessZero, leela_chess_zero.LeelaChessZeroConfig().to_dict()
+    return lc0.LeelaChessZero, lc0.LeelaChessZeroConfig().to_dict()
 
 
 ALGORITHMS = {

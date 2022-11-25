@@ -14,7 +14,9 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
-from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_policy import LeelaChessZeroPolicy
+from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_policy import (
+    LeelaChessZeroPolicy,
+)
 from ray.rllib.algorithms.leela_chess_zero.mcts import MCTS
 
 torch, nn = try_import_torch()
@@ -164,7 +166,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def callbacks(
-        self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided
+        self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided,**kwargs
     ) -> "LeelaChessZeroConfig":
         super().callbacks(**kwargs)
 
@@ -345,4 +347,3 @@ class LeelaChessZero(Algorithm):
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return LeelaChessZeroPolicyWrapperClass
-
