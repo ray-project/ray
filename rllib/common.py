@@ -36,7 +36,7 @@ def get_file_type(config_file: str) -> SupportedFileType:
         raise ValueError(
             "Unknown file type for config "
             "file: {}. Supported extensions: .py, "
-            "yml, yaml.".format(config_file)
+            ".yml, .yaml".format(config_file)
         )
     return file_type
 
