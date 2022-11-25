@@ -15,7 +15,7 @@ def _result_or_cancel(fut, timeout=None):
 class RayExecutor(Executor):
 
     def __init__(self, **kwargs):
-        ray.init(ignore_reinit_error=True)
+        ray.init(ignore_reinit_error=True, **kwargs)
 
     @staticmethod
     @ray.remote
