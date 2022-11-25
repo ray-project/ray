@@ -25,7 +25,7 @@ class UsageStatsClientTest : public ::testing::Test {
   void SetUp() override {
     config_.redis_address = "";
     config_.redis_port = 0;
-    config_.grpc_server_port = 6379;
+    config_.grpc_server_port = 0;
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
@@ -51,8 +51,7 @@ class UsageStatsClientTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:" +
-                                  std::to_string(config_.grpc_server_port));
+    gcs::GcsClientOptions options("127.0.0.1:" + std::to_string(gcs_server_->GetPort()));
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
@@ -83,7 +82,7 @@ class UsageStatsClientTest : public ::testing::Test {
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
   gcs::UsageStatsClient usage_stats_client(
-      "127.0.0.1:" + std::to_string(config_.grpc_server_port), *client_io_service_);
+      "127.0.0.1:" + std::to_string(gcs_server_->GetPort()), *client_io_service_);
   usage_stats_client.RecordExtraUsageTag("key1", "value1");
   ASSERT_TRUE(WaitForCondition(
       [this]() {
