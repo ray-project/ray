@@ -18,6 +18,12 @@ def test_remote_function_runs_on_local_instance():
         result = ex.submit(lambda x: len([i for i in range(x)]), 100).result()
     assert result == 100
 
+def test_remote_function_runs_on_local_instance_with_map():
+    with RayExecutor() as ex:
+        futures_iter = ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
+    for result in futures_iter:
+        assert result == 100
+
 @ray.remote
 class ActorTest0:
     def __init__(self, name):
