@@ -1,6 +1,16 @@
 import ray
-from concurrent.futures import Executor, ProcessPoolExecutor
+import time
+from concurrent.futures import Executor
 
+def _result_or_cancel(fut, timeout=None):
+    try:
+        try:
+            return fut.result(timeout)
+        finally:
+            fut.cancel()
+    finally:
+        # Break a reference cycle with the exception in self._exception
+        del fut
 
 class RayExecutor(Executor):
 
@@ -21,6 +31,29 @@ class RayExecutor(Executor):
 
     def submit_actor_function(self, fn, *args, **kwargs):
         return self.__actor_fn(fn, *args, **kwargs).future()
+
+    def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
+        if timeout is not None:
+            end_time = timeout + time.monotonic()
+
+        fs = [self.submit_actor_function(fn, *args) for args in zip(*iterables)]
+
+        # Yield must be hidden in closure so that the futures are submitted
+        # before the first iterator value is required.
+        def result_iterator():
+            try:
+                # reverse to keep finishing order
+                fs.reverse()
+                while fs:
+                    # Careful not to keep a reference to the popped future
+                    if timeout is None:
+                        yield _result_or_cancel(fs.pop())
+                    else:
+                        yield _result_or_cancel(fs.pop(), end_time - time.monotonic())
+            finally:
+                for future in fs:
+                    future.cancel()
+        return result_iterator()
 
     # def map(self, func, *iterables, timeout=None, chunksize=1):
     #     self.timeout = timeout

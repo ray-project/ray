@@ -39,6 +39,13 @@ def test_remote_actor_on_local_instance():
     result = name.result()
     assert result == "A-Actor-0"
 
+def test_remote_actor_runs_on_local_instance_with_map():
+    a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
+    with RayExecutor() as ex:
+        futures_iter = ex.map_actor_function(a.actor_function, [0, 0, 0])
+    for result in futures_iter:
+        assert result == "A-Actor-0"
+
 @ray.remote
 class ActorTest1:
     def __init__(self, name):
