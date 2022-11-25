@@ -1,8 +1,8 @@
 import unittest
 
 import ray
-import ray.rllib.algorithms.leela_zero.leela_zero as lz
-from ray.rllib.algorithms.leela_zero.leela_zero_model import LeelaZeroModel
+import ray.rllib.algorithms.leela_chess_zero.leela_chess_zero as lz
+from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_model import LeelaChessZeroModel
 from ray.rllib.examples.env.pettingzoo_chess import MultiAgentChess
 from ray.rllib.utils.test_utils import (
     check_train_results,
@@ -20,13 +20,13 @@ class TestAlphaZero(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_leela_zero_compilation(self):
-        """Test whether LeelaZero can be built with PyTorch frameworks."""
+    def test_leela_chess_zero_compilation(self):
+        """Test whether LeelaChessZero can be built with PyTorch frameworks."""
         register_env("ChessMultiAgent", lambda config: MultiAgentChess())
         config = (
-            lz.LeelaZeroConfig()
+            lz.LeelaChessZeroConfig()
             .environment(env="ChessMultiAgent")
-            .training(model={"custom_model": LeelaZeroModel})
+            .training(model={"custom_model": LeelaChessZeroModel})
             .resources(num_gpus=0)
         )
         num_iterations = 1
