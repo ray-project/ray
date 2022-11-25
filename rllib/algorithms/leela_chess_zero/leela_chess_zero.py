@@ -47,20 +47,6 @@ class LeelaChessZeroDefaultCallbacks(DefaultCallbacks):
         state = env.get_state()
         episode.user_data["current_state"].append(state)
 
-    @override(DefaultCallbacks)
-    def on_episode_end(self, worker, base_env, policies, episode, **kwargs):
-        env = base_env.get_sub_environments()[0]
-        if env.env.board.outcome():
-            winner = env.env.board.outcome().winner
-        else:
-            winner = "Draw"
-        logging.info(
-            "Game Over:"
-            + str(winner)
-            + "Reward:"
-            + str(policies)
-            + str(episode.agent_rewards)
-        )
 
 
 class LeelaChessZeroConfig(AlgorithmConfig):
