@@ -17,6 +17,8 @@ def _result_or_cancel(fut, timeout=None):
 
 class RayExecutor(Executor):
 
+    _shutdown_lock = False
+
     def __init__(self, **kwargs):
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
@@ -30,15 +32,19 @@ class RayExecutor(Executor):
         return fn.remote(*args, **kwargs)
 
     def submit(self, fn, /, *args, **kwargs):
+        self._check_shutdown_lock()
         return self.__remote_fn.remote(fn, *args, **kwargs).future()
 
     def submit_actor_function(self, fn, *args, **kwargs):
+        self._check_shutdown_lock()
         return self.__actor_fn(fn, *args, **kwargs).future()
 
     def map(self, fn, *iterables, timeout=None, chunksize=1):
+        self._check_shutdown_lock()
         return self._map(self.submit, fn, *iterables, timeout=timeout, chunksize=chunksize)
 
     def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
+        self._check_shutdown_lock()
         return self._map(self.submit_actor_function, fn, *iterables, timeout=timeout, chunksize=chunksize)
 
     @staticmethod
@@ -69,6 +75,25 @@ class RayExecutor(Executor):
         return result_iterator()
 
     def shutdown(self, wait=True, *, cancel_futures=False):
+        """Clean-up the resources associated with the Executor.
+
+        It is safe to call this method several times. Otherwise, no other
+        methods can be called after this one.
+
+        Args:
+            wait: If True then shutdown will not return until all running
+                futures have finished executing and the resources used by the
+                executor have been reclaimed.
+            cancel_futures: If True then shutdown will cancel all pending
+                futures. Futures that are completed or running will not be
+                cancelled.
+        """
+        self._shutdown_lock = True
         ray.shutdown()
+
+    def _check_shutdown_lock(self):
+        if self._shutdown_lock:
+            raise RuntimeError('New task submitted after shutdown() was called')
+
 
 
