@@ -177,8 +177,7 @@ def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
 
 
-@PublicAPI(stability="alpha")
-def init_ray_cluster(
+def _init_ray_cluster(
     num_worker_nodes=None,
     total_cpus=None,
     total_gpus=None,
@@ -192,48 +191,13 @@ def init_ray_cluster(
     safe_mode=True,
 ):
     """
-    Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
-    application's driver side node.
-    After creating the head node, a background spark job is created that
-    generates an instance of `RayClusterOnSpark` that contains configuration for the ray cluster
-    that will run on the Spark cluster's worker nodes.
+    This function is used in testing, it has the same arguments with
+    `ray.util.spark.init_ray_cluster` API, but it returns a `RayClusterOnSpark` instance instead.
+
     The returned instance can be used to connect to, disconnect from and shutdown the ray cluster.
     This instance can also be used as a context manager (used by encapsulating operations within
     `with init_ray_cluster(...):`). Upon entering the managed scope, the ray cluster is initiated
     and connected to. When exiting the scope, the ray cluster is disconnected and shut down.
-
-    Args
-        num_worker_nodes: The number of spark worker nodes that the spark job will be submitted to.
-            This argument represents how many concurrent spark tasks will be available in the
-            creation of the ray cluster. The ray cluster's total available resources
-            (memory, CPU and/or GPU)
-            is equal to the quantity of resources allocated within these spark tasks.
-            Specifying the `num_worker_nodes` as `-1` represents a ray cluster configuration that
-            will use all available spark tasks slots (and resources allocated to the spark
-            application) on the spark cluster.
-            To create a spark cluster that is intended to be used exclusively as a shared ray
-            cluster, it is recommended to set this argument to `-1`.
-        total_cpus: The total cpu core count for the ray cluster to utilize.
-        total_gpus: The total gpu count for the ray cluster to utilize.
-        total_heap_memory_bytes: The total amount of heap memory (in bytes) for the ray cluster
-            to utilize.
-        total_object_store_memory_bytes: The total amount of object store memory (in bytes) for
-            the ray cluster to utilize.
-        heap_to_object_store_memory_ratio: The ratio of per-ray worker node available memory to the
-            size of the `/dev/shm` capacity per worker on the spark worker. Without modification,
-            this ratio is 0.4.
-        head_options: A dict representing Ray head node options.
-        worker_options: A dict representing Ray worker node options.
-        ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster
-            will create a subdirectory "ray-temp-{head_port}_{random_suffix}" beneath this path.
-        ray_log_root_dir: A local disk path to store "ray start" script logs. The created cluster
-            will create a subdirectory "ray-logs-{head_port}_{random_suffix}" beneath this path.
-        safe_mode: Boolean flag to fast-fail initialization of the ray cluster if the available
-            spark cluster does not have sufficient resources to fulfill the resource allocation
-            for memory, cpu and gpu. When set to true, if the requested resources are
-            not available for minimum recommended functionality, an exception will be raised that
-            details the inadequate spark cluster configuration settings. If overridden as `False`,
-            a warning is raised.
     """
     from pyspark.util import inheritable_thread_target
 
@@ -623,3 +587,98 @@ def init_ray_cluster(
         # calling `ray_cluster_handler.shutdown()` to kill them and clean status.
         ray_cluster_handler.shutdown()
         raise
+
+
+_active_ray_cluster = None
+
+
+@PublicAPI(stability="alpha")
+def init_ray_cluster(
+    num_worker_nodes=None,
+    total_cpus=None,
+    total_gpus=None,
+    total_heap_memory_bytes=None,
+    total_object_store_memory_bytes=None,
+    heap_to_object_store_memory_ratio=None,
+    head_options=None,
+    worker_options=None,
+    ray_temp_root_dir="/tmp",
+    ray_log_root_dir="/tmp",
+    safe_mode=True,
+):
+    """
+    Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
+    application's driver side node.
+    After creating the head node, a background spark job is created that
+    generates an instance of `RayClusterOnSpark` that contains configuration for the ray cluster
+    that will run on the Spark cluster's worker nodes.
+    After a ray cluster initialized, your python process automatically connect to the ray cluster,
+    you can call `ray.util.spark.shutdown_ray_cluster` to shut down the ray cluster.
+    Note: If the active ray cluster haven't shut down, you cannot create a new ray cluster.
+
+    Args
+        num_worker_nodes: The number of spark worker nodes that the spark job will be submitted to.
+            This argument represents how many concurrent spark tasks will be available in the
+            creation of the ray cluster. The ray cluster's total available resources
+            (memory, CPU and/or GPU)
+            is equal to the quantity of resources allocated within these spark tasks.
+            Specifying the `num_worker_nodes` as `-1` represents a ray cluster configuration that
+            will use all available spark tasks slots (and resources allocated to the spark
+            application) on the spark cluster.
+            To create a spark cluster that is intended to be used exclusively as a shared ray
+            cluster, it is recommended to set this argument to `-1`.
+        total_cpus: The total cpu core count for the ray cluster to utilize.
+        total_gpus: The total gpu count for the ray cluster to utilize.
+        total_heap_memory_bytes: The total amount of heap memory (in bytes) for the ray cluster
+            to utilize.
+        total_object_store_memory_bytes: The total amount of object store memory (in bytes) for
+            the ray cluster to utilize.
+        heap_to_object_store_memory_ratio: The ratio of per-ray worker node available memory to the
+            size of the `/dev/shm` capacity per worker on the spark worker. Without modification,
+            this ratio is 0.4.
+        head_options: A dict representing Ray head node options.
+        worker_options: A dict representing Ray worker node options.
+        ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster
+            will create a subdirectory "ray-temp-{head_port}_{random_suffix}" beneath this path.
+        ray_log_root_dir: A local disk path to store "ray start" script logs. The created cluster
+            will create a subdirectory "ray-logs-{head_port}_{random_suffix}" beneath this path.
+        safe_mode: Boolean flag to fast-fail initialization of the ray cluster if the available
+            spark cluster does not have sufficient resources to fulfill the resource allocation
+            for memory, cpu and gpu. When set to true, if the requested resources are
+            not available for minimum recommended functionality, an exception will be raised that
+            details the inadequate spark cluster configuration settings. If overridden as `False`,
+            a warning is raised.
+    """
+    global _active_ray_cluster
+    if _active_ray_cluster is not None:
+        raise RuntimeError(
+            "Current active ray cluster on spark haven't shut down. You cannot create a new ray "
+            "cluster."
+        )
+    _active_ray_cluster = _init_ray_cluster(
+        num_worker_nodes=num_worker_nodes,
+        total_cpus=total_cpus,
+        total_gpus=total_gpus,
+        total_heap_memory_bytes=total_heap_memory_bytes,
+        total_object_store_memory_bytes=total_object_store_memory_bytes,
+        heap_to_object_store_memory_ratio=heap_to_object_store_memory_ratio,
+        head_options=head_options,
+        worker_options=worker_options,
+        ray_temp_root_dir=ray_temp_root_dir,
+        ray_log_root_dir=ray_log_root_dir,
+        safe_mode=safe_mode,
+    )
+    _active_ray_cluster.connect()
+
+
+@PublicAPI(stability="alpha")
+def shutdown_ray_cluster():
+    """
+    Shut down the active ray cluster.
+    """
+    global _active_ray_cluster
+    if _active_ray_cluster is None:
+        raise RuntimeError("No active ray cluster to shut down.")
+
+    _active_ray_cluster.shutdown()
+    _active_ray_cluster = None
