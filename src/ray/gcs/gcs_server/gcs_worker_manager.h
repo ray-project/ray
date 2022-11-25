@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -26,11 +28,8 @@ namespace gcs {
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
   explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<GcsPublisher> &gcs_publisher,
-                            std::shared_ptr<InternalKVInterface> &kv_instance)
-      : gcs_table_storage_(gcs_table_storage),
-        gcs_publisher_(gcs_publisher),
-        kv_instance_(kv_instance) {}
+                            std::shared_ptr<GcsPublisher> &gcs_publisher)
+      : gcs_table_storage_(gcs_table_storage), gcs_publisher_(gcs_publisher) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -51,10 +50,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<WorkerTableData>)> listener);
 
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
+  }
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
-  std::shared_ptr<InternalKVInterface> kv_instance_;
+  UsageStatsClient *usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
 
