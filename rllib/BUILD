@@ -253,7 +253,7 @@ py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-   size = "medium",
+   size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
    data = [
@@ -281,7 +281,7 @@ py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
