@@ -112,7 +112,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         policy.target_q_func_vars = policy.target_model.variables()
 
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
-    dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+    dones = tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
     rewards = train_batch[SampleBatch.REWARDS]
     weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
 

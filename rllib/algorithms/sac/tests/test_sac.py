@@ -563,7 +563,7 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
-                SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.TERMINATEDS: np.random.choice([True, False], size=(batch_size,)),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.random.random(size=(batch_size,)),
                 "batch_indexes": [0] * batch_size,
@@ -696,7 +696,7 @@ class TestSAC(unittest.TestCase):
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
         q_tp1_best = np.squeeze(q_tp1, axis=-1)
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         if fw == "torch":
             dones = dones.float().numpy()

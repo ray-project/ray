@@ -125,7 +125,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     )
 
     actions = train_batch[SampleBatch.ACTIONS].long()
-    dones = train_batch[SampleBatch.DONES].float()
+    dones = train_batch[SampleBatch.TERMINATEDS].float()
     rewards = train_batch[SampleBatch.REWARDS]
     weights = train_batch[PRIO_WEIGHTS]
 

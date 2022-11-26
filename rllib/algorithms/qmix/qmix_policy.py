@@ -356,7 +356,7 @@ class QMixTorchPolicy(TorchPolicy):
             action_mask,
             next_action_mask,
             samples[SampleBatch.ACTIONS],
-            samples[SampleBatch.DONES],
+            samples[SampleBatch.TERMINATEDS],
             obs_batch,
             next_obs_batch,
         ]

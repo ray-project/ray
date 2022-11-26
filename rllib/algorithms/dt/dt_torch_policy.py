@@ -134,7 +134,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         split using the done flag to avoid duplicate trajectories.
         """
         ep_len = sample_batch.env_steps()
-        sample_batch[SampleBatch.DONES] = np.array([False] * (ep_len - 1) + [True])
+        sample_batch[SampleBatch.TERMINATEDS] = np.array([False] * (ep_len - 1) + [True])
         return sample_batch
 
     @PublicAPI

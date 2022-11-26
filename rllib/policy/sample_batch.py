@@ -473,6 +473,11 @@ class SampleBatch(dict):
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
+        assert (
+            key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES]
+        ), f"`SampleBatch.split_by_episode(key={key})` invalid! " \
+           f"Must be [None|'dones'|'eps_id']."
+
         def slice_by_eps_id():
             slices = []
             # Produce a new slice whenever we find a new episode ID.
@@ -488,11 +493,17 @@ class SampleBatch(dict):
             slices.append(self[offset : self.count])
             return slices
 
-        def slice_by_dones():
+        def slice_by_terminateds_or_truncateds():
             slices = []
             offset = 0
             for i in range(self.count):
-                if self[SampleBatch.DONES][i]:
+                if (
+                    self[SampleBatch.TERMINATEDS][i]
+                    or (
+                        SampleBatch.TRUNCATEDS in self
+                        and self[SampleBatch.TRUNCATEDS][i]
+                    )
+                ):
                     # Since self[i] is the last timestep of the episode,
                     # append it to the batch, then set offset to the start
                     # of the next batch
@@ -505,7 +516,7 @@ class SampleBatch(dict):
 
         key_to_method = {
             SampleBatch.EPS_ID: slice_by_eps_id,
-            SampleBatch.DONES: slice_by_dones,
+            SampleBatch.DONES: slice_by_terminateds_or_truncateds,
         }
 
         # If key not specified, default to this order.
@@ -820,8 +831,9 @@ class SampleBatch(dict):
         # the old meaning of DONES.
         if key == SampleBatch.DONES:
             ret = self[SampleBatch.TERMINATEDS]
-            if SampleBatch.TRUNCATEDS in self:
-                return ret + self[SampleBatch.TRUNCATEDS]
+            # TODO: Figure out, whether this should include TRUNCATEDS for now.
+            # if SampleBatch.TRUNCATEDS in self:
+            #    ret += self[SampleBatch.TRUNCATEDS]
             return ret
         # Backward compatibility for when "input-dicts" were used.
         elif key == "is_training":

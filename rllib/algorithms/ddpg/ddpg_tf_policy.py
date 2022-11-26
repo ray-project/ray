@@ -320,7 +320,7 @@ def get_ddpg_tf_policy(
 
             q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
             q_tp1_best_masked = (
-                1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+                1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
             ) * q_tp1_best
 
             # Compute RHS of bellman equation.
@@ -367,7 +367,8 @@ def get_ddpg_tf_policy(
                 # Expand input_dict in case custom_loss' need them.
                 input_dict[SampleBatch.ACTIONS] = train_batch[SampleBatch.ACTIONS]
                 input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
-                input_dict[SampleBatch.DONES] = train_batch[SampleBatch.DONES]
+                input_dict[SampleBatch.TERMINATEDS] = train_batch[SampleBatch.TERMINATEDS]
+                input_dict[SampleBatch.TRUNCATEDS] = train_batch[SampleBatch.TRUNCATEDS]
                 input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
                 if log_once("ddpg_custom_loss"):
                     logger.warning(

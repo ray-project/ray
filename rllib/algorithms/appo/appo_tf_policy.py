@@ -150,7 +150,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 )
 
             actions = train_batch[SampleBatch.ACTIONS]
-            dones = train_batch[SampleBatch.DONES]
+            dones = train_batch[SampleBatch.TERMINATEDS]
             rewards = train_batch[SampleBatch.REWARDS]
             behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 

@@ -116,7 +116,7 @@ class TestPG(unittest.TestCase):
                 ),
                 SampleBatch.ACTIONS: np.array([0, 1, 1]),
                 SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
-                SampleBatch.DONES: np.array([False, False, True]),
+                SampleBatch.TERMINATEDS: np.array([False, False, True]),
                 SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
                 SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
             }

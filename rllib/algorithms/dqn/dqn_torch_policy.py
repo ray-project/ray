@@ -350,7 +350,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_probs_tp1_best,
         train_batch[PRIO_WEIGHTS],
         train_batch[SampleBatch.REWARDS],
-        train_batch[SampleBatch.DONES].float(),
+        train_batch[SampleBatch.TERMINATEDS].float(),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],

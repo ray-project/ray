@@ -29,7 +29,7 @@ class MADDPGPostprocessing:
     ):
         # FIXME: Get done from info is required since agentwise done is not
         #  supported now.
-        sample_batch[SampleBatch.DONES] = self.get_done_from_info(
+        sample_batch[SampleBatch.TERMINATEDS] = self.get_done_from_info(
             sample_batch[SampleBatch.INFOS]
         )
 
