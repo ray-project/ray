@@ -127,13 +127,13 @@ class VectorizedMockEnv(VectorEnv):
             [],
         )
         for i in range(len(self.envs)):
-            obs, rew, done, truncated, info = self.envs[i].step(actions[i])
+            obs, rew, terminated, truncated, info = self.envs[i].step(actions[i])
             obs_batch.append(obs)
             rew_batch.append(rew)
-            done_batch.append(done)
-            truncated_batch.append(done)
+            terminated_batch.append(terminated)
+            truncated_batch.append(truncated)
             info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
+        return obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):
@@ -183,7 +183,7 @@ class MockVectorEnv(VectorEnv):
         self.ts += 1
         # Apply all actions sequentially to the same env.
         # Whether this would make a lot of sense is debatable.
-        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+        obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch = (
             [],
             [],
             [],
@@ -191,25 +191,25 @@ class MockVectorEnv(VectorEnv):
             [],
         )
         for i in range(self.num_envs):
-            obs, rew, done, truncated, info = self.env.step(actions[i])
+            obs, rew, terminated, truncated, info = self.env.step(actions[i])
             # Artificially terminate once time step limit has been reached.
             # Note: Also terminate, when underlying CartPole is terminated.
             if self.ts >= self.episode_len:
                 done = True
             obs_batch.append(obs)
             rew_batch.append(rew)
-            done_batch.append(done)
+            terminated_batch.append(terminated)
             truncated_batch.append(truncated)
             info_batch.append(info)
-            if done:
+            if terminated or truncated:
                 remaining = self.num_envs - (i + 1)
                 obs_batch.extend([obs for _ in range(remaining)])
                 rew_batch.extend([rew for _ in range(remaining)])
-                done_batch.extend([done for _ in range(remaining)])
+                terminated_batch.extend([terminated for _ in range(remaining)])
                 truncated_batch.extend([truncated for _ in range(remaining)])
                 info_batch.extend([info for _ in range(remaining)])
                 break
-        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
+        return obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):
