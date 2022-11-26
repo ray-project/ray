@@ -41,10 +41,9 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         4: o4 r4 d4 o4'=o5
     """
 
-    assert not any(
-        TODO: SampleBatch API for is_from_single_trajectory
-        batch[SampleBatch.DONES][:-1]
-    ), "Unexpected done in middle of trajectory!"
+    assert (
+        batch.is_single_trajectory()
+    ), "Unexpected terminated|truncated in middle of trajectory!"
 
     len_ = len(batch)
 

@@ -290,6 +290,21 @@ class SampleBatch(dict):
             or (SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1])
         )
 
+    @ExperimentalAPI
+    def is_single_trajectory(self) -> bool:
+        """Returns True if this SampleBatch only contains one trajectory.
+
+        This is determined by checking all timesteps (except for the last) for being
+        not terminated AND not truncated.
+        """
+        return (
+            not any(SampleBatch.TERMINATEDS[:-1])
+            and (
+                not SampleBatch.TRUNCATEDS in self
+                or not any(SampleBatch.TRUNCATEDS[:-1])
+            )
+        )
+
     @staticmethod
     @PublicAPI
     @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)

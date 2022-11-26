@@ -490,13 +490,11 @@ class SimpleListCollector(SampleCollector):
                 other_batches = {}
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            TODO: SampleBatch API
-            for is_from_single_trajectory
-                if any(pre_batch[SampleBatch.DONES][:-1]):
+            if not pre_batch.is_single_trajectory():
                 raise ValueError(
                     "Batches sent to postprocessing must be from a single trajectory "
-                    "(DONE=False everywhere, except the last DONE, which can be either "
-                    "True or False)!",
+                    "(TERMINATED & TRUNCATED=False everywhere, except the last "
+                    "timestep, which can be either True or False for those keys)!",
                     pre_batch,
                 )
             elif len(set(pre_batch[SampleBatch.EPS_ID])) > 1:

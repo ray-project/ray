@@ -292,8 +292,7 @@ class EpisodeV2:
                 continue
 
             if (
-                TODO: SampleBatch API for is_from_single_trajectory
-                any(pre_batch[SampleBatch.DONES][:-1])
+                not pre_batch.is_single_trajectory()
                 or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
             ):
                 raise ValueError(
