@@ -415,7 +415,7 @@ def _init_ray_cluster(
         # the ray worker object manager port might still cause conflicts.
         # so allocate ray object manager port in advance to alleviate it.
         ray_worker_object_manager_port = get_safe_port_in_range(
-            "127.0.0.1", min_port=10000, max_port=20000,
+            "127.0.0.1", min_port=20001, max_port=23000,
         )
         ray_worker_cmd = [
             ray_exec_path,
