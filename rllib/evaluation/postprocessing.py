@@ -42,6 +42,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     """
 
     assert not any(
+        TODO: SampleBatch API for is_from_single_trajectory
         batch[SampleBatch.DONES][:-1]
     ), "Unexpected done in middle of trajectory!"
 
@@ -174,7 +175,7 @@ def compute_gae_for_sample_batch(
     """
 
     # Trajectory is actually complete -> last r=0.0.
-    if sample_batch[SampleBatch.DONES][-1]:
+    if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:

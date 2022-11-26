@@ -135,7 +135,7 @@ class FQETorchModel:
                     minibatch[SampleBatch.NEXT_OBS], device=self.device
                 )
                 dones = torch.tensor(
-                    minibatch[SampleBatch.DONES], device=self.device, dtype=float
+                    minibatch[SampleBatch.TERMINATEDS], device=self.device, dtype=float
                 )
 
                 # Compute Q-values for current obs

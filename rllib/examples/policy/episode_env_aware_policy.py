@@ -53,7 +53,8 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                 ),
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
-                SampleBatch.DONES: ViewRequirement(),
+                SampleBatch.TERMINATEDS: ViewRequirement(),
+                SampleBatch.TRUNCATEDS: ViewRequirement(),
                 SampleBatch.UNROLL_ID: ViewRequirement(),
             },
             **self.model.view_requirements

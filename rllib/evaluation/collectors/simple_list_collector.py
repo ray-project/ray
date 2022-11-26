@@ -458,7 +458,7 @@ class SimpleListCollector(SampleCollector):
         for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
-            if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
+            if is_done and check_dones and not pre_batch.is_terminated_or_truncated():
                 raise ValueError(
                     "Episode {} terminated for all agents, but we still "
                     "don't have a last observation for agent {} (policy "
@@ -490,7 +490,9 @@ class SimpleListCollector(SampleCollector):
                 other_batches = {}
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            if any(pre_batch[SampleBatch.DONES][:-1]):
+            TODO: SampleBatch API
+            for is_from_single_trajectory
+                if any(pre_batch[SampleBatch.DONES][:-1]):
                 raise ValueError(
                     "Batches sent to postprocessing must be from a single trajectory "
                     "(DONE=False everywhere, except the last DONE, which can be either "

@@ -232,7 +232,7 @@ class MultiAgentSampleBatchBuilder:
 
     def check_missing_dones(self) -> None:
         for agent_id, builder in self.agent_builders.items():
-            if builder.buffers[SampleBatch.DONES][-1] is not True:
+            if not builder.buffers.is_terminated_or_truncated is not True:
                 raise ValueError(
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "

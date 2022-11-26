@@ -46,6 +46,6 @@ def _convert_to_batch(dataset: Dict) -> SampleBatchType:
     d[SampleBatch.ACTIONS] = dataset["actions"]
     d[SampleBatch.NEXT_OBS] = dataset["next_observations"]
     d[SampleBatch.REWARDS] = dataset["rewards"]
-    d[SampleBatch.DONES] = dataset["terminals"]
+    d[SampleBatch.TERMINATEDS] = dataset["terminals"]
 
     return SampleBatch(d)

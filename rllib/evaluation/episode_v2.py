@@ -275,7 +275,7 @@ class EpisodeV2:
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
-            if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
+            if is_done and check_dones and not pre_batch.is_terminated_or_truncated():
                 raise ValueError(
                     "Episode {} terminated for all agents, but we still "
                     "don't have a last observation for agent {} (policy "
@@ -292,6 +292,7 @@ class EpisodeV2:
                 continue
 
             if (
+                TODO: SampleBatch API for is_from_single_trajectory
                 any(pre_batch[SampleBatch.DONES][:-1])
                 or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
             ):

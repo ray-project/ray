@@ -134,7 +134,7 @@ def centralized_critic_postprocessing(
             sample_batch[SampleBatch.REWARDS], dtype=np.float32
         )
 
-    completed = sample_batch[SampleBatch.DONES][-1]
+    completed = sample_batch[SampleBatch.TERMINATEDS][-1]
     if completed:
         last_r = 0.0
     else:

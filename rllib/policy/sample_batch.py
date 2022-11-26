@@ -281,6 +281,15 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @ExperimentalAPI
+    def is_terminated_or_truncated(self) -> bool:
+        """Returns True if this SampleBatch either is terminated or truncated at idx -1.
+        """
+        return (
+            self[SampleBatch.TERMINATEDS][-1]
+            or (SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1])
+        )
+
     @staticmethod
     @PublicAPI
     @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
