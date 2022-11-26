@@ -576,11 +576,9 @@ def resolve_ip_for_localhost(address: str):
     """
     if not address:
         raise ValueError(f"Malformed address: {address}")
-    address_parts = address.split(":")
     # Make sure localhost isn't resolved to the loopback ip
-    if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
-        ip_address = get_node_ip_address()
-        return ":".join([ip_address] + address_parts[1:])
+    if address == "127.0.0.1" or address == "localhost":
+        return get_node_ip_address()
     else:
         return address
 
