@@ -1,6 +1,7 @@
 import csv
 import glob
 import json
+import logging
 import os
 from collections import namedtuple
 import unittest
@@ -16,6 +17,7 @@ from ray.tune.logger import (
     CSVLogger,
     TBXLoggerCallback,
     TBXLogger,
+    AimCallback
 )
 from ray.tune.result import (
     EXPR_PARAM_FILE,
@@ -254,6 +256,76 @@ class LoggerSuite(unittest.TestCase):
         config = {"b": (1, 2, 3)}
         t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
         logger = TBXLoggerCallback()
+        logger.on_trial_result(0, [], t, result(0, 4))
+        logger.on_trial_result(1, [], t, result(1, 5))
+        logger.on_trial_result(
+            2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1})
+        )
+        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
+            logger.on_trial_complete(3, [], t)
+        assert "INFO" in cm.output[0]
+
+    def testAim(self):
+        config = {
+            "a": 2,
+            "b": [1, 2],
+            "c": {"c": {"D": 123}},
+            "int32": np.int32(1),
+            "int64": np.int64(2),
+            "bool8": np.bool8(True),
+            "float32": np.float32(3),
+            "float64": np.float64(4),
+            "bad": np.float128(4),
+        }
+        t = Trial(evaluated_params=config, trial_id="aim", logdir=self.test_dir)
+        logger = AimCallback()
+        logger.on_trial_result(0, [], t, result(0, 4))
+        logger.on_trial_result(1, [], t, result(1, 5))
+        logger.on_trial_result(
+            2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1})
+        )
+
+        logger.on_trial_complete(3, [], t)
+
+        self._validate_aimresults(
+            params=(b"float32", b"float64", b"int32", b"int64", b"bool8"),
+            excluded_params=(b"bad",),
+        )
+
+    def _validate_aimresults(self, params=None, excluded_params=None):
+        try:
+            import aim
+        except ImportError:
+            print("Skipping rest of test as aim is not installed.")
+            return
+
+        """
+        # ToDo: proper test here
+        events_file = list(glob.glob(f"{self.test_dir}/events*"))[0]
+        results = []
+        excluded_params = excluded_params or []
+        for event in summary_iterator(events_file):
+            for v in event.summary.value:
+                if v.tag == "ray/tune/episode_reward_mean":
+                    results.append(v.simple_value)
+                elif v.tag == "_hparams_/experiment" and params:
+                    for key in params:
+                        self.assertIn(key, v.metadata.plugin_data.content)
+                    for key in excluded_params:
+                        self.assertNotIn(key, v.metadata.plugin_data.content)
+                elif v.tag == "_hparams_/session_start_info" and params:
+                    for key in params:
+                        self.assertIn(key, v.metadata.plugin_data.content)
+                    for key in excluded_params:
+                        self.assertNotIn(key, v.metadata.plugin_data.content)
+        self.assertEqual(len(results), 3)
+        self.assertSequenceEqual([int(res) for res in results], [4, 5, 6])
+        """
+
+    def testBadAim(self):
+        config = {"b": (1, 2, 3)}
+        t = Trial(evaluated_params=config, trial_id="aim", logdir=self.test_dir)
+        logger = AimCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
