@@ -1,5 +1,5 @@
 from pettingzoo import AECEnv
-from pettingzoo.classic import chess_v5
+from pettingzoo.classic.chess.chess_env import env as chess_v5
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from typing import Dict, Any
@@ -69,7 +69,7 @@ class MultiAgentChess(MultiAgentEnv):
     def __init__(
         self,
         config: Dict[Any, Any] = None,
-        env: AECEnv = chess_v5.env(),
+        env: AECEnv = chess_v5(),
     ):
         super().__init__()
         self.env = env
