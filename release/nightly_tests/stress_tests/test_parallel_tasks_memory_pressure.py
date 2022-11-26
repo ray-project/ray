@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mem-pct-per-task",
         help="memory to allocate per task as a fraction of the node's available memory",
-        default="0.45",
+        default="0.4",
         type=float,
     )
 

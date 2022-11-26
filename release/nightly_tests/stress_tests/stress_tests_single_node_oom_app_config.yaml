@@ -1,4 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+env_vars: {"RAY_task_oom_retries": "30", "RAY_min_memory_free_bytes": "1000000000", "RAY_memory_usage_threshold_fraction": "0.9"}
 debian_packages: []
 
 python:
