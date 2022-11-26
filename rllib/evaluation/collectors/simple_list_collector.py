@@ -492,9 +492,9 @@ class SimpleListCollector(SampleCollector):
             policy = self.policy_map[pid]
             if not pre_batch.is_single_trajectory():
                 raise ValueError(
-                    "Batches sent to postprocessing must be from a single trajectory "
-                    "(TERMINATED & TRUNCATED=False everywhere, except the last "
-                    "timestep, which can be either True or False for those keys)!",
+                    "Batches sent to postprocessing must be from a single trajectory! "
+                    "TERMINATED & TRUNCATED need to be False everywhere, except the "
+                    "last timestep, which can be either True or False for those keys)!",
                     pre_batch,
                 )
             elif len(set(pre_batch[SampleBatch.EPS_ID])) > 1:

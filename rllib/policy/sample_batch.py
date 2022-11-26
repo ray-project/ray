@@ -298,10 +298,10 @@ class SampleBatch(dict):
         not terminated AND not truncated.
         """
         return (
-            not any(SampleBatch.TERMINATEDS[:-1])
+            not any(self[SampleBatch.TERMINATEDS][:-1])
             and (
                 not SampleBatch.TRUNCATEDS in self
-                or not any(SampleBatch.TRUNCATEDS[:-1])
+                or not any(self[SampleBatch.TRUNCATEDS][:-1])
             )
         )
 
