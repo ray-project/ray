@@ -139,7 +139,6 @@ class SampleBatch(dict):
     PREV_REWARDS = "prev_rewards"
     TERMINATEDS = "terminateds"
     TRUNCATEDS = "truncateds"
-    DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
     # This is only computed and used when RE3 exploration strategy is enabled
@@ -171,6 +170,12 @@ class SampleBatch(dict):
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
+    # Soon to be deprecated.
+    # SampleBatches must already not be constructed anymore by setting this key
+    # directly. Instead, the values under this key are auto-computed via the values of
+    # the new TERMINATEDS and TRUNCATEDS keys.
+    DONES = "dones"
+
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor).
@@ -191,6 +196,13 @@ class SampleBatch(dict):
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
+
+        if SampleBatch.DONES in kwargs:
+            raise KeyError(
+                "SampleBatch cannot be constructed anymore with a `DONES` key! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
@@ -807,7 +819,10 @@ class SampleBatch(dict):
         # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
         # the old meaning of DONES.
         if key == SampleBatch.DONES:
-            return self[SampleBatch.TERMINATEDS] + self[SampleBatch.TRUNCATEDS]
+            ret = self[SampleBatch.TERMINATEDS]
+            if SampleBatch.TRUNCATEDS in self:
+                return ret + self[SampleBatch.TRUNCATEDS]
+            return ret
         # Backward compatibility for when "input-dicts" were used.
         elif key == "is_training":
             if log_once("SampleBatch['is_training']"):
@@ -836,9 +851,16 @@ class SampleBatch(dict):
             key: The column name to set a value for.
             item: The data to insert.
         """
+        # Disallow setting DONES key directly.
+        if key == SampleBatch.DONES:
+            raise KeyError(
+                "Cannot set `DONES` anymore in a SampleBatch! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        if not hasattr(self, "added_keys"):
+        elif not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 
