@@ -163,8 +163,6 @@ class RayClusterOnSpark:
                     f"An Error occurred during shutdown of ray head node: {repr(e)}"
                 )
             self.is_shutdown = True
-        else:
-            _logger.warning("The cluster has been shut down.")
 
     def __enter__(self):
         self.connect()
@@ -202,6 +200,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
+    _logger.warning("Test version 003.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
