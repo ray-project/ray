@@ -205,4 +205,3 @@ More about Ray Tasks
     tasks/nested-tasks.rst
     tasks/generators.rst
     tasks/fault-tolerance.rst
-    tasks/scheduling.rst
