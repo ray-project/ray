@@ -1,5 +1,6 @@
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -22,7 +23,6 @@ from .utils import (
     get_dbutils,
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
-    get_safe_port_in_range,
     _HEAP_TO_SHARED_RATIO,
     _ray_worker_startup_barrier,
     _display_databricks_driver_proxy_url,
@@ -200,7 +200,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 006.")
+    _logger.warning("Test version 007.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -293,10 +293,11 @@ def _init_ray_cluster(
         else:
             _logger.warning("\n".join(insufficient_resources))
 
-    ray_head_hostname = get_spark_application_driver_host(spark)
-    ray_head_port = get_safe_port(ray_head_hostname)
+    ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
 
-    _logger.info(f"Ray head hostname {ray_head_hostname}, port {ray_head_port}")
+    ray_head_port = get_safe_port(ray_head_ip)
+
+    _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
@@ -333,6 +334,7 @@ def _init_ray_cluster(
         "--block",
         "--head",
         "--disable-usage-stats",
+        f"--node-ip-address={ray_head_ip}",
         f"--port={ray_head_port}",
         "--include-dashboard=true",
         "--dashboard-host=0.0.0.0",
@@ -366,7 +368,7 @@ def _init_ray_cluster(
 
     # wait ray head node spin up.
     wait_ray_node_available(
-        ray_head_hostname,
+        ray_head_ip,
         ray_head_port,
         40,
         error_on_failure="Start Ray head node failed!",
@@ -419,7 +421,7 @@ def _init_ray_cluster(
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             "--disable-usage-stats",
-            f"--address={ray_head_hostname}:{ray_head_port}",
+            f"--address={ray_head_ip}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
             f"--min-worker-port={min_worker_port}",
@@ -501,11 +503,11 @@ def _init_ray_cluster(
         yield 0
 
     spark_job_group_id = (
-        f"ray-cluster-job-head-{ray_head_hostname}-port-{ray_head_port}"
+        f"ray-cluster-job-head-{ray_head_ip}-port-{ray_head_port}"
     )
 
     ray_cluster_handler = RayClusterOnSpark(
-        address=f"{ray_head_hostname}:{ray_head_port}",
+        address=f"{ray_head_ip}:{ray_head_port}",
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
         num_ray_workers=num_worker_nodes,
@@ -517,7 +519,7 @@ def _init_ray_cluster(
             spark.sparkContext.setJobGroup(
                 spark_job_group_id,
                 "This job group is for spark job which runs the Ray cluster with ray head node "
-                f"{ray_head_hostname}:{ray_head_port}",
+                f"{ray_head_ip}:{ray_head_port}",
             )
 
             # Starting a normal spark job (not barrier spark job) to run ray workers, the design
