@@ -22,6 +22,7 @@ from .utils import (
     get_dbutils,
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
+    get_safe_port_in_range,
     _HEAP_TO_SHARED_RATIO,
     _ray_worker_startup_barrier,
     _display_databricks_driver_proxy_url,
@@ -294,7 +295,7 @@ def _init_ray_cluster(
             _logger.warning("\n".join(insufficient_resources))
 
     ray_head_hostname = get_spark_application_driver_host(spark)
-    ray_head_port = get_safe_port()
+    ray_head_port = get_safe_port(ray_head_hostname)
 
     _logger.info(f"Ray head hostname {ray_head_hostname}, port {ray_head_port}")
 
@@ -415,6 +416,12 @@ def _init_ray_cluster(
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
 
+        # although we start the ray node by 10 seconds interval,
+        # the ray worker object manager port might still cause conflicts.
+        # so allocate ray object manager port in advance to alleviate it.
+        ray_worker_object_manager_port = get_safe_port_in_range(
+            "127.0.0.1", min_port=10000, max_port=20000,
+        )
         ray_worker_cmd = [
             ray_exec_path,
             "start",
@@ -425,6 +432,7 @@ def _init_ray_cluster(
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
+            f"--object-manager-port={ray_worker_object_manager_port}",
             *_convert_ray_node_options(worker_options),
         ]
 

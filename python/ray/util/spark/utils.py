@@ -145,18 +145,20 @@ def exec_cmd(
     return comp_process
 
 
-def get_safe_port():
+def get_safe_port(host):
     """Returns an ephemeral port that is very likely to be free to bind to."""
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("0.0.0.0", 0))
+        sock.bind((host, 0))
         return sock.getsockname()[1]
 
 
-def get_random_port(min_port=20000, max_port=60000):
-    rng = random.SystemRandom()
-    return rng.randint(min_port, max_port)
+_rand_generator = random.SystemRandom()
+
+
+def get_random_port(min_port, max_port):
+    return _rand_generator.randint(min_port, max_port)
 
 
 def check_port_open(host, port):
@@ -164,6 +166,15 @@ def check_port_open(host, port):
     from contextlib import closing
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def get_safe_port_in_range(host, min_port, max_port, max_retries=100):
+    for _ in range(max_retries):
+        port = get_random_port(min_port, max_port)
+        if not check_port_open(host, port):
+            return port
+        time.sleep(0.1)
+    raise RuntimeError(f"Get available port between range {min_port} and {max_port} failed.")
 
 
 def get_spark_session():
