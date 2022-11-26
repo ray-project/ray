@@ -1,7 +1,6 @@
 import csv
 import glob
 import json
-import logging
 import os
 from collections import namedtuple
 import unittest
@@ -10,6 +9,8 @@ import shutil
 import numpy as np
 from ray.cloudpickle import cloudpickle
 
+# import logging
+
 from ray.tune.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
@@ -17,7 +18,7 @@ from ray.tune.logger import (
     CSVLogger,
     TBXLoggerCallback,
     TBXLogger,
-    AimCallback
+    AimCallback,
 )
 from ray.tune.result import (
     EXPR_PARAM_FILE,
@@ -299,8 +300,9 @@ class LoggerSuite(unittest.TestCase):
             print("Skipping rest of test as aim is not installed.")
             return
 
-        """
+        print(f"{aim} aim tests here")
         # ToDo: proper test here
+        """
         events_file = list(glob.glob(f"{self.test_dir}/events*"))[0]
         results = []
         excluded_params = excluded_params or []

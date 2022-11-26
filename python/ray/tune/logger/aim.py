@@ -1,14 +1,13 @@
 import logging
-import pathlib
-
 import numpy as np
 
 from typing import TYPE_CHECKING, Dict, Optional
 
 from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
-from ray.tune.logger.logger import Logger, LoggerCallback
+from ray.tune.logger.logger import LoggerCallback
 from ray.util.debug import log_once
-from ray.tune.result import ( TRAINING_ITERATION,
+from ray.tune.result import (
+    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )
@@ -32,14 +31,14 @@ class AimCallback(LoggerCallback):
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
     VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 
-    def __init__(self,
-                 repo: Optional[str] = None,
-                 experiment: Optional[str] = None,
-                 system_tracking_interval: Optional[int]
-                 = DEFAULT_SYSTEM_TRACKING_INT,
-                 log_system_params: bool = True,
-                 metrics: Optional[str] = None
-                 ):
+    def __init__(
+        self,
+        repo: Optional[str] = None,
+        experiment: Optional[str] = None,
+        system_tracking_interval: Optional[int] = DEFAULT_SYSTEM_TRACKING_INT,
+        log_system_params: bool = True,
+        metrics: Optional[str] = None,
+    ):
 
         self._repo_path = repo
         self._experiment_name = experiment
@@ -50,11 +49,14 @@ class AimCallback(LoggerCallback):
 
         try:
             from aim.sdk import Run
+
             self._run_cls = Run
+            """
+            # Todo: implement the capability of images audio etc.
             from aim import Image
             from aim import Distribution
             from aim.ext.resource.configs import DEFAULT_SYSTEM_TRACKING_INT
-
+            """
         except ImportError:
             if log_once("aim-install"):
                 logger.info('"pip install aim" to be able to use the aim logger.')
@@ -119,21 +121,32 @@ class AimCallback(LoggerCallback):
         if self._metrics:
             for metric in self._metrics:
                 try:
-                    self._trial_run[trial].track(value=tmp_result[metric], epoch=epoch, name=metric, step=step,
-                                                 context=context)
+                    self._trial_run[trial].track(
+                        value=tmp_result[metric],
+                        epoch=epoch,
+                        name=metric,
+                        step=step,
+                        context=context,
+                    )
                 except KeyError:
-                    logger.warning(f"The metric {metric} is specified but not reported.")
+                    logger.warning(
+                        f"The metric {metric} is specified but not reported."
+                    )
         else:
             # if no metric is specified log everything that is reported
             flat_result = flatten_dict(tmp_result, delimiter="/")
             valid_result = {}
 
             for attr, value in flat_result.items():
-                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(value):
+                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
+                    value
+                ):
                     valid_result[attr] = value
-                    self._trial_run[trial].track(value=value, name=attr, epoch=epoch, step=step, context=context)
+                    self._trial_run[trial].track(
+                        value=value, name=attr, epoch=epoch, step=step, context=context
+                    )
                 elif (isinstance(value, list) and len(value) > 0) or (
-                        isinstance(value, np.ndarray) and value.size > 0
+                    isinstance(value, np.ndarray) and value.size > 0
                 ):
                     valid_result[attr] = value
 
@@ -193,4 +206,4 @@ class AimCallback(LoggerCallback):
                 str(removed),
             )
 
-        self._trial_run[trial]['hparams'] = scrubbed_params
+        self._trial_run[trial]["hparams"] = scrubbed_params
