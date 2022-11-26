@@ -358,17 +358,12 @@ def _init_ray_cluster(
             "Ray Cluster Dashboard"
         )
 
-    with open(
-        os.path.join(ray_log_dir, "ray-start-head.log"), "w", buffering=1
-    ) as head_log_fp:
-        ray_head_proc = exec_cmd(
-            ray_head_node_cmd,
-            synchronous=False,
-            capture_output=False,
-            stream_output=False,
-            stdout=head_log_fp,
-            stderr=subprocess.STDOUT,
-        )
+    ray_head_proc = exec_cmd(
+        ray_head_node_cmd,
+        synchronous=False,
+        capture_output=False,
+        stream_output=False,
+    )
 
     # wait ray head node spin up.
     wait_ray_node_available(
@@ -491,21 +486,14 @@ def _init_ray_cluster(
                     f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}."
                 )
 
-        with open(
-            os.path.join(ray_log_dir, f"ray-start-worker-{task_id}.log"),
-            "w",
-            buffering=1
-        ) as worker_log_fp:
-            exec_cmd(
-                ray_worker_cmd,
-                synchronous=True,
-                capture_output=False,
-                stream_output=False,
-                extra_env=ray_worker_extra_envs,
-                preexec_fn=setup_sigterm_on_parent_death,
-                stdout=worker_log_fp,
-                stderr=subprocess.STDOUT,
-            )
+        exec_cmd(
+            ray_worker_cmd,
+            synchronous=True,
+            capture_output=False,
+            stream_output=False,
+            extra_env=ray_worker_extra_envs,
+            preexec_fn=setup_sigterm_on_parent_death,
+        )
 
         # TODO: Delete the worker temp and log directories at the conclusion of running the
         #  submitted task.
