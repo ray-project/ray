@@ -16,6 +16,9 @@ kaggle_environments==1.7.11
 mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.22.1; python_version >= '3.7'
+# For some reason chess is not being imported by installing pettingzoo
+# TODO: remove this if a future version fix this issue
+chess==1.7.0
 pymunk==6.2.1
 supersuit==3.7.0; python_version >= '3.7'
 # For tests on minigrid.
