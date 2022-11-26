@@ -42,7 +42,7 @@ class ComputeTDErrorMixin:
     def __init__(self: Union[DynamicTFPolicyV2, EagerTFPolicyV2]):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = SampleBatch(
                 {
@@ -50,7 +50,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 }
             )
