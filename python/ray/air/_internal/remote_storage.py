@@ -95,10 +95,25 @@ def get_fs_and_path(
         return fs, path
 
     try:
+        # in case of hdfs filesystem, if uri don't have the netloc part below will
+        # failed with hdfs access error.  For example 'hdfs:///user_folder/...' will
+        # fail, while only 'hdfs://namenode_server/user_foler/...' will work
+        if parsed.scheme == "hdfs" and parsed.netloc == "":
+            raise Exception(
+                "pyarrow.fs.FileSystem.from_uri(uri) require uri to specify netloc"
+            )
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[cache_key] = fs
         return fs, path
-    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
+    except (
+        pyarrow.lib.ArrowInvalid,
+        pyarrow.lib.ArrowNotImplementedError,
+        Exception,
+    ) as e:
+        print(
+            f"get_fs_and_path pyarrow.fs.FileSystem.from_uri "
+            f"throw e:{e} of type:{type(e)} for uri:{uri}."
+        )
         # Raised when URI not recognized
         if not fsspec:
             # Only return if fsspec is not installed
@@ -274,3 +289,4 @@ def _ensure_directory(uri: str):
         fs.create_dir(path)
     except Exception:
         pass
+
