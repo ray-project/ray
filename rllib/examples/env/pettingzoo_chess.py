@@ -69,7 +69,7 @@ class MultiAgentChess(MultiAgentEnv):
     def __init__(
         self,
         config: Dict[Any, Any] = None,
-        env: AECEnv = chess_v5.env(),
+        env: AECEnv = chess_v5(),
     ):
         super().__init__()
         self.env = env
