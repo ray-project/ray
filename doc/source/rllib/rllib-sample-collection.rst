@@ -298,7 +298,7 @@ make these modifications to your batches in your postprocessing function:
         # Modify view_requirements in the Policy object.
         action_space = Discrete(2)
         rollout_worker = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             policy_config=ppo.DEFAULT_CONFIG,
             policy_spec=ppo.PPOTorchPolicy,
         )
