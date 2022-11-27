@@ -50,7 +50,7 @@ class DatasetWriter(OutputWriter):
         ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
-        self.path = pathlib.Path(output_config["path"]).expanduser().resolve()      
+        self.path = pathlib.Path(output_config["path"]).expanduser().resolve()
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
             if "max_num_samples_per_file" in output_config
