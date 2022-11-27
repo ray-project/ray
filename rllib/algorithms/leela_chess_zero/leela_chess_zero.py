@@ -236,8 +236,8 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         if vf_share_layers is not NotProvided:
             self.vf_share_layers = vf_share_layers
         if mcts_config is not NotProvided:
-            #only assign provided keys
-            for k,v in mcts_config.items():
+            # only assign provided keys
+            for k, v in mcts_config.items():
                 self.mcts_config[k] = v
         if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
