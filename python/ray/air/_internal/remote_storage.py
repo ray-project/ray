@@ -107,7 +107,7 @@ def get_fs_and_path(
         _cached_fs[cache_key] = fs
         print(f'get_fs_and_path 2 {time.time()} uri:{uri} parsed:{parsed} path:{path} cache_key:{cache_key} _cached_fs:{_cached_fs} fs:{fs}')
         return fs, path
-    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError, Exception):
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError, Exception) as e:
         print(f'get_fs_and_path pyarrow.fs.FileSystem.from_uri throw e:{e} of type_e:{type(e)} for uri:{uri} ')
         # Raised when URI not recognized
         if not fsspec:
