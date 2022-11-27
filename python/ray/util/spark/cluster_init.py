@@ -14,17 +14,17 @@ from ray.util.annotations import PublicAPI
 from .utils import (
     exec_cmd,
     check_port_open,
-    get_safe_port,
+    get_random_unused_port,
     get_spark_session,
     get_spark_application_driver_host,
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
-    get_avail_mem_per_ray_worker,
+    get_avail_mem_per_ray_worker_node,
     get_dbutils,
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
-    _ray_worker_startup_barrier,
+    _acquire_lock_for_ray_worker_node_startup,
     _display_databricks_driver_proxy_url,
 )
 
@@ -68,16 +68,16 @@ class RayClusterOnSpark:
             Spark driver node)
         head_proc: Ray head process
         spark_job_group_id: The Spark job id for a submitted ray job
-        num_ray_workers: The number of workers in the ray cluster.
+        num_workers_node: The number of workers in the ray cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, num_ray_workers):
+    def __init__(self, address, head_proc, spark_job_group_id, num_workers_node):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
         self.ray_context = None
         self.is_shutdown = False
-        self.num_ray_workers = num_ray_workers
+        self.num_worker_nodes = num_workers_node
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
@@ -105,7 +105,7 @@ class RayClusterOnSpark:
                     ]
                 ) - 1  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count == self.num_ray_workers:
+                if cur_alive_worker_count == self.num_worker_nodes:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
@@ -113,13 +113,13 @@ class RayClusterOnSpark:
                     last_progress_move_time = time.time()
                     _logger.info(
                         "Ray worker nodes are starting. Progress: "
-                        f"({cur_alive_worker_count} / {self.num_ray_workers})"
+                        f"({cur_alive_worker_count} / {self.num_worker_nodes})"
                     )
                 else:
                     if time.time() - last_progress_move_time > 120:
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. Started / Total "
-                            f"requested: ({cur_alive_worker_count} / {self.num_ray_workers}). "
+                            f"requested: ({cur_alive_worker_count} / {self.num_worker_nodes}). "
                             "Please check ray logs to see why some ray workers failed to start."
                         )
                         return
@@ -234,9 +234,9 @@ def _init_ray_cluster(
         heap_to_object_store_memory_ratio = _HEAP_TO_SHARED_RATIO
 
     (
-        ray_worker_heap_mem_bytes,
-        ray_worker_object_store_mem_bytes,
-    ) = get_avail_mem_per_ray_worker(spark, heap_to_object_store_memory_ratio)
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_mem_bytes,
+    ) = get_avail_mem_per_ray_worker_node(spark, heap_to_object_store_memory_ratio)
 
     if total_gpus is not None and num_spark_task_gpus == 0:
         raise ValueError(
@@ -250,8 +250,8 @@ def _init_ray_cluster(
         max_concurrent_tasks,
         num_spark_task_cpus,
         num_spark_task_gpus,
-        ray_worker_heap_mem_bytes,
-        ray_worker_object_store_mem_bytes,
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_mem_bytes,
         num_worker_nodes,
         total_cpus,
         total_gpus,
@@ -270,11 +270,11 @@ def _init_ray_cluster(
             "configuration 'spark.task.cpus' to a minimum of `4` addresses it."
         )
 
-    if ray_worker_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
+    if ray_worker_node_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
         insufficient_resources.append(
             f"The provided memory resources for each ray worker are inadequate. Based on the total "
             f"memory available on the spark cluster and the configured task sizing, each ray "
-            f"worker would start with {ray_worker_heap_mem_bytes} bytes heap "
+            f"worker would start with {ray_worker_node_heap_mem_bytes} bytes heap "
             "memory. This is less than the recommended value of 10GB. The ray worker node heap "
             "memory size is calculated by (SPARK_WORKER_NODE_PHYSICAL_MEMORY - SHARED_MEMORY) / "
             "num_local_spark_task_slots * 0.8. To increase the heap space available, "
@@ -295,7 +295,7 @@ def _init_ray_cluster(
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
 
-    ray_head_port = get_safe_port(ray_head_ip)
+    ray_head_port = get_random_unused_port(ray_head_ip)
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -405,7 +405,7 @@ def _init_ray_cluster(
         context = TaskContext.get()
         task_id = context.partitionId()
 
-        _ray_worker_startup_barrier()
+        _acquire_lock_for_ray_worker_node_startup()
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
@@ -414,7 +414,7 @@ def _init_ray_cluster(
 
         min_worker_port = 20000 + task_id * 1000
         max_worker_port = min_worker_port + 999
-        ray_worker_cmd = [
+        ray_worker_node_cmd = [
             ray_exec_path,
             "start",
             f"--temp-dir={ray_temp_dir}",
@@ -422,14 +422,14 @@ def _init_ray_cluster(
             "--block",
             "--disable-usage-stats",
             f"--address={ray_head_ip}:{ray_head_port}",
-            f"--memory={ray_worker_heap_mem_bytes}",
-            f"--object-store-memory={ray_worker_object_store_mem_bytes}",
+            f"--memory={ray_worker_node_heap_mem_bytes}",
+            f"--object-store-memory={ray_worker_node_object_store_mem_bytes}",
             f"--min-worker-port={min_worker_port}",
             f"--max-worker-port={max_worker_port}",
             *_convert_ray_node_options(worker_options),
         ]
 
-        ray_worker_extra_envs = {}
+        ray_worker_node_extra_envs = {}
 
         if num_spark_task_gpus > 0:
             task_resources = context.resources()
@@ -445,14 +445,14 @@ def _init_ray_cluster(
             available_physical_gpus = get_spark_task_assigned_physical_gpus(
                 gpu_addr_list
             )
-            ray_worker_cmd.append(
+            ray_worker_node_cmd.append(
                 f"--num-gpus={len(available_physical_gpus)}",
             )
-            ray_worker_extra_envs["CUDA_VISIBLE_DEVICES"] = ",".join(
+            ray_worker_node_extra_envs["CUDA_VISIBLE_DEVICES"] = ",".join(
                 [str(gpu_id) for gpu_id in available_physical_gpus]
             )
 
-        _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
+        _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}")
 
         def setup_sigterm_on_parent_death():
             """
@@ -485,11 +485,11 @@ def _init_ray_cluster(
                 )
 
         exec_cmd(
-            ray_worker_cmd,
+            ray_worker_node_cmd,
             synchronous=True,
             capture_output=False,
             stream_output=False,
-            extra_env=ray_worker_extra_envs,
+            extra_env=ray_worker_node_extra_envs,
             preexec_fn=setup_sigterm_on_parent_death,
         )
 
@@ -510,7 +510,7 @@ def _init_ray_cluster(
         address=f"{ray_head_ip}:{ray_head_port}",
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
-        num_ray_workers=num_worker_nodes,
+        num_workers_node=num_worker_nodes,
     )
 
     def backgroud_job_thread_fn():

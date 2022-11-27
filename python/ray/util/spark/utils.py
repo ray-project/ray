@@ -145,22 +145,6 @@ def exec_cmd(
     return comp_process
 
 
-def get_safe_port(host):
-    """Returns an ephemeral port that is very likely to be free to bind to."""
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((host, 0))
-        return sock.getsockname()[1]
-
-
-_rand_generator = random.SystemRandom()
-
-
-def get_random_port(min_port, max_port):
-    return _rand_generator.randint(min_port, max_port)
-
-
 def check_port_open(host, port):
     import socket
     from contextlib import closing
@@ -168,12 +152,20 @@ def check_port_open(host, port):
         return sock.connect_ex((host, port)) == 0
 
 
-def get_safe_port_in_range(host, min_port, max_port, max_retries=100):
+def get_random_unused_port(host, min_port=1024, max_port=65535, max_retries=100, exclude_list=None):
+    """
+    Get random unused port.
+    """
+    # Use true random generator
+    rng = random.SystemRandom()
+
+    exclude_list = exclude_list or []
     for _ in range(max_retries):
-        port = get_random_port(min_port, max_port)
+        port = rng.randint(min_port, max_port)
+        if port in exclude_list:
+            continue
         if not check_port_open(host, port):
             return port
-        time.sleep(0.1)
     raise RuntimeError(f"Get available port between range {min_port} and {max_port} failed.")
 
 
@@ -222,7 +214,7 @@ def _get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def _calc_mem_per_ray_worker(
+def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, heap_to_object_store_ratio
 ):
     available_physical_mem_per_node = int(
@@ -232,16 +224,16 @@ def _calc_mem_per_ray_worker(
         shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
 
-    ray_worker_object_store_bytes = int(
+    object_store_bytes = int(
         min(
             available_physical_mem_per_node * heap_to_object_store_ratio,
             available_shared_mem_per_node,
         )
     )
-    ray_worker_heap_mem_bytes = (
-        available_physical_mem_per_node - ray_worker_object_store_bytes
+    heap_mem_bytes = (
+        available_physical_mem_per_node - object_store_bytes
     )
-    return ray_worker_heap_mem_bytes, ray_worker_object_store_bytes
+    return heap_mem_bytes, object_store_bytes
 
 
 def _resolve_target_spark_tasks(calculated_limits):
@@ -263,8 +255,8 @@ def get_target_spark_tasks(
     max_concurrent_tasks,
     num_spark_task_cpus,
     num_spark_task_gpus,
-    ray_worker_heap_memory_bytes,
-    ray_worker_object_store_memory_bytes,
+    ray_worker_node_heap_memory_bytes,
+    ray_worker_node_object_store_memory_bytes,
     num_spark_tasks,
     total_cpus,
     total_gpus,
@@ -305,7 +297,7 @@ def get_target_spark_tasks(
                 )
 
             calculated_tasks.append(
-                int(math.ceil(total_heap_memory_bytes / ray_worker_heap_memory_bytes))
+                int(math.ceil(total_heap_memory_bytes / ray_worker_node_heap_memory_bytes))
             )
 
         if total_object_store_memory_bytes is not None:
@@ -319,7 +311,7 @@ def get_target_spark_tasks(
                 int(
                     math.ceil(
                         total_object_store_memory_bytes
-                        / ray_worker_object_store_memory_bytes
+                        / ray_worker_node_object_store_memory_bytes
                     )
                 )
             )
@@ -328,7 +320,7 @@ def get_target_spark_tasks(
     return num_spark_tasks
 
 
-def get_avail_mem_per_ray_worker(spark, heap_to_object_store_ratio):
+def get_avail_mem_per_ray_worker_node(spark, heap_to_object_store_ratio):
     """
     Return the available heap memory and object store memory for each ray worker.
     NB: We have one ray node per spark task.
@@ -346,21 +338,21 @@ def get_avail_mem_per_ray_worker(spark, heap_to_object_store_ratio):
             shared_mem_bytes = _get_total_shared_memory()
 
             (
-                ray_worker_heap_mem_bytes,
-                ray_worker_object_store_bytes,
-            ) = _calc_mem_per_ray_worker(
+                ray_worker_node_heap_mem_bytes,
+                ray_worker_node_object_store_bytes,
+            ) = _calc_mem_per_ray_worker_node(
                 num_task_slots,
                 physical_mem_bytes,
                 shared_mem_bytes,
                 heap_to_object_store_ratio,
             )
-            return ray_worker_heap_mem_bytes, ray_worker_object_store_bytes, None
+            return ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes, None
         except Exception as e:
             return -1, -1, repr(e)
 
     # Running memory inference routine on spark executor side since the spark worker nodes may
     # have a different machine configuration compared to the spark driver node.
-    inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes, err = (
+    inferred_ray_worker_node_heap_mem_bytes, inferred_ray_worker_node_object_store_bytes, err = (
         spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
     )
 
@@ -368,7 +360,7 @@ def get_avail_mem_per_ray_worker(spark, heap_to_object_store_ratio):
         raise RuntimeError(
             f"Inferring ray worker available memory failed, error: {err}"
         )
-    return inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes
+    return inferred_ray_worker_node_heap_mem_bytes, inferred_ray_worker_node_object_store_bytes
 
 
 def get_spark_task_assigned_physical_gpus(gpu_addr_list):
@@ -381,7 +373,7 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return gpu_addr_list
 
 
-def _ray_worker_startup_barrier():
+def _acquire_lock_for_ray_worker_node_startup():
     """
     If we start multiple ray workers on a machine concurrently, some ray worker processes
     might fail due to ray port conflicts, this is because race condition on getting free
