@@ -108,7 +108,7 @@ def test_autoscaler_infeasible():
 import ray
 import time
 
-ray.init(num_cpus=1)
+ray.init(num_cpus=1, num_gpus=0)
 
 @ray.remote(num_gpus=1)
 def foo():
