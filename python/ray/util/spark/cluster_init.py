@@ -200,7 +200,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 007.")
+    _logger.warning("Test version 008.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -295,7 +295,10 @@ def _init_ray_cluster(
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
 
-    ray_head_port = get_random_unused_port(ray_head_ip)
+    ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
+    ray_dashboard_port = get_random_unused_port(
+        ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
+    )
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -326,7 +329,6 @@ def _init_ray_cluster(
         f"{ray_temp_dir}/session_latest/logs."
     )
 
-    dashboard_port = 8899
     ray_head_node_cmd = [
         ray_exec_path,
         "start",
@@ -338,7 +340,7 @@ def _init_ray_cluster(
         f"--port={ray_head_port}",
         "--include-dashboard=true",
         "--dashboard-host=0.0.0.0",
-        f"--dashboard-port={dashboard_port}",
+        f"--dashboard-port={ray_dashboard_port}",
         # disallow ray tasks with cpu requirements from being scheduled on the head node.
         f"--num-cpus=0",
         # limit the memory allocation to the head node (actual usage may increase beyond this
@@ -355,7 +357,7 @@ def _init_ray_cluster(
     if is_in_databricks_runtime():
         _display_databricks_driver_proxy_url(
             spark.sparkContext,
-            dashboard_port,
+            ray_dashboard_port,
             "Ray Cluster Dashboard"
         )
 
