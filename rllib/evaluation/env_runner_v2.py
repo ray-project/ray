@@ -534,7 +534,7 @@ class EnvRunnerV2:
                     # Reward received after taking action at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.TERMINATEDS: agent_truncated,
+                    SampleBatch.TERMINATEDS: agent_terminated,
                     # Was the episode truncated artificially
                     # (e.g. b/c of some time limit)?
                     SampleBatch.TRUNCATEDS: agent_truncated,
