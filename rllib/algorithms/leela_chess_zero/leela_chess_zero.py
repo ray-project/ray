@@ -108,7 +108,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         self.vf_share_layers = False
         self.mcts_config = {
             "puct_coefficient": 1.0,
-            "num_simulations": 30,
+            "num_simulations": 150,
             "temperature": 1.5,
             "dirichlet_epsilon": 0.25,
             "dirichlet_noise": 0.03,
@@ -117,15 +117,6 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             "epsilon": 0.05,
             "turn_based_flip": True,
             "argmax_child_value": True,
-        },
-        self.ranked_rewards = {
-            "enable": True,
-            "percentile": 75,
-            "buffer_max_length": 1000,
-            # add rewards obtained from random policy to
-            # "warm start" the buffer
-            "initialize_buffer": True,
-            "num_init_rewards": 100,
         }
 
         # Override some of AlgorithmConfig's default values with AlphaZero-specific
@@ -170,7 +161,6 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         vf_share_layers: Optional[bool] = NotProvided,
         mcts_config: Optional[dict] = NotProvided,
-        ranked_rewards: Optional[dict] = NotProvided,
         num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "LeelaChessZeroConfig":
@@ -222,8 +212,6 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             vf_share_layers: Share layers for value function. If you set this to True,
                 it's important to tune vf_loss_coeff.
             mcts_config: MCTS specific settings.
-            ranked_rewards: Settings for the ranked reward (r2) algorithm
-                from: https://arxiv.org/pdf/1807.01672.pdf
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
@@ -248,9 +236,9 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         if vf_share_layers is not NotProvided:
             self.vf_share_layers = vf_share_layers
         if mcts_config is not NotProvided:
-            self.mcts_config = mcts_config
-        if ranked_rewards is not NotProvided:
-            self.ranked_rewards.update(ranked_rewards)
+            #only assign provided keys
+            for k,v in mcts_config.items():
+                self.mcts_config[k] = v
         if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
@@ -309,7 +297,7 @@ class LeelaChessZeroPolicyWrapperClass(LeelaChessZeroPolicy):
 
         def mcts_creator():
             mcts_params = config["mcts_config"]
-            return MCTS(model, *mcts_params)
+            return MCTS(model, mcts_params)
 
         super().__init__(
             obs_space,

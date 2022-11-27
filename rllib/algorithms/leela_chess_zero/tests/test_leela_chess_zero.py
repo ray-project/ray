@@ -28,7 +28,7 @@ class TestLeelaChessZero(unittest.TestCase):
         config = (
             lz.LeelaChessZeroConfig()
             .environment(env="ChessMultiAgent")
-            .training(model={"custom_model": LeelaChessZeroModel})
+            .training(model={"custom_model": LeelaChessZeroModel},mcts_config={"num_simulations":2})
             .resources(num_gpus=0)
         )
         num_iterations = 1
