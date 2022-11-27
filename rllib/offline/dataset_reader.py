@@ -41,10 +41,10 @@ def _unzip_if_needed(paths: List[str], format: str):
             try:
                 _unzip_this_path(str(path), extract_path)
             except FileNotFoundError:
-                # intrepreted as a relative path to rllib folder
+                # interpreted as a relative path to rllib folder
                 try:
                     # TODO: remove this later when we replace all tests with s3 paths
-                    _unzip_this_path(Path(__file__).parent.parent / path, extract_path)
+                    _unzip_this_path(Path(__file__).parents[1] / path, extract_path)
                 except FileNotFoundError:
                     raise FileNotFoundError(f"File not found: {path}")
 
@@ -58,10 +58,10 @@ def _unzip_if_needed(paths: List[str], format: str):
                 ret_paths.append(path)
             else:
                 if not Path(path).exists():
-                    relative_path = str(Path(__file__).parent.parent / path)
-                    if not Path(relative_path).exists():
+                    relative_path = Path(__file__).parents[1] / path
+                    if not relative_path.exists():
                         raise FileNotFoundError(f"File not found: {path}")
-                    path = relative_path
+                    path = str(relative_path)
                 ret_paths.append(path)
     return ret_paths
 

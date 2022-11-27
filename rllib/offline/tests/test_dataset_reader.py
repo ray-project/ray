@@ -23,7 +23,10 @@ class TestDatasetReader(unittest.TestCase):
         #  credentials issues, using a local file instead for now.
 
         # cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
-        cls.dset_path = "tests/data/pendulum/large.json"
+        Path(__file__).parents[2] / "tests/data/pendulum/large.json"
+        cls.dset_path = (
+            Path("rllib/tests/data/pendulum/large.json").resolve().as_posix()
+        )
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -162,9 +165,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.s3_path = "s3://air-example-data/rllib/pendulum"
         cls.relative_path = "tests/data/pendulum"
-        cls.absolute_path = str(
-            Path(__file__).parent.parent.parent / "tests" / "data" / "pendulum"
-        )
+        cls.absolute_path = str(Path(__file__).parents[2] / cls.relative_path)
 
     # @TODO: unskip when this is fixed
     @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
@@ -236,7 +237,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
     def test_relative_json(self):
         """Tests whether the unzip_if_needed function works correctly on relative json
         files"""
-        # this should work regardless of where th current working directory is.
+        # this should work regardless of where the current working directory is.
         with tempfile.TemporaryDirectory() as tmp_dir:
             cwdir = os.getcwd()
             os.chdir(tmp_dir)
@@ -244,14 +245,10 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 [str(Path(self.relative_path) / "large.json")], "json"
             )
             self.assertEqual(
-                os.path.realpath(str(Path(unzipped_paths[0]).absolute())),
-                os.path.realpath(
-                    str(
-                        Path(__file__).parent.parent.parent
-                        / self.relative_path
-                        / "large.json"
-                    )
-                ),
+                Path(unzipped_paths[0]).resolve(),
+                (
+                    Path(__file__).parents[2] / self.relative_path / "large.json"
+                ).resolve(),
             )
 
             assert all(Path(fpath).exists() for fpath in unzipped_paths)
