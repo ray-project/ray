@@ -185,8 +185,7 @@ def _init_ray_cluster(
     heap_to_object_store_memory_ratio=None,
     head_options=None,
     worker_options=None,
-    ray_temp_root_dir="/tmp",
-    ray_log_root_dir="/tmp",
+    ray_temp_root_dir=None,
     safe_mode=True,
 ):
     """
@@ -305,29 +304,18 @@ def _init_ray_cluster(
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
     temp_dir_unique_suffix = uuid.uuid4().hex[:4]
-    ray_log_dir = os.path.join(
-        ray_log_root_dir, f"ray-logs-{ray_head_port}-{temp_dir_unique_suffix}"
-    )
-    os.makedirs(ray_log_dir, exist_ok=True)
 
-    # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/session_latest/logs",
-    #  Proposal: Update "ray start" scirpt to add a new option "ray_log_dir", and output logs
-    #  to a different directory specified by "ray_log_dir", instead of using
-    #  "{ray_temp_dir}/session_latest/logs".
-    #  The reason is, for ray on spark, user is hard to access log files on spark worker machines,
-    #  (especially on databricks runtime), so we'd better set the log output dir to be a
-    #  path mounted with NFS shared by all spark cluster nodes, so that the user can access
-    #  these remote log files from spark drive side easily.
+    # TODO: Set individual temp dir for ray worker nodes, and auto GC temp data when ray node exits
+    #  See https://github.com/ray-project/ray/issues/28876#issuecomment-1322016494
+    if ray_temp_root_dir is None:
+        if is_in_databricks_runtime():
+            ray_temp_root_dir = "/local_disk0/tmp"
+        else:
+            ray_temp_root_dir = "/tmp"
     ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-temp-{ray_head_port}-{temp_dir_unique_suffix}"
+        ray_temp_root_dir, f"ray-{ray_head_port}-{temp_dir_unique_suffix}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
-
-    _logger.warning(
-        "Logs for ray head / worker starting script can be found in local disk path "
-        f"{ray_log_dir}. Logs for ray processes can be found in local disk path "
-        f"{ray_temp_dir}/session_latest/logs."
-    )
 
     ray_head_node_cmd = [
         ray_exec_path,
@@ -412,7 +400,6 @@ def _init_ray_cluster(
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
         os.makedirs(ray_temp_dir, exist_ok=True)
-        os.makedirs(ray_log_dir, exist_ok=True)
 
         min_worker_port = 20000 + task_id * 1000
         max_worker_port = min_worker_port + 999
@@ -598,8 +585,7 @@ def init_ray_cluster(
     heap_to_object_store_memory_ratio=None,
     head_options=None,
     worker_options=None,
-    ray_temp_root_dir="/tmp",
-    ray_log_root_dir="/tmp",
+    ray_temp_root_dir=None,
     safe_mode=True,
 ):
     """
@@ -635,9 +621,7 @@ def init_ray_cluster(
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster
-            will create a subdirectory "ray-temp-{head_port}_{random_suffix}" beneath this path.
-        ray_log_root_dir: A local disk path to store "ray start" script logs. The created cluster
-            will create a subdirectory "ray-logs-{head_port}_{random_suffix}" beneath this path.
+            will create a subdirectory "ray-{head_port}_{random_suffix}" beneath this path.
         safe_mode: Boolean flag to fast-fail initialization of the ray cluster if the available
             spark cluster does not have sufficient resources to fulfill the resource allocation
             for memory, cpu and gpu. When set to true, if the requested resources are
@@ -661,7 +645,6 @@ def init_ray_cluster(
         head_options=head_options,
         worker_options=worker_options,
         ray_temp_root_dir=ray_temp_root_dir,
-        ray_log_root_dir=ray_log_root_dir,
         safe_mode=safe_mode,
     )
     _active_ray_cluster.connect()
