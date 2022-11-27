@@ -499,7 +499,7 @@ class EnvRunnerV2:
             # Agent sample batches grouped by policy. Each set of sample batches will
             # go through agent connectors together.
             sample_batches_by_policy = defaultdict(list)
-            # Whether an agent is done, regardless of soft_horizon.
+            # Whether an agent is terminated or truncated.
             agent_terminateds = {}
             agent_truncateds = {}
             for agent_id, obs in env_obs.items():
@@ -550,7 +550,7 @@ class EnvRunnerV2:
                 # Let's check to see if there are any agents that haven't got the
                 # last obs yet. If there are, we have to create fake-last
                 # observations for them. (the environment is not required to do so if
-                # dones[__all__]=True).
+                # terminateds[__all__]==True or truncateds[__all__]==True).
                 for agent_id in episode.get_agents():
                     # If the latest obs we got for this agent is done, or if its
                     # episode state is already done, nothing to do.
@@ -653,7 +653,6 @@ class EnvRunnerV2:
                 self._handle_done_episode(
                     env_id,
                     env_obs,
-                    infos[env_id],
                     terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"],
                     active_envs,
                     to_eval,
@@ -690,12 +689,10 @@ class EnvRunnerV2:
         episode: EpisodeV2 = self._active_episodes[env_id]
         batch_builder = self._batch_builders[env_id]
 
-        check_dones = is_done
-
         episode.postprocess_episode(
             batch_builder=batch_builder,
             is_done=is_done,
-            check_dones=check_dones,
+            check_dones=is_done,
         )
 
         # If, we are not allowed to pack the next episode into the same
@@ -769,7 +766,6 @@ class EnvRunnerV2:
         self,
         env_id: EnvID,
         env_obs_or_exception: MultiAgentDict,
-        env_infos: MultiAgentDict,
         is_done: bool,
         active_envs: Set[EnvID],
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
@@ -781,7 +777,7 @@ class EnvRunnerV2:
 
         Args:
             env_id: Environment ID.
-            env_obs: Last per-environment observation or Exception.
+            env_obs_or_exception: Last per-environment observation or Exception.
             env_infos: Last per-environment infos.
             is_done: If all agents are done.
             active_envs: Set of active env ids.
