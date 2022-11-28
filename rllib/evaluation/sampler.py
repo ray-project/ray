@@ -820,10 +820,11 @@ def _process_observations(
                 outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
-            # terminateds[__all__]=True).
+            # terminateds[__all__]=True or truncateds[__all__]=True).
             for ag_id in episode.get_agents():
                 if (
                     not episode.last_terminated_for(ag_id)
+                    and not episode.last_truncated_for(ag_id)
                     and ag_id not in all_agents_obs
                 ):
                     # Create a fake (all-0s) observation.
@@ -966,8 +967,6 @@ def _process_observations(
         # Episode is terminated for all agents (terminateds[__all__] == True or
         # truncateds[__all__] == True).
         if all_agents_done:
-            is_done = terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"]
-
             # If, we are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
@@ -979,8 +978,8 @@ def _process_observations(
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
-                    is_done=is_done,
-                    check_dones=is_done,
+                    is_done=True,
+                    check_dones=True,
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )
             if not episode.is_faulty:

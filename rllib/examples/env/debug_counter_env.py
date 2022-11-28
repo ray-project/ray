@@ -36,7 +36,6 @@ class DebugCounterEnv(gym.Env):
 class MultiAgentDebugCounterEnv(MultiAgentEnv):
     def __init__(self, config):
         super().__init__()
-        self._skip_env_checking = True
         self.num_agents = config["num_agents"]
         self.base_episode_len = config.get("base_episode_len", 103)
         # Actions are always:
@@ -67,12 +66,13 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
             self.timesteps[i] += 1
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
-            terminated[i] = truncated[i]
+            terminated[i] = False
             truncated[i] = (
                 True if self.timesteps[i] > self.base_episode_len + i else False
             )
             if terminated[i]:
                 self.terminateds.add(i)
+            if truncated[i]:
                 self.truncateds.add(i)
         terminated["__all__"] = len(self.terminateds) == self.num_agents
         truncated["__all__"] = len(self.truncateds) == self.num_agents
