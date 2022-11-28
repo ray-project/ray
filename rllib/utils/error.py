@@ -46,7 +46,7 @@ c) Make sure you provide a fully qualified classpath, e.g.:
 
 
 ERR_MSG_OLD_GYM_API = """Your environment ({}) does not abide to the new gymnasium-style API!
-From Ray 2.2 on, RLlib only supports the new (gym>=0.26 or gymnasium) Env APIs.
+From Ray 2.3 on, RLlib only supports the new (gym>=0.26 or gymnasium) Env APIs.
 {}
 Learn more about the most important changes here:
 https://github.com/openai/gym and here: https://github.com/Farama-Foundation/Gymnasium

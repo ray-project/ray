@@ -1,6 +1,7 @@
 import logging
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -68,6 +69,7 @@ class _VectorizedModelGymEnv(VectorEnv):
         while len(self.envs) < num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         self._timesteps = [0 for _ in range(self.num_envs)]
+        self.cur_obs = [None for _ in range(self.num_envs)]
 
         super().__init__(
             observation_space=observation_space or self.envs[0].observation_space,
@@ -93,9 +95,9 @@ class _VectorizedModelGymEnv(VectorEnv):
         return self.cur_obs, infos
 
     @override(VectorEnv)
-    def reset_at(self, index, seed=None):
+    def reset_at(self, index, *, seed=None, options=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        obs, infos = self.envs[index].reset()
+        obs, infos = self.envs[index].reset(seed=seed, options=options)
         self.cur_obs[index] = obs
         self._timesteps[index] = 0
         return obs, infos
