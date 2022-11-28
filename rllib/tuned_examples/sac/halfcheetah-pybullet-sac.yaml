@@ -6,8 +6,6 @@ halfcheetah-pybullet-sac:
     config:
         # Works for both torch and tf.
         framework: tf
-        horizon: 1000
-        soft_horizon: false
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
