@@ -992,6 +992,11 @@ cdef execute_task_with_cancellation_handler(
     # Automatically restrict the GPUs available to this task.
     ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
     # in case executing the main task throws an exception.
@@ -1078,6 +1083,10 @@ cdef execute_task_with_cancellation_handler(
     finally:
         with current_task_id_lock:
             current_task_id = None
+
+        if omp_num_threads_overriden:
+            # Reset the OMP_NUM_THREADS environ if it was set.
+            os.environ.pop("OMP_NUM_THREADS", None)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.

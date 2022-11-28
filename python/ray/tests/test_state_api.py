@@ -7,6 +7,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray._private import gcs_utils
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -69,6 +70,8 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    summarize_actors,
+    summarize_objects,
     summarize_tasks,
     list_cluster_events,
     StateApiClient,
@@ -2900,6 +2903,42 @@ def test_get_id_not_found(shutdown_only):
     result = runner.invoke(ray_get, ["actors", "1234"])
     assert result.exit_code == 0
     assert "Resource with id=1234 not found in the cluster." in result.output
+
+
+def test_core_state_api_usage_tags(shutdown_only):
+    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+
+    ctx = ray.init()
+    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    list_actors()
+    list_tasks()
+    list_jobs()
+    list_cluster_events()
+    list_nodes()
+    list_objects()
+    list_runtime_envs()
+    list_workers()
+
+    summarize_actors()
+    summarize_objects()
+    summarize_tasks()
+
+    result = get_extra_usage_tags_to_report(gcs_client)
+
+    expected_tags = [
+        TagKey.CORE_STATE_API_LIST_ACTORS,
+        TagKey.CORE_STATE_API_LIST_TASKS,
+        TagKey.CORE_STATE_API_LIST_JOBS,
+        TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS,
+        TagKey.CORE_STATE_API_LIST_NODES,
+        TagKey.CORE_STATE_API_LIST_OBJECTS,
+        TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS,
+        TagKey.CORE_STATE_API_LIST_WORKERS,
+        TagKey.CORE_STATE_API_SUMMARIZE_ACTORS,
+        TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS,
+        TagKey.CORE_STATE_API_SUMMARIZE_TASKS,
+    ]
+    assert set(result.keys()).issuperset({tag.name.lower() for tag in expected_tags})
 
 
 if __name__ == "__main__":
