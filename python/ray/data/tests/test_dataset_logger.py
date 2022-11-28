@@ -21,9 +21,16 @@ def test_dataset_logger(shutdown_only):
     # Read from log file, and parse each component of emitted log row
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     log_file_path = os.path.join(session_dir, DatasetLogger.DEFAULT_DATASET_LOG_PATH)
-    with open(log_file_path, 'r') as f:
+    with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
-    logged_ds, logged_ts, logged_level, logged_filepath, sep, logged_msg = raw_logged_msg.split()
+    (
+        logged_ds,
+        logged_ts,
+        logged_level,
+        logged_filepath,
+        sep,
+        logged_msg,
+    ) = raw_logged_msg.split()
 
     # Could not use freezegun to test exact timestamp value
     # (values off by some milliseconds), so instead we check
