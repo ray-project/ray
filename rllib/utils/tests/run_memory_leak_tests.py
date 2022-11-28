@@ -19,16 +19,15 @@
 import argparse
 import os
 from pathlib import Path
-import re
 import sys
 import yaml
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -95,7 +94,6 @@ if __name__ == "__main__":
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
-            file = re.sub("^.*/ray/rllib/", "ray/rllib/", file)
             experiments = load_experiments_from_file(file, SupportedFileType.python)
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
@@ -128,9 +126,9 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            trainer = get_algorithm_class(experiment["run"])(experiment["config"])
+            algo = get_trainable_cls(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
-                trainer,
+                algo,
                 to_check=set(args.to_check),
             )
             if not results:

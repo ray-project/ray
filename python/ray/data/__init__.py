@@ -17,6 +17,7 @@ from ray.data.read_api import (  # noqa: F401
     from_pandas,
     from_pandas_refs,
     from_spark,
+    from_tf,
     from_torch,
     range,
     range_arrow,
@@ -31,6 +32,7 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet,
     read_parquet_bulk,
     read_text,
+    read_mongo,
     read_tfrecords,
 )
 
@@ -51,6 +53,7 @@ __all__ = [
     "from_pandas",
     "from_pandas_refs",
     "from_spark",
+    "from_tf",
     "from_torch",
     "from_huggingface",
     "range",
@@ -63,6 +66,7 @@ __all__ = [
     "read_images",
     "read_json",
     "read_numpy",
+    "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
     "read_tfrecords",
