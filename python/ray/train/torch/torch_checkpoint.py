@@ -28,11 +28,28 @@ class TorchCheckpoint(Checkpoint):
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
-        from torch.nn.parallel import DistributedDataParallel
+        from torch.nn import Module
+        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
         for k, v in data_dict.items():
-            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
+            # Only check for attribute as we want to support
+            # DDP, FSDP and any future approaches
+            if isinstance(v, Module) and hasattr(v, "module"):
                 data_dict[k] = v.module
+            elif isinstance(v, dict):
+                # We could limit this only to the MODEL_KEY, but we'd
+                # miss any extra user-specified keys. This should be a
+                # noop with anything but DDP/FSDP module state dicts.
+
+                # This modifies in-place the first level of the dict
+                # and the _metadata nested dict.
+                # We are doing shallow copies here, so the performance
+                # impact should be negligible.
+                state_dict = v.copy()
+                if "_metadata" in state_dict:
+                    state_dict["_metadata"] = state_dict["_metadata"].copy()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                data_dict[k] = state_dict
 
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
