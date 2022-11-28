@@ -10,6 +10,7 @@ from ray.rllib.algorithms.bc import BC
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SPACES = {
@@ -76,7 +77,6 @@ class NestedActionSpacesTest(unittest.TestCase):
 
         # Remove lr schedule from config, not needed here, and not supported by BC.
         del config["lr_schedule"]
-
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
@@ -97,6 +97,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                         ioctx=pg.workers.local_worker().io_context,
                     )
                     sample_batch = reader.next()
+                    sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
                     if flatten:
                         assert isinstance(sample_batch["actions"], np.ndarray)
                         assert len(sample_batch["actions"].shape) == 2

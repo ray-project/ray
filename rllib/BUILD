@@ -19,7 +19,7 @@
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
-#         they cover the same functionaliy.
+#         they cover the same functionality.
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
@@ -253,7 +253,7 @@ py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-   size = "medium",
+   size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
    data = [
@@ -271,7 +271,7 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
-        "tuned_examples/crr/cartpole-v0-crr.yaml",
+        "tuned_examples/crr/cartpole-v1-crr.yaml",
         "tests/data/cartpole/large.json",
     ],
     args = ["--dir=tuned_examples/crr", '--framework=torch']
@@ -281,11 +281,11 @@ py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
-        "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
+        "tuned_examples/crr/cartpole-v1-crr_expectation.yaml",
         "tests/data/cartpole/large.json",
     ],
     args = ["--dir=tuned_examples/crr", '--framework=torch']
@@ -400,7 +400,7 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
-        "tuned_examples/dt/cartpole-v0-dt.yaml",
+        "tuned_examples/dt/cartpole-v1-dt.yaml",
         "tests/data/cartpole/large.json",
     ],
     args = ["--dir=tuned_examples/dt"]
@@ -574,6 +574,16 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_pendulum_ppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -805,7 +815,7 @@ py_test(
 
 py_test(
     name = "test_worker_failures",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
@@ -1284,7 +1294,7 @@ py_test(
 )
 
 py_test(
-    name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
+    name = "test_apex_ddpg_pendulum_v1_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
@@ -1301,7 +1311,7 @@ py_test(
 py_test(
     name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
         "--env", "FrozenLake-v1",
@@ -1312,12 +1322,12 @@ py_test(
 )
 
 py_test(
-    name = "test_dqn_cartpole_v0_no_dueling",
+    name = "test_dqn_cartpole_v1_no_dueling",
     main = "train.py", srcs = ["train.py"],
-    size = "small",
+    size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
@@ -1325,11 +1335,11 @@ py_test(
 )
 
 py_test(
-    name = "test_dqn_cartpole_v0",
+    name = "test_dqn_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2}'",
@@ -1338,14 +1348,14 @@ py_test(
 )
 
 py_test(
-    name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
+    name = "test_dqn_cartpole_v1_with_offline_input_and_softq",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train", "external_files"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"ray.rllib.offline.estimators.weighted_importance_sampling.WeightedImportanceSampling\"}, \"is\": {\"type\": \"ray.rllib.offline.estimators.importance_sampling.ImportanceSampling\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
@@ -1371,7 +1381,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_iteration\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
@@ -1380,12 +1390,12 @@ py_test(
 )
 
 py_test(
-    name = "test_impala_cartpole_v0_buffers_2_lstm",
+    name = "test_impala_cartpole_v1_buffers_2_lstm",
     main = "train.py",
     srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_iteration\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
@@ -1411,11 +1421,11 @@ py_test(
 # PG
 
 py_test(
-    name = "test_pg_tf_cartpole_v0_lstm",
+    name = "test_pg_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
@@ -1423,12 +1433,12 @@ py_test(
 )
 
 py_test(
-    name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
+    name = "test_pg_tf_cartpole_v1_multi_envs_per_worker",
     main = "train.py", srcs = ["train.py"],
     size = "medium",
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "CartPole-v0",
+        "--env", "CartPole-v1",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 5000, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
@@ -1589,13 +1599,6 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
-py_test(
-    name = "env/tests/test_multi_agent_pendulum",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["env/tests/test_multi_agent_pendulum.py"]
-)
-
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env", "exclusive"],
@@ -1716,8 +1719,15 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_worker_set",
+    tags = ["team:rllib", "evaluation", "exclusive"],
+    size = "small",
+    srcs = ["evaluation/tests/test_worker_set.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
-    tags = ["team:rllib", "evaluation"],
+    tags = ["team:rllib", "evaluation", "exclusive"],
     size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
@@ -3417,7 +3427,6 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
-    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
@@ -3671,14 +3680,6 @@ py_test(
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
-
-py_test(
-    name = "examples/documentation/rllib_in_60s",
-    main = "examples/documentation/rllib_in_60s.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/rllib_in_60s.py"],
 )
 
 py_test(

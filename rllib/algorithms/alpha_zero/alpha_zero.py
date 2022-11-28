@@ -3,7 +3,7 @@ from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -55,13 +55,14 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
-        >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = AlphaZeroConfig()   # doctest: +SKIP
+        >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
+        >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config..rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train() # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -69,14 +70,14 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
-        >>> print(config.shuffle_sequences)
+        >>> print(config.shuffle_sequences) # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))  # doctest: +SKIP
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "AlphaZero",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -151,15 +152,15 @@ class AlphaZeroConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        sgd_minibatch_size: Optional[int] = None,
-        shuffle_sequences: Optional[bool] = None,
-        num_sgd_iter: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        vf_share_layers: Optional[bool] = None,
-        mcts_config: Optional[dict] = None,
-        ranked_rewards: Optional[dict] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        sgd_minibatch_size: Optional[int] = NotProvided,
+        shuffle_sequences: Optional[bool] = NotProvided,
+        num_sgd_iter: Optional[int] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        vf_share_layers: Optional[bool] = NotProvided,
+        mcts_config: Optional[dict] = NotProvided,
+        ranked_rewards: Optional[dict] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "AlphaZeroConfig":
         """Sets the training related configuration.
@@ -223,23 +224,23 @@ class AlphaZeroConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if sgd_minibatch_size is not None:
+        if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
-        if shuffle_sequences is not None:
+        if shuffle_sequences is not NotProvided:
             self.shuffle_sequences = shuffle_sequences
-        if num_sgd_iter is not None:
+        if num_sgd_iter is not NotProvided:
             self.num_sgd_iter = num_sgd_iter
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if vf_share_layers is not None:
+        if vf_share_layers is not NotProvided:
             self.vf_share_layers = vf_share_layers
-        if mcts_config is not None:
+        if mcts_config is not NotProvided:
             self.mcts_config = mcts_config
-        if ranked_rewards is not None:
+        if ranked_rewards is not NotProvided:
             self.ranked_rewards.update(ranked_rewards)
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
@@ -363,9 +364,9 @@ class AlphaZero(Algorithm):
                 else NUM_ENV_STEPS_SAMPLED
             ]
 
-            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            if cur_ts > self.config.num_steps_sampled_before_learning_starts:
                 train_batch = self.local_replay_buffer.sample(
-                    self.config["train_batch_size"]
+                    self.config.train_batch_size
                 )
             else:
                 train_batch = None
