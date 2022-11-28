@@ -378,7 +378,7 @@ def read_mongo(
 
     Examples:
         >>> import ray
-        >>> from pymongoarrow.api import Schema
+        >>> from pymongoarrow.api import Schema # doctest: +SKIP
         >>> ds = ray.data.read_mongo( # doctest: +SKIP
         ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
         ...     database="my_db",
