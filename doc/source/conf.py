@@ -50,6 +50,7 @@ extensions = [
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib.redoc",
 ]
 
 myst_enable_extensions = [
@@ -322,6 +323,8 @@ def setup(app):
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
+    app.add_js_file("js/try-anyscale.js", defer="defer")
+
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
@@ -336,3 +339,15 @@ def setup(app):
 
     # Create galleries on the fly
     app.connect("builder-inited", build_gallery)
+
+
+redoc = [
+    {
+        "name": "Ray Jobs API",
+        "page": "cluster/running-applications/job-submission/api",
+        "spec": "cluster/running-applications/job-submission/openapi.yml",
+        "embed": True,
+    },
+]
+
+redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"

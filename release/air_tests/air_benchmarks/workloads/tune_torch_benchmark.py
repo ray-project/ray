@@ -32,7 +32,9 @@ def prepare_mnist():
 
 
 def get_trainer(
-    num_workers: int = 4, use_gpu: bool = False, config: Optional[Dict] = None
+    num_workers: int = 4,
+    use_gpu: bool = False,
+    config: Optional[Dict] = None,
 ):
     """Get the trainer to be used across train and tune to ensure consistency."""
     from torch_benchmark import train_func
@@ -176,13 +178,13 @@ def main(
     factor = 1.35
     threshold = mean_train_time * factor
 
-    assert (
-        mean_tune_time <= threshold
-    ), f"{mean_tune_time:.2f} > {threshold:.2f} = {factor:.1f} * {mean_train_time:.2f}"
-
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(full_results, f)
+
+    assert (
+        mean_tune_time <= threshold
+    ), f"{mean_tune_time:.2f} > {threshold:.2f} = {factor:.1f} * {mean_train_time:.2f}"
 
 
 if __name__ == "__main__":

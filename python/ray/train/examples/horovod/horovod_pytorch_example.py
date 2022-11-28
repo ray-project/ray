@@ -9,9 +9,9 @@ import torch.utils.data.distributed
 from torchvision import datasets, transforms
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig
 from ray.train.horovod import HorovodTrainer
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import ray.train.torch
 
 
@@ -152,12 +152,11 @@ def train_func(config):
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
         if save_model_as_dict:
-            checkpoint_dict = dict(model=model.state_dict())
+            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         else:
-            checkpoint_dict = dict(model=model)
-        checkpoint_dict = Checkpoint.from_dict(checkpoint_dict)
+            checkpoint = TorchCheckpoint.from_model(model)
         results.append(loss)
-        session.report(dict(loss=loss), checkpoint=checkpoint_dict)
+        session.report(dict(loss=loss), checkpoint=checkpoint)
 
     # Only used for testing.
     return results

@@ -22,6 +22,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
 // clang-format on
 using namespace ::testing;
 using namespace ray::gcs;
@@ -33,6 +34,8 @@ class GcsWorkerManagerTest : public Test {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    kv_instance_ = std::make_shared<gcs::StoreClientInternalKV>(
+        std::make_unique<ray::gcs::InMemoryStoreClient>(io_service_));
   }
 
   void SetUp() override {
@@ -44,7 +47,8 @@ class GcsWorkerManagerTest : public Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
-    worker_manager_.reset(new gcs::GcsWorkerManager(gcs_table_storage_, gcs_publisher_));
+    worker_manager_.reset(
+        new gcs::GcsWorkerManager(gcs_table_storage_, gcs_publisher_, kv_instance_));
   }
 
   void TearDown() override {
@@ -68,6 +72,7 @@ class GcsWorkerManagerTest : public Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<ray::gcs::InternalKVInterface> kv_instance_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
 

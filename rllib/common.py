@@ -24,8 +24,21 @@ class SupportedFileType(str, Enum):
     """Supported file types for RLlib, used for CLI argument validation."""
 
     yaml = "yaml"
-    json = "json"
     python = "python"
+
+
+def get_file_type(config_file: str) -> SupportedFileType:
+    if config_file.endswith(".py"):
+        file_type = SupportedFileType.python
+    elif config_file.endswith(".yaml") or config_file.endswith(".yml"):
+        file_type = SupportedFileType.yaml
+    else:
+        raise ValueError(
+            "Unknown file type for config "
+            "file: {}. Supported extensions: .py, "
+            ".yml, .yaml".format(config_file)
+        )
+    return file_type
 
 
 def _create_tune_parser_help():
@@ -64,7 +77,14 @@ def download_example_file(
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
-        temp_file = tempfile.NamedTemporaryFile()
+        file_type = get_file_type(example_url)
+        if file_type == SupportedFileType.yaml:
+            temp_file = tempfile.NamedTemporaryFile(suffix=".yaml")
+        else:
+            assert (
+                file_type == SupportedFileType.python
+            ), f"`example_url` ({example_url}) must be a python or yaml file!"
+            temp_file = tempfile.NamedTemporaryFile(suffix=".py")
 
         r = requests.get(example_url)
         with open(temp_file.name, "wb") as f:
@@ -105,7 +125,7 @@ train_help = dict(
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
     filetype="The file type of the config file. Defaults to 'yaml' and can also be "
-    "'json', or 'python'.",
+    "'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -173,6 +193,7 @@ class CLIArguments:
     of common arguments, like "run" or "env" that would otherwise be duplicated."""
 
     # Common arguments
+    # __cli_common_start__
     Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
     AlgoRequired = typer.Option(
         ..., "--algo", "--run", "-a", "-r", help=get_help("run")
@@ -181,15 +202,21 @@ class CLIArguments:
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
     Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
     ConfigRequired = typer.Option(..., "--config", "-c", help=get_help("config"))
+    # __cli_common_end__
 
-    # Train arguments
+    # Train file arguments
+    # __cli_file_start__
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
     )
     FileType = typer.Option(
         SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
     )
-    Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
+    # __cli_file_end__
+
+    # Train arguments
+    # __cli_train_start__
+    Stop = typer.Option(None, "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
     )
@@ -198,7 +225,7 @@ class CLIArguments:
     Resume = typer.Option(False, help=train_help.get("resume"))
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
-    CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
+    CheckpointAtEnd = typer.Option(True, help=get_help("checkpoint_at_end"))
     LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
@@ -220,8 +247,10 @@ class CLIArguments:
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
     )
+    # __cli_train_end__
 
     # Eval arguments
+    # __cli_eval_start__
     Checkpoint = typer.Argument(None, help=eval_help.get("checkpoint"))
     Render = typer.Option(False, help=eval_help.get("render"))
     Steps = typer.Option(10000, help=eval_help.get("steps"))
@@ -230,6 +259,7 @@ class CLIArguments:
     SaveInfo = typer.Option(False, help=eval_help.get("save_info"))
     UseShelve = typer.Option(False, help=eval_help.get("use_shelve"))
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
+    # __cli_eval_end__
 
 
 # Note that the IDs of these examples are lexicographically sorted by environment,
@@ -242,7 +272,7 @@ EXAMPLES = {
     },
     "cartpole-a2c": {
         "file": "tuned_examples/a2c/cartpole_a2c.py",
-        "file_type": SupportedFileType.python,
+        "stop": "{'timesteps_total': 50000, 'episode_reward_mean': 200}",
         "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
@@ -251,7 +281,8 @@ EXAMPLES = {
     },
     # A3C
     "cartpole-a3c": {
-        "file": "tuned_examples/a3c/cartpole-a3c.yaml",
+        "file": "tuned_examples/a3c/cartpole_a3c.py",
+        "stop": "{'timesteps_total': 20000, 'episode_reward_mean': 150}",
         "description": "Runs A3C on the CartPole-v1 environment.",
     },
     "pong-a3c": {

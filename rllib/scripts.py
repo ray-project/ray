@@ -10,7 +10,6 @@ from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
-    SupportedFileType,
     example_help,
     download_example_file,
 )
@@ -74,8 +73,8 @@ def get_example_file(example_id):
         raise example_error(example_id)
 
     example = EXAMPLES[example_id]
-    assert hasattr(
-        example, "file"
+    assert (
+        "file" in example.keys()
     ), f"Example {example_id} does not have a 'file' attribute."
     return example.get("file")
 
@@ -101,11 +100,15 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     example = EXAMPLES[example_id]
     example_file = get_example_file(example_id)
     example_file, temp_file = download_example_file(example_file)
-    file_type = example.get("file_type", SupportedFileType.yaml)
+    stop = example.get("stop")
 
     train_module.file(
         config_file=example_file,
-        file_type=file_type,
+        stop=stop,
+        checkpoint_freq=1,
+        checkpoint_at_end=True,
+        keep_checkpoints_num=None,
+        checkpoint_score_attr="training_iteration",
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,

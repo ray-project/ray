@@ -1,9 +1,11 @@
+import asyncio
 import binascii
 import errno
 import functools
 import hashlib
 import importlib
 import inspect
+import json
 import logging
 import multiprocessing
 import os
@@ -14,12 +16,13 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
+from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
-
 import grpc
 import numpy as np
 
@@ -61,6 +64,7 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
 
 
 def get_user_temp_dir():
@@ -345,6 +349,46 @@ def get_cuda_visible_devices():
 last_set_gpu_ids = None
 
 
+def set_omp_num_threads_if_unset() -> bool:
+    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+
+    This function sets the environment variable OMP_NUM_THREADS for the worker,
+    if the env is not previously set and it's running in worker (WORKER_MODE).
+
+    Returns True if OMP_NUM_THREADS is set in this function.
+
+    """
+    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
+    if num_threads_from_env is not None:
+        # No ops if it's set
+        return False
+
+    # If unset, try setting the correct CPU count assigned.
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
+    if num_assigned_cpus is None:
+        # This is an actor task w/o any num_cpus specified, set it to 1
+        logger.debug(
+            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+            "degradation with many workers (issue #6998). You can override this "
+            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+        )
+        num_assigned_cpus = 1
+
+    import math
+
+    # For num_cpu < 1: Set to 1.
+    # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
+    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
+    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    return True
+
+
 def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
@@ -395,7 +439,7 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = memory
+        resources["memory"] = int(memory)
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
@@ -640,6 +684,26 @@ def get_cgroupv1_used_memory(filename):
         return None
 
 
+def get_cgroupv2_used_memory(stat_file, usage_file):
+    # Uses same calculation as libcontainer, that is:
+    # memory.current - memory.stat[inactive_file]
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+    inactive_file_bytes = -1
+    current_usage = -1
+    with open(usage_file, "r") as f:
+        current_usage = int(f.read().strip())
+    with open(stat_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if current_usage >= 0 and inactive_file_bytes >= 0:
+            working_set = current_usage - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
 def get_used_memory():
     """Return the currently used system memory in bytes
 
@@ -653,11 +717,15 @@ def get_used_memory():
     memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
+    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
         docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
-    elif os.path.exists(memory_usage_filename_v2):
-        with open(memory_usage_filename_v2, "r") as f:
-            docker_usage = int(f.read())
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
         return docker_usage
@@ -1365,6 +1433,24 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
+def parse_resources_json(
+    resources: str, cli_logger, cf, command_arg="--resources"
+) -> Dict[str, float]:
+    try:
+        resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(
+                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+            ),
+        )
+    return resources
+
+
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
@@ -1554,3 +1640,138 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    import sys
+
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
+
+
+def get_entrypoint_name():
+    """Get the entrypoint of the current script."""
+    prefix = ""
+    try:
+        curr = psutil.Process()
+        # Prepend `interactive_shell` for interactive shell scripts.
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode # noqa
+        if hasattr(sys, "ps1"):
+            prefix = "(interactive_shell) "
+
+        return prefix + list2cmdline(curr.cmdline())
+    except Exception:
+        return "unknown"
+
+
+def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
+    """Add params to the provided url as query parameters.
+
+    If url already contains query parameters, they will be merged with params, with the
+    existing query parameters overriding any in params with the same parameter name.
+
+    Args:
+        url: The URL to add query parameters to.
+        params: The query parameters to add.
+
+    Returns:
+        URL with params added as query parameters.
+    """
+    # Unquote URL first so we don't lose existing args.
+    url = unquote(url)
+    # Parse URL.
+    parsed_url = urlparse(url)
+    # Merge URL query string arguments dict with new params.
+    base_params = params
+    params = dict(parse_qsl(parsed_url.query))
+    base_params.update(params)
+    # bool and dict values should be converted to json-friendly values.
+    base_params.update(
+        {
+            k: json.dumps(v)
+            for k, v in base_params.items()
+            if isinstance(v, (bool, dict))
+        }
+    )
+
+    # Convert URL arguments to proper query string.
+    encoded_params = urlencode(base_params, doseq=True)
+    # Replace query string in parsed URL with updated query string.
+    parsed_url = parsed_url._replace(query=encoded_params)
+    # Convert back to URL.
+    return urlunparse(parsed_url)
+
+
+def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
+    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
+    parameter. For pyarrow >= 9.0.0, this is required in order to allow
+    ``S3FileSystem.create_dir()`` to create S3 buckets.
+
+    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
+    the URI unchanged.
+
+    Args:
+        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
+
+    Returns:
+        A URI with the added allow_bucket_creation=true query parameter, if the provided
+        URI is an S3 URL; uri will be returned unchanged otherwise.
+    """
+    from pkg_resources._vendor.packaging.version import parse as parse_version
+
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
+        return uri
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "s3":
+        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
+    return uri
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION

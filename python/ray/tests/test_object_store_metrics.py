@@ -2,6 +2,7 @@ from collections import defaultdict
 import pytest
 from typing import Dict
 import numpy as np
+import sys
 
 import ray
 from ray._private.test_utils import (
@@ -58,13 +59,22 @@ def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
     return True
 
 
-def test_all_shared_memory(shutdown_only):
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
+def test_shared_memory_and_inline_worker_heap(shutdown_only):
     """Test objects allocated in shared memory"""
     import numpy as np
 
     info = ray.init(
         object_store_memory=100 * MiB,
-        _system_config=_SYSTEM_CONFIG,
+        _system_config={
+            **_SYSTEM_CONFIG,
+            **{
+                "max_direct_call_object_size": 10 * MiB,
+                "task_rpc_inlined_bytes_limit": 100 * MiB,
+            },
+        },
     )
 
     # Allocate 80MiB data
@@ -76,22 +86,49 @@ def test_all_shared_memory(shutdown_only):
         "MMAP_SHM": 80 * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
         # 1KiB for metadata difference
         lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Allocate inlined task returns
+    @ray.remote(num_cpus=0.1)
+    def func():
+        return np.zeros(4 * MiB, dtype=np.uint8)
+
+    tasks_with_inlined_return = [func.remote() for _ in range(5)]
+
+    expected = {
+        "MMAP_SHM": 80 * MiB,
+        "MMAP_DISK": 0,
+        "SPILLED": 0,
+        "WORKER_HEAP": 20 * MiB,
+    }
+
+    returns = ray.get(tasks_with_inlined_return)
+
+    wait_for_condition(
+        # 4 KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 4 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
 
     # Free all of them
     del objs_in_use
+    del returns
+    del tasks_with_inlined_return
 
     expected = {
         "MMAP_SHM": 0,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
@@ -102,6 +139,9 @@ def test_all_shared_memory(shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_spilling(object_spilling_config, shutdown_only):
     """Test metrics with object spilling occurred"""
 
@@ -123,6 +163,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "MMAP_SHM": 100 * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
@@ -136,6 +177,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     objs2 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
     expected = {
+        "WORKER_HEAP": 0,
         "MMAP_SHM": 100 * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 100 * MiB,
@@ -153,6 +195,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "MMAP_SHM": 100 * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -167,6 +210,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "MMAP_SHM": 0,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -176,6 +220,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 @pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
 def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
     """Test object store metric on raylet controlled by `metric_report_interval_ms`"""
@@ -193,6 +240,7 @@ def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms)
         "MMAP_SHM": 20 * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
     start = time.time()
     wait_for_condition(
@@ -209,6 +257,9 @@ def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms)
     del obj
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_fallback_memory(shutdown_only):
     """Test some fallback allocated objects"""
 
@@ -235,6 +286,7 @@ def test_fallback_memory(shutdown_only):
         "MMAP_SHM": expected_in_memory * obj_size_mb * MiB,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
@@ -262,6 +314,7 @@ def test_fallback_memory(shutdown_only):
         "MMAP_SHM": expected_in_memory * obj_size_mb * MiB,
         "MMAP_DISK": expected_fallback * obj_size_mb * MiB,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
@@ -281,6 +334,7 @@ def test_fallback_memory(shutdown_only):
         "MMAP_SHM": 0,
         "MMAP_DISK": 0,
         "SPILLED": 0,
+        "WORKER_HEAP": 0,
     }
 
     wait_for_condition(
@@ -291,6 +345,9 @@ def test_fallback_memory(shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_seal_memory(shutdown_only):
     """Test objects sealed states reported correctly"""
     import numpy as np
