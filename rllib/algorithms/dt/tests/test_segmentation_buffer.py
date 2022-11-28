@@ -39,7 +39,8 @@ def _generate_episode_batch(ep_len, eps_id, obs_dim=8, act_dim=3):
             SampleBatch.EPS_ID: np.full((ep_len,), eps_id, dtype=np.int32),
             SampleBatch.T: np.arange(ep_len, dtype=np.int32),
             SampleBatch.ATTENTION_MASKS: np.ones(ep_len, dtype=np.float32),
-            SampleBatch.DONES: np.array([False] * (ep_len - 1) + [True]),
+            SampleBatch.TERMINATEDS: np.array([False] * (ep_len - 1) + [True]),
+            SampleBatch.TRUNCATEDS: np.array([False] * ep_len),
         }
     )
     return batch
