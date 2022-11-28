@@ -58,6 +58,8 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
         assert "do_stuff_infinite" in content, content
         if native == "1":
             assert "ray::core::CoreWorker" in content, content
+        else:
+            assert "ray::core::CoreWorker" not in content, content
 
     assert wait_until_succeeded_without_exception(
         get_actor_stack,
@@ -79,6 +81,8 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
         assert "do_stuff_infinite" in content, content
         if native == "1":
             assert "ray::core" in content, content
+        else:
+            assert "ray::core" not in content, content
 
     assert wait_until_succeeded_without_exception(
         get_actor_flamegraph,
