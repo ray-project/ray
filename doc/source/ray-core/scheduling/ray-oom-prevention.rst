@@ -132,7 +132,7 @@ The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries
 
     .. code-block:: bash
 
-        RAY_memory_monitor_refresh_ms=100 RAY_memory_usage_threshold=0.4 ray start --head
+        RAY_memory_usage_threshold=0.4 ray start --head
 
 
     Let's create an application two_actors.py that submits two actors, where the first one is retriable and the second one is non-retriable.

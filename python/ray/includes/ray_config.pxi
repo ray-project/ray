@@ -159,5 +159,4 @@ cdef class Config:
 
     @staticmethod
     def memory_monitor_refresh_ms():
-        return (RayConfig.instance()
-                .memory_monitor_refresh_ms())
+        return (RayConfig.instance().memory_monitor_refresh_ms())
