@@ -11,7 +11,7 @@ class TestDreamer(unittest.TestCase):
     """Sanity tests for Dreamer."""
 
     def setUp(self):
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     def tearDown(self):
         ray.shutdown()
