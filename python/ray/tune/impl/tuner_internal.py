@@ -150,7 +150,11 @@ class TunerInternal:
             concurrent_trials = math.inf
 
         actual_concurrency = min(
-            (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
+            (
+                (cpus_total // cpus_per_trial) if cpus_per_trial else 0,
+                num_samples,
+                concurrent_trials,
+            )
         )
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
