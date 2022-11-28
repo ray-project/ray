@@ -237,7 +237,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
