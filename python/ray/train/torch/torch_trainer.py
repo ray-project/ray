@@ -172,7 +172,7 @@ class TorchTrainer(DataParallelTrainer):
 
             torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                     [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(200)]
             )
 
             # Define scaling and run configs
