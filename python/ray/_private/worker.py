@@ -1956,15 +1956,15 @@ def connect(
     try:
         node.check_version_info()
     except Exception as e:
-        if mode == SCRIPT_MODE:
-            raise e
-        elif mode == WORKER_MODE:
+        if mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
+                num_retries=1,
             )
+        raise e
 
     driver_name = ""
     log_stdout_file_path = ""
