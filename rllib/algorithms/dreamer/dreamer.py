@@ -103,7 +103,6 @@ class DreamerConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
         self.num_envs_per_worker = 1
-        self.horizon = 1000
         self.batch_mode = "complete_episodes"
         self.clip_actions = False
 

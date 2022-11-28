@@ -79,7 +79,7 @@ def load_experiments_from_file(
         The experiments dict ready to be passed into `tune.run_experiments()`.
     """
 
-    #
+    # Yaml file
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
@@ -127,7 +127,7 @@ def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
     # stopping conditions
-    stop: str = cli.Stop,
+    stop: Optional[str] = cli.Stop,
     # Checkpointing
     checkpoint_freq: int = cli.CheckpointFreq,
     checkpoint_at_end: bool = cli.CheckpointAtEnd,
