@@ -3,14 +3,13 @@ import os
 import pickle
 import urllib
 
-from multiprocessing import Process, Queue
-
 import numpy as np
 from numbers import Number
 
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import ray
 from ray import logger
 from ray.air import session
 
@@ -19,7 +18,9 @@ from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
 from ray._private.storage import _load_class
+from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
+from ray.util.queue import Queue
 
 try:
     import wandb
@@ -265,10 +266,12 @@ class _QueueItem(enum.Enum):
     CHECKPOINT = enum.auto()
 
 
-class _WandbLoggingProcess(Process):
+class _WandbLoggingActor:
     """
-    We need a `multiprocessing.Process` to allow multiple concurrent
-    wandb logging instances locally.
+    We need a separate process to allow multiple concurrent
+    wandb logging instances locally. We use Ray actors as forking multiprocessing
+    processes is not supported by Ray and spawn processes run into pickling
+    problems.
 
     We use a queue for the driver to communicate with the logging process.
     The queue accepts the following items:
@@ -287,8 +290,6 @@ class _WandbLoggingProcess(Process):
         *args,
         **kwargs,
     ):
-        super(_WandbLoggingProcess, self).__init__()
-
         import wandb
 
         self._wandb = wandb
@@ -363,9 +364,6 @@ class _WandbLoggingProcess(Process):
         config_update.pop("callbacks", None)  # Remove callbacks
         return log, config_update
 
-    def __reduce__(self):
-        raise RuntimeError("_WandbLoggingProcess is not pickleable.")
-
 
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
@@ -434,7 +432,7 @@ class WandbLoggerCallback(LoggerCallback):
         "date",
     ]
 
-    _logger_process_cls = _WandbLoggingProcess
+    _logger_actor_cls = _WandbLoggingActor
 
     def __init__(
         self,
@@ -456,7 +454,12 @@ class WandbLoggerCallback(LoggerCallback):
         self.save_checkpoints = save_checkpoints
         self.kwargs = kwargs
 
-        self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
+        self._remote_logger_class = None
+
+        self._trial_logging_actors: Dict[
+            "Trial", ray.actor.ActorHandle[_WandbLoggingActor]
+        ] = {}
+        self._trial_logging_futures: Dict["Trial", ray.ObjectRef] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self, *args, **kwargs):
@@ -516,18 +519,44 @@ class WandbLoggerCallback(LoggerCallback):
         )
         wandb_init_kwargs.update(self.kwargs)
 
-        self._trial_queues[trial] = Queue()
-        self._trial_processes[trial] = self._logger_process_cls(
+        self._start_logging_actor(trial, exclude_results, **wandb_init_kwargs)
+
+    def _start_logging_actor(
+        self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
+    ):
+        if not self._remote_logger_class:
+            self._remote_logger_class = ray.remote(
+                num_cpus=0, **_force_on_current_node()
+            )(self._logger_actor_cls)
+
+        self._trial_queues[trial] = Queue(
+            actor_options={"num_cpus": 0, **_force_on_current_node()}
+        )
+        self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
             **wandb_init_kwargs,
         )
-        self._trial_processes[trial].start()
+        self._trial_logging_futures[trial] = self._trial_logging_actors[
+            trial
+        ].run.remote()
+
+    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+        self._trial_queues[trial].put((_QueueItem.END, None))
+
+        try:
+            ray.get(self._trial_logging_futures[trial], timeout=timeout)
+        except TimeoutError:
+            ray.kill(self._trial_logging_actors[trial])
+
+        del self._trial_queues[trial]
+        del self._trial_logging_actors[trial]
+        del self._trial_logging_futures[trial]
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        if trial not in self._trial_processes:
+        if trial not in self._trial_logging_actors:
             self.log_trial_start(trial)
 
         result = _clean_log(result)
@@ -540,23 +569,12 @@ class WandbLoggerCallback(LoggerCallback):
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._trial_queues[trial].put((_QueueItem.END, None))
-        self._trial_processes[trial].join(timeout=10)
-
-        if self._trial_processes[trial].is_alive():
-            self._trial_processes[trial].kill()
-
-        del self._trial_queues[trial]
-        del self._trial_processes[trial]
+        self._stop_logging_actor(trial=trial, timeout=10)
 
     def __del__(self):
-        for trial in self._trial_processes:
-            if trial in self._trial_queues:
-                self._trial_queues[trial].put((_QueueItem.END, None))
-            self._trial_processes[trial].join(timeout=2)
+        for trial in list(self._trial_logging_actors):
+            self._stop_logging_actor(trial=trial, timeout=2)
 
-            if self._trial_processes[trial].is_alive():
-                self._trial_processes[trial].kill()
-
-        self._trial_processes = {}
+        self._trial_logging_actors = {}
+        self._trial_logging_futures = {}
         self._trial_queues = {}
