@@ -1,6 +1,6 @@
 from collections import deque
 import gymnasium as gym
-import gym_minigrid
+import minigrid
 import numpy as np
 import sys
 import unittest
@@ -117,7 +117,7 @@ def env_maker(config):
     # Make it impossible to reach goal by chance.
     env = gym.wrappers.TimeLimit(env, max_episode_steps=15)
     # Only use image portion of observation (discard goal and direction).
-    env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    env = minigrid.wrappers.ImgObsWrapper(env)
     env = OneHotWrapper(
         env,
         config.vector_index if hasattr(config, "vector_index") else 0,
