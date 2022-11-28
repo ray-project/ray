@@ -8,6 +8,13 @@ REQUEST_4_CPU = ResourceRequest([{"CPU": 4}])
 
 def test_acquire_return_resources():
     manager = FixedResourceManager(total_resources={"CPU": 4})
+
+    assert not manager.has_resources_ready(REQUEST_2_CPU)
+    assert not manager.has_resources_ready(REQUEST_4_CPU)
+
+    manager.request_resources(REQUEST_2_CPU)
+    manager.request_resources(REQUEST_4_CPU)
+
     assert manager.has_resources_ready(REQUEST_4_CPU)
 
     ready_2 = manager.acquire_resources(REQUEST_2_CPU)
@@ -28,9 +35,12 @@ def test_numerical_error():
     manager = FixedResourceManager(
         total_resources={"CPU": 0.99, "GPU": 0.99, "a": 0.99}
     )
+    resource_request = ResourceRequest([{"CPU": 0.33, "GPU": 0.33, "a": 0.33}])
+
     for i in range(3):
+        manager.request_resources(resource_request)
         assert manager.acquire_resources(
-            ResourceRequest([{"CPU": 0.33, "GPU": 0.33, "a": 0.33}])
+            resource_request=resource_request
         ), manager._available_resources
 
     assert manager._available_resources["CPU"] == 0
