@@ -8,6 +8,7 @@ import unittest
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
@@ -105,9 +106,12 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
 
 
 class RayTrialExecutorTest(unittest.TestCase):
+    def _resourceManager(self):
+        return PlacementGroupResourceManager()
+
     def setUp(self):
-        self.trial_executor = RayTrialExecutor()
         ray.init(num_cpus=2, ignore_reinit_error=True)
+        self.trial_executor = RayTrialExecutor(resource_manager=self._resourceManager())
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):
@@ -645,6 +649,11 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
     def testTrialHangingCleanup(self):
         self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
+
+
+class FixedResourceExecutorTest(RayTrialExecutorTest):
+    def _resourceManager(self):
+        return FixedResourceManager()
 
 
 if __name__ == "__main__":

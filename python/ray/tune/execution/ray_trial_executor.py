@@ -15,6 +15,7 @@ from typing import Callable, Dict, Iterable, Optional, Set, Union
 import ray
 from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.execution import ResourceManager
 from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
 )
@@ -210,6 +211,7 @@ class RayTrialExecutor:
 
     def __init__(
         self,
+        resource_manager: Optional[ResourceManager] = None,
         reuse_actors: bool = False,
         result_buffer_length: Optional[int] = None,
         refresh_period: Optional[float] = None,
@@ -244,7 +246,7 @@ class RayTrialExecutor:
         self._newly_cached_actors = set()
 
         # Resource management
-        self._resource_manager = PlacementGroupResourceManager()
+        self._resource_manager = resource_manager or PlacementGroupResourceManager()
 
         # Trials for which we requested resources
         self._staged_trials = set()
