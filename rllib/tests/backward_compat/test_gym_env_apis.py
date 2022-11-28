@@ -86,7 +86,7 @@ class TestGymEnvAPIs(unittest.TestCase):
 
         self.assertRaisesRegex(
             ValueError,
-            "does not abide to the new gymnasium-style API",
+            "Your gymnasium.Env's `reset()` method",
             lambda: test_(),
         )
 

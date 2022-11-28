@@ -181,7 +181,8 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
         obs_and_infos = env.reset(seed=42, options={})
     except Exception as e:
         raise ValueError(
-            "Your gymnasium.Env's step() method raised an Exception!"
+            "Your gymnasium.Env's `reset()` method raised an Exception! Make sure it's "
+            "signature is `reset(self, *, seed=None, options=None)`."
         ) from e
 
     # No more gym < 0.26 support! Error and explain the user how to upgrade to
@@ -226,7 +227,7 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
         results = env.step(sampled_action)
     except Exception as e:
         raise ValueError(
-            "Your gymnasium.Env's step() method raised an Exception!"
+            "Your gymnasium.Env's `step()` method raised an Exception!"
         ) from e
 
     # No more gym < 0.26 support! Error and explain the user how to upgrade to
