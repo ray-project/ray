@@ -11,10 +11,9 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
-py_test(
-    name = "test_preprocessors",
+py_test_module_list(
+    files = glob(["tests/preprocessors/test_*.py"]),
     size = "small",
-    srcs = ["tests/test_preprocessors.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = ["//:ray_lib", ":conftest"],
 )
