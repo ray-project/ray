@@ -4,11 +4,16 @@ import io
 import torch
 import warnings
 
+from torch.nn import Module
+
 import ray.cloudpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
-from ray.air._internal.torch_utils import load_torch_model
+from ray.air._internal.torch_utils import (
+    load_torch_model,
+    consume_prefix_in_state_dict_if_present,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -28,8 +33,6 @@ class TorchCheckpoint(Checkpoint):
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
-        from torch.nn import Module
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
         for k, v in data_dict.items():
             # Only check for attribute as we want to support

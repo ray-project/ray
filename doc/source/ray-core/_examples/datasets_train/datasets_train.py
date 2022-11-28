@@ -454,7 +454,7 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        checkpoint = Checkpoint.from_dict(dict(model=model.state_dict()))
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
         print(f"session report on {session.get_world_rank()}")
