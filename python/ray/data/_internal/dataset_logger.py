@@ -18,9 +18,9 @@ class DatasetLogger:
         Args:
             log_name: Name of logger (usually passed into `logging.getLogger(...)`)
         """
-        # Primary logger used to logging to log file
+        # Primary logger for logging to log file
         self.logger = logging.getLogger(log_name)
-        # Secondary logger used for logging to stdout
+        # Secondary logger for logging to stdout
         self.logger_stdout = logging.getLogger(f"{log_name}.stdout")
         # Clear existing handlers in primary logger
         # to disable logging to stdout by default
@@ -37,7 +37,7 @@ class DatasetLogger:
         # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
         global_node = ray._private.worker._global_node
         if global_node is not None:
-            # With current implementation, we can only get session_dir
+            # With the current implementation, we can only get session_dir
             # after ray.init() is called. A less hacky way could potentially fix this
             session_dir = global_node.get_session_dir_path()
             self.datasets_log_path = os.path.join(
