@@ -34,19 +34,21 @@ class GcsWorkerManagerTest : public Test {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    kv_instance_ = std::make_shared<gcs::StoreClientInternalKV>(
+        std::make_unique<ray::gcs::InMemoryStoreClient>(io_service_));
   }
 
   void SetUp() override {
     // Needs a separate thread to run io service.
     // Alternatively, we can manually run io service. In this test, we chose to
     // start a new thread as other GCS tests do.
-    thread_io_service_ = std::make_unique<std::thread>([this] {
+    thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
-    });
-    worker_manager_ =
-        std::make_shared<gcs::GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+    }));
+    worker_manager_.reset(
+        new gcs::GcsWorkerManager(gcs_table_storage_, gcs_publisher_, kv_instance_));
   }
 
   void TearDown() override {
@@ -70,6 +72,7 @@ class GcsWorkerManagerTest : public Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<ray::gcs::InternalKVInterface> kv_instance_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
 

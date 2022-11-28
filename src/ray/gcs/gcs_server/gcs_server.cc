@@ -175,12 +175,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  // Init usage stats client
-  // This is done after the RPC server starts
-  // since we need to know the port the rpc server listens on.
-  InitUsageStatsClient();
-  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
-
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
   // some living nodes as dead as the timer inside node failure
@@ -493,6 +487,21 @@ std::string GcsServer::StorageType() const {
   return RayConfig::instance().gcs_storage();
 }
 
+void GcsServer::StoreGcsServerAddressInRedis() {
+  std::string ip = config_.node_ip_address;
+  if (ip.empty()) {
+    ip = GetValidLocalIp(
+        GetPort(),
+        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
+  }
+  std::string address = ip + ":" + std::to_string(GetPort());
+  RAY_LOG(INFO) << "Gcs server address = " << address;
+
+  RAY_CHECK_OK(GetOrConnectRedis()->GetPrimaryContext()->RunArgvAsync(
+      {"SET", "GcsServerAddress", address}));
+  RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
+}
+
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
@@ -543,23 +552,17 @@ void GcsServer::InitFunctionManager() {
   function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
 }
 
-void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
-}
-
 void GcsServer::InitKVManager() {
-  std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+    kv_instance_ = std::make_shared<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+    kv_instance_ =
+        std::make_shared<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
             std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(kv_instance_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -612,8 +615,8 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
+      gcs_table_storage_, gcs_publisher_, kv_instance_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
