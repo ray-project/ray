@@ -55,6 +55,8 @@ def test_max_running_tasks(num_tasks):
         done, refs = ray.wait(refs)
         assert ray.get(done[0]) is None
 
+    return used_cpus
+
 
 def no_resource_leaks():
     return test_utils.no_resource_leaks_excluding_node_resources()
@@ -85,7 +87,7 @@ def test(num_tasks, smoke_test):
     )
 
     start_time = time.time()
-    test_max_running_tasks(num_tasks)
+    used_cpus = test_max_running_tasks(num_tasks)
     end_time = time.time()
     ray.get(monitor_actor.stop_run.remote())
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
@@ -109,6 +111,7 @@ def test(num_tasks, smoke_test):
             "tasks_per_second": rate,
             "num_tasks": num_tasks,
             "time": end_time - start_time,
+            "used_cpus": used_cpus,
             "success": "1",
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
@@ -119,7 +122,12 @@ def test(num_tasks, smoke_test):
                     "perf_metric_name": "tasks_per_second",
                     "perf_metric_value": rate,
                     "perf_metric_type": "THROUGHPUT",
-                }
+                },
+                {
+                    "perf_metric_name": "used_cpus_by_deadline",
+                    "perf_metric_value": used_cpus,
+                    "perf_metric_type": "THROUGHPUT",
+                },
             ]
         json.dump(results, out_file)
 
