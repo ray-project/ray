@@ -46,8 +46,8 @@ USAGE_STATS_CONFIRMATION_MESSAGE = (
 
 LIBRARY_USAGE_PREFIX = "library_usage_"
 
-# Keep in-sync with the same constants defined in usage_stats_client.h
 EXTRA_USAGE_TAG_PREFIX = "extra_usage_tag_"
+
 USAGE_STATS_NAMESPACE = "usage_stats"
 
 KUBERNETES_SERVICE_HOST_ENV = "KUBERNETES_SERVICE_HOST"

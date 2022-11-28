@@ -2115,12 +2115,10 @@ cc_library(
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
-        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
-        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -2231,21 +2229,6 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "usage_stats_client_test",
-    srcs = [
-        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
-    ],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
