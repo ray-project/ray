@@ -684,8 +684,8 @@ def _env_runner(
                     except (ImportError, ModuleNotFoundError):
                         render = False  # disable rendering
                         logger.warning(
-                            "Could not import gym.envs.classic_control."
-                            "rendering! Try `pip install gym[all]`."
+                            "Could not import gymnasium.envs.classic_control."
+                            "rendering! Try `pip install gymnasium[all]`."
                         )
                 if simple_image_viewer:
                     simple_image_viewer.imshow(rendered)

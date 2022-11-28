@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Tuple
 
 import copy
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 import pandas as pd

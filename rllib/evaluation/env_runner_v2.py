@@ -274,8 +274,8 @@ class EnvRunnerV2:
         except (ImportError, ModuleNotFoundError):
             self._render = False  # disable rendering
             logger.warning(
-                "Could not import gym.envs.classic_control."
-                "rendering! Try `pip install gym[all]`."
+                "Could not import gymnasium.envs.classic_control."
+                "rendering! Try `pip install gymnasium[all]`."
             )
 
         return None

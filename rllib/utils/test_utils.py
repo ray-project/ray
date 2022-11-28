@@ -1,11 +1,15 @@
 from collections import Counter
 import copy
+import gymnasium as gym
+from gymnasium.spaces import Box
 import logging
+import numpy as np
+import os
+import pprint
 import random
 import re
 import time
-import os
-import gym
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,12 +21,7 @@ from typing import (
     Type,
     Union,
 )
-
-import numpy as np
-import tree  # pip install dm_tree
 import yaml
-import pprint
-from gymnasium.spaces import Box
 
 import ray
 from ray import air, tune
