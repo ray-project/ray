@@ -714,9 +714,16 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// A feature flag to enable pull based health check.
 RAY_CONFIG(bool, pull_based_healthcheck, true)
+/// The following are configs for the health check. They are borrowed
+/// from k8s health probe (shorturl.at/jmTY3)
+
+/// The delay to send the first health check.
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+/// The interval between two health check.
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+/// The timeout for a health check.
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+/// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
 /// The pool size for grpc server call.
