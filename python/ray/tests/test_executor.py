@@ -30,6 +30,14 @@ def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
             assert result == 100
         assert ex.context.address_info['address'] == call_ray_start
 
+def test_remote_actor_runs_on_local_instance_with_map_chunks():
+    a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
+    with RayExecutor() as ex:
+        futures_iter = ex.map_actor_function(a.actor_function,
+                                             list(range(1000)),
+                                             chunksize=100)
+    for idx, result in enumerate(futures_iter):
+        assert result == f"A-Actor-{idx}"
 
 
 @ray.remote
