@@ -266,7 +266,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
         q_tp1_best = torch.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.TERMINATEDS].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
 
         # Compute RHS of bellman equation.
         q_t_selected_target = (

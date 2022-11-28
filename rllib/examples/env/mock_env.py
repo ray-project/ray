@@ -192,10 +192,11 @@ class MockVectorEnv(VectorEnv):
         )
         for i in range(self.num_envs):
             obs, rew, terminated, truncated, info = self.env.step(actions[i])
-            # Artificially terminate once time step limit has been reached.
-            # Note: Also terminate, when underlying CartPole is terminated.
+            # Artificially truncate once time step limit has been reached.
+            # Note: Also terminate/truncate, when underlying CartPole is
+            # terminated/truncated.
             if self.ts >= self.episode_len:
-                done = True
+                truncated = True
             obs_batch.append(obs)
             rew_batch.append(rew)
             terminated_batch.append(terminated)

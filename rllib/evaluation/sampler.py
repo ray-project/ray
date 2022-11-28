@@ -791,10 +791,7 @@ def _process_observations(
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
-        if (
-            terminateds[env_id]["__all__"]
-            or truncateds[env_id]["__all__"]
-        ):
+        if terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"]:
             all_agents_done = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:

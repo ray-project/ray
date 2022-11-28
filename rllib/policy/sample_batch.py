@@ -283,11 +283,9 @@ class SampleBatch(dict):
 
     @ExperimentalAPI
     def is_terminated_or_truncated(self) -> bool:
-        """Returns True if this SampleBatch either is terminated or truncated at idx -1.
-        """
-        return (
-            self[SampleBatch.TERMINATEDS][-1]
-            or (SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1])
+        """Returns True if `self` is either terminated or truncated at idx -1."""
+        return self[SampleBatch.TERMINATEDS][-1] or (
+            SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1]
         )
 
     @ExperimentalAPI
@@ -295,14 +293,11 @@ class SampleBatch(dict):
         """Returns True if this SampleBatch only contains one trajectory.
 
         This is determined by checking all timesteps (except for the last) for being
-        not terminated AND not truncated.
+        not terminated AND (if applicable) not truncated.
         """
-        return (
-            not any(self[SampleBatch.TERMINATEDS][:-1])
-            and (
-                not SampleBatch.TRUNCATEDS in self
-                or not any(self[SampleBatch.TRUNCATEDS][:-1])
-            )
+        return not any(self[SampleBatch.TERMINATEDS][:-1]) and (
+            SampleBatch.TRUNCATEDS not in self
+            or not any(self[SampleBatch.TRUNCATEDS][:-1])
         )
 
     @staticmethod
@@ -497,10 +492,10 @@ class SampleBatch(dict):
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
-        assert (
-            key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES]
-        ), f"`SampleBatch.split_by_episode(key={key})` invalid! " \
-           f"Must be [None|'dones'|'eps_id']."
+        assert key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES], (
+            f"`SampleBatch.split_by_episode(key={key})` invalid! "
+            f"Must be [None|'dones'|'eps_id']."
+        )
 
         def slice_by_eps_id():
             slices = []
@@ -521,12 +516,8 @@ class SampleBatch(dict):
             slices = []
             offset = 0
             for i in range(self.count):
-                if (
-                    self[SampleBatch.TERMINATEDS][i]
-                    or (
-                        SampleBatch.TRUNCATEDS in self
-                        and self[SampleBatch.TRUNCATEDS][i]
-                    )
+                if self[SampleBatch.TERMINATEDS][i] or (
+                    SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][i]
                 ):
                     # Since self[i] is the last timestep of the episode,
                     # append it to the batch, then set offset to the start

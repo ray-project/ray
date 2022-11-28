@@ -437,9 +437,7 @@ class _RemoteSingleAgentEnv:
     def step(self, action):
         results = self.env.step(action[_DUMMY_AGENT_ID])
 
-        obs, rew, terminated, truncated, info = [
-            {_DUMMY_AGENT_ID: x} for x in results
-        ]
+        obs, rew, terminated, truncated, info = [{_DUMMY_AGENT_ID: x} for x in results]
 
         terminated["__all__"] = terminated[_DUMMY_AGENT_ID]
         truncated["__all__"] = truncated[_DUMMY_AGENT_ID]

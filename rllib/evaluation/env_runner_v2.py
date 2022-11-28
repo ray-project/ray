@@ -484,10 +484,7 @@ class EnvRunnerV2:
                 self._call_on_episode_start(episode, env_id)
 
             # Check episode termination conditions.
-            if (
-                terminateds[env_id]["__all__"]
-                or truncateds[env_id]["__all__"]
-            ):
+            if terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"]:
                 all_agents_done = True
             else:
                 all_agents_done = False

@@ -424,7 +424,9 @@ class TestDDPG(unittest.TestCase):
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
-                SampleBatch.TERMINATEDS: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.TERMINATEDS: np.random.choice(
+                    [True, False], size=(batch_size,)
+                ),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.ones(shape=(batch_size,)),
             }

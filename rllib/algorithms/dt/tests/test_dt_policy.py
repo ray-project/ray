@@ -89,7 +89,7 @@ class TestDTPolicy(unittest.TestCase):
         # Assert that terminateds and truncateds are correctly set.
         assert (
             SampleBatch.TERMINATEDS in sample_batch
-        ) , "`terminateds` isn't part of the batch."
+        ), "`terminateds` isn't part of the batch."
         assert (
             SampleBatch.TRUNCATEDS not in sample_batch
         ), "`truncateds` shouldn't be part of the batch (in this particular test case)."

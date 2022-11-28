@@ -44,7 +44,11 @@ class LastInfoCallback(DefaultCallbacks):
         last_reward = {k: v[-1] for k, v in episode._agent_reward_history.items()}
         if self.step == 0:
             for last in [
-                last_obs, last_terminated, last_truncated, last_action, last_reward
+                last_obs,
+                last_terminated,
+                last_truncated,
+                last_action,
+                last_reward,
             ]:
                 self.tc.assertEqual(last, {})
             self.tc.assertTrue("__common__" in last_info)

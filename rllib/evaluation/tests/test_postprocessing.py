@@ -24,6 +24,7 @@ class TestPostprocessing(unittest.TestCase):
         actions = ["ac1", "ac2", "ac1", "ac1", "ac1", "ac2", "ac1"]
         rewards = [10.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0]
         terminateds = [0, 0, 0, 0, 0, 0, 1]
+        truncateds = [0, 0, 0, 0, 0, 0, 0]
         next_obs = [2, 3, 4, 5, 6, 7, 8]
         batch = SampleBatch(
             {
@@ -31,6 +32,7 @@ class TestPostprocessing(unittest.TestCase):
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
@@ -42,6 +44,7 @@ class TestPostprocessing(unittest.TestCase):
         )
         check(batch[SampleBatch.NEXT_OBS], [4, 5, 6, 7, 8, 8, 8])
         check(batch[SampleBatch.TERMINATEDS], [0, 0, 0, 0, 1, 1, 1])
+        check(batch[SampleBatch.TRUNCATEDS], [0, 0, 0, 0, 0, 0, 0])
         check(
             batch[SampleBatch.REWARDS], [91.0, 171.0, 271.0, 271.0, 271.0, 190.0, 100.0]
         )
@@ -55,6 +58,7 @@ class TestPostprocessing(unittest.TestCase):
         check_actions = actions.copy()
         rewards = [10.0, 0.0, 100.0, 50.0, 60.0, 10.0, 100.0]
         terminateds = [False, False, False, False, False, False, True]
+        truncateds = [False, False, False, False, False, False, False]
         next_obs = np.arange(1, 8)
         batch = SampleBatch(
             {
@@ -62,6 +66,7 @@ class TestPostprocessing(unittest.TestCase):
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
@@ -72,6 +77,10 @@ class TestPostprocessing(unittest.TestCase):
         check(
             batch[SampleBatch.TERMINATEDS],
             [False, False, False, True, True, True, True],
+        )
+        check(
+            batch[SampleBatch.TRUNCATEDS],
+            [False, False, False, False, False, False, False],
         )
         check(
             batch[SampleBatch.REWARDS],
@@ -108,12 +117,53 @@ class TestPostprocessing(unittest.TestCase):
                     False,
                     True,
                 ],
+                SampleBatch.TRUNCATEDS: [
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ],
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
         self.assertRaisesRegex(
             AssertionError,
-            "Unexpected `terminated` in middle",
+            "Unexpected terminated\\|truncated in middle",
+            lambda: adjust_nstep(5, gamma, batch),
+        )
+
+        batch = SampleBatch(
+            {
+                SampleBatch.OBS: obs,
+                SampleBatch.ACTIONS: actions,
+                SampleBatch.REWARDS: rewards,
+                SampleBatch.TERMINATEDS: [
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+                SampleBatch.TRUNCATEDS: [
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                ],
+                SampleBatch.NEXT_OBS: next_obs,
+            }
+        )
+        self.assertRaisesRegex(
+            AssertionError,
+            "Unexpected terminated\\|truncated in middle",
             lambda: adjust_nstep(5, gamma, batch),
         )
 
@@ -131,6 +181,7 @@ class TestPostprocessing(unittest.TestCase):
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.TERMINATEDS: [False, False],
+                SampleBatch.TRUNCATEDS: [False, False],
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
@@ -138,6 +189,7 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.OBS], [0, 1])
         check(batch[SampleBatch.ACTIONS], check_actions)
         check(batch[SampleBatch.TERMINATEDS], [False, False])
+        check(batch[SampleBatch.TRUNCATEDS], [False, False])
         check(batch[SampleBatch.REWARDS], [10.0 + gamma * 100.0, 100.0])
         check(batch[SampleBatch.NEXT_OBS], [2, 2])
 
@@ -153,7 +205,8 @@ class TestPostprocessing(unittest.TestCase):
         actions = np.random.randint(-1, 3, size=(7,))
         check_actions = actions.copy()
         rewards = [10.0, 0.0, 100.0, 50.0, 60.0, 10.0, 100.0]
-        terminateds = [False, False, False, False, False, False, True]
+        terminateds = [False, False, False, False, False, False, False]
+        truncateds = [False, False, False, False, False, False, True]
 
         batch = SampleBatch(
             {
@@ -161,6 +214,7 @@ class TestPostprocessing(unittest.TestCase):
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.NEXT_OBS: next_obs,
             }
         )
@@ -171,6 +225,10 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.NEXT_OBS], [4, 5, 6, 7, 7, 7, 7])
         check(
             batch[SampleBatch.TERMINATEDS],
+            [False, False, False, False, False, False, False],
+        )
+        check(
+            batch[SampleBatch.TRUNCATEDS],
             [False, False, False, True, True, True, True],
         )
         check(

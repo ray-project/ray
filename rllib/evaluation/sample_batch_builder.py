@@ -187,7 +187,7 @@ class MultiAgentSampleBatchBuilder:
             del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
             if (
-                any(pre_batch[SampleBatch.DONES][:-1])
+                not pre_batch.is_single_trajectory()
                 or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
             ):
                 raise ValueError(
@@ -232,7 +232,7 @@ class MultiAgentSampleBatchBuilder:
 
     def check_missing_dones(self) -> None:
         for agent_id, builder in self.agent_builders.items():
-            if not builder.buffers.is_terminated_or_truncated is not True:
+            if not builder.buffers.is_terminated_or_truncated():
                 raise ValueError(
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "

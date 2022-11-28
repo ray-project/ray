@@ -62,13 +62,15 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         ],
         axis=0,
     )
-    batch[SampleBatch.TRUNCATEDS] = np.concatenate(
-        [
-            batch[SampleBatch.TRUNCATEDS][n_step - 1 :],
-            np.tile(batch[SampleBatch.TRUNCATEDS][-1], min(n_step - 1, len_)),
-        ],
-        axis=0,
-    )
+    # Only fix `truncateds`, if present in the batch.
+    if SampleBatch.TRUNCATEDS in batch:
+        batch[SampleBatch.TRUNCATEDS] = np.concatenate(
+            [
+                batch[SampleBatch.TRUNCATEDS][n_step - 1 :],
+                np.tile(batch[SampleBatch.TRUNCATEDS][-1], min(n_step - 1, len_)),
+            ],
+            axis=0,
+        )
 
     # Change rewards in place.
     for i in range(len_):

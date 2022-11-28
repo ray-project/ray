@@ -236,9 +236,13 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         rew, terminated, truncated = {}, {}, {}
         # Step those agents, for which we have actions from RLlib.
         for aid, action in action_dict.items():
-            self._observations[aid], rew[aid], terminated[aid], truncated[aid], self._infos[aid] = self.agents[aid].step(
-                action
-            )
+            (
+                self._observations[aid],
+                rew[aid],
+                terminated[aid],
+                truncated[aid],
+                self._infos[aid],
+            ) = self.agents[aid].step(action)
             if terminated[aid]:
                 self.terminateds.add(aid)
             if truncated[aid]:
@@ -271,7 +275,8 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         num_observing_agents = np.random.randint(self.num_agents)
         aids = np.random.permutation(self.num_agents)[:num_observing_agents]
         return {
-            aid for aid in aids
+            aid
+            for aid in aids
             if aid not in self.terminateds and aid not in self.truncateds
         }
 
