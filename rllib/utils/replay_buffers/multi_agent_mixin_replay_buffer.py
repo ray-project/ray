@@ -217,8 +217,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
                         if eps.get(SampleBatch.T)[0] == 0 and (
-                            eps.get(SampleBatch.TERMINATEDS)[-1] is True
-                            or eps.get(SampleBatch.TRUNCATEDS, [False])[-1] is True
+                            eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                            or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                         ):
                             self.replay_buffers[policy_id].add(eps, **kwargs)
                             self.last_added_batches[policy_id].append(eps)

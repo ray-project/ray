@@ -268,8 +268,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             timeslices = []
             for eps in batch.split_by_episode():
                 if eps.get(SampleBatch.T)[0] == 0 and (
-                    eps.get(SampleBatch.TERMINATEDS)[-1] is True
-                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1] is True
+                    eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                 ):
                     # Only add full episodes to the buffer
                     timeslices.append(eps)

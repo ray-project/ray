@@ -1242,7 +1242,7 @@ py_test(
 # A2C/A3C
 
 py_test(
-    name = "test_a3c_torch_pong_deterministic_v4",
+    name = "test_a3c_torch_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
@@ -1255,11 +1255,11 @@ py_test(
 )
 
 py_test(
-    name = "test_a3c_tf_pong_ram_v4",
+    name = "test_a3c_tf_pong_ram_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "ALE/Pong-ram-v4",
+        "--env", "ALE/Pong-ram-v5",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2}'",
@@ -1363,7 +1363,7 @@ py_test(
 )
 
 py_test(
-    name = "test_dqn_pong_deterministic_v4",
+    name = "test_dqn_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
@@ -1404,7 +1404,7 @@ py_test(
 )
 
 py_test(
-    name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
+    name = "test_impala_pong_v5_40k_ts_1G_obj_store",
     main = "train.py",
     srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],

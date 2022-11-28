@@ -370,7 +370,6 @@ def get_ddpg_tf_policy(
                 input_dict[SampleBatch.TERMINATEDS] = train_batch[
                     SampleBatch.TERMINATEDS
                 ]
-                input_dict[SampleBatch.TRUNCATEDS] = train_batch[SampleBatch.TRUNCATEDS]
                 input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
                 if log_once("ddpg_custom_loss"):
                     logger.warning(

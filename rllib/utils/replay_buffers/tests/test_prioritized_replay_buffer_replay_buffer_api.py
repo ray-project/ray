@@ -533,7 +533,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
                     SampleBatch.TERMINATEDS: [False, True, False, False],
-                    SampleBatch.TRUNCATEDS: [False, False, False, True],
+                    SampleBatch.TRUNCATEDS: [False, False, False, False],
                     SampleBatch.SEQ_LENS: [2, 2],
                     SampleBatch.EPS_ID: [5, 5, 6, 6],
                 }
@@ -556,7 +556,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             atol=0.1,
         )
 
-        # Add another batch to evict the first batch
+        # Add another batch to evict the first batch.
         buffer.add(
             SampleBatch(
                 {

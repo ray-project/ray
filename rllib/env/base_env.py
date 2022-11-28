@@ -141,15 +141,15 @@ class BaseEnv:
 
         Returns:
             Tuple consisting of:
-            1) New observations for each ready agent.
-            2) Reward values for each ready agent. If the episode is
+            - New observations for each ready agent.
+            - Reward values for each ready agent. If the episode is
             just started, the value will be None.
-            3) Done values for each ready agent. The special key "__all__"
+            - Done values for each ready agent. The special key "__all__"
             is used to indicate episode termination.
-            4) Truncated values for each ready agent. The special key "__all__"
+            - Truncated values for each ready agent. The special key "__all__"
             is used to indicate episode truncation.
-            5) Info values for each ready agent.
-            6) Agents may take off-policy actions. When that
+            - Info values for each ready agent.
+            - Agents may take off-policy actions. When that
             happens, there will be an entry in this dict that contains the
             taken action. There is no need to send_actions() for agents that
             have already chosen off-policy actions.

@@ -221,8 +221,8 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
                 if eps.get(SampleBatch.T, [0])[0] == 0 and (
-                    eps.get(SampleBatch.TRUNCATEDS, [False])[-1] is True
-                    or eps.get(SampleBatch.TERMINATEDS, [False])[-1] is True
+                    eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                 ):
                     # Only add full episodes to the buffer
                     # Check only if info is available

@@ -311,7 +311,6 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
             input_dict[SampleBatch.ACTIONS] = train_batch[SampleBatch.ACTIONS]
             input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
             input_dict[SampleBatch.TERMINATEDS] = train_batch[SampleBatch.TERMINATEDS]
-            input_dict[SampleBatch.TRUNCATEDS] = train_batch[SampleBatch.TRUNCATEDS]
             input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
             [actor_loss, critic_loss] = model.custom_loss(
                 [actor_loss, critic_loss], input_dict

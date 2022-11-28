@@ -164,7 +164,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         """Tests, whether an Env can be specified simply by its absolute class."""
         env_cls = "ray.rllib.examples.env.stateless_cartpole.StatelessCartPole"
         env = from_config(env_cls, {"config": 42.0})
-        state = env.reset()
+        state, _ = env.reset()
         self.assertTrue(state.shape == (2,))
 
 

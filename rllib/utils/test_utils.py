@@ -486,7 +486,11 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    env = gym.make(env_name)
+    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
+    if env_name.startswith("ALE/"):
+        env = gym.make("GymV26Environment-v0", env_id=env_name)
+    else:
+        env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -496,20 +500,21 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
             framestack=policy.config["model"].get("framestack"),
         )
 
-    obs = env.reset()
-    reward, done, info = 0.0, False, {}
+    obs, info = env.reset()
+    reward, terminated, truncated = 0.0, False, False
     ts = 0
-    while not done and ts < max_steps:
+    while not terminated and not truncated and ts < max_steps:
         action_out = local_policy_inference(
             policy,
             env_id=0,
             agent_id=0,
             obs=obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
             info=info,
         )
-        obs, reward, done, info = env.step(action_out[0][0])
+        obs, reward, terminated, truncated, info = env.step(action_out[0][0])
 
         ts += 1
 
