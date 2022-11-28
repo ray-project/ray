@@ -204,7 +204,7 @@ class TorchTrainer(DataParallelTrainer):
 
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-            train_loop_config: Configurations to pass into
+        train_loop_config: Configurations to pass into
             ``train_loop_per_worker`` if it accepts an argument.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
