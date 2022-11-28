@@ -3,7 +3,7 @@ from typing import Dict, Optional, List, Union
 from dataclasses import dataclass
 
 import ray
-from ray import SCRIPT_MODE
+from ray import SCRIPT_MODE, LOCAL_MODE
 from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
@@ -71,7 +71,7 @@ class FixedResourceManager(ResourceManager):
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
         if not total_resources:
             rtc = ray.get_runtime_context()
-            if rtc.worker.mode in {None, SCRIPT_MODE}:
+            if rtc.worker.mode in {None, SCRIPT_MODE, LOCAL_MODE}:
                 total_resources = ray.available_resources()
             else:
                 total_resources = rtc.get_assigned_resources()
