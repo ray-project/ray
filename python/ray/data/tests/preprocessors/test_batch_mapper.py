@@ -1,14 +1,14 @@
+from typing import Dict, Union
+
 import numpy as np
 import pandas as pd
-
 import pytest
-from pytest_lazyfixture import lazy_fixture
-from typing import Dict, Union
 from pandas.testing import assert_frame_equal
+from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.preprocessors import BatchMapper
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data.preprocessors import BatchMapper
 from ray.tests.conftest import *  # noqa
 
 
