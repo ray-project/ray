@@ -101,7 +101,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             tf.float32, shape=None, name="rewards_{}".format(agent_id)
         )
         done_ph = tf1.placeholder(
-            tf.float32, shape=None, name="dones_{}".format(agent_id)
+            tf.float32, shape=None, name="terminateds_{}".format(agent_id)
         )
 
         if config["use_local_critic"]:

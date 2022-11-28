@@ -74,7 +74,10 @@ class TwoStepGame(MultiAgentEnv):
         obs = self._obs()
         terminateds = {"__all__": terminated}
         truncateds = {"__all__": False}
-        infos = {}
+        infos = {
+            self.agent_1: {"done": terminateds["__all__"]},
+            self.agent_2: {"done": terminateds["__all__"]},
+        }
         return obs, rewards, terminateds, truncateds, infos
 
     def _obs(self):

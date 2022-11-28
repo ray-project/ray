@@ -179,8 +179,14 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
     # contained within the observation space
     try:
         obs_and_infos = env.reset(seed=42, options={})
-        # No more gym < 0.26 support! Error and explain the user how to upgrade to
-        # gymnasium.
+    except Exception as e:
+        raise ValueError(
+            "Your gymnasium.Env's step() method raised an Exception!"
+        ) from e
+
+    # No more gym < 0.26 support! Error and explain the user how to upgrade to
+    # gymnasium.
+    try:
         check_old_gym_env(reset_results=obs_and_infos)
     except Exception as e:
         raise ValueError(
@@ -218,8 +224,14 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
     # the correct dtypes.
     try:
         results = env.step(sampled_action)
-        # No more gym < 0.26 support! Error and explain the user how to upgrade to
-        # gymnasium.
+    except Exception as e:
+        raise ValueError(
+            "Your gymnasium.Env's step() method raised an Exception!"
+        ) from e
+
+    # No more gym < 0.26 support! Error and explain the user how to upgrade to
+    # gymnasium.
+    try:
         check_old_gym_env(step_results=results)
     except Exception as e:
         raise ValueError(
