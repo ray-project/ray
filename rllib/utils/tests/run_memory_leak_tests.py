@@ -23,8 +23,11 @@ import sys
 import yaml
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.common import SupportedFileType
+from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -35,10 +38,10 @@ parser.add_argument(
     help="The deep learning framework to use.",
 )
 parser.add_argument(
-    "--yaml-dir",
-    required=True,
+    "--dir",
     type=str,
-    help="The directory in which to find all yamls to test.",
+    required=True,
+    help="The directory or file in which to find all tests.",
 )
 parser.add_argument(
     "--local-mode",
@@ -52,36 +55,49 @@ parser.add_argument(
     help="List of 'env', 'policy', 'rollout_worker', 'model'.",
 )
 
+# Obsoleted arg, use --dir instead.
+parser.add_argument("--yaml-dir", type=str, default="")
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.yaml_dir != "":
+        deprecation_warning(old="--yaml-dir", new="--dir", error=False)
+        args.dir = args.yaml_dir
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
     rllib_dir = Path(__file__).parent.parent.parent
     print("rllib dir={}".format(rllib_dir))
 
-    abs_yaml_path = os.path.join(rllib_dir, args.yaml_dir)
+    abs_path = os.path.join(rllib_dir, args.dir)
     # Single file given.
-    if os.path.isfile(abs_yaml_path):
-        yaml_files = [abs_yaml_path]
+    if os.path.isfile(abs_path):
+        files = [abs_path]
+    # Path given -> Get all py/yaml files in there via rglob.
+    elif os.path.isdir(abs_path):
+        files = []
+        for type_ in ["yaml", "yml", "py"]:
+            files += list(rllib_dir.rglob(args.dir + f"/*.{type_}"))
+        files = sorted(map(lambda path: str(path.absolute()), files), reverse=True)
     # Given path/file does not exist.
-    elif not os.path.isdir(abs_yaml_path):
-        raise ValueError("yaml-dir ({}) not found!".format(args.yaml_dir))
-    # Path given -> Get all yaml files in there via rglob.
     else:
-        yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
-        yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files), reverse=True
-        )
+        raise ValueError(f"--dir ({args.dir}) not found!")
 
     print("Will run the following memory-leak tests:")
-    for yaml_file in yaml_files:
-        print("->", yaml_file)
+    for file in files:
+        print("->", file)
 
     # Loop through all collected files.
-    for yaml_file in yaml_files:
-        experiments = yaml.safe_load(open(yaml_file).read())
+    for file in files:
+        # For python files, need to make sure, we only deliver the module name into the
+        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        if file.endswith(".py"):
+            experiments = load_experiments_from_file(file, SupportedFileType.python)
+        else:
+            experiments = load_experiments_from_file(file, SupportedFileType.yaml)
+
         assert (
             len(experiments) == 1
         ), "Error, can only run a single experiment per yaml file!"
@@ -110,9 +126,9 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            trainer = get_algorithm_class(experiment["run"])(experiment["config"])
+            algo = get_trainable_cls(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
-                trainer,
+                algo,
                 to_check=set(args.to_check),
             )
             if not results:

@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
 import React from "react";
-import { RouteComponentProps } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -22,10 +21,10 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const JobDetailPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail(props);
-  const jobId = props.match.params.id;
+  const { job, msg, params } = useJobDetail();
+  const jobId = params.id;
   const { progress } = useJobProgress(jobId);
 
   if (!job) {
@@ -46,6 +45,15 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
       <TitleCard title={`JOB - ${params.id}`}>
         <MetadataSection
           metadataList={[
+            {
+              label: "Entrypoint",
+              content: job.entrypoint
+                ? {
+                    value: job.entrypoint,
+                    copyableValue: job.entrypoint,
+                  }
+                : { value: "-" },
+            },
             {
               label: "Status",
               content: <StatusChip type="job" status={job.status} />,
@@ -71,6 +79,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   },
             },
             {
+              label: "Duration",
+              content: job.start_time ? (
+                <DurationText
+                  startTime={job.start_time}
+                  endTime={job.end_time}
+                />
+              ) : (
+                <React.Fragment>-</React.Fragment>
+              ),
+            },
+            {
               label: "Started at",
               content: {
                 value: job.start_time
@@ -85,17 +104,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
                   : "-",
               },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
             },
           ]}
         />

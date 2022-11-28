@@ -22,7 +22,7 @@ class TestCheckMultiAgent(unittest.TestCase):
             lambda: (
                 PGConfig().multi_agent(
                     policies={1, "good_id"},
-                    policy_mapping_fn=lambda aid, episode, worker, **kw: "good_id",
+                    policy_mapping_fn=lambda agent_id, episode, worker, **kw: "good_id",
                 )
             ),
         )

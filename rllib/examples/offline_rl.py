@@ -50,12 +50,7 @@ if __name__ == "__main__":
     config = (
         cql.CQLConfig()
         .framework(framework="torch")
-        .rollouts(
-            num_rollout_workers=0,
-            rollout_fragment_length=1,
-            horizon=200,
-            soft_horizon=True,
-        )
+        .rollouts(num_rollout_workers=0)
         .training(
             n_step=3,
             bc_iters=0,
