@@ -111,7 +111,6 @@ class TestRolloutWorker(unittest.TestCase):
             "actions",
             "rewards",
             "terminateds",
-            "truncateds",
             "terminateds",
             "advantages",
             "prev_rewards",
@@ -119,6 +118,10 @@ class TestRolloutWorker(unittest.TestCase):
         ]:
             self.assertIn(key, batch)
             self.assertGreater(np.abs(np.mean(batch[key])), 0)
+
+        # Our MockPolicy should never reach a full truncated episode.
+        # Expect all truncateds flags to be False.
+        self.assertEqual(np.abs(np.mean(batch["truncateds"])), 0.0)
 
         def to_prev(vec):
             out = np.zeros_like(vec)

@@ -549,13 +549,13 @@ class SampleBatch(dict):
         slices = None
         if key is not None:
             # If key specified, directly use it.
-            if key not in self:
+            if key == SampleBatch.EPS_ID and key not in self:
                 raise KeyError(f"{self} does not have key `{key}`!")
             slices = key_to_method[key]()
         else:
             # If key not specified, go in order.
             for key in key_resolve_order:
-                if key in self:
+                if key == SampleBatch.DONES or key in self:
                     slices = key_to_method[key]()
                     break
             if slices is None:

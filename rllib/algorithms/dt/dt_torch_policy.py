@@ -130,11 +130,14 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
         """Called by offline data reader after loading in one episode.
-        Adds a done flag at the end of trajectory so that SegmentationBuffer can
-        split using the done flag to avoid duplicate trajectories.
+
+        Adds a `terminateds` flag at the end of trajectory so that SegmentationBuffer
+        can split using this flag to avoid duplicate trajectories.
         """
         ep_len = sample_batch.env_steps()
-        sample_batch[SampleBatch.TERMINATEDS] = np.array([False] * (ep_len - 1) + [True])
+        sample_batch[SampleBatch.TERMINATEDS] = np.array(
+            [False] * (ep_len - 1) + [True]
+        )
         return sample_batch
 
     @PublicAPI
