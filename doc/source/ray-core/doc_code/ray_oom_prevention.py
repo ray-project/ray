@@ -3,7 +3,7 @@ import ray
 
 ray.init(
     _system_config={
-        "memory_usage_threshold_fraction": 0.4,
+        "memory_usage_threshold": 0.4,
     },
 )
 # fmt: off
