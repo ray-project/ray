@@ -209,10 +209,10 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     39036).
     """
     if maxlen is None:
-        maxlen = int(lengths.max())
+        maxlen = lengths.max()
 
     mask = ~(torch.ones(
-        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+        (lengths.shape[0], maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
     if not time_major:
         mask = mask.t()
     mask.type(dtype or torch.bool)
