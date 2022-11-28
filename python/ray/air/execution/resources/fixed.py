@@ -77,6 +77,7 @@ class FixedResourceManager(ResourceManager):
                 total_resources = rtc.get_assigned_resources()
 
         self._total_resources = total_resources
+        self._requested_resources = []
         self._used_resources = []
 
     @property
@@ -91,12 +92,15 @@ class FixedResourceManager(ResourceManager):
         return available_resources
 
     def request_resources(self, resource_request: ResourceRequest):
-        pass
+        self._requested_resources.append(resource_request)
 
     def cancel_resource_request(self, resource_request: ResourceRequest):
-        pass
+        self._requested_resources.remove(resource_request)
 
     def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
+        if resource_request not in self._requested_resources:
+            return False
+
         available_resources = self._available_resources
         all_resources = _sum_bundle_resources(resource_request.bundles)
         for k, v in all_resources.items():
@@ -118,3 +122,6 @@ class FixedResourceManager(ResourceManager):
     def free_resources(self, allocated_resources: AllocatedResource):
         resources = allocated_resources.resource_request
         self._used_resources.remove(resources)
+
+    def clear(self):
+        pass

@@ -456,6 +456,9 @@ class RayTrialExecutorTest(unittest.TestCase):
 
 
 class RayExecutorPlacementGroupTest(unittest.TestCase):
+    def _resourceManager(self):
+        return PlacementGroupResourceManager()
+
     def setUp(self):
         self.head_cpus = 8
         self.head_gpus = 4
@@ -490,7 +493,11 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             [head_bundle, child_bundle, child_bundle]
         )
 
-        out = tune.run(train, resources_per_trial=placement_group_factory)
+        out = tune.run(
+            train,
+            resources_per_trial=placement_group_factory,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
 
         available = {
             key: val
@@ -569,7 +576,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         pgf1 = PlacementGroupFactory([{"CPU": self.head_cpus}])
         pgf2 = PlacementGroupFactory([{"CPU": self.head_cpus - 1}])
 
-        executor = RayTrialExecutor(reuse_actors=True)
+        executor = RayTrialExecutor(
+            reuse_actors=True, resource_manager=self._resourceManager()
+        )
         executor.setup(max_pending_trials=1)
 
         def train(config):
@@ -652,6 +661,11 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 
 class FixedResourceExecutorTest(RayTrialExecutorTest):
+    def _resourceManager(self):
+        return FixedResourceManager()
+
+
+class FixedResourceExecutorPGFTest(RayExecutorPlacementGroupTest):
     def _resourceManager(self):
         return FixedResourceManager()
 
