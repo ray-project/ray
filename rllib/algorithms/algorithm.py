@@ -1494,7 +1494,7 @@ class Algorithm(Trainable):
                 pp = pp[0]
 
                 if not pp.is_identity():
-                    # Note(Kourosh): The connector will leave the policy's connector
+                    # Note(Kourosh): This call will leave the policy's connector
                     # in eval mode. would that be a problem?
                     pp.in_eval()
                     if observation is not None:

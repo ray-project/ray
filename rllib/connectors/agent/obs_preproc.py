@@ -42,7 +42,7 @@ class ObsPreprocessorConnector(AgentConnector):
         )
 
     def is_identity(self):
-        """Returns whether this preprocessor connector is an identity preprocessor."""
+        """Returns whether this preprocessor connector is a no-op preprocessor."""
         return isinstance(self._preprocessor, NoPreprocessor)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
