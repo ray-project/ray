@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = DatasetLogger(__name__).logger
+logger = DatasetLogger(__name__)
 
 
 class Stage:
@@ -319,8 +319,12 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
-                if context.enable_auto_log_stats:
-                    logger.info(stats.summary_string(include_parent=False))
+
+                stats_summary_string = stats.summary_string(include_parent=False)
+                logger.info(
+                    msg=stats_summary_string,
+                    log_to_stdout=context.enable_auto_log_stats,
+                )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats

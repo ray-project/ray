@@ -1,6 +1,5 @@
 import pytest
 from ray.tests.conftest import *  # noqa
-from unittest.mock import patch, mock_open
 
 import os
 import re
