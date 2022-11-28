@@ -706,8 +706,11 @@ class CLIReporter(TuneReporterBase):
             sort_by_metric=sort_by_metric,
         )
 
+    def _print(self, msg: str):
+        print(msg)
+
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        print(self._progress_str(trials, done, *sys_info))
+        self._print(self._progress_str(trials, done, *sys_info))
 
 
 def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
@@ -1323,6 +1326,9 @@ class TrialProgressCallback(Callback):
         self._last_result = {}
         self._display_handle = None
 
+    def _print(self, msg: str):
+        print(msg)
+
     def on_trial_result(
         self,
         iteration: int,
@@ -1351,17 +1357,12 @@ class TrialProgressCallback(Callback):
             if print_result_str != last_result_str:
                 self.log_result(trial, trial.last_result, error=False)
             else:
-                print(f"Trial {trial} completed. " f"Last result: {print_result_str}")
+                self._print(f"Trial {trial} completed. Last result: {print_result_str}")
 
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
         last_print = self._last_print[trial]
-        last_print_iteration = self._last_print_iteration[trial]
-        should_print = (
-            (done and not result.get(TRAINING_ITERATION) == last_print_iteration)
-            or error
-            or time.time() - last_print > DEBUG_PRINT_INTERVAL
-        )
+        should_print = done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL
 
         if done and trial not in self._completed_trials:
             self._completed_trials.add(trial)
@@ -1385,9 +1386,14 @@ class TrialProgressCallback(Callback):
             error: True if an error has occurred, False otherwise
             done: True if the trial is finished, False otherwise
         """
+        last_print_iteration = self._last_print_iteration[trial]
+
         if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
-            print("Result for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if result.get(TRAINING_ITERATION) != last_print_iteration:
+                self._print(f"Result for {trial}:")
+                self._print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if done:
+                self._print(f"Trial {trial} completed.")
 
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
@@ -1421,7 +1427,7 @@ class TrialProgressCallback(Callback):
                     f"with parameters={trial.config}.{info}"
                 )
 
-            print(message)
+            self._print(message)
 
     def generate_trial_table(
         self, trials: Dict[Trial, Dict], columns: List[str]

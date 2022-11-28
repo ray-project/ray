@@ -263,6 +263,7 @@ VERBOSE_TRIAL_NORM_4 = (
 )
 
 VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_xxxxx_00001"
+VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_xxxxx_00001 completed."
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
 | Trial name        | status   | loc               | do       |
@@ -701,6 +702,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
                 # Check that we don't print duplicate results at the end
                 self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)
+                self.assertIn(VERBOSE_TRIAL_WITH_ONCE_COMPLETED, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
