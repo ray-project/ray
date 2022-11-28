@@ -51,6 +51,7 @@ def test_successful_job_status(
     disable_aiohttp_cache,
     enable_test_module,
     address_suffix,
+    make_sure_dashboard_http_port_unused,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
@@ -117,7 +118,11 @@ def test_successful_job_status(
 
 @pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
 def test_failed_job_status(
-    ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
+    ray_start_with_dashboard,
+    disable_aiohttp_cache,
+    enable_test_module,
+    address_suffix,
+    make_sure_dashboard_http_port_unused,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
