@@ -1555,7 +1555,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def compute_actions(
         self,
-        observations: TensorStructType,
+        observations: dict,
         state: Optional[List[TensorStructType]] = None,
         *,
         prev_action: Optional[TensorStructType] = None,
