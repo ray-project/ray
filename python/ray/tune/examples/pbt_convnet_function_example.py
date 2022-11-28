@@ -36,7 +36,7 @@ def train_convnet(config):
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
             checkpoint = torch.load(path)
-            model.load_state_dict(checkpoint["model_state_dict"])
+            model.load_state_dict(checkpoint["model"])
             step = checkpoint["step"]
 
     while True:
@@ -52,7 +52,7 @@ def train_convnet(config):
             torch.save(
                 {
                     "step": step,
-                    "model_state_dict": model.state_dict(),
+                    "model": model.state_dict(),
                 },
                 "my_model/checkpoint.pt",
             )
@@ -72,7 +72,7 @@ def test_best_model(results: tune.ResultGrid):
         best_checkpoint = torch.load(
             os.path.join(best_checkpoint_path, "checkpoint.pt")
         )
-        best_model.load_state_dict(best_checkpoint["model_state_dict"])
+        best_model.load_state_dict(best_checkpoint["model"])
         # Note that test only runs on a small random set of the test data, thus the
         # accuracy may be different from metrics shown in tuning process.
         test_acc = test(best_model, get_data_loaders()[1])
