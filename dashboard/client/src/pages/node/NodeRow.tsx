@@ -189,7 +189,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         </Link>
         <br />
         <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}`}
+          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
           target="_blank"
           title="Sample the current Python stack trace for this worker."
           rel="noreferrer"
@@ -198,7 +198,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         </a>
         <br />
         <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`}
+          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
           target="_blank"
           title="Profile the Python worker for 5 seconds (default) and display a flame graph."
           rel="noreferrer"
