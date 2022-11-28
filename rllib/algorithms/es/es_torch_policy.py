@@ -24,7 +24,6 @@ def before_init(policy, observation_space, action_space, config):
     policy.observation_filter = get_filter(
         config["observation_filter"], policy.preprocessor.shape
     )
-    policy.single_threaded = config.get("single_threaded", False)
 
     def _set_flat_weights(policy, theta):
         pos = 0

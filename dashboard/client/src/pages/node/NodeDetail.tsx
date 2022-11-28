@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import dayjs from "dayjs";
 import React from "react";
-import { Link, RouteComponentProps } from "react-router-dom";
+import { Link } from "react-router-dom";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
@@ -35,7 +35,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const NodeDetailPage = () => {
   const classes = useStyle();
   const {
     params,
@@ -46,7 +46,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     onRefreshChange,
     raylet,
     handleChange,
-  } = useNodeDetail(props);
+  } = useNodeDetail();
 
   return (
     <div className={classes.root}>

@@ -35,7 +35,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .training(lr=0.12345, train_batch_size=3000)
             .multi_agent(
                 policies={"pol1": (None, None, None, {"lr": 0.001})},
-                policy_mapping_fn=lambda aid, episode, worker, **kw: "pol1",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kw: "pol1",
             )
         )
         config.freeze()
