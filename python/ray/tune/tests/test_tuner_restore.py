@@ -630,11 +630,6 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     results = tuner.fit()
     assert results.errors
 
-    # Simulate restoring from a new script (re-initializing Ray runtime)
-    ray.shutdown()
-    ray.init(num_cpus=4, configure_logging=False)
-    fail_marker.unlink()
-
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
         resume_errored=True,
@@ -646,7 +641,7 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     with pytest.raises(tune.TuneError):
         tuner.fit()
 
-    del tuner
+    fail_marker.unlink()
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
         resume_errored=True,
