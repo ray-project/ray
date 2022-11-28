@@ -52,13 +52,14 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[TensorType, Dict[str, TensorType]]
+        self, inputs: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
-            tensor: The tensor to input to the model.
+            inputs: The tensor to input to the model.
 
         Returns:
             A tensor or dictionary of tensors containing the model output.
