@@ -178,14 +178,7 @@ def test_arrow_variable_shaped_tensor_array_slice():
         slice(0, 3),
     ]
     for slice_ in slices:
-        ata_slice = ata[slice_]
-        ata_slice_np = ata_slice.to_numpy()
-        arr_slice = arr[slice_]
-        # Check for equivalent dtypes and shapes.
-        assert ata_slice_np.dtype == arr_slice.dtype
-        assert ata_slice_np.shape == arr_slice.shape
-        # Iteration over tensor array slices triggers NumPy conversion.
-        for o, e in zip(ata_slice, arr_slice):
+        for o, e in zip(ata[slice_], arr[slice_]):
             np.testing.assert_array_equal(o, e)
 
 

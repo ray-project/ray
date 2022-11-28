@@ -44,10 +44,7 @@ from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
-from ray.air.util.tensor_extensions.utils import (
-    _is_ndarray_variable_shaped_tensor,
-    _create_strict_ragged_ndarray,
-)
+from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
 from ray.util.annotations import PublicAPI
 
 try:
@@ -1425,7 +1422,9 @@ TensorArray._add_logical_ops()
 
 
 def _create_possibly_ragged_ndarray(
-    values: Union[np.ndarray, ABCSeries, Sequence[np.ndarray]]
+    values: Union[
+        np.ndarray, ABCSeries, Sequence[Union[np.ndarray, TensorArrayElement]]
+    ]
 ) -> np.ndarray:
     """
     Create a possibly ragged ndarray.
@@ -1439,8 +1438,11 @@ def _create_possibly_ragged_ndarray(
         return np.array(values, copy=False)
     except ValueError as e:
         if "could not broadcast input array from shape" in str(e):
-            # Fall back to strictly creating a ragged ndarray.
-            return _create_strict_ragged_ndarray(values)
+            # Create an empty object-dtyped 1D array.
+            arr = np.empty(len(values), dtype=object)
+            # Try to fill the 1D array of pointers with the (ragged) tensors.
+            arr[:] = list(values)
+            return arr
         else:
             # Re-raise original error if the failure wasn't a broadcast error.
             raise e from None
