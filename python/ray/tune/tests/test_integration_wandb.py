@@ -427,7 +427,7 @@ class TestWandbMixinDecorator:
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
-    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingActror is
+    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingActor is
     correctly called by calling _WandbLoggingActor.run() mocking
     out calls to wandb.
     """
