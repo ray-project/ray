@@ -29,7 +29,7 @@ def _get_snapshot(address: str):
     schema_path = os.path.join(
         os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
     )
-    pprint.pprint(data)
+    # pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
     return data
 
@@ -51,7 +51,6 @@ def test_successful_job_status(
     disable_aiohttp_cache,
     enable_test_module,
     address_suffix,
-    make_sure_dashboard_http_port_unused,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
@@ -122,7 +121,6 @@ def test_failed_job_status(
     disable_aiohttp_cache,
     enable_test_module,
     address_suffix,
-    make_sure_dashboard_http_port_unused,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
