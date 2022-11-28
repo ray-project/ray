@@ -44,14 +44,13 @@ class TorchTrainer(DataParallelTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`. See full example cod below.
+    :ref:`Ray AIR session methods <air-session-ref>`. See full example code below.
 
     .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            #
             session.report(...)
 
             # Get dict of last saved checkpoint.
