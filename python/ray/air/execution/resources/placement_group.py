@@ -155,6 +155,9 @@ class PlacementGroupResourceManager(ResourceManager):
         self._pg_to_request.pop(pg)
 
     def clear(self):
+        if not ray.is_initialized():
+            return
+
         for staged_pgs in self._request_to_staged_pgs.values():
             for staged_pg in staged_pgs:
                 remove_placement_group(staged_pg)
