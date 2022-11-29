@@ -929,17 +929,20 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             look_back_period_s=1,
         ),
     )
-    def f():
+    def scaler():
         ray.get(signal.wait.remote())
         time.sleep(0.2)
         return os.getpid()
 
-    handle = serve.run(f.bind())
+    handle = serve.run(scaler.bind())
     refs = [handle.remote() for _ in range(10)]
 
     def check_two_replicas():
         actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+            filters=[
+                ("class_name", "=", "ServeReplica:scaler"),
+                ("state", "=", "ALIVE"),
+            ]
         )
         print(actors)
         return len(actors) == 2
@@ -953,16 +956,19 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     # Now re-deploy the application, make sure it is still 2 replicas and it shouldn't
     # be scaled down.
-    handle = serve.run(f.bind())
+    handle = serve.run(scaler.bind())
     pids = set(ray.get([handle.remote() for _ in range(10)]))
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
         live_actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+            filters=[
+                ("class_name", "=", "ServeReplica:scaler"),
+                ("state", "=", "ALIVE"),
+            ]
         )
         dead_actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "DEAD")]
+            filters=[("class_name", "=", "ServeReplica:scaler"), ("state", "=", "DEAD")]
         )
 
         return len(live_actors) == live and len(dead_actors) == dead
@@ -974,7 +980,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     # re-deploy the application with initial_replicas. This should override the
     # previous number of replicas.
-    f = f.options(
+    scaler = scaler.options(
         autoscaling_config=AutoscalingConfig(
             min_replicas=1,
             initial_replicas=3,
@@ -985,7 +991,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             look_back_period_s=1,
         )
     )
-    handle = serve.run(f.bind())
+    handle = serve.run(scaler.bind())
     new_pids = set(ray.get([handle.remote() for _ in range(15)]))
     assert len(new_pids) == 3
 
@@ -1009,13 +1015,13 @@ import ray
 import os
 
 @serve.deployment
-def f():
+def g():
     signal = ray.get_actor("signal", namespace="serve")
     ray.get(signal.wait.remote())
     return os.getpid()
 
 
-app = f.bind()
+app = g.bind()
 """.encode()
                 )
 
@@ -1025,7 +1031,7 @@ app = f.bind()
         "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
         "deployments": [
             {
-                "name": "f",
+                "name": "g",
                 "autoscaling_config": {
                     "min_replicas": 0,
                     "max_replicas": 1,
@@ -1051,7 +1057,7 @@ app = f.bind()
 
     def check_num_replicas(num: int):
         actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+            filters=[("class_name", "=", "ServeReplica:g"), ("state", "=", "ALIVE")]
         )
         return len(actors) == num
 
