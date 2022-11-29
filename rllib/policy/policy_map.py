@@ -79,115 +79,95 @@ class PolicyMap(dict):
         # Ray object store references to the stashed Policy states.
         self._policy_state_refs = {}
 
-        from ray.util.timer import _Timer
-        from collections import defaultdict
-
-        self.timers = defaultdict(_Timer)
-        self.counters = defaultdict(int)
-
     @with_lock
     @override(dict)
     def __getitem__(self, item):
-        with self.timers["getitem"]:  # TODO
-            # Never seen this key -> Error.
-            if item not in self.valid_keys:
-                raise KeyError(
-                    f"PolicyID '{item}' not found in this PolicyMap! "
-                    f"IDs stored in this map: {self.valid_keys}."
-                )
+        # Never seen this key -> Error.
+        if item not in self.valid_keys:
+            raise KeyError(
+                f"PolicyID '{item}' not found in this PolicyMap! "
+                f"IDs stored in this map: {self.valid_keys}."
+            )
 
-            # Item already in cache -> Rearrange deque (promote `item` to
-            # "most recently used") and return it.
-            if item in self.cache:
-                self.counters["already_cached"] += 1
-                with self.timers["getitem->cached"]:  # TODO
-                    self.deque.remove(item)
-                    self.deque.append(item)
-                    return self.cache[item]
+        # Item already in cache -> Rearrange deque (promote `item` to
+        # "most recently used") and return it.
+        if item in self.cache:
+            self.deque.remove(item)
+            self.deque.append(item)
+            return self.cache[item]
 
-            # Item not currently in cache -> Get from stash and - if at capacity -
-            # remove leftmost one.
+        # Item not currently in cache -> Get from stash and - if at capacity -
+        # remove leftmost one.
+        else:
+            assert item in self._policy_state_refs
+            policy_state = ray.get(self._policy_state_refs[item])
+
+            # All our policies have same NN-architecture (are "swappable").
+            # -> Get least recently used one, stash its state to disk and load
+            # new policy's state into that one. This way, we save the costly
+            # re-creation step.
+            if self.policies_swappable and len(self.deque) == self.deque.maxlen:
+                old_policy_id = self.deque[0]
+                policy = self.cache[old_policy_id]
+                self._stash_least_used_policy()
+                self.cache[item] = policy
+                # Restore policy's state and return it.
+                policy.set_state(policy_state)
+            # Policies are different (not swappable) or we are not at capacity:
+            # Have to (re-)create new policy here.
             else:
-                self.counters["swaps"] += 1
-                with self.timers["getitem->NON-cached"]:  # TODO
-                    assert item in self._policy_state_refs
-                    with self.timers["getitem->NON-cached->ray.get"]:  # TODO
-                        policy_state = ray.get(self._policy_state_refs[item])
+                # If we are at capacity -> Stash the least used policy to
+                # object store.
+                if len(self.deque) == self.deque.maxlen:
+                    self._stash_least_used_policy()
+                # Create policy object (from its spec: cls, obs-space,
+                # act-space, config).
+                policy = Policy.from_state(policy_state)
+                self.cache[item] = policy
 
-                    # All our policies have same NN-architecture (are "swappable").
-                    # -> Get least recently used one, stash its state to disk and load
-                    # new policy's state into that one. This way, we save the costly
-                    # re-creation step.
-                    if self.policies_swappable and len(self.deque) == self.deque.maxlen:
-                        with self.timers[
-                            "getitem->NON-cached->stash-least-used"
-                        ]:  # TODO
-                            old_policy_id = self.deque[0]
-                            policy = self.cache[old_policy_id]
-                            self._stash_least_used_policy()
-                            self.cache[item] = policy
-                        with self.timers["getitem->NON-cached->set-state"]:  # TODO
-                            # Restore policy's state and return it.
-                            policy.set_state(policy_state)
-                    # Policies are different (not swappable) or we are not at capacity:
-                    # Have to (re-)create new policy here.
-                    else:
-                        # If we are at capacity -> Stash the least used policy to
-                        # object store.
-                        if len(self.deque) == self.deque.maxlen:
-                            self._stash_least_used_policy()
-                        # Create policy object (from its spec: cls, obs-space,
-                        # act-space, config).
-                        policy = Policy.from_state(policy_state)
-                        self.cache[item] = policy
+            self.deque.append(item)
 
-                    with self.timers["getitem->NON-cached->deque.append"]:  # TODO
-                        self.deque.append(item)
-
-                    return policy
+            return policy
 
     @with_lock
     @override(dict)
     def __setitem__(self, key, value):
-        with self.timers["setitem"]:  # TODO
-            # Item already in cache -> Rearrange deque.
-            if key in self.cache:
-                self.deque.remove(key)
+        # Item already in cache -> Rearrange deque.
+        if key in self.cache:
+            self.deque.remove(key)
 
-            # Item not currently in cache -> store new value and - if at capacity -
-            # remove leftmost one.
-            else:
-                # Cache at capacity -> Drop leftmost item.
-                if len(self.deque) == self.deque.maxlen:
-                    self._stash_least_used_policy()
+        # Item not currently in cache -> store new value and - if at capacity -
+        # remove leftmost one.
+        else:
+            # Cache at capacity -> Drop leftmost item.
+            if len(self.deque) == self.deque.maxlen:
+                self._stash_least_used_policy()
 
-            # Promote `key` to "most recently used".
-            self.deque.append(key)
+        # Promote `key` to "most recently used".
+        self.deque.append(key)
 
-            # Update our cache.
-            self.cache[key] = value
-            self.valid_keys.add(key)
+        # Update our cache.
+        self.cache[key] = value
+        self.valid_keys.add(key)
 
     @with_lock
     @override(dict)
     def __delitem__(self, key):
-        with self.timers["delitem"]:  # TODO
-            # Make key invalid.
-            self.valid_keys.remove(key)
-            # Remove policy from memory if currently cached.
-            if key in self.cache:
-                policy = self.cache[key]
-                self._close_session(policy)
-                del self.cache[key]
-            # Remove Ray object store reference (if this ID has already been stored
-            # there), so the item gets garbage collected.
-            if key in self._policy_state_refs:
-                del self._policy_state_refs[key]
+        # Make key invalid.
+        self.valid_keys.remove(key)
+        # Remove policy from memory if currently cached.
+        if key in self.cache:
+            policy = self.cache[key]
+            self._close_session(policy)
+            del self.cache[key]
+        # Remove Ray object store reference (if this ID has already been stored
+        # there), so the item gets garbage collected.
+        if key in self._policy_state_refs:
+            del self._policy_state_refs[key]
 
     @override(dict)
     def __iter__(self):
-        with self.timers["iter"]:  # TODO
-            return iter(self.keys())
+        return iter(self.keys())
 
     @override(dict)
     def items(self):
@@ -201,59 +181,53 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
-        with self.timers["keys"]:  # TODO
-            self._lock.acquire()
-            ks = list(self.valid_keys)
-            self._lock.release()
+        self._lock.acquire()
+        ks = list(self.valid_keys)
+        self._lock.release()
 
-            def gen():
-                for key in ks:
-                    yield key
+        def gen():
+            for key in ks:
+                yield key
 
-            return gen()
+        return gen()
 
     @override(dict)
     def values(self):
-        with self.timers["values"]:  # TODO
-            self._lock.acquire()
-            vs = [self[k] for k in self.valid_keys]
-            self._lock.release()
+        self._lock.acquire()
+        vs = [self[k] for k in self.valid_keys]
+        self._lock.release()
 
-            def gen():
-                for value in vs:
-                    yield value
+        def gen():
+            for value in vs:
+                yield value
 
-            return gen()
+        return gen()
 
     @with_lock
     @override(dict)
     def update(self, __m, **kwargs):
-        with self.timers["update"]:  # TODO
-            for k, v in __m.items():
-                self[k] = v
-            for k, v in kwargs.items():
-                self[k] = v
+        for k, v in __m.items():
+            self[k] = v
+        for k, v in kwargs.items():
+            self[k] = v
 
     @with_lock
     @override(dict)
     def get(self, key):
-        with self.timers["get"]:  # TODO
-            if key not in self.valid_keys:
-                return None
-            return self[key]
+        if key not in self.valid_keys:
+            return None
+        return self[key]
 
     @with_lock
     @override(dict)
     def __len__(self):
         """Returns number of all policies, including the stashed-to-disk ones."""
-        with self.timers["len"]:  # TODO
-            return len(self.valid_keys)
+        return len(self.valid_keys)
 
     @with_lock
     @override(dict)
     def __contains__(self, item):
-        with self.timers["contains"]:  # TODO
-            return item in self.valid_keys
+        return item in self.valid_keys
 
     def _stash_least_used_policy(self):
         """Writes the least-recently used policy's state to the Ray object store.
