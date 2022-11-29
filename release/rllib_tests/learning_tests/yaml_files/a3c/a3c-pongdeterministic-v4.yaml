@@ -1,5 +1,5 @@
-a3c-pongdeterministic-v4:
-    env: PongDeterministic-v4
+a3c-pongdeterministic-v5:
+    env: ALE/Pong-v5
     run: A3C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -10,6 +10,8 @@ a3c-pongdeterministic-v4:
     # TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
     frameworks: [ "tf" ]
     config:
+        env_config:
+            nondeterministic: False  # deterministic
         num_gpus: 0
         num_workers: 16
         max_requests_in_flight_per_sampler_worker: 1

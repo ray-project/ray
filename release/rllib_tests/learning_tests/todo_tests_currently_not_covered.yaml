@@ -24,8 +24,8 @@
 # Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
 # isn't actually any more efficient on Atari, since the network size is
 # relatively small and the env doesn't require a GPU.
-# ddppo-breakoutnoframeskip-v4:
-#    env: BreakoutNoFrameskip-v4
+# ddppo-breakoutnoframeskip-v5:
+#    env: ALE/Breakout-v5
 #    run: DDPPO
 #    # Minimum reward and total ts (in given time_total_s) to pass this test.
 #    pass_criteria:
@@ -36,6 +36,8 @@
 #    config:
 #        # DDPPO only supports PyTorch so far.
 #        frameworks: [ "torch" ]
+#        env_config:
+#            frameskip: 1  # no frameskip
 #        # Worker config: 10 workers, each of which requires a GPU.
 #        num_workers: 16
 #        # Workers require GPUs, but share 1 GPU amongst 2 workers.
