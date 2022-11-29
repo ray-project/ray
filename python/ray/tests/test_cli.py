@@ -478,6 +478,8 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
         print("head pid ", head_proc.pid)
         print("worker pid: ", worker_proc.pid)
 
+        # Without sleep list_nodes sometimes failed.
+        time.sleep(5)
         # Wait until all nodes are registered and started.
         wait_for_condition(lambda: len(list_nodes()) == 2)
         # When ray start --block is called, before it blocks,
@@ -485,9 +487,11 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
         # is killed before that by ray stop, it can trigger GCS
         # timeout error which can break `ray start --block`.
         # To avoid this issue, we sleep enough before we stop ray.
-        time.sleep(10)
+        time.sleep(5)
 
         stop_result = runner.invoke(scripts.stop)
+        print("result, ", stop_result.output)
+        print("exit code, ", stop_result.exit_code)
         _die_on_error(stop_result)
 
         # Process with "--block" should be blocked forever w/o
