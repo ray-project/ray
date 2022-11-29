@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 from functools import partial
 import pytest
-import psutil
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
