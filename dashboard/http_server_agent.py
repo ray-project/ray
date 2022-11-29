@@ -1,6 +1,6 @@
-import asyncio
 import logging
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_or_create_event_loop
 
 try:
     from packaging.version import Version
@@ -27,7 +27,7 @@ class HttpServerAgent:
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if Version(aiohttp.__version__) < Version("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
+            self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 

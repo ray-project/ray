@@ -3,7 +3,8 @@ import math
 from typing import List, Optional, Type, Tuple, Dict, Any, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -18,7 +19,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     ResultDict,
     TensorStructType,
     PolicyID,
@@ -93,18 +93,19 @@ class DTConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        embed_dim: Optional[int] = None,
-        num_layers: Optional[int] = None,
-        num_heads: Optional[int] = None,
-        embed_pdrop: Optional[float] = None,
-        resid_pdrop: Optional[float] = None,
-        attn_pdrop: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        loss_coef_actions: Optional[float] = None,
-        loss_coef_obs: Optional[float] = None,
-        loss_coef_returns_to_go: Optional[float] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        embed_dim: Optional[int] = NotProvided,
+        num_layers: Optional[int] = NotProvided,
+        num_heads: Optional[int] = NotProvided,
+        embed_pdrop: Optional[float] = NotProvided,
+        resid_pdrop: Optional[float] = NotProvided,
+        attn_pdrop: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        loss_coef_actions: Optional[float] = NotProvided,
+        loss_coef_obs: Optional[float] = NotProvided,
+        loss_coef_returns_to_go: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        horizon: Optional[int] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -163,13 +164,15 @@ class DTConfig(AlgorithmConfig):
             loss_coef_returns_to_go: Coefficients on the loss for the returns_to_go
                 output. Default to 0. Set to a value greater than 0 to regress on the
                 returns_to_go output.
+            horizon: The episode horizon used. This value can be derived from your
+                environment via `[your_env]._max_episode_steps`.
             **kwargs: Forward compatibility kwargs
 
         Returns:
             This updated DTConfig object.
         """
         super().training(**kwargs)
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_replay_buffer_config = deep_update(
@@ -180,35 +183,37 @@ class DTConfig(AlgorithmConfig):
                 ["replay_buffer_config"],
             )
             self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
-        if embed_dim is not None:
+        if embed_dim is not NotProvided:
             self.embed_dim = embed_dim
-        if num_layers is not None:
+        if num_layers is not NotProvided:
             self.num_layers = num_layers
-        if num_heads is not None:
+        if num_heads is not NotProvided:
             self.num_heads = num_heads
-        if embed_pdrop is not None:
+        if embed_pdrop is not NotProvided:
             self.embed_pdrop = embed_pdrop
-        if resid_pdrop is not None:
+        if resid_pdrop is not NotProvided:
             self.resid_pdrop = resid_pdrop
-        if attn_pdrop is not None:
+        if attn_pdrop is not NotProvided:
             self.attn_pdrop = attn_pdrop
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if loss_coef_actions is not None:
+        if loss_coef_actions is not NotProvided:
             self.loss_coef_actions = loss_coef_actions
-        if loss_coef_obs is not None:
+        if loss_coef_obs is not NotProvided:
             self.loss_coef_obs = loss_coef_obs
-        if loss_coef_returns_to_go is not None:
+        if loss_coef_returns_to_go is not NotProvided:
             self.loss_coef_returns_to_go = loss_coef_returns_to_go
+        if horizon is not NotProvided:
+            self.horizon = horizon
 
         return self
 
     def evaluation(
         self,
         *,
-        target_return: Optional[float] = None,
+        target_return: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -222,60 +227,54 @@ class DTConfig(AlgorithmConfig):
             This updated DTConfig object.
         """
         super().evaluation(**kwargs)
-        if target_return is not None:
+        if target_return is not NotProvided:
             self.target_return = target_return
 
         return self
 
+    @override(AlgorithmConfig)
+    def rollouts(self, *args, **kwargs):
+        if "horizon" in kwargs:
+            raise ValueError(
+                "`horizon` setting no longer supported via "
+                "`config.rollouts(horizon=..)`! This is a DT-only setting now and "
+                "must be specified via `config.training(horizon=..)`."
+            )
+        return super().rollouts(*args, **kwargs)
 
-class DT(Algorithm):
-    """Implements Decision Transformer: https://arxiv.org/abs/2106.01345"""
-
-    # TODO: we have a circular dependency for get
-    #  default config. config -> Trainer -> config
-    #  defining Config class in the same file for now as a workaround.
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Trainer's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
         # Call super's validation method.
-        super().validate_config(config)
+        super().validate()
 
         # target_return must be specified
         assert (
-            self.config.get("target_return") is not None
+            self.target_return is not None
         ), "Must specify a target return (total sum of rewards)."
 
         # horizon must be specified and >= 2
-        assert self.config.get("horizon") is not None, "Must specify rollout horizon."
-        assert self.config["horizon"] >= 2, "rollout horizon must be at least 2."
+        assert self.horizon is not None, "Must specify rollout horizon."
+        assert self.horizon >= 2, "rollout horizon must be at least 2."
 
         # replay_buffer's type must be MultiAgentSegmentationBuffer
         assert (
-            self.config.get("replay_buffer_config") is not None
+            self.replay_buffer_config is not None
         ), "Must specify replay_buffer_config."
-        replay_buffer_type = self.config["replay_buffer_config"].get("type")
+        replay_buffer_type = self.replay_buffer_config.get("type")
         assert (
             replay_buffer_type == MultiAgentSegmentationBuffer
         ), "replay_buffer's type must be MultiAgentSegmentationBuffer."
 
         # max_seq_len must be specified in model
-        model_max_seq_len = self.config["model"].get("max_seq_len")
+        model_max_seq_len = self.model.get("max_seq_len")
         assert model_max_seq_len is not None, "Must specify model's max_seq_len."
 
         # User shouldn't need to specify replay_buffer's max_seq_len.
         # Autofill for replay buffer API. If they did specify, make sure it
         # matches with model's max_seq_len
-        buffer_max_seq_len = self.config["replay_buffer_config"].get("max_seq_len")
+        buffer_max_seq_len = self.replay_buffer_config.get("max_seq_len")
         if buffer_max_seq_len is None:
-            self.config["replay_buffer_config"]["max_seq_len"] = model_max_seq_len
+            self.replay_buffer_config["max_seq_len"] = model_max_seq_len
         else:
             assert (
                 buffer_max_seq_len == model_max_seq_len
@@ -283,21 +282,28 @@ class DT(Algorithm):
 
         # Same thing for buffer's max_ep_len, which should be autofilled from
         # rollout's horizon, or check that it matches if user specified.
-        buffer_max_ep_len = self.config["replay_buffer_config"].get("max_ep_len")
+        buffer_max_ep_len = self.replay_buffer_config.get("max_ep_len")
         if buffer_max_ep_len is None:
-            self.config["replay_buffer_config"]["max_ep_len"] = self.config["horizon"]
+            self.replay_buffer_config["max_ep_len"] = self.horizon
         else:
             assert (
-                buffer_max_ep_len == self.config["horizon"]
+                buffer_max_ep_len == self.horizon
             ), "replay_buffer's max_ep_len must equal rollout horizon."
+
+
+class DT(Algorithm):
+    """Implements Decision Transformer: https://arxiv.org/abs/2106.01345."""
 
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return DTConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 
@@ -319,7 +325,7 @@ class DT(Algorithm):
         # the division makes it so the total number of transitions per train
         # step is consistent.
         num_steps = train_batch.env_steps()
-        batch_size = int(math.ceil(num_steps / self.config["model"]["max_seq_len"]))
+        batch_size = int(math.ceil(num_steps / self.config.model["max_seq_len"]))
 
         # Add the batch of episodes to the segmentation buffer.
         self.local_replay_buffer.add(train_batch)

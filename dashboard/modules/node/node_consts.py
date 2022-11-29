@@ -1,4 +1,4 @@
-NODE_STATS_UPDATE_INTERVAL_SECONDS = 1
+NODE_STATS_UPDATE_INTERVAL_SECONDS = 5
 UPDATE_NODES_INTERVAL_SECONDS = 5
 # Until the head node is registered,
 # the API server is doing more frequent update

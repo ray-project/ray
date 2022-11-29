@@ -1,8 +1,9 @@
 import os
 import tempfile
+import threading
 from collections import namedtuple
 from dataclasses import dataclass
-from multiprocessing import Queue
+from queue import Queue
 from typing import Tuple, Dict
 from unittest.mock import (
     Mock,
@@ -19,14 +20,16 @@ from ray.tune.integration.wandb import (
     WandbTrainableMixin,
     wandb_mixin,
 )
-from ray.air.callbacks.wandb import (
+from ray.air.integrations.wandb import (
     WandbLoggerCallback,
-    _WandbLoggingProcess,
+    _QueueItem,
+    _WandbLoggingActor,
+)
+from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
-    _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
@@ -41,7 +44,7 @@ class Trial(
             "config",
             "trial_id",
             "trial_name",
-            "trainable_name",
+            "experiment_dir_name",
             "placement_group_factory",
             "logdir",
         ],
@@ -86,20 +89,41 @@ class _MockWandbAPI:
         return Mock()
 
 
-class _MockWandbLoggingProcess(_WandbLoggingProcess):
+class _MockWandbLoggingActor(_WandbLoggingActor):
     def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
-        super(_MockWandbLoggingProcess, self).__init__(
+        super(_MockWandbLoggingActor, self).__init__(
             logdir, queue, exclude, to_config, *args, **kwargs
         )
         self._wandb = _MockWandbAPI()
 
 
 class WandbTestExperimentLogger(WandbLoggerCallback):
-    _logger_process_cls = _MockWandbLoggingProcess
-
     @property
     def trial_processes(self):
-        return self._trial_processes
+        return self._trial_logging_actors
+
+    def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
+        self._trial_queues[trial] = Queue()
+        local_actor = _MockWandbLoggingActor(
+            logdir=trial.logdir,
+            queue=self._trial_queues[trial],
+            exclude=exclude_results,
+            to_config=self._config_results,
+            **wandb_init_kwargs,
+        )
+        self._trial_logging_actors[trial] = local_actor
+
+        thread = threading.Thread(target=local_actor.run)
+        self._trial_logging_futures[trial] = thread
+        thread.start()
+
+    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+        self._trial_queues[trial].put((_QueueItem.END, None))
+
+        del self._trial_queues[trial]
+        del self._trial_logging_actors[trial]
+        self._trial_logging_futures[trial].join(timeout=2)
+        del self._trial_logging_futures[trial]
 
 
 class _MockWandbTrainableMixin(WandbTrainableMixin):
@@ -204,7 +228,9 @@ class TestWandbLogger:
         assert logger.trial_processes[trial].kwargs["project"] == "test_project"
         assert logger.trial_processes[trial].kwargs["id"] == trial.trial_id
         assert logger.trial_processes[trial].kwargs["name"] == trial.trial_name
-        assert logger.trial_processes[trial].kwargs["group"] == trial.trainable_name
+        assert (
+            logger.trial_processes[trial].kwargs["group"] == trial.experiment_dir_name
+        )
         assert "config" in logger.trial_processes[trial]._exclude
 
         del logger
@@ -326,10 +352,10 @@ class TestWandbClassMixin:
         config[TRIAL_INFO] = trial_info
 
         trainable = WandbTestTrainable(config)
-        assert trainable.run.kwargs["project"] == "test_project"
-        assert trainable.run.kwargs["id"] == trial.trial_id
-        assert trainable.run.kwargs["name"] == trial.trial_name
-        assert trainable.run.kwargs["group"] == "WandbTestTrainable"
+        assert trainable.wandb.kwargs["project"] == "test_project"
+        assert trainable.wandb.kwargs["id"] == trial.trial_id
+        assert trainable.wandb.kwargs["name"] == trial.trial_name
+        assert trainable.wandb.kwargs["group"] == "WandbTestTrainable"
 
     def test_wandb_mixin_rllib(self):
         """Test compatibility with RLlib configuration dicts"""
@@ -394,15 +420,15 @@ class TestWandbMixinDecorator:
         config[TRIAL_INFO] = trial_info
 
         wrapped = wrap_function(train_fn)(config)
-        assert wrapped.run.kwargs["project"] == "test_project"
-        assert wrapped.run.kwargs["id"] == trial.trial_id
-        assert wrapped.run.kwargs["name"] == trial.trial_name
+        assert wrapped.wandb.kwargs["project"] == "test_project"
+        assert wrapped.wandb.kwargs["id"] == trial.trial_id
+        assert wrapped.wandb.kwargs["name"] == trial.trial_name
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
-    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingProcess is
-    correctly called by calling _WandbLoggingProcess.run() mocking
+    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingActor is
+    correctly called by calling _WandbLoggingActor.run() mocking
     out calls to wandb.
     """
     mock_queue = Mock(get=Mock(return_value=(_QueueItem.END, None)))
@@ -410,8 +436,8 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.callbacks.wandb, "_load_class") as mock_load_class:
-        logging_process = _WandbLoggingProcess(
+    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
+        logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )
         logging_process._wandb = Mock()
