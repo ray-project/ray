@@ -61,3 +61,9 @@ class TestConfig(unittest.TestCase):
         input_spec = ModelSpec({"bork": TorchTensorSpec("a, b, c", c=3)})
         c = VectorEncoderConfig()
         c.build(input_spec)
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
