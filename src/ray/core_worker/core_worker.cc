@@ -608,6 +608,10 @@ void CoreWorker::Shutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
+
+  // Shutdown gRPC server
+  core_worker_server_->Shutdown();
+
   // Now that gcs_client is not used within io service, we can reset the pointer and clean
   // it up.
   gcs_client_.reset();
