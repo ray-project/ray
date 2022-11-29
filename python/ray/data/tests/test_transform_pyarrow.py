@@ -142,7 +142,8 @@ def test_arrow_concat_tensor_extension_uniform_and_variable_shaped():
     # consolidation).
     assert out["a"].num_chunks == 2
     # Check content.
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
+    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
+        np.testing.assert_array_equal(o, e)
     for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
@@ -167,8 +168,10 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
     # consolidation).
     assert out["a"].num_chunks == 2
     # Check content.
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
-    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
+    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
+        np.testing.assert_array_equal(o, e)
+    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
+        np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
 
