@@ -28,6 +28,7 @@ AGENT_CONNECTORS = {
     "lambdas.FlattenDataAgentConnector",
 }
 
+
 @PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
     """Register a connector for use with RLlib.
