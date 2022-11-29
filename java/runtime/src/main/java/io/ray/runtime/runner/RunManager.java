@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
@@ -72,14 +73,23 @@ public class RunManager {
    * @param command The command to start the process with.
    */
   public static String runCommand(List<String> command) throws IOException, InterruptedException {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Starting process with command: {}", Joiner.on(" ").join(command));
-    }
+    return runCommand(command, 30, TimeUnit.SECONDS);
+  }
+
+  public static String runCommand(List<String> command, long timeout, TimeUnit unit) throws IOException, InterruptedException {
+    LOGGER.info("Starting process with command: {}", Joiner.on(" ").join(command));
 
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
-    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
-    p.waitFor();
+    final boolean exited = p.waitFor(timeout, unit);
+    String errorOutput = IOUtils.toString(p.getErrorStream(), Charset.defaultCharset());
+    String stdOutput = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
+
+    final String outputs = String.format("Error output:\n%s\nStd output:\n%s", errorOutput, stdOutput);
+    if (!exited) {
+      throw new RuntimeException("The process was not exited in time.\n" + outputs);
+    }
+
     if (p.exitValue() != 0) {
       String sb =
           "The exit value of the process is "
@@ -87,10 +97,9 @@ public class RunManager {
               + ". Command: "
               + Joiner.on(" ").join(command)
               + "\n"
-              + "output:\n"
-              + output;
+              + outputs;
       throw new RuntimeException(sb);
     }
-    return output;
+    return outputs;
   }
 }
