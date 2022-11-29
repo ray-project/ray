@@ -100,8 +100,9 @@ class NestedDictEnv(gym.Env):
 
     def step(self, action):
         self.steps += 1
-        done = truncated = self.steps >= 5
-        return DICT_SAMPLES[self.steps], 1, done, truncated, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return DICT_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedTupleEnv(gym.Env):
@@ -116,8 +117,9 @@ class NestedTupleEnv(gym.Env):
 
     def step(self, action):
         self.steps += 1
-        done = truncated = self.steps >= 5
-        return TUPLE_SAMPLES[self.steps], 1, done, truncated, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return TUPLE_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class RepeatedSpaceEnv(gym.Env):
@@ -132,8 +134,9 @@ class RepeatedSpaceEnv(gym.Env):
 
     def step(self, action):
         self.steps += 1
-        done = truncated = self.steps >= 5
-        return REPEATED_SAMPLES[self.steps], 1, done, truncated, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return REPEATED_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedMultiAgentEnv(MultiAgentEnv):

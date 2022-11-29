@@ -6,7 +6,6 @@ import ray
 from ray.util import log_once
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -203,11 +202,20 @@ class RemoteBaseEnv(BaseEnv):
                         elif len(ret) == 2:
                             ob = ret[0]
                             info = ret[1]
+                        # Gym < 0.26? Something went wrong.
+                        else:
+                            raise AssertionError(
+                                "Your gymnasium.Env seems to NOT return the correct "
+                                "number of return values for `step()` (needs to return"
+                                " 5 values: obs, reward, terminated, truncated and "
+                                "info) or `reset()` (needs to return 2 values: obs and "
+                                "info)!"
+                            )
                     # Gym < 0.26: `reset()` result: Only obs.
                     else:
                         raise AssertionError(
                             "Your gymnasium.Env seems to only return a single value "
-                            "upon `reset()`! Must return 2 (obs and infos)."
+                            "upon `reset()`! Must return 2 (obs AND infos)."
                         )
                 else:
                     if isinstance(ret, tuple):
@@ -222,6 +230,15 @@ class RemoteBaseEnv(BaseEnv):
                         elif len(ret) == 2:
                             ob = {_DUMMY_AGENT_ID: ret[0]}
                             info = {_DUMMY_AGENT_ID: ret[1]}
+                        # Gym < 0.26? Something went wrong.
+                        else:
+                            raise AssertionError(
+                                "Your gymnasium.Env seems to NOT return the correct "
+                                "number of return values for `step()` (needs to return"
+                                " 5 values: obs, reward, terminated, truncated and "
+                                "info) or `reset()` (needs to return 2 values: obs and "
+                                "info)!"
+                            )
                     # Gym < 0.26?
                     else:
                         raise AssertionError(
@@ -272,6 +289,7 @@ class RemoteBaseEnv(BaseEnv):
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
+        *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[MultiEnvDict, MultiEnvDict]:
@@ -422,9 +440,6 @@ class _RemoteSingleAgentEnv:
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs_and_info = self.env.reset(seed=seed, options=options)
-
-        if check_old_gym_env(self.env, reset_results=obs_and_info):
-            obs_and_info = obs_and_info, {}
 
         obs = {_DUMMY_AGENT_ID: obs_and_info[0]}
         info = {_DUMMY_AGENT_ID: obs_and_info[1]}

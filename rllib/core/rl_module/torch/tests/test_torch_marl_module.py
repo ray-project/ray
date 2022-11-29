@@ -259,7 +259,7 @@ class TestMARLModule(unittest.TestCase):
                     if action[aid].ndim == 0
                     else action[aid],
                     "reward": np.array(reward[aid])[None],
-                    "done": np.array(terminated[aid])[None],
+                    "terminated": np.array(terminated[aid])[None],
                     "truncated": np.array(truncated[aid])[None],
                     "next_obs": next_obs[aid],
                 }

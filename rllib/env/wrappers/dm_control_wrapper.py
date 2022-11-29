@@ -193,17 +193,18 @@ class DMCEnv(core.Env):
         reward = 0
         extra = {"internal_state": self._env.physics.get_state().copy()}
 
-        done = truncated = False
+        terminated = truncated = False
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
             reward += time_step.reward or 0
-            done = truncated = time_step.last()
-            if done:
+            terminated = False
+            truncated = time_step.last()
+            if terminated or truncated:
                 break
         obs = self._get_obs(time_step)
         self.current_state = _flatten_obs(time_step.observation)
         extra["discount"] = time_step.discount
-        return obs, reward, done, truncated, extra
+        return obs, reward, terminated, truncated, extra
 
     def reset(self, *, seed=None, options=None):
         time_step = self._env.reset()

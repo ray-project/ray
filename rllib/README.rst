@@ -167,14 +167,15 @@ Quick First Experiment
             Returns:
                 New observation, reward, done-flag, info-dict (empty).
             """
-            # Set `done` flag after 10 steps.
+            # Set `truncated` flag after 10 steps.
             self.episode_len += 1
-            done = truncated = self.episode_len >= 10
+            terminated = False
+            truncated = self.episode_len >= 10
             # r = -abs(obs - action)
             reward = -sum(abs(self.cur_obs - action))
             # Set a new observation (random sample).
             self.cur_obs = self.observation_space.sample()
-            return self.cur_obs, reward, done, truncated, {}
+            return self.cur_obs, reward, terminated, truncated, {}
 
 
     # Create an RLlib Algorithm instance from a PPOConfig to learn how to
@@ -221,10 +222,10 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1, ))})
     # Get the initial observation (some value between -10.0 and 10.0).
     obs, info = env.reset()
-    terminated = False
+    terminated = truncated = False
     total_reward = 0.0
     # Play one episode.
-    while not terminated:
+    while not terminated and not truncated:
         # Compute a single action, given the current observation
         # from the environment.
         action = algo.compute_single_action(obs)

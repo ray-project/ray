@@ -28,12 +28,12 @@ def make_simple_serving(multiagent, superclass):
             obs, info = self.env.reset()
             while True:
                 action = self.get_action(eid, obs)
-                obs, reward, done, truncated, info = self.env.step(action)
+                obs, reward, terminated, truncated, info = self.env.step(action)
                 if multiagent:
                     self.log_returns(eid, reward)
                 else:
                     self.log_returns(eid, reward, info=info)
-                if done:
+                if terminated or truncated:
                     self.end_episode(eid, obs)
                     obs, info = self.env.reset()
                     eid = self.start_episode()
@@ -60,9 +60,9 @@ class PartOffPolicyServing(ExternalEnv):
                 self.log_action(eid, obs, action)
             else:
                 action = self.get_action(eid, obs)
-            obs, reward, done, truncated, info = self.env.step(action)
+            obs, reward, terminated, truncated, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
-            if done:
+            if terminated or truncated:
                 self.end_episode(eid, obs)
                 obs, info = self.env.reset()
                 eid = self.start_episode()
@@ -80,9 +80,9 @@ class SimpleOffPolicyServing(ExternalEnv):
         while True:
             action = self.fixed_action
             self.log_action(eid, obs, action)
-            obs, reward, done, truncted, info = self.env.step(action)
+            obs, reward, terminated, truncted, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
-            if done:
+            if terminated or truncted:
                 self.end_episode(eid, obs)
                 obs, info = self.env.reset()
                 eid = self.start_episode()
@@ -107,10 +107,10 @@ class MultiServing(ExternalEnv):
                     cur_obs[i], _ = envs[i].reset()
             actions = [self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
-                obs, reward, done, _, _ = envs[i].step(action)
+                obs, reward, terminated, truncated, _ = envs[i].step(action)
                 cur_obs[i] = obs
                 self.log_returns(eids[i], reward)
-                if done:
+                if terminated or truncated:
                     self.end_episode(eids[i], obs)
                     del cur_obs[i]
 

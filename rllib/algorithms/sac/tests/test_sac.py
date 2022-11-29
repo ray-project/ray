@@ -55,9 +55,10 @@ class SimpleEnv(gym.Env):
         self.steps += 1
         # Reward is 1.0 - (max(actions) - state).
         [rew] = 1.0 - np.abs(np.max(action) - self.state)
-        done = truncated = self.steps >= self.max_steps
+        terminated = False
+        truncated = self.steps >= self.max_steps
         self.state = self.observation_space.sample()
-        return self.state, rew, done, truncated, {}
+        return self.state, rew, terminated, truncated, {}
 
 
 class TestSAC(unittest.TestCase):
@@ -527,8 +528,9 @@ class TestSAC(unittest.TestCase):
 
             def step(self, action):
                 self.steps += 1
-                done = truncated = self.steps >= 5
-                return dict_samples[self.steps], 1, done, truncated, {}
+                terminated = False
+                truncated = self.steps >= 5
+                return dict_samples[self.steps], 1, terminated, truncated, {}
 
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (

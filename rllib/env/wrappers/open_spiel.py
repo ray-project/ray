@@ -65,15 +65,16 @@ class OpenSpielEnv(MultiAgentEnv):
             rewards[ag] += penalty
 
         # Are we done?
-        is_done = self.state.is_terminal()
-        dones = dict(
-            {ag: is_done for ag in range(self.num_agents)}, **{"__all__": is_done}
+        is_terminated = self.state.is_terminal()
+        terminateds = dict(
+            {ag: is_terminated for ag in range(self.num_agents)},
+            **{"__all__": is_terminated}
         )
         truncateds = dict(
             {ag: False for ag in range(self.num_agents)}, **{"__all__": False}
         )
 
-        return obs, rewards, dones, truncateds, {}
+        return obs, rewards, terminateds, truncateds, {}
 
     def render(self, mode=None) -> None:
         if mode == "human":

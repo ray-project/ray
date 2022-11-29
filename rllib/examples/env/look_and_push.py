@@ -56,8 +56,8 @@ class OneHot(gym.Wrapper):
         return self._encode_obs(obs), info
 
     def step(self, action):
-        obs, reward, done, truncated, info = self.env.step(action)
-        return self._encode_obs(obs), reward, done, truncated, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return self._encode_obs(obs), reward, terminated, truncated, info
 
     def _encode_obs(self, obs):
         new_obs = np.ones(self.env.observation_space.n)

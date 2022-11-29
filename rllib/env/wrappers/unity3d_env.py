@@ -174,21 +174,21 @@ class Unity3DEnv(MultiAgentEnv):
         # Do the step.
         self.unity_env.step()
 
-        obs, rewards, dones, truncateds, infos = self._get_step_results()
+        obs, rewards, terminateds, truncateds, infos = self._get_step_results()
 
-        # Global horizon reached? -> Return __all__ done=True, so user
-        # can reset. Set all agents' individual `done` to True as well.
+        # Global horizon reached? -> Return __all__ truncated=True, so user
+        # can reset. Set all agents' individual `truncated` to True as well.
         self.episode_timesteps += 1
         if self.episode_timesteps > self.episode_horizon:
             return (
                 obs,
                 rewards,
-                dict({"__all__": True}, **{agent_id: True for agent_id in all_agents}),
+                terminateds,
                 dict({"__all__": True}, **{agent_id: True for agent_id in all_agents}),
                 infos,
             )
 
-        return obs, rewards, dones, truncateds, infos
+        return obs, rewards, terminateds, truncateds, infos
 
     def reset(
         self, *, seed=None, options=None

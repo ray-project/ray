@@ -10,7 +10,6 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     DeveloperAPI,
 )
-from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -530,21 +529,16 @@ def make_multi_agent(
             self.truncateds = set()
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
-                results = env.reset()
-                if check_old_gym_env(env, reset_results=results):
-                    obs[i] = results
-                    infos[i] = {}
-                else:
-                    obs[i], infos[i] = results
+                obs[i], infos[i] = env.reset()
             return obs, infos
 
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
-                results = self.envs[i].step(action)
-                obs[i], rew[i], terminated[i], truncated[i], info[i] = results
-
+                obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
+                    i
+                ].step(action)
                 if terminated[i]:
                     self.terminateds.add(i)
                 if truncated[i]:

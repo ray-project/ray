@@ -983,8 +983,9 @@ class Algorithm(Trainable):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                assert np.sum(batch[SampleBatch.TERMINATEDS]) + np.sum(
-                                    batch[SampleBatch.TRUNCATEDS]
+                                assert (
+                                    batch.is_single_trajectory()
+                                    and batch.is_terminated_or_truncated()
                                 )
                     # n timesteps per returned batch.
                     else:
@@ -1195,8 +1196,9 @@ class Algorithm(Trainable):
                 for ma_batch in batches:
                     ma_batch = ma_batch.as_multi_agent()
                     for batch in ma_batch.policy_batches.values():
-                        assert np.sum(batch[SampleBatch.TERMINATEDS]) + np.sum(
-                            batch[SampleBatch.TRUNCATEDS]
+                        assert (
+                            batch.is_single_trajectory()
+                            and batch.is_terminated_or_truncated()
                         )
             # n timesteps per returned batch.
             else:

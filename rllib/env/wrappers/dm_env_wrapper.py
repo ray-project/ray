@@ -63,7 +63,7 @@ class DMEnv(gym.Env):
         if reward is None:
             reward = 0.0
 
-        return ts.observation, reward, ts.last(), ts.last(), {"discount": ts.discount}
+        return ts.observation, reward, ts.last(), False, {"discount": ts.discount}
 
     def reset(self, *, seed=None, options=None):
         ts = self._env.reset()

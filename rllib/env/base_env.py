@@ -144,7 +144,7 @@ class BaseEnv:
             New observations for each ready agent.
             Reward values for each ready agent. If the episode is just started,
             the value will be None.
-            Done values for each ready agent. The special key "__all__" is used to
+            Terminated values for each ready agent. The special key "__all__" is used to
             indicate episode termination.
             Truncated values for each ready agent. The special key "__all__"
             is used to indicate episode truncation.
@@ -171,7 +171,9 @@ class BaseEnv:
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[Optional[MultiEnvDict], Optional[MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
@@ -187,10 +189,16 @@ class BaseEnv:
         Args:
             env_id: The sub-environment's ID if applicable. If None, reset
                 the entire Env (i.e. all sub-environments).
+            seed: The seed to be passed to the sub-environment(s) when
+                resetting it. If None, will not reset any existing PRNG. If you pass an
+                integer, the PRNG will be reset even if it already exists.
+            options: An options dict to be passed to the sub-environment(s) when
+                resetting it.
 
         Returns:
             A tuple consisting of a) the reset (multi-env/multi-agent) observation
-            dict and b) the reset (multi-env/multi-agent) infos dict.
+            dict and b) the reset (multi-env/multi-agent) infos dict. Returns the
+            (ASYNC_RESET_REQUEST, ASYNC_RESET_REQUEST) tuple, if not supported.
         """
         return None, None
 

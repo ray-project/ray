@@ -121,8 +121,8 @@ class TestDT(unittest.TestCase):
 
             for _ in range(200):
                 action, _, extra = algo.compute_single_action(input_dict=input_dict)
-                obs, reward, done, _, _ = env.step(action)
-                if done:
+                obs, reward, terminated, truncated, _ = env.step(action)
+                if terminated or truncated:
                     break
                 else:
                     input_dict = algo.get_next_input_dict(

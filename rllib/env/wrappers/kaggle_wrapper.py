@@ -4,17 +4,22 @@ Source: https://github.com/Kaggle/kaggle-environments
 """
 
 from copy import deepcopy
-from typing import Any, Dict, Optional, Tuple
+from gymnasium.spaces import (
+    Box,
+    Dict as DictSpace,
+    Discrete,
+    MultiBinary,
+    MultiDiscrete,
+    Space,
+    Tuple as TupleSpace,
+)
 
 try:
     import kaggle_environments
 except (ImportError, ModuleNotFoundError):
     pass
 import numpy as np
-from gymnasium.spaces import Box
-from gymnasium.spaces import Dict as DictSpace
-from gymnasium.spaces import Discrete, MultiBinary, MultiDiscrete, Space
-from gymnasium.spaces import Tuple as TupleSpace
+from typing import Any, Dict, Optional, Tuple
 
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.utils.typing import MultiAgentDict, AgentID
@@ -69,10 +74,11 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
                 action_list[idx] = [action]
         self.kaggle_env.step(action_list)
 
-        # Parse (obs, reward, done, info) from kaggle's "state" representation
+        # Parse (obs, reward, terminated, truncated, info) from kaggle's "state"
+        # representation.
         obs = {}
         cumulative_reward = {}
-        done = {"__all__": self.kaggle_env.done}
+        terminated = {"__all__": self.kaggle_env.done}
         truncated = {"__all__": False}
         info = {}
         for idx in range(len(self.kaggle_env.state)):
@@ -81,7 +87,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
             if agent_state["status"] == "ACTIVE":
                 obs[agent_name] = self._convert_obs(agent_state["observation"])
             cumulative_reward[agent_name] = agent_state["reward"]
-            done[agent_name] = agent_state["status"] != "ACTIVE"
+            terminated[agent_name] = agent_state["status"] != "ACTIVE"
             truncated[agent_name] = False
             info[agent_name] = agent_state["info"]
         # Compute the step rewards from the cumulative rewards
@@ -93,7 +99,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         else:
             reward = cumulative_reward
         self.last_cumulative_reward = cumulative_reward
-        return obs, reward, done, truncated, info
+        return obs, reward, terminated, truncated, info
 
     def _convert_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """Convert raw observations

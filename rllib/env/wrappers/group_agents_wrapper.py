@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.pre_checks.env import check_old_gym_env
 from ray.rllib.utils.typing import AgentID
 
 # info key for the individual rewards of an agent, for example:
@@ -79,12 +78,6 @@ class GroupAgentsWrapper(MultiAgentEnv):
             self._agent_ids.add(group_id)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        if seed is not None:
-            # This is a silent fail. However, OpenAI gyms also silently fail
-            # here.
-            if hasattr(self.env, "seed"):
-                self.env.seed(seed)
-
         obs, info = self.env.reset(seed=seed, options=options)
 
         return (
@@ -98,13 +91,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
     def step(self, action_dict):
         # Ungroup and send actions.
         action_dict = self._ungroup_items(action_dict)
-        results = self.env.step(action_dict)
-
-        if check_old_gym_env(self.env, step_results=results):
-            obs, rewards, terminateds, infos = results
-            truncateds = {k: False for k in terminateds.keys() if k != "__all__"}
-        else:
-            obs, rewards, terminateds, truncateds, infos = results
+        obs, rewards, terminateds, truncateds, infos = self.env.step(action_dict)
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)

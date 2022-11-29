@@ -62,8 +62,8 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "action_mask": self.action_mask,
             },
         }
-        terminateds = {"__all__": self.state >= 20}
-        truncateds = {"__all__": False}
+        terminateds = {"__all__": False}
+        truncateds = {"__all__": self.state >= 20}
         return obs, rewards, terminateds, truncateds, {}
 
 

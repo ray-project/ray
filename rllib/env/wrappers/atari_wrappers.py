@@ -61,11 +61,11 @@ class MonitorEnv(gym.Wrapper):
         return obs, info
 
     def step(self, action):
-        obs, rew, done, truncated, info = self.env.step(action)
+        obs, rew, terminated, truncated, info = self.env.step(action)
         self._current_reward += rew
         self._num_steps += 1
         self._total_steps += 1
-        return obs, rew, done, truncated, info
+        return obs, rew, terminated, truncated, info
 
     def get_episode_rewards(self):
         return self._episode_rewards
@@ -172,7 +172,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         if lives < self.lives and lives > 0:
             # for Qbert sometimes we stay in lives == 0 condtion for a few fr
             # so its important to keep lives > 0, so that we only reset once
-            # the environment advertises done.
+            # the environment advertises `terminated`.
             terminated = True
         self.lives = lives
         return obs, reward, terminated, truncated, info
@@ -213,7 +213,7 @@ class MaxAndSkipEnv(gym.Wrapper):
             total_reward += reward
             if terminated or truncated:
                 break
-        # Note that the observation on the done=True frame
+        # Note that the observation on the terminated|truncated=True frame
         # doesn't matter
         max_frame = self._obs_buffer.max(axis=0)
 
