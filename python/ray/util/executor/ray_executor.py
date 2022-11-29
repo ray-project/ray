@@ -1,9 +1,7 @@
-from functools import partial
 import itertools
 import ray
 import time
-from concurrent.futures import Executor, ProcessPoolExecutor
-
+from concurrent.futures import Executor
 
 
 def _result_or_cancel(fut, timeout=None):
@@ -138,4 +136,4 @@ class RayExecutor(Executor):
 
     def _check_shutdown_lock(self):
         if self._shutdown_lock:
-            raise RuntimeError('New task submitted after shutdown() was called')
+            raise RuntimeError("New task submitted after shutdown() was called")
