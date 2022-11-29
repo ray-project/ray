@@ -8,7 +8,6 @@ import ray
 from ray.rllib.algorithms.appo.appo import APPOConfig
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
@@ -42,7 +41,6 @@ def _do_checkpoint_twice_test(framework):
         Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
 
 
-'''
 class TestPolicyFromCheckpointTwice(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -60,7 +58,7 @@ class TestPolicyFromCheckpointTwice(unittest.TestCase):
 
     def test_policy_from_checkpoint_twice_torch(self):
         return _do_checkpoint_twice_test("torch")
-'''
+
 
 class TestPolicyRestore(unittest.TestCase):
     @classmethod
