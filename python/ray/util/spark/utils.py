@@ -6,6 +6,7 @@ import math
 import time
 import fcntl
 import threading
+import collections
 
 
 _MEMORY_BUFFER_OFFSET = 0.8
@@ -34,58 +35,31 @@ def get_dbutils():
         raise _NoDbutilsError
 
 
-class ShellCommandException(Exception):
-    @classmethod
-    def from_completed_process(cls, process):
-        lines = [
-            f"Non-zero exit code: {process.returncode}",
-            f"Command: {process.args}",
-        ]
-        if process.stdout:
-            lines += [
-                "",
-                "STDOUT:",
-                process.stdout,
-            ]
-        if process.stderr:
-            lines += [
-                "",
-                "STDERR:",
-                process.stderr,
-            ]
-        return cls("\n".join(lines))
+def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
+    cmd_str = " ".join(cmd)
+    tail_output = "".join(tail_output_deque)
+    return (
+        f"Command {cmd_str} failed with return code {return_code}, tail output are included "
+        f"below.\n{tail_output}\n"
+    )
 
 
 def exec_cmd(
     cmd,
     *,
-    throw_on_error=True,
     extra_env=None,
-    capture_output=True,
     synchronous=True,
-    stream_output=False,
     **kwargs,
 ):
     """
     A convenience wrapper of `subprocess.Popen` for running a command from a Python script.
-
-    :param cmd: The command to run, as a list of strings.
-    :param throw_on_error: If True, raises an Exception if the exit code of the program is nonzero.
-    :param extra_env: Extra environment variables to be defined when running the child process.
-                      If this argument is specified, `kwargs` cannot contain `env`.
-    :param capture_output: If True, stdout and stderr will be captured and included in an exception
-                           message on failure; if False, these streams won't be captured.
-    :param synchronous: If True, wait for the command to complete and return a CompletedProcess
-                        instance, If False, does not wait for the command to complete and return
-                        a Popen instance, and ignore the `throw_on_error` argument.
-    :param stream_output: If True, stream the command's stdout and stderr to `sys.stdout`
-                          as a unified stream during execution.
-                          If False, do not stream the command's stdout and stderr to `sys.stdout`.
-    :param kwargs: Keyword arguments (except `text`) passed to `subprocess.Popen`.
-    :return:  If synchronous is True, return a `subprocess.CompletedProcess` instance,
-              otherwise return a Popen instance.
+    If `synchronous` is True, wait until the process terminated and if subprocess return code
+    is not 0, raise error containing last 100 lines output.
+    If `synchronous` is False, return an `Popen` instance and a deque instance holding tail
+    outputs.
+    The subprocess stdout / stderr output will be streamly redirected to current process stdout.
     """
-    illegal_kwargs = set(kwargs.keys()).intersection({"text"})
+    illegal_kwargs = set(kwargs.keys()).intersection({"text", "stdout", "stderr"})
     if illegal_kwargs:
         raise ValueError(f"`kwargs` cannot contain {list(illegal_kwargs)}")
 
@@ -93,56 +67,34 @@ def exec_cmd(
     if extra_env is not None and env is not None:
         raise ValueError("`extra_env` and `env` cannot be used at the same time")
 
-    if capture_output and stream_output:
-        raise ValueError(
-            "`capture_output=True` and `stream_output=True` cannot be specified at the same time"
-        )
-
     env = env if extra_env is None else {**os.environ, **extra_env}
-
-    # In Python < 3.8, `subprocess.Popen` doesn't accept a command containing path-like
-    # objects (e.g. `["ls", pathlib.Path("abc")]`) on Windows. To avoid this issue,
-    # stringify all elements in `cmd`. Note `str(pathlib.Path("abc"))` returns 'abc'.
-    cmd = list(map(str, cmd))
-
-    if capture_output or stream_output:
-        if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
-            raise ValueError(
-                "stdout and stderr arguments may not be used with capture_output or stream_output"
-            )
-        kwargs["stdout"] = subprocess.PIPE
-        if capture_output:
-            kwargs["stderr"] = subprocess.PIPE
-        elif stream_output:
-            # Redirect stderr to stdout in order to combine the streams for unified printing to
-            # `sys.stdout`, as documented in
-            # https://docs.python.org/3/library/subprocess.html#subprocess.run
-            kwargs["stderr"] = subprocess.STDOUT
 
     process = subprocess.Popen(
         cmd,
         env=env,
         text=True,
-        **kwargs,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
+
+    tail_output_deque = collections.deque(maxlen=100)
+
+    def redirect_log_thread_fn():
+        for line in process.stdout:
+            # collect tail logs by `tail_output_deque`
+            tail_output_deque.append(line)
+
+            # redirect to stdout.
+            sys.stdout.write(line)
+
+    threading.Thread(target=redirect_log_thread_fn, args=()).start()
+
     if not synchronous:
-        return process
+        return process, tail_output_deque
 
-    if stream_output:
-        for output_char in iter(lambda: process.stdout.read(1), ""):
-            sys.stdout.write(output_char)
-
-    stdout, stderr = process.communicate()
-    returncode = process.poll()
-    comp_process = subprocess.CompletedProcess(
-        process.args,
-        returncode=returncode,
-        stdout=stdout,
-        stderr=stderr,
-    )
-    if throw_on_error and returncode != 0:
-        raise ShellCommandException.from_completed_process(comp_process)
-    return comp_process
+    return_code = process.wait()
+    if return_code != 0:
+        raise RuntimeError(gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque))
 
 
 def check_port_open(host, port):

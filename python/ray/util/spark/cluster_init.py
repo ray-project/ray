@@ -26,6 +26,7 @@ from .utils import (
     _HEAP_TO_SHARED_RATIO,
     _acquire_lock_for_ray_worker_node_startup,
     _display_databricks_driver_proxy_url,
+    gen_cmd_exec_failure_msg,
 )
 
 if not sys.platform.startswith("linux"):
@@ -42,17 +43,6 @@ try:
         raise RuntimeError(_spark_dependency_error)
 except ImportError:
     raise RuntimeError(_spark_dependency_error)
-
-
-def wait_ray_node_available(hostname, port, timeout, error_on_failure):
-    # Wait for the Ray head node to start.
-    for _ in range(timeout):
-        time.sleep(1)
-        if check_port_open(hostname, port):
-            break
-
-    if not check_port_open(hostname, port):
-        raise RuntimeError(error_on_failure)
 
 
 @PublicAPI(stability="alpha")
@@ -199,7 +189,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 008.")
+    _logger.warning("Test version 009.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -309,7 +299,9 @@ def _init_ray_cluster(
     #  See https://github.com/ray-project/ray/issues/28876#issuecomment-1322016494
     if ray_temp_root_dir is None:
         if is_in_databricks_runtime():
-            ray_temp_root_dir = "/local_disk0/tmp"
+            # TODO: Change `ray_temp_root_dir` to use "/local_disk0/tmp" once
+            #  https://github.com/ray-project/ray/issues/30677 is fixed.
+            ray_temp_root_dir = "/tmp"
         else:
             ray_temp_root_dir = "/tmp"
     ray_temp_dir = os.path.join(
@@ -349,20 +341,33 @@ def _init_ray_cluster(
             "Ray Cluster Dashboard"
         )
 
-    ray_head_proc = exec_cmd(
+    ray_head_proc, tail_output_deque = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
-        capture_output=False,
-        stream_output=False,
     )
 
     # wait ray head node spin up.
-    wait_ray_node_available(
-        ray_head_ip,
-        ray_head_port,
-        40,
-        error_on_failure="Start Ray head node failed!",
-    )
+    for _ in range(40):
+        time.sleep(1)
+        if ray_head_proc.poll() is not None:
+            # ray head node process terminated.
+            break
+        if check_port_open(ray_head_ip, ray_head_port):
+            break
+
+    if not check_port_open(ray_head_ip, ray_head_port):
+        if ray_head_proc.poll() is None:
+            # Ray head GCS service is down. Kill ray head node.
+            ray_head_proc.kill()
+            # wait killing complete.
+            time.sleep(0.5)
+
+        cmd_exec_failure_msg = gen_cmd_exec_failure_msg(
+            ray_head_node_cmd, ray_head_proc.returncode, tail_output_deque
+        )
+        raise RuntimeError(
+            "Start Ray head node failed!\n" + cmd_exec_failure_msg
+        )
 
     _logger.info("Ray head node started.")
 
@@ -476,8 +481,6 @@ def _init_ray_cluster(
         exec_cmd(
             ray_worker_node_cmd,
             synchronous=True,
-            capture_output=False,
-            stream_output=False,
             extra_env=ray_worker_node_extra_envs,
             preexec_fn=setup_sigterm_on_parent_death,
         )
