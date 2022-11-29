@@ -5,11 +5,6 @@ from concurrent.futures import Executor
 import ray
 from ray.util.annotations import PublicAPI
 
-def _make_remote():
-    @ray.remote
-    def remote_fn(fn, *args, **kwargs):
-        return fn(*args, **kwargs)
-    return remote_fn
 
 @PublicAPI
 class RayExecutor(Executor):
@@ -31,7 +26,14 @@ class RayExecutor(Executor):
                 RayExecutor(address='192.168.0.123:25001')
 
         """
-        self.__remote_fn = _make_remote()
+
+        """
+        This is necessary because @ray.remote is only available at runtime.
+        """
+        @ray.remote
+        def remote_fn(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+        self.__remote_fn = remote_fn
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
     @staticmethod
