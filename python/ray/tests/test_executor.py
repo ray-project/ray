@@ -2,7 +2,7 @@ import os
 import ray
 import sys
 import pytest
-from ray.util.executor.ray_executor import RayExecutor
+from ray.util.ray_executor import RayExecutor
 import time
 from concurrent.futures._base import TimeoutError
 

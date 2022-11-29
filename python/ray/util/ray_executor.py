@@ -1,9 +1,17 @@
 import itertools
-import ray
 import time
 from concurrent.futures import Executor
 
+import ray
+from ray.util.annotations import PublicAPI
 
+def _make_remote():
+    @ray.remote
+    def remote_fn(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+    return remote_fn
+
+@PublicAPI
 class RayExecutor(Executor):
     _shutdown_lock = False
     _futures = {}
@@ -23,12 +31,8 @@ class RayExecutor(Executor):
                 RayExecutor(address='192.168.0.123:25001')
 
         """
+        self.__remote_fn = _make_remote()
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
-
-    @staticmethod
-    @ray.remote
-    def __remote_fn(fn, *args, **kwargs):
-        return fn(*args, **kwargs)
 
     @staticmethod
     def __actor_fn(fn, *args, **kwargs):

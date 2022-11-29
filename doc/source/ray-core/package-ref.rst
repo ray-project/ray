@@ -303,3 +303,9 @@ Exceptions
    :members:
 .. autoclass:: ray.exceptions.CrossLanguageError
    :members:
+
+RayExecutor
+-----------
+
+.. autoclass:: ray.util.RayExecutor
+    :members:
