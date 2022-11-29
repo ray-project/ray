@@ -27,9 +27,7 @@ def get_agent_connectors_from_config(
     if config["clip_rewards"] is True:
         connectors.append(clip_reward_cls(ctx, sign=True))
     elif type(config["clip_rewards"]) == float:
-        connectors.append(
-            clip_reward_cls(ctx, limit=abs(config["clip_rewards"]))
-        )
+        connectors.append(clip_reward_cls(ctx, limit=abs(config["clip_rewards"])))
 
     if not config["_disable_preprocessor_api"]:
         connectors.append(get_connector("ObsPreprocessorConnector", ctx))
@@ -48,7 +46,7 @@ def get_agent_connectors_from_config(
             get_connector("ViewRequirementAgentConnector", ctx),
         ]
     )
-    
+
     agent_connector_cls = get_connector_cls("AgentConnectorPipeline")
     return agent_connector_cls(ctx, connectors)
 
@@ -121,7 +119,9 @@ def get_synced_filter_connector(ctx: ConnectorContext):
         filter_cls = get_connector_cls("MeanStdObservationFilterAgentConnector")
         return filter_cls(ctx, clip=None)
     elif filter_specifier == "ConcurrentMeanStdFilter":
-        filter_cls = get_connector_cls("ConcurrentMeanStdObservationFilterAgentConnector")
+        filter_cls = get_connector_cls(
+            "ConcurrentMeanStdObservationFilterAgentConnector"
+        )
         return filter_cls(ctx, clip=None)
     elif filter_specifier == "NoFilter":
         return None
