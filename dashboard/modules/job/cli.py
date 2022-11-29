@@ -38,8 +38,8 @@ def _handle_headers(headers: Optional[str]) ->  Optional[Dict[str, Any]]:
     if headers is not None:
         try:
             return json.loads(headers)
-        except: 
-            return None
+        except:
+            raise ValueError("Failed to parse headers into JSON. Expected format: {\"KEY\": \"VALUE\"}, got %s".format(headers))
 
 
 def _log_big_success_msg(success_msg):
