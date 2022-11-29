@@ -200,8 +200,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto reject_callback = [](rpc::SendReplyCallback send_reply_callback) {
-    send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+  auto cancel_callback = [reply](rpc::SendReplyCallback send_reply_callback) {
+    reply->set_is_cancelled_before_running(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 
   auto dependencies = task_spec.GetDependencies(false);
@@ -239,7 +240,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
                     std::move(accept_callback),
-                    std::move(reject_callback),
+                    std::move(cancel_callback),
                     std::move(send_reply_callback),
                     task_spec.ConcurrencyGroupName(),
                     task_spec.FunctionDescriptor(),
@@ -252,7 +253,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
-                                  std::move(reject_callback),
+                                  std::move(cancel_callback),
                                   std::move(send_reply_callback),
                                   "",
                                   task_spec.FunctionDescriptor(),
