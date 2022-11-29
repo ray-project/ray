@@ -529,8 +529,7 @@ class AgentCollector:
         # else.
         if (
             SampleBatch.DONES in self.buffers
-            and not np_data[SampleBatch.DONES][0][-1]  # Use np_data here because it
-            # never includes dummy value in front
+            and not self.buffers[SampleBatch.DONES][0][-1]
         ):
             # Copy data to beginning of buffer and cut lists.
             if self.shift_before > 0:
