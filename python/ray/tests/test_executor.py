@@ -2,7 +2,7 @@ import os
 import ray
 import sys
 import pytest
-from ray.util.executor.ray_executor import RayExecutor
+from ray.util.ray_executor import RayExecutor
 import time
 from concurrent.futures._base import TimeoutError
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -14,29 +14,40 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
-        result = ex.submit(lambda x: len([i for i in range(x)]), 100).result()
-        assert result == 100
+        result = ex.submit(lambda x: x * x, 100).result()
+        assert result == 10_000
+
 
 
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
-        futures_iter = ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
+        futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
-            assert result == 100
+            assert result == 10_000
+
 
 
 def test_remote_function_runs_on_specified_instance(call_ray_start):
     with RayExecutor(address=call_ray_start) as ex:
+<<<<<<< HEAD
         result = ex.submit(lambda x: len([i for i in range(x)]), 100).result()
         assert result == 100
+=======
+        result = ex.submit(lambda x: x * x, 100).result()
+        assert result == 10_000
+>>>>>>> feature/ray_executor
         assert ex.context.address_info["address"] == call_ray_start
 
 
 def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
     with RayExecutor(address=call_ray_start) as ex:
-        futures_iter = ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
+        futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
+<<<<<<< HEAD
             assert result == 100
+=======
+            assert result == 10_000
+>>>>>>> feature/ray_executor
         assert ex.context.address_info["address"] == call_ray_start
 
 
