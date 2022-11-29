@@ -4,25 +4,25 @@ import time
 from concurrent.futures import Executor
 
 
-def _result_or_cancel(fut, timeout=None):
-    """
-    From concurrent.futures
-    """
-    try:
-        try:
-            return fut.result(timeout)
-        finally:
-            fut.cancel()
-    finally:
-        # Break a reference cycle with the exception in self._exception
-        del fut
-
-
 class RayExecutor(Executor):
     _shutdown_lock = False
     _futures = {}
 
     def __init__(self, **kwargs):
+        """
+        Initialises a new RayExecutor instance which can be used as a drop-in
+        replacement for ProcessPoolExecutor or ThreadPoolExecutor from
+        concurrent.futures.
+
+        Args:
+            All keyword arguments are passed to ray.init() (see
+            https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
+            For example, this will connect to a cluster at the specified address:
+            .. code-block:: python
+
+                RayExecutor(address='192.168.0.123:25001')
+
+        """
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
     @staticmethod
@@ -35,6 +35,14 @@ class RayExecutor(Executor):
         return fn.remote(*args, **kwargs)
 
     def submit(self, fn, /, *args, **kwargs):
+        """Submits a callable to be executed with the given arguments.
+
+        Schedules the callable to be executed as fn(*args, **kwargs) and returns
+        a Future instance representing the execution of the callable.
+
+        Returns:
+            A Future representing the given call.
+        """
         self._check_shutdown_lock()
         oref = self.__remote_fn.remote(fn, *args, **kwargs)
         future = oref.future()
@@ -42,6 +50,16 @@ class RayExecutor(Executor):
         return future
 
     def submit_actor_function(self, fn, *args, **kwargs):
+        """Submits a callable Actor function (see
+        https://docs.ray.io/en/latest/ray-core/actors.html) to be executed with
+        the given arguments.
+
+        Schedules the callable to be executed as fn(*args, **kwargs) and returns
+        a Future instance representing the execution of the callable.
+
+        Returns:
+            A Future representing the given call.
+        """
         self._check_shutdown_lock()
         oref = self.__actor_fn(fn, *args, **kwargs)
         future = oref.future()
@@ -49,6 +67,25 @@ class RayExecutor(Executor):
         return future
 
     def map(self, fn, *iterables, timeout=None, chunksize=1):
+        """Returns an iterator equivalent to map(fn, iter).
+
+        Args:
+            fn: A callable that will take as many arguments as there are
+                passed iterables.
+            timeout: The maximum number of seconds to wait. If None, then there
+                is no limit on the wait time.
+            chunksize: The size of the chunks the iterable will be broken into
+                before being passed to a child process.
+
+        Returns:
+            An iterator equivalent to: map(func, *iterables) but the calls may
+            be evaluated out-of-order.
+
+        Raises:
+            TimeoutError: If the entire result iterator could not be generated
+                before the given timeout.
+            Exception: If fn(*args) raises for any values.
+        """
         self._check_shutdown_lock()
         results_list = []
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
@@ -56,14 +93,31 @@ class RayExecutor(Executor):
             results_list.append(results)
         return itertools.chain(*results_list)
 
-    #        return self._map(self.submit, fn, *iterables, timeout=timeout)
-
     def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
+        """Returns an iterator equivalent to map(fn, iter).
+
+        Args:
+            fn: A callable Actor function (see
+                https://docs.ray.io/en/latest/ray-core/actors.html) that will take
+                as many arguments as there are passed iterables.
+            timeout: The maximum number of seconds to wait. If None, then there
+                is no limit on the wait time.
+            chunksize: The size of the chunks the iterable will be broken into
+                before being passed to a child process.
+
+        Returns:
+            An iterator equivalent to: map(func, *iterables) but the calls may
+            be evaluated out-of-order.
+
+        Raises:
+            TimeoutError: If the entire result iterator could not be generated
+                before the given timeout.
+            Exception: If fn(*args) raises for any values.
+        """
         results_list = []
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
             results = self._map(self.submit_actor_function, fn, chunk, timeout=None)
             results_list.append(results)
-        # results = self._map(self.submit_actor_function, fn,*iterables, timeout=None)
         return itertools.chain(*results_list)
 
     @staticmethod
@@ -80,7 +134,20 @@ class RayExecutor(Executor):
             yield chunk
 
     @staticmethod
-    def _map(submit_fn, fn, iterables, timeout=None):
+    def _result_or_cancel(fut, timeout=None):
+        """
+        From concurrent.futures
+        """
+        try:
+            try:
+                return fut.result(timeout)
+            finally:
+                fut.cancel()
+        finally:
+            # Break a reference cycle with the exception in self._exception
+            del fut
+
+    def _map(self, submit_fn, fn, iterables, timeout=None):
         """
         This was adapted from concurrent.futures.Executor.map.
         """
@@ -98,9 +165,11 @@ class RayExecutor(Executor):
                 while fs:
                     # Careful not to keep a reference to the popped future
                     if timeout is None:
-                        yield _result_or_cancel(fs.pop())
+                        yield self._result_or_cancel(fs.pop())
                     else:
-                        yield _result_or_cancel(fs.pop(), end_time - time.monotonic())
+                        yield self._result_or_cancel(
+                            fs.pop(), end_time - time.monotonic()
+                        )
             finally:
                 for future in fs:
                     future.cancel()
