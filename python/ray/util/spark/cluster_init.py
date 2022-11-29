@@ -77,7 +77,7 @@ class RayClusterOnSpark:
         import ray
 
         if self.background_job_exception is not None:
-            raise RuntimeError("Starting ray workers failed.") from self.background_job_exception
+            raise RuntimeError("Ray workers has exited.") from self.background_job_exception
 
         if self.is_shutdown:
             raise RuntimeError(
