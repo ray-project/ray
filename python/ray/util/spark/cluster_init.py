@@ -68,12 +68,16 @@ class RayClusterOnSpark:
         self.ray_context = None
         self.is_shutdown = False
         self.num_worker_nodes = num_workers_node
+        self.background_job_exception = None
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
 
     def connect(self):
         import ray
+
+        if self.background_job_exception is not None:
+            raise RuntimeError("Starting ray workers failed.") from self.background_job_exception
 
         if self.is_shutdown:
             raise RuntimeError(
@@ -332,14 +336,7 @@ def _init_ray_cluster(
         *_convert_ray_node_options(head_options),
     ]
 
-    _logger.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
-
-    if is_in_databricks_runtime():
-        _display_databricks_driver_proxy_url(
-            spark.sparkContext,
-            ray_dashboard_port,
-            "Ray Cluster Dashboard"
-        )
+    _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
 
     ray_head_proc, tail_output_deque = exec_cmd(
         ray_head_node_cmd,
@@ -370,6 +367,13 @@ def _init_ray_cluster(
         )
 
     _logger.info("Ray head node started.")
+
+    if is_in_databricks_runtime():
+        _display_databricks_driver_proxy_url(
+            spark.sparkContext,
+            ray_dashboard_port,
+            "Ray Cluster Dashboard"
+        )
 
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -534,10 +538,10 @@ def _init_ray_cluster(
             spark.sparkContext.parallelize(
                 list(range(num_worker_nodes)), num_worker_nodes
             ).mapPartitions(ray_cluster_job_mapper).collect()
-        finally:
+        except Exception as e:
             # NB:
             # The background spark job is designed to running forever until it is killed,
-            # So this `finally` block is reachable only when:
+            # The exception might be raised in following cases:
             #  1. The background job raises unexpected exception (i.e. ray cluster dies
             #    unexpectedly)
             #  2. User explicitly orders shutting down the ray cluster.
@@ -546,6 +550,7 @@ def _init_ray_cluster(
             #  For case 1 and 3, only ray workers are killed, but driver side ray head might still
             #  be running and the ray context might be in connected status. In order to disconnect
             #  and kill the ray head node, a call to `ray_cluster_handler.shutdown()` is performed.
+            ray_cluster_handler.background_job_exception = e
             ray_cluster_handler.shutdown()
 
     try:
@@ -553,7 +558,7 @@ def _init_ray_cluster(
             target=inheritable_thread_target(backgroud_job_thread_fn), args=()
         ).start()
 
-        time.sleep(5)  # wait background spark task starting.
+        time.sleep(30)  # wait background spark task starting.
 
         if is_in_databricks_runtime():
             try:
