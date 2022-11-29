@@ -450,8 +450,10 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 act_list.append(act_arrs[t - 1])
 
             self.assertTrue("context_next_obs" not in sample_batch)
+            # We should have the 5 (context_len) most recent observations here
             check(sample_batch["context_obs"], np.stack(obs_list)[None])
-            check(sample_batch["context_act"], np.stack(act_list[:-1])[None])
+            # The context for actions is [t-context_len+1:t]
+            check(sample_batch["context_act"], np.stack(act_list[1:])[None])
 
     def test_connector_pipline_with_view_requirement(self):
         """A very minimal test that checks wheter pipeline connectors work in a
