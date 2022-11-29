@@ -83,7 +83,6 @@ def check_memory_leaks(
         action_sample = action_space.sample()
 
         def code():
-            horizon = algorithm.config["horizon"] or float("inf")
             ts = 0
             env.reset()
             while True:
@@ -92,7 +91,7 @@ def check_memory_leaks(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
                 _, _, done, _ = env.step(action_sample)
                 ts += 1
-                if done or ts >= horizon:
+                if done:
                     break
 
         test = _test_some_code_for_memory_leaks(
@@ -340,7 +339,7 @@ def _find_memory_leaks_in_table(table):
         #   increase > n bytes -> error.
         # - If stronger positive slope -> error.
         if memory_increase > 1000 and (
-            (line.slope > 40.0 and line.rvalue > 0.85)
+            (line.slope > 60.0 and line.rvalue > 0.875)
             or (line.slope > 20.0 and line.rvalue > 0.9)
             or (line.slope > 10.0 and line.rvalue > 0.95)
         ):
