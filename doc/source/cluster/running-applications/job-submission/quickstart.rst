@@ -79,7 +79,7 @@ Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag ex
 Additionally, if you wish to pass headers per HTTP request to the Cluster, then utilize the `RAY_JOB_HEADERS` environment variable.` Must be in JSON form.
 
 .. code-block:: bash
-    $ export RAY_JOB_HEADERS='{"Bearer": "TOKEN"}'
+    $ export RAY_JOB_HEADERS='{"KEY": "VALUE"}'
 
 To submit the job, we use ``ray job submit``.
 Make sure to specify the path to the working directory in the ``--working-dir`` argument.
