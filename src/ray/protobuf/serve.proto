@@ -27,30 +27,33 @@ option java_multiple_files = true;
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
   uint32 min_replicas = 1;
-  // Initial number of replicas deployment should start with. Must be non-negative.
-  optional uint32 initial_replicas = 2;
+
   // Maximal number of replicas, must be a non-negative integer and greater or equals
   // to min_replicas.
-  uint32 max_replicas = 3;
+  uint32 max_replicas = 2;
+
   // Target number of in flight requests per replicas. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
   // being scaled up. Must be a non-negative integer.
-  uint32 target_num_ongoing_requests_per_replica = 4;
+  uint32 target_num_ongoing_requests_per_replica = 3;
 
   // The frequency of how long does each replica sending metrics to autoscaler.
-  double metrics_interval_s = 5;
+  double metrics_interval_s = 4;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
-  double look_back_period_s = 6;
+  double look_back_period_s = 5;
 
   // The multiplicative "gain" factor to limit scaling decisions.
-  double smoothing_factor = 7;
+  double smoothing_factor = 6;
 
   // How long to wait before scaling down replicas.
-  double downscale_delay_s = 8;
+  double downscale_delay_s = 7;
 
   // How long to wait before scaling up replicas.
-  double upscale_delay_s = 9;
+  double upscale_delay_s = 8;
+
+  // Initial number of replicas deployment should start with. Must be non-negative.
+  optional uint32 initial_replicas = 9;
 }
 
 // Configuration options for a deployment, to be set by the user.
