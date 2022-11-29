@@ -281,6 +281,11 @@ class TagKey(Enum):
     CORE_STATE_API_SUMMARIZE_OBJECTS = auto()
 
     # Dashboard
+    # {enabled | disabled | minimal}
+    # enabled: Users use the dashboard
+    # disabled: include_dashboard: False
+    # minimal: Minimal ray is installed.
+    DASHBOARD_ENABLED = auto()
     # Whether a user is running ray with some third party metrics
     # services (Ex: "True", "False")
     DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()

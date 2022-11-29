@@ -1463,6 +1463,45 @@ def test_usages_stats_available_when_dashboard_not_included(
         wait_for_condition(verify)
 
 
+@pytest.mark.parametrize("include_dashboard", [False, True])
+def test_usages_stats_dashboard(
+    include_dashboard, monkeypatch, ray_start_cluster, reset_usage_stats
+):
+    """
+    Test dashboard usage metrics are correctly reported.
+    This is tested on both minimal / non minimal ray.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0, include_dashboard=include_dashboard)
+        ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        temp_dir = pathlib.Path(ray._private.worker._global_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            dashboard_enalbed = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_enabled"
+            ]
+            if os.environ.get("RAY_MINIMAL") == "1":
+                return dashboard_enalbed == "minimal"
+            elif include_dashboard:
+                return dashboard_enalbed == "enabled"
+            elif not include_dashboard:
+                return dashboard_enalbed == "disabled"
+            else:
+                # not reachable.
+                assert False
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
