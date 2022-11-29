@@ -3,6 +3,8 @@ import ray
 import sys
 import pytest
 from ray.util.executor.ray_executor import RayExecutor
+import time
+from concurrent.futures._base import TimeoutError
 
 #---------------------------------------------------------------------------------------------------- 
 # parameter tests
@@ -31,6 +33,14 @@ def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
         for result in futures_iter:
             assert result == 100
         assert ex.context.address_info['address'] == call_ray_start
+
+def test_map_times_out():
+    with RayExecutor() as ex:
+        i0 = ex.map(lambda x: time.sleep(x), [2])
+        i0.__next__()
+        i1 = ex.map(lambda x: time.sleep(x), [2], timeout=1)
+        with pytest.raises(TimeoutError):
+            i1.__next__()
 
 #---------------------------------------------------------------------------------------------------- 
 # basic Actor tests
