@@ -9,7 +9,7 @@ register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 
 # Number of policies overall in the PolicyMap.
 num_policies = 1000
-# Number of thos policies that should be trained. These are a subset of `num_policies`.
+# Number of those policies that should be trained. These are a subset of `num_policies`.
 num_trainable = 50
 
 num_envs_per_worker = 5
