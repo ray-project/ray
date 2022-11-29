@@ -41,3 +41,27 @@ JobInfo
 
 .. autoclass:: ray.job_submission.JobInfo
     :members:
+
+.. _job-details-ref:
+
+JobDetails
+~~~~~~~~~~
+
+.. autopydantic_model:: ray.job_submission.JobDetails
+
+.. _job-type-ref:
+
+JobType
+~~~~~~~
+
+.. autoclass:: ray.job_submission.JobType
+    :members:
+    :noindex:
+
+.. _driver-info-ref:
+
+DriverInfo
+~~~~~~~~~~
+
+.. autopydantic_model:: ray.job_submission.DriverInfo
+
