@@ -62,6 +62,7 @@ class TestConfig(unittest.TestCase):
         c = VectorEncoderConfig()
         c.build(input_spec)
 
+
 if __name__ == "__main__":
     import pytest
     import sys
