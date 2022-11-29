@@ -6,10 +6,15 @@ from ray.tune.registry import register_env
 
 
 register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
+
+# Number of policies overall in the PolicyMap.
 num_policies = 1000
+# Number of thos policies that should be trained. These are a subset of `num_policies`.
 num_trainable = 50
+
 num_envs_per_worker = 5
 
+# Define the config as an APPOConfig object.
 config = (
     APPOConfig()
     .environment("multi_cartpole")
@@ -50,7 +55,10 @@ config = (
     )
 )
 
-stop = {
-    "policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 400000,
-}
+# Define some stopping criteria.
+stop = dict({
+    # Any of the learning policies may reach the reward in order for this test
+    # to succeed (to speed things up a little; some trainable policies may receive
+    # more or less data and may thus learn more or less quickly).
+    f"policy_reward_mean/pol{i}": 50.0 for i in range(num_trainable)
+}, **{"timesteps_total": 400000})
