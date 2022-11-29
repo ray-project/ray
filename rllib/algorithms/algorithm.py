@@ -1493,27 +1493,28 @@ class Algorithm(Trainable):
                 assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
                 pp = pp[0]
 
-                # Note(Kourosh): The connector will leave the policy's connector in eval
-                # mode. would that be a problem?
-                pp.in_eval()
-                if observation is not None:
-                    _input_dict = {SampleBatch.OBS: observation}
-                elif input_dict is not None:
-                    _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
-                else:
-                    raise ValueError(
-                        "Either observation or input_dict must be provided."
-                    )
+                if not pp.is_identity():
+                    # Note(Kourosh): This call will leave the policy's connector
+                    # in eval mode. would that be a problem?
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {SampleBatch.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
 
-                # TODO (Kourosh): Create a new util method for algorithm that computes
-                # actions based on raw inputs from env and can keep track of its own
-                # internal state.
-                acd = AgentConnectorDataType("0", "0", _input_dict)
-                # make sure the state is reset since we are only applying the
-                # preprocessor
-                pp.reset(env_id="0")
-                ac_o = pp([acd])[0]
-                observation = ac_o.data[SampleBatch.OBS]
+                    # TODO (Kourosh): Create a new util method for algorithm that
+                    # computes actions based on raw inputs from env and can keep track
+                    # of its own internal state.
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    # make sure the state is reset since we are only applying the
+                    # preprocessor
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:
@@ -1752,8 +1753,8 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to add.
                 IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
-                or a dot `.` or space ` ` at the end of the ID.
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
