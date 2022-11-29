@@ -21,19 +21,21 @@ def register_connector(name: str, cls: Connector):
         raise TypeError("Can only register Connector type.", cls)
     _global_registry.register(RLLIB_CONNECTOR, name, cls)
 
+
 @PublicAPI(stability="alpha")
 def get_registered_connector_class(name: str) -> Type[Connector]:
     """Get a connector class by its registered name.
-    
+
     Args:
         name: name of the connector.
-    
+
     Returns:
         Connector class type.
     """
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     return _global_registry.get(RLLIB_CONNECTOR, name)
+
 
 @PublicAPI(stability="alpha")
 def get_connector(name: str, ctx: ConnectorContext, params: Any = None) -> Connector:
@@ -71,11 +73,12 @@ AGENT_CONNECTORS = {
     "lambdas.FlattenDataAgentConnector",
 }
 
+
 def _register_all_connectors():
-    for connector in ACTION_CONNECTORS | AGENT_CONNECTORS: 
+    for connector in ACTION_CONNECTORS | AGENT_CONNECTORS:
         prefix = "action" if connector in ACTION_CONNECTORS else "agent"
         full_connector_path = f"ray.rllib.connectors.{prefix}.{connector}"
-        
+
         # Dynamically import the connector
         module_name, module_class = full_connector_path.rsplit(".", 1)
         module = importlib.import_module(module_name)

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from ray.rllib.policy.view_requirement import ViewRequirement
 
 
-
 logger = logging.getLogger(__name__)
 
 
