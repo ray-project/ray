@@ -22,3 +22,5 @@ post_build_cmds:
   # Use torch+CUDA10.2 for our release tests. CUDA11.x has known performance issues in combination with torch+GPU+CNNs
   # TODO(sven): remove once nightly image gets upgraded.
   - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102
+  # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.
+  - pip3 install gymnasium[atari]==0.26.3 ale-py==0.8.0
