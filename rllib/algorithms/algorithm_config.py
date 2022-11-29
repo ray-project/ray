@@ -233,8 +233,6 @@ class AlgorithmConfig:
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
-        self.horizon = None
-        self.soft_horizon = False
         self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
@@ -267,7 +265,6 @@ class AlgorithmConfig:
         }
 
         # `self.multi_agent()`
-        self._is_multi_agent = False
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_map_cache = None
@@ -362,6 +359,8 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
+        self.horizon = DEPRECATED_VALUE
+        self.soft_horizon = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -996,8 +995,6 @@ class AlgorithmConfig:
         recreate_failed_workers: Optional[bool] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
-        horizon: Optional[int] = NotProvided,
-        soft_horizon: Optional[bool] = NotProvided,
         no_done_at_end: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
@@ -1005,6 +1002,8 @@ class AlgorithmConfig:
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        horizon=DEPRECATED_VALUE,
+        soft_horizon=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1099,23 +1098,7 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
-            horizon: Number of steps after which the episode is forced to terminate.
-                Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
-            soft_horizon: Calculate rewards but don't reset the environment when the
-                horizon is hit. This allows value estimation and RNN state to span
-                across logical episodes denoted by horizon. This only has an effect
-                if horizon != inf.
-            no_done_at_end: Don't set 'done' at the end of the episode.
-                In combination with `soft_horizon`, this works as follows:
-                - no_done_at_end=False soft_horizon=False:
-                Reset env and add `done=True` at end of each episode.
-                - no_done_at_end=True soft_horizon=False:
-                Reset env, but do NOT add `done=True` at end of the episode.
-                - no_done_at_end=False soft_horizon=True:
-                Do NOT reset env at horizon, but add `done=True` at the horizon
-                (pretending the episode has terminated).
-                - no_done_at_end=True soft_horizon=True:
-                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
+            no_done_at_end: If True, don't set a 'done=True' at the end of the episode.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1192,10 +1175,6 @@ class AlgorithmConfig:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
-        if horizon is not NotProvided:
-            self.horizon = horizon
-        if soft_horizon is not NotProvided:
-            self.soft_horizon = soft_horizon
         if no_done_at_end is not NotProvided:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not NotProvided:
@@ -1211,6 +1190,21 @@ class AlgorithmConfig:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
+
+        # Deprecated settings.
+        if horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(horizon=..)",
+                new="You should wrap your gymnasium.Env with a "
+                "gymnasium.wrappers.TimeLimit wrapper.",
+                error=True,
+            )
+        if soft_horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(soft_horizon=..)",
+                new="Your gymnasium.Env.step() should handle soft resets internally.",
+                error=True,
+            )
 
         return self
 
@@ -1736,12 +1730,6 @@ class AlgorithmConfig:
                     )
             self.policies_to_train = policies_to_train
 
-        # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
-        # PolicyID found in policies dict.
-        self._is_multi_agent = (
-            len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
-        )
-
         return self
 
     def is_multi_agent(self) -> bool:
@@ -1751,7 +1739,7 @@ class AlgorithmConfig:
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return self._is_multi_agent
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
