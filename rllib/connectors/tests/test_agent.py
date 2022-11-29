@@ -453,7 +453,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             check(sample_batch["context_obs"], np.stack(obs_list)[None])
             # The context for actions is [t-context_len+1:t]. Since we build sample
             # batch for inference in ViewRequirementAgentConnector, it always
-            # includes everything up until  the last action (at t-1), but not the
+            # includes everything up until the last action (at t-1), but not the
             # action current action (at t).
             check(sample_batch["context_act"], np.stack(act_list[1:])[None])
 
