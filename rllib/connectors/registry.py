@@ -17,6 +17,9 @@ def register_connector(name: str, cls: Connector):
         name: Name to register.
         cls: Callable that creates an env.
     """
+    if _global_registry.contains(RLLIB_CONNECTOR, name):
+        return
+
     if not issubclass(cls, Connector):
         raise TypeError("Can only register Connector type.", cls)
     _global_registry.register(RLLIB_CONNECTOR, name, cls)
