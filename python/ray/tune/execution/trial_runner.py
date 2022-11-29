@@ -93,6 +93,7 @@ def _load_trial_from_checkpoint(
     if new_local_dir:
         trial_cp["local_dir"] = new_local_dir
     new_trial.__setstate__(trial_cp)
+    new_trial.refresh_default_resource_request()
     return new_trial
 
 
