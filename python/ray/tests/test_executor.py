@@ -115,17 +115,17 @@ def test_remote_actor_on_local_instance_keeps_state():
 
 def test_cannot_submit_after_shutdown():
     ex = RayExecutor()
-    ex.submit(lambda x: len([i for i in range(x)]), 100).result()
+    ex.submit(lambda: True).result()
     ex.shutdown()
     with pytest.raises(RuntimeError):
-        ex.submit(lambda x: len([i for i in range(x)]), 100).result()
+        ex.submit(lambda: True).result()
 
 def test_cannot_map_after_shutdown():
     ex = RayExecutor()
-    ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
+    ex.submit(lambda: True).result()
     ex.shutdown()
     with pytest.raises(RuntimeError):
-        ex.map(lambda x: len([i for i in range(x)]), [100, 100, 100])
+        ex.submit(lambda: True).result()
 
 def test_cannot_submit_actor_function_after_shutdown():
     a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
@@ -143,11 +143,21 @@ def test_cannot_map_actor_function_after_shutdown():
     with pytest.raises(RuntimeError):
         ex.map_actor_function(a.actor_function, [0, 0, 0])
 
-def test_waits_on_shutdown():
+def test_pending_task_is_cancelled_after_shutdown():
     ex = RayExecutor()
-    ex.submit(input).result()
-    ex.shutdown()
-    raise NotImplemented
+    f = ex.submit(lambda: True)
+    assert f._state == 'PENDING'
+    ex.shutdown(cancel_futures=True)
+    assert f.cancelled()
+
+def test_running_task_finishes_after_shutdown():
+    ex = RayExecutor()
+    f = ex.submit(lambda: True)
+    assert f._state == 'PENDING'
+    f.set_running_or_notify_cancel()
+    assert f.running()
+    ex.shutdown(cancel_futures=True)
+    assert f._state == 'FINISHED'
 
 
 

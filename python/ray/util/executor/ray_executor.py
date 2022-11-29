@@ -98,15 +98,19 @@ class RayExecutor(Executor):
         """
         self._shutdown_lock = True
 
-        ray.shutdown()
-
         if cancel_futures:
             for future in self._futures.values():
                 _ = future.cancel()
 
         if wait:
             for future in self._futures.values():
-                _ = future.result()
+                if future.running():
+                    _ = future.result()
+
+        ray.shutdown()
+
+
+
 
 
     def _check_shutdown_lock(self):
