@@ -13,29 +13,29 @@ from concurrent.futures._base import TimeoutError
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
-        result = ex.submit(lambda x: x*x, 100).result()
+        result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
 
 
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
-        futures_iter = ex.map(lambda x: x*x, [100, 100, 100])
+        futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
             assert result == 10_000
 
 
 def test_remote_function_runs_on_specified_instance(call_ray_start):
     with RayExecutor(address=call_ray_start) as ex:
-        result = ex.submit(lambda x: x*x, 100).result()
+        result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
         assert ex.context.address_info["address"] == call_ray_start
 
 
 def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
     with RayExecutor(address=call_ray_start) as ex:
-        futures_iter = ex.map(lambda x: x*x, [100, 100, 100])
+        futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
-            assert result == 10_00
+            assert result == 10_000
         assert ex.context.address_info["address"] == call_ray_start
 
 
