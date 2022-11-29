@@ -30,7 +30,7 @@ from .utils import (
 )
 
 if not sys.platform.startswith("linux"):
-    raise RuntimeError("Ray on spark ony supports linux system.")
+    raise RuntimeError("Ray on spark only supports running on Linux.")
 
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(logging.INFO)
@@ -90,7 +90,7 @@ class RayClusterOnSpark:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
-                time.sleep(10)
+                time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
                 cur_alive_worker_count = len(
                     [
                         node
@@ -168,6 +168,11 @@ class RayClusterOnSpark:
 
 def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
+
+
+_RAY_HEAD_STARTUP_TIMEOUT = 40
+_BACKGROUND_JOB_STARTUP_TIMEOUT = 30
+_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL = 3
 
 
 def _init_ray_cluster(
@@ -319,7 +324,6 @@ def _init_ray_cluster(
         f"--temp-dir={ray_temp_dir}",
         "--block",
         "--head",
-        "--disable-usage-stats",
         f"--node-ip-address={ray_head_ip}",
         f"--port={ray_head_port}",
         "--include-dashboard=true",
@@ -344,7 +348,7 @@ def _init_ray_cluster(
     )
 
     # wait ray head node spin up.
-    for _ in range(40):
+    for _ in range(_RAY_HEAD_STARTUP_TIMEOUT):
         time.sleep(1)
         if ray_head_proc.poll() is not None:
             # ray head node process terminated.
@@ -509,7 +513,7 @@ def _init_ray_cluster(
         num_workers_node=num_worker_nodes,
     )
 
-    def backgroud_job_thread_fn():
+    def background_job_thread_fn():
 
         try:
             spark.sparkContext.setJobGroup(
@@ -555,10 +559,10 @@ def _init_ray_cluster(
 
     try:
         threading.Thread(
-            target=inheritable_thread_target(backgroud_job_thread_fn), args=()
+            target=inheritable_thread_target(background_job_thread_fn), args=()
         ).start()
 
-        time.sleep(30)  # wait background spark task starting.
+        time.sleep(_BACKGROUND_JOB_STARTUP_TIMEOUT)  # wait background spark task starting.
 
         if is_in_databricks_runtime():
             try:
