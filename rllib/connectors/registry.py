@@ -23,7 +23,7 @@ def register_connector(name: str, cls: Connector):
 
 
 @PublicAPI(stability="alpha")
-def get_registered_connector_class(name: str) -> Type[Connector]:
+def get_connector_cls(name: str) -> Type[Connector]:
     """Get a connector class by its registered name.
 
     Args:
@@ -49,7 +49,7 @@ def get_connector(name: str, ctx: ConnectorContext, params: Any = None) -> Conne
     Returns:
         Constructed connector.
     """
-    cls = get_registered_connector_class(name)
+    cls = get_connector_cls(name)
     return cls.from_state(ctx, params)
 
 

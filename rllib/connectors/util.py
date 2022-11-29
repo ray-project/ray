@@ -2,7 +2,7 @@ import logging
 from typing import Any, Tuple, TYPE_CHECKING
 
 from ray.rllib.connectors.connector import Connector, ConnectorContext
-from ray.rllib.connectors.registry import get_connector, get_registered_connector_class
+from ray.rllib.connectors.registry import get_connector, get_connector_cls
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
@@ -23,11 +23,13 @@ def get_agent_connectors_from_config(
 ) -> "AgentConnectorPipeline":
     connectors = []
 
-    clip_reward_cls = get_registered_connector_class("ClipRewardAgentConnector")
+    clip_reward_cls = get_connector_cls("ClipRewardAgentConnector")
     if config["clip_rewards"] is True:
         connectors.append(clip_reward_cls(ctx, sign=True))
     elif type(config["clip_rewards"]) == float:
-        connectors.append(clip_reward_cls(ctx, limit=abs(config["clip_rewards"])))
+        connectors.append(
+            clip_reward_cls(ctx, limit=abs(config["clip_rewards"]))
+        )
 
     if not config["_disable_preprocessor_api"]:
         connectors.append(get_connector("ObsPreprocessorConnector", ctx))
@@ -46,8 +48,8 @@ def get_agent_connectors_from_config(
             get_connector("ViewRequirementAgentConnector", ctx),
         ]
     )
-
-    agent_connector_cls = get_registered_connector_class("AgentConnectorPipeline")
+    
+    agent_connector_cls = get_connector_cls("AgentConnectorPipeline")
     return agent_connector_cls(ctx, connectors)
 
 
@@ -68,7 +70,7 @@ def get_action_connectors_from_config(
     if config.get("clip_actions", False):
         connectors.append(get_connector("ClipActionsConnector", ctx))
     connectors.append(get_connector("ImmutableActionsConnector", ctx))
-    action_connector_cls = get_registered_connector_class("ActionConnectorPipeline")
+    action_connector_cls = get_connector_cls("ActionConnectorPipeline")
     return action_connector_cls(ctx, connectors)
 
 
@@ -116,14 +118,10 @@ def restore_connectors_for_policy(
 def get_synced_filter_connector(ctx: ConnectorContext):
     filter_specifier = ctx.config.get("observation_filter")
     if filter_specifier == "MeanStdFilter":
-        filter_cls = get_registered_connector_class(
-            "MeanStdObservationFilterAgentConnector"
-        )
+        filter_cls = get_connector_cls("MeanStdObservationFilterAgentConnector")
         return filter_cls(ctx, clip=None)
     elif filter_specifier == "ConcurrentMeanStdFilter":
-        filter_cls = get_registered_connector_class(
-            "ConcurrentMeanStdObservationFilterAgentConnector"
-        )
+        filter_cls = get_connector_cls("ConcurrentMeanStdObservationFilterAgentConnector")
         return filter_cls(ctx, clip=None)
     elif filter_specifier == "NoFilter":
         return None
