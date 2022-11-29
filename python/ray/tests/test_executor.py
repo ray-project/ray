@@ -6,9 +6,9 @@ from ray.util.executor.ray_executor import RayExecutor
 import time
 from concurrent.futures._base import TimeoutError
 
-#---------------------------------------------------------------------------------------------------- 
+#----------------------------------------------------------------------------------------------------
 # parameter tests
-#---------------------------------------------------------------------------------------------------- 
+#----------------------------------------------------------------------------------------------------
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
@@ -42,10 +42,9 @@ def test_map_times_out():
         with pytest.raises(TimeoutError):
             i1.__next__()
 
-#---------------------------------------------------------------------------------------------------- 
+#----------------------------------------------------------------------------------------------------
 # basic Actor tests
-#---------------------------------------------------------------------------------------------------- 
-
+#----------------------------------------------------------------------------------------------------
 
 @ray.remote
 class ActorTest0:
@@ -118,10 +117,18 @@ def test_remote_actor_on_local_instance_keeps_state():
         assert value1.result() == 1
         assert value2.result() == 2
 
+def test_remote_actor_runs_on_local_instance_with_map_chunks():
+    a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
+    with RayExecutor() as ex:
+        futures_iter = ex.map_actor_function(a.actor_function,
+                                             list(range(1000)),
+                                             chunksize=100)
+    for idx, result in enumerate(futures_iter):
+        assert result == f"A-Actor-{idx}"
 
-#---------------------------------------------------------------------------------------------------- 
+#----------------------------------------------------------------------------------------------------
 # shutdown tests
-#---------------------------------------------------------------------------------------------------- 
+#----------------------------------------------------------------------------------------------------
 
 def test_cannot_submit_after_shutdown():
     ex = RayExecutor()
