@@ -78,8 +78,8 @@ public class RunManager {
 
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
-    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     p.waitFor();
+    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     if (p.exitValue() != 0) {
       String sb =
           "The exit value of the process is "
