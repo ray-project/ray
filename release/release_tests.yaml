@@ -4831,7 +4831,7 @@
   team: core
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+    cluster_compute: shuffle/chaos_dataset_shuffle_sort_1tb_config.yaml
 
   run:
     timeout: 7200
