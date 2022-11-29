@@ -599,7 +599,9 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
+    def update_resources(
+        self, resources: Union[Dict, Resources, PlacementGroupFactory]
+    ):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -613,7 +615,7 @@ class Trial:
         placement_group_factory = None
         if isinstance(resources, PlacementGroupFactory):
             placement_group_factory = resources
-        else:
+        elif isinstance(resources, dict):
             resources = Resources(**resources)
 
         self.placement_group_factory = _to_pg_factory(
@@ -621,6 +623,15 @@ class Trial:
         )
 
         self.invalidate_json_state()
+
+    def refresh_default_resource_request(self):
+        """Update trial resources according to the trainable's default resource
+        request, if it is provided."""
+        trainable_cls = self.get_trainable_cls()
+        if trainable_cls:
+            default_resources = trainable_cls.default_resource_request(self.config)
+            if default_resources:
+                self.update_resources(default_resources)
 
     def set_runner(self, runner):
         self.runner = runner
