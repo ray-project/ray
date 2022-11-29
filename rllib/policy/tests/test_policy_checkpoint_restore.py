@@ -19,10 +19,12 @@ tf1, tf, tfv = try_import_tf()
 
 def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
-    config = PPOConfig()
+    config = PPOConfig() \
+        .rollouts(num_rollout_workers=0) \
+        .evaluation(evaluation_num_workers=0)
     for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
-        algo2 = config.build(env="PongNoFrameskip-v4")
+        algo2 = config.build(env="Pendulum-v1")
 
         algo1.train()
         algo2.train()
@@ -42,12 +44,10 @@ def _do_checkpoint_twice_test(framework):
 
 
 class TestPolicyFromCheckpointTwice(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
+    def setUp(self):
         ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self):
         ray.shutdown()
 
     def test_policy_from_checkpoint_twice_tf(self):
@@ -61,13 +61,10 @@ class TestPolicyFromCheckpointTwice(unittest.TestCase):
 
 
 class TestPolicyRestore(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        tf1.enable_eager_execution()
+    def setUp(self):
         ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self):
         ray.shutdown()
 
     def test_add_policy_connector_enabled(self):
@@ -87,7 +84,7 @@ class TestPolicyRestore(unittest.TestCase):
         self.assertIsNotNone(policy)
 
         # Add this policy to a trainer.
-        trainer = APPOConfig().framework(framework="tf2").build("CartPole-v0")
+        trainer = APPOConfig().framework(framework="torch").build("CartPole-v0")
 
         # Add the entire policy.
         self.assertIsNotNone(trainer.add_policy("test_policy", policy=policy))
