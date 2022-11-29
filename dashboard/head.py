@@ -259,7 +259,6 @@ class DashboardHead:
         """
         try:
             assert internal_kv._internal_kv_initialized()
-            logger.info(self._modules_to_load)
             if self.minimal:
                 record_extra_usage_tag(TagKey.DASHBOARD_ENABLED, "minimal")
             elif self._modules_to_load == {"UsageStatsHead"}:
