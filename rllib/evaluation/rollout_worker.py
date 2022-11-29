@@ -1957,7 +1957,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
             # Create the actual policy object.
             if policy is None:
-                policy = create_policy_for_framework(
+                new_policy = create_policy_for_framework(
                     policy_id=name,
                     policy_class=get_tf_eager_cls_if_necessary(
                         policy_spec.policy_class, merged_conf
@@ -1968,10 +1968,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     worker_index=self.worker_index,
                     seed=seed,
                 )
+            else:
+                new_policy = policy
 
-            self.policy_map[name] = policy
+            self.policy_map[name] = new_policy
 
-            new_policy = self.policy_map[name]
             if merged_conf.enable_connectors:
                 create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
