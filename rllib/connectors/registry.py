@@ -1,13 +1,32 @@
 """Registry of connector names for global access."""
 
 import importlib
-
 from typing import Any, Type
 from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.connectors.connector import Connector, ConnectorContext
 
+
+ACTION_CONNECTORS = {
+    "clip.ClipActionsConnector",
+    "immutable.ImmutableActionsConnector",
+    "normalize.NormalizeActionsConnector",
+    "pipeline.ActionConnectorPipeline",
+    "lambdas.ConvertToNumpyConnector",
+}
+
+AGENT_CONNECTORS = {
+    "clip_reward.ClipRewardAgentConnector",
+    "mean_std_filter.MeanStdObservationFilterAgentConnector",
+    "mean_std_filter.ConcurrentMeanStdObservationFilterAgentConnector",
+    "obs_preproc.ObsPreprocessorConnector",
+    "pipeline.AgentConnectorPipeline",
+    "state_buffer.StateBufferConnector",
+    "view_requirement.ViewRequirementAgentConnector",
+    "synced_filter.SyncedFilterAgentConnector",
+    "lambdas.FlattenDataAgentConnector",
+}
 
 @PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
@@ -56,27 +75,6 @@ def get_connector(name: str, ctx: ConnectorContext, params: Any = None) -> Conne
     return cls.from_state(ctx, params)
 
 
-ACTION_CONNECTORS = {
-    "clip.ClipActionsConnector",
-    "immutable.ImmutableActionsConnector",
-    "normalize.NormalizeActionsConnector",
-    "pipeline.ActionConnectorPipeline",
-    "lambdas.ConvertToNumpyConnector",
-}
-
-AGENT_CONNECTORS = {
-    "clip_reward.ClipRewardAgentConnector",
-    "mean_std_filter.MeanStdObservationFilterAgentConnector",
-    "mean_std_filter.ConcurrentMeanStdObservationFilterAgentConnector",
-    "obs_preproc.ObsPreprocessorConnector",
-    "pipeline.AgentConnectorPipeline",
-    "state_buffer.StateBufferConnector",
-    "view_requirement.ViewRequirementAgentConnector",
-    "synced_filter.SyncedFilterAgentConnector",
-    "lambdas.FlattenDataAgentConnector",
-}
-
-
 def _register_all_connectors():
     for connector in ACTION_CONNECTORS | AGENT_CONNECTORS:
         prefix = "action" if connector in ACTION_CONNECTORS else "agent"
@@ -87,6 +85,3 @@ def _register_all_connectors():
         module = importlib.import_module(module_name)
         connector_class = getattr(module, module_class)
         register_connector(connector_class.__name__, connector_class)
-
-
-_register_all_connectors()

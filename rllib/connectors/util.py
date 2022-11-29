@@ -5,7 +5,6 @@ from ray.rllib.connectors.connector import Connector, ConnectorContext
 from ray.rllib.connectors.registry import (
     get_connector,
     get_connector_cls,
-    _register_all_connectors,
 )
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
@@ -25,7 +24,6 @@ def get_agent_connectors_from_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
 ) -> "AgentConnectorPipeline":
-    _register_all_connectors()
     connectors = []
 
     clip_reward_cls = get_connector_cls("ClipRewardAgentConnector")
@@ -67,7 +65,6 @@ def get_action_connectors_from_config(
         ctx: context used to create connectors.
         config: trainer config.
     """
-    _register_all_connectors()
     connectors = [get_connector("ConvertToNumpyConnector", ctx)]
     if config.get("normalize_actions", False):
         connectors.append(get_connector("NormalizeActionsConnector", ctx))
@@ -120,7 +117,6 @@ def restore_connectors_for_policy(
 # We need this filter selection mechanism temporarily to remain compatible to old API
 @DeveloperAPI
 def get_synced_filter_connector(ctx: ConnectorContext):
-    _register_all_connectors()
     filter_specifier = ctx.config.get("observation_filter")
     if filter_specifier == "MeanStdFilter":
         filter_cls = get_connector_cls("MeanStdObservationFilterAgentConnector")
