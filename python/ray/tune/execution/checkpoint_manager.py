@@ -19,9 +19,8 @@ class _CheckpointManager(CommonCheckpointManager):
     initialized to Checkpoint objects with values of None.
 
     Args:
-        keep_checkpoints_num: Keep at least this many checkpoints.
-        checkpoint_score_attr: Attribute to use to determine which
-            checkpoints to keep.
+        checkpoint_config: An optional checkpoint configuration that
+            determines checkpointing strategy.
         delete_fn: Function that deletes checkpoints. Must be
             idempotent.
     """
@@ -37,8 +36,8 @@ class _CheckpointManager(CommonCheckpointManager):
 
         if checkpoint_config.num_to_keep == 0:
             raise RuntimeError(
-                "If checkpointing is enabled, Ray Tune requires `keep_checkpoints_num` "
-                "to be None or a number greater than 0"
+                "Tune requires `num_to_keep` in `CheckpointConfig` to be None "
+                "or a number >= 1."
             )
 
         super().__init__(checkpoint_strategy=checkpoint_config, delete_fn=delete_fn)

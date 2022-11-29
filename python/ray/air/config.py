@@ -522,8 +522,7 @@ class CheckpointConfig:
             on disk for this run. If a checkpoint is persisted to disk after
             there are already this many checkpoints, then an existing
             checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
+            will not be deleted. Must be a value >= 1.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
@@ -556,10 +555,14 @@ class CheckpointConfig:
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep < 0:
+            # NOTE: `num_to_keep=0` is still supported by the common AIR checkpoint
+            # manager, which is why this validation allows it. However,
+            # the user-facing docstring/error should match Tune's requirement of
+            # `num_to_keep >= 1`, which is needed for fault-tolerance
             raise ValueError(
                 f"Received invalid num_to_keep: "
                 f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
+                f"Must be None or a positive integer."
             )
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(
