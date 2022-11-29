@@ -170,6 +170,13 @@ def test_mixed_task_states_handled_by_shutdown():
     assert f0._state == 'FINISHED'
     assert f1.cancelled()
 
+def test_with_syntax_invokes_shutdown():
+    with RayExecutor() as ex:
+        pass
+    assert ex._shutdown_lock
+
+
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
