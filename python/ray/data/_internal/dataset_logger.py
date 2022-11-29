@@ -18,9 +18,9 @@ class DatasetLogger:
         Args:
             log_name: Name of logger (usually passed into `logging.getLogger(...)`)
         """
-        # Primary logger for logging to log file
+        # Primary logger used to logging to log file
         self.logger = logging.getLogger(log_name)
-        # Secondary logger for logging to stdout
+        # Secondary logger used for logging to stdout
         self.logger_stdout = logging.getLogger(f"{log_name}.stdout")
         # Clear existing handlers in primary logger
         # to disable logging to stdout by default
@@ -37,7 +37,7 @@ class DatasetLogger:
         # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
         global_node = ray._private.worker._global_node
         if global_node is not None:
-            # With the current implementation, we can only get session_dir
+            # With current implementation, we can only get session_dir
             # after ray.init() is called. A less hacky way could potentially fix this
             session_dir = global_node.get_session_dir_path()
             self.datasets_log_path = os.path.join(
@@ -60,7 +60,8 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.debug(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.debug(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.debug(msg, *args, **kwargs)
 
@@ -73,7 +74,8 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.info(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.info(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.info(msg, *args, **kwargs)
 
@@ -86,7 +88,8 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.warning(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.warning(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.warning(msg, *args, **kwargs)
 
@@ -99,7 +102,8 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.error(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.error(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.error(msg, *args, **kwargs)
 
@@ -112,7 +116,8 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.exception(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.exception(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.exception(msg, *args, **kwargs)
 
@@ -125,6 +130,7 @@ class DatasetLogger:
             log_to_stdout: If True, also emit logs to stdout in addition
             to writing to the log file.
         """
-        self.logger.critical(msg, *args, **kwargs)
+        if len(self.logger.handlers) > 0:
+            self.logger.critical(msg, *args, **kwargs)
         if log_to_stdout:
             self.logger_stdout.critical(msg, *args, **kwargs)
