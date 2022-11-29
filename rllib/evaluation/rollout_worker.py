@@ -140,13 +140,21 @@ def _update_env_seed_if_necessary(
     ), "Too many envs per worker. Random seeds may collide."
     computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
 
-    # Gym.env.
+    # Gymnasium.env.
     # This will silently fail for most OpenAI gyms
     # (they do nothing and return None per default)
-    if not hasattr(env, "seed"):
-        logger.info("Env doesn't support env.seed(): {}".format(env))
+    if not hasattr(env, "reset"):
+        if log_once("env_has_no_reset_method"):
+            logger.info(f"Env {env} doesn't have a `reset()` method. Cannot seed.")
     else:
-        env.seed(computed_seed)
+        try:
+            env.reset(seed=computed_seed)
+        except Exception:
+            logger.info(
+                f"Env {env} doesn't support setting a seed via its `reset()` "
+                "method! Implement this method as `reset(self, *, seed=None, "
+                "options=None)` for it to abide to the correct API. Cannot seed."
+            )
 
 
 @DeveloperAPI
@@ -553,7 +561,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         )
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
-        # the local worker, otherwise, this was already done in the Trainer
+        # the local worker, otherwise, this was already done in the Algorithm
         # object itself.
         if self.worker_index > 0:
             update_global_seed_if_necessary(self.config.framework_str, self.seed)

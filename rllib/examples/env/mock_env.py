@@ -51,7 +51,8 @@ class MockEnv2(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         self.i = 0
-        self.rng_seed = seed
+        if seed is not None:
+            self.rng_seed = seed
         return self.i, {}
 
     def step(self, action):
