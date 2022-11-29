@@ -554,6 +554,13 @@ class AttentionWrapper(TFModelV2):
         assert self._features is not None, "Must call forward() first!"
         return tf.reshape(self._value_branch(self._features), [-1])
 
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return [
+            np.zeros(self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.gtrxl.num_transformer_units)
+        ]
+
 
 class Keras_GTrXLNet(tf.keras.Model if tf else object):
     """A GTrXL net Model described in [2].
@@ -917,5 +924,7 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
 
     @override(ModelV2)
     def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        attention_dim = self.attention_dim
-        return [np.zeros(attention_dim, np.float32)]
+        return [
+            np.zeros(self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.gtrxl.num_transformer_units)
+        ]

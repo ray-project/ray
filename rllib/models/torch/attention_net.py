@@ -439,8 +439,12 @@ class AttentionWrapper(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        attention_dim = self.model_config["attention_dim"]
-        return [torch.zeros(attention_dim, dtype=torch.float32)]
+        return [
+            torch.zeros(
+                self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape
+            )
+            for i in range(self.gtrxl.num_transformer_units)
+        ]
 
     @override(ModelV2)
     def value_function(self) -> TensorType:
