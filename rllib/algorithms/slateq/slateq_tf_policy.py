@@ -146,7 +146,7 @@ def build_slateq_losses(
     next_q_target_max = tf.reduce_max(input_tensor=next_q_target_slate, axis=1)
 
     target = reward + policy.config["gamma"] * next_q_target_max * (
-        1.0 - tf.cast(train_batch["dones"], tf.float32)
+        1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
     )
     target = tf.stop_gradient(target)
 
