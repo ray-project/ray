@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
     ConnectorPipeline,
 )
-from ray.rllib.connectors import get_connector
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
@@ -57,7 +57,7 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
         for state in params:
             try:
                 name, subparams = state
-                connectors.append(get_connector(ctx, name, subparams))
+                connectors.append(get_connector(name, ctx, subparams))
             except Exception as e:
                 logger.error(f"Failed to de-serialize connector state: {state}")
                 raise e

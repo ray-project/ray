@@ -5,10 +5,7 @@ import numpy as np
 import tree
 
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
-from ray.rllib.connectors.connector import AgentConnector
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-)
+from ray.rllib.connectors.connector import AgentConnector, ConnectorContext
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter

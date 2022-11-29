@@ -1,28 +1,17 @@
 import logging
 from typing import Any, Tuple, TYPE_CHECKING
 
-from ray.rllib.connectors.action.clip import ClipActionsConnector
-from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
-from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
-from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
-from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
-from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
-from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import Connector, ConnectorContext
-from ray.rllib.connectors import get_connector
-from ray.rllib.connectors.agent.mean_std_filter import (
-    MeanStdObservationFilterAgentConnector,
-    ConcurrentMeanStdObservationFilterAgentConnector,
-)
+from ray.rllib.connectors.registry import get_connector, get_registered_connector_class
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+    from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
+    from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +20,19 @@ logger = logging.getLogger(__name__)
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
-) -> AgentConnectorPipeline:
+) -> "AgentConnectorPipeline":
     connectors = []
 
+    clip_reward_cls = get_registered_connector_class("ClipRewardAgentConnector")
     if config["clip_rewards"] is True:
-        connectors.append(ClipRewardAgentConnector(ctx, sign=True))
+        connectors.append(clip_reward_cls(ctx, sign=True))
     elif type(config["clip_rewards"]) == float:
         connectors.append(
-            ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
+            clip_reward_cls(ctx, limit=abs(config["clip_rewards"]))
         )
 
     if not config["_disable_preprocessor_api"]:
-        connectors.append(ObsPreprocessorConnector(ctx))
+        connectors.append(get_connector("ObsPreprocessorConnector", ctx))
 
     # Filters should be after observation preprocessing
     filter_connector = get_synced_filter_connector(
@@ -54,32 +44,34 @@ def get_agent_connectors_from_config(
 
     connectors.extend(
         [
-            StateBufferConnector(ctx),
-            ViewRequirementAgentConnector(ctx),
+            get_connector("StateBufferConnector", ctx),
+            get_connector("ViewRequirementAgentConnector", ctx),
         ]
     )
-
-    return AgentConnectorPipeline(ctx, connectors)
+    
+    agent_connector_cls = get_registered_connector_class("AgentConnectorPipeline")
+    return agent_connector_cls(ctx, connectors)
 
 
 @PublicAPI(stability="alpha")
 def get_action_connectors_from_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
-) -> ActionConnectorPipeline:
+) -> "ActionConnectorPipeline":
     """Default list of action connectors to use for a new policy.
 
     Args:
         ctx: context used to create connectors.
         config: trainer config.
     """
-    connectors = [ConvertToNumpyConnector(ctx)]
+    connectors = [get_connector("ConvertToNumpyConnector", ctx)]
     if config.get("normalize_actions", False):
-        connectors.append(NormalizeActionsConnector(ctx))
+        connectors.append(get_connector("NormalizeActionsConnector", ctx))
     if config.get("clip_actions", False):
-        connectors.append(ClipActionsConnector(ctx))
-    connectors.append(ImmutableActionsConnector(ctx))
-    return ActionConnectorPipeline(ctx, connectors)
+        connectors.append(get_connector("ClipActionsConnector", ctx))
+    connectors.append(get_connector("ImmutableActionsConnector", ctx))
+    action_connector_cls = get_registered_connector_class("ActionConnectorPipeline")
+    return action_connector_cls(ctx, connectors)
 
 
 @PublicAPI(stability="alpha")
@@ -126,9 +118,11 @@ def restore_connectors_for_policy(
 def get_synced_filter_connector(ctx: ConnectorContext):
     filter_specifier = ctx.config.get("observation_filter")
     if filter_specifier == "MeanStdFilter":
-        return MeanStdObservationFilterAgentConnector(ctx, clip=None)
+        filter_cls = get_registered_connector_class("MeanStdObservationFilterAgentConnector")
+        return filter_cls(ctx, clip=None)
     elif filter_specifier == "ConcurrentMeanStdFilter":
-        return ConcurrentMeanStdObservationFilterAgentConnector(ctx, clip=None)
+        filter_cls = get_registered_connector_class("ConcurrentMeanStdObservationFilterAgentConnector")
+        return filter_cls(ctx, clip=None)
     elif filter_specifier == "NoFilter":
         return None
     else:

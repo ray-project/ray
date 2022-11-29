@@ -6,8 +6,6 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gym
-
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -18,6 +16,9 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+    from ray.rllib.policy.view_requirement import ViewRequirement
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ConnectorContext:
         initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
-        view_requirements: Dict[str, ViewRequirement] = None,
+        view_requirements: Dict[str, "ViewRequirement"] = None,
         is_policy_recurrent: bool = False,
     ):
         """Construct a ConnectorContext instance.
