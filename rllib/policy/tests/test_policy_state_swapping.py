@@ -72,7 +72,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
             }
             # Make sure policies output different deterministic logits. Otherwise,
             # this test would not work.
-            check(logits["pol0"], logits["pol1"], false=True)
+            check(logits["pol0"], logits["pol1"], atol=0.000001, false=True)
 
             # Test proper policy state swapping.
             for i in range(5):
@@ -106,11 +106,11 @@ class TestPolicyStateSwapping(unittest.TestCase):
                 logits[pid] = pol.compute_single_action(dummy_obs)[2][
                     "action_dist_inputs"
                 ]
-                check(logits[pid], old_logits, false=True)
+                check(logits[pid], old_logits, atol=0.000001, false=True)
 
             # Make sure policies output different deterministic logits. Otherwise,
             # this test would not work.
-            check(logits["pol0"], logits["pol1"], false=True)
+            check(logits["pol0"], logits["pol1"], atol=0.000001, false=True)
 
             # Once more, test proper policy state swapping.
             for i in range(5):
