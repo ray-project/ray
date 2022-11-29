@@ -179,8 +179,10 @@ class PolicyMap(dict):
                 policy = self.cache[key]
                 self._close_session(policy)
                 del self.cache[key]
-            # Remove Ray object store reference so the item gets garbage collected.
-            del self._policy_state_refs[key]
+            # Remove Ray object store reference (if this ID has already been stored
+            # there), so the item gets garbage collected.
+            if key in self._policy_state_refs:
+                del self._policy_state_refs[key]
 
     @override(dict)
     def __iter__(self):

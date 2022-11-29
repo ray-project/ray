@@ -971,25 +971,29 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         if "policy_spec" in state:
-            policy_spec = state["policy_spec"]
+            policy_spec = PolicySpec.deserialize(state["policy_spec"])
             # Assert spaces remained the same.
             if (
-                space_from_dict(policy_spec["observation_space"])
-                != self.observation_space
+                policy_spec.observation_space is not None
+                and policy_spec.observation_space != self.observation_space
             ):
                 logger.warning(
                     "`observation_space` in given policy state ("
                     f"{policy_spec.observation_space}) does not match this Policy's "
                     f"observation space ({self.observation_space})."
                 )
-            if space_from_dict(policy_spec["action_space"]) != self.action_space:
+            if (
+                policy_spec.action_space is not None
+                and policy_spec.action_space != self.action_space
+            ):
                 logger.warning(
                     "`action_space` in given policy state ("
                     f"{policy_spec.action_space}) does not match this Policy's "
                     f"action space ({self.action_space})."
                 )
-            # Override config.
-            self.config = policy_spec["config"]
+            # Override config, if part of the spec.
+            if policy_spec.config:
+                self.config = policy_spec.config
 
         # Override NN weights.
         self.set_weights(state["weights"])
