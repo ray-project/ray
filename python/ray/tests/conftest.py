@@ -10,6 +10,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import psutil
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
@@ -1078,3 +1079,23 @@ def enable_syncer_test(request, monkeypatch):
     yield
     monkeypatch.delenv("RAY_use_ray_syncer")
     ray._raylet.Config.initialize("")
+
+
+@pytest.fixture
+def make_sure_dashboard_http_port_unused():
+    for process in psutil.process_iter():
+        should_kill = False
+        try:
+            for conn in process.connections():
+                if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
+                    should_kill = True
+                    break
+        except Exception:
+            continue
+        if should_kill:
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
+    yield

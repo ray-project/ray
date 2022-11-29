@@ -46,26 +46,6 @@ EVENT_LOOP = get_or_create_event_loop()
 
 
 @pytest.fixture
-def make_sure_dashboard_http_port_unused():
-    for process in psutil.process_iter():
-        should_kill = False
-        try:
-            for conn in process.connections():
-                if conn.laddr.port == DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
-                    should_kill = True
-                    break
-        except Exception:
-            continue
-        if should_kill:
-            try:
-                process.kill()
-                process.wait()
-            except Exception:
-                pass
-    yield
-
-
-@pytest.fixture
 def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         ip, _ = ctx.address_info["webui_url"].split(":")
