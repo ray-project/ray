@@ -275,6 +275,12 @@ class DatasetStats:
             if rounded_total <= 0:
                 # Handle -0.0 case.
                 rounded_total = 0
+            # TODO(Scott): add scheduling strategy in summary string output
+            # ctx = DatasetContext.get_current()
+            # scheduling_strategy = ctx.scheduling_strategy
+            # out += "Stage {} {}: executed in {}s with strategy {}\n".format(
+            #     self.number, self.base_name, rounded_total, scheduling_strategy
+            # )
             out += "Stage {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
