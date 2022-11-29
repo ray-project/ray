@@ -171,27 +171,7 @@ public class ReferenceCountingTest extends BaseTest {
   }
 
   /** Based on Python test case `test_dependency_refcounts`. */
-  public void testDependencyRefCounts() {
-    {
-      // Test that regular plasma dependency refcounts are decremented once the
-      // task finishes.
-      ActorHandle<SignalActor> signal = SignalActor.create();
-      ObjectRefImpl<TestUtils.LargeObject> largeDep =
-          (ObjectRefImpl<TestUtils.LargeObject>) Ray.put(new TestUtils.LargeObject());
-      ObjectRefImpl<Object> result =
-          (ObjectRefImpl<Object>)
-              Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
-                      ReferenceCountingTest::oneDep, largeDep, signal)
-                  .remote();
-      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
-      sendSignal(signal);
-      // Reference count should be removed once the task finishes.
-      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
-      del(largeDep);
-      del(result);
-      checkRefCounts(ImmutableMap.of());
-    }
-
+  public void testDependencyRefCounts1() {
     {
       // Test that inlined dependency refcounts are decremented once they are
       // inlined.
@@ -213,7 +193,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts2() {
     {
       // Test that spilled plasma dependency refcounts are decremented once
       // the task finishes.
@@ -242,7 +224,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts3() {
     {
       // Test that regular plasma dependency refcounts are decremented if a task
       // fails.
@@ -263,7 +247,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts4() {
     {
       // Test that spilled plasma dependency refcounts are decremented if a task
       // fails.
@@ -292,6 +278,28 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
+  public void testDependencyRefCounts5() {
+    {
+      // Test that regular plasma dependency refcounts are decremented once the
+      // task finishes.
+      ActorHandle<SignalActor> signal = SignalActor.create();
+      ObjectRefImpl<TestUtils.LargeObject> largeDep =
+          (ObjectRefImpl<TestUtils.LargeObject>) Ray.put(new TestUtils.LargeObject());
+      ObjectRefImpl<Object> result =
+          (ObjectRefImpl<Object>)
+              Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
+                      ReferenceCountingTest::oneDep, largeDep, signal)
+                  .remote();
+      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal);
+      // Reference count should be removed once the task finishes.
+      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
+      del(largeDep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
+
   }
 
   private static int fooBasicPinning(Object arg) {
