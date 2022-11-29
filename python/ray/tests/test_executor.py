@@ -159,6 +159,16 @@ def test_running_task_finishes_after_shutdown():
     ex.shutdown(cancel_futures=True)
     assert f._state == 'FINISHED'
 
+def test_mixed_task_states_handled_by_shutdown():
+    ex = RayExecutor()
+    f0 = ex.submit(lambda: True)
+    f1 = ex.submit(lambda: True)
+    assert f0._state == 'PENDING'
+    assert f1._state == 'PENDING'
+    f0.set_running_or_notify_cancel()
+    ex.shutdown(cancel_futures=True)
+    assert f0._state == 'FINISHED'
+    assert f1.cancelled()
 
 
 if __name__ == "__main__":
