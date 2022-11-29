@@ -31,6 +31,8 @@ $ python attention_net.py --help
 import argparse
 import os
 
+import numpy as np
+
 import ray
 from ray import air, tune
 from ray.rllib.algorithms import ppo
@@ -191,14 +193,26 @@ if __name__ == "__main__":
             obs = env.reset()
             done = False
             total_reward = 0
+            # start with all zeros as state
+            num_transformers = config["model"]["attention_num_transformer_units"]
+            attention_dim = config["model"]["attention_dim"]
+            memory = config["model"]["attention_memory_inference"]
+            init_state = state = [
+                np.zeros([memory, attention_dim], np.float32)
+                for _ in range(num_transformers)
+            ]
             # run one iteration until done
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
-                action, _, _ = algo.compute_single_action(obs)
+                action, state_out, _ = algo.compute_single_action(obs, state)
                 next_obs, reward, done, _ = env.step(action)
                 print(f"Obs: {obs}, Action: {action}, Reward: {reward}")
                 obs = next_obs
                 total_reward += reward
+                state = [
+                    np.concatenate([state[i], [state_out[i]]], axis=0)[1:]
+                    for i in range(num_transformers)
+                ]
             print(f"Total reward in test episode: {total_reward}")
 
     # Run with Tune for auto env and algorithm creation and TensorBoard.
