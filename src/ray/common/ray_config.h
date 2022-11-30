@@ -17,7 +17,6 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
-#include <thread>
 
 #include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
