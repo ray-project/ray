@@ -9,12 +9,7 @@ from ray.rllib.algorithms.appo.appo import APPOConfig
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy import Policy
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
-
-# We need to call this here so that TF does not complain that we should have imported
-# earlier
-tf1, tf, tfv = try_import_tf()
 
 
 def _do_checkpoint_twice_test(framework):
@@ -43,11 +38,13 @@ def _do_checkpoint_twice_test(framework):
         Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
 
 
-class TestPolicyFromCheckpointTwice(unittest.TestCase):
-    def setUp(self):
+class TestPolicyFromCheckpoint(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_policy_from_checkpoint_twice_tf(self):
@@ -58,14 +55,6 @@ class TestPolicyFromCheckpointTwice(unittest.TestCase):
 
     def test_policy_from_checkpoint_twice_torch(self):
         return _do_checkpoint_twice_test("torch")
-
-
-class TestPolicyRestore(unittest.TestCase):
-    def setUp(self):
-        ray.init()
-
-    def tearDown(self):
-        ray.shutdown()
 
     def test_add_policy_connector_enabled(self):
         rllib_dir = Path(__file__).parent.parent.parent
