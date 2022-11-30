@@ -2,6 +2,7 @@ import abc
 from functools import partial
 import threading
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
@@ -141,10 +142,15 @@ class _BackgroundProcess:
         self._fn = fn
         self._process = None
         self._result = {}
+        self._start_time = float("-inf")
 
     @property
     def is_running(self):
         return self._process and self._process.is_alive()
+
+    @property
+    def start_time(self):
+        return self._start_time
 
     def start(self, *args, **kwargs):
         if self.is_running:
@@ -162,13 +168,23 @@ class _BackgroundProcess:
             self._result["result"] = result
 
         self._process = threading.Thread(target=entrypoint)
+        self._process.daemon = True
         self._process.start()
+        self._start_time = time.time()
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None) -> Any:
         if not self._process:
-            return
+            return None
 
-        self._process.join()
+        self._process.join(timeout=timeout)
+
+        if self._process.is_alive():
+            self._process = None
+            raise TimeoutError(
+                f"{getattr(self._fn, '__name__', str(self._fn))} timed out in "
+                f"{timeout} seconds."
+            )
+
         self._process = None
 
         exception = self._result.get("exception")
@@ -201,8 +217,13 @@ class Syncer(abc.ABC):
 
     """
 
-    def __init__(self, sync_period: float = 300.0):
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
         self.sync_period = sync_period
+        self.sync_timeout = sync_timeout
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
 
@@ -357,8 +378,14 @@ class Syncer(abc.ABC):
 class _BackgroundSyncer(Syncer):
     """Syncer using a background process for asynchronous file transfer."""
 
-    def __init__(self, sync_period: float = 300.0):
-        super(_BackgroundSyncer, self).__init__(sync_period=sync_period)
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
+        super(_BackgroundSyncer, self).__init__(
+            sync_period=sync_period, sync_timeout=sync_timeout
+        )
         self._sync_process = None
         self._current_cmd = None
 
@@ -432,7 +459,7 @@ class _BackgroundSyncer(Syncer):
     def wait(self):
         if self._sync_process:
             try:
-                self._sync_process.wait()
+                self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
                 raise TuneError(f"Sync process failed: {e}") from e
             finally:
