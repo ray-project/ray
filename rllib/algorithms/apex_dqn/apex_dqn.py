@@ -541,7 +541,10 @@ class ApexDQN(DQN):
         """
 
         def wait_on_replay_actors() -> List[Tuple[int, SampleBatchType]]:
-            """Wait for the replay actors to finish sampling for timeout seconds."""
+            """Wait for the replay actors to finish sampling for timeout seconds.
+
+            If the timeout is None, then block on the actors indefinitely.
+            """
             results = self._replay_actor_manager.fetch_ready_async_reqs(
                 timeout_seconds=self._replay_req_timeout_s
             )
