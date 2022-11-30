@@ -145,7 +145,7 @@ class PPOTorchPolicyV2(
             The PPO loss tensor given the input batch.
         """
 
-        print("-"*80)
+        print("-" * 80)
         s = time.time()
         fwd_out = model.forward_train(train_batch, filter=False, cache=True)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
@@ -178,8 +178,7 @@ class PPOTorchPolicyV2(
         )
 
         logp_ratio = torch.exp(
-            fwd_out[SampleBatch.ACTION_LOGP]
-            - train_batch[SampleBatch.ACTION_LOGP]
+            fwd_out[SampleBatch.ACTION_LOGP] - train_batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -239,7 +238,9 @@ class PPOTorchPolicyV2(
         self.tower_stats[model]["mean_kl_loss"] = mean_kl_loss
 
         e2 = time.time()
-        print(f"fwd_batch_size: {train_batch.count}, loss_pass: {(e2 - s) * 1000 :8.6f} ms")
+        print(
+            f"fwd_batch_size: {train_batch.count}, loss_pass: {(e2 - s) * 1000 :8.6f} ms"
+        )
         return total_loss
 
     # TODO: Make this an event-style subscription (e.g.:

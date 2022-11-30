@@ -24,7 +24,6 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-
 def get_ppo_loss(fwd_in, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
@@ -101,8 +100,8 @@ class PPOModuleConfig:
         pi_config: The configuration for the policy network.
         vf_config: The configuration for the value network.
         encoder_config: The configuration for the encoder network.
-        free_log_std: For DiagGaussian action distributions, make the second half of 
-            the model outputs floating bias variables instead of state-dependent. This 
+        free_log_std: For DiagGaussian action distributions, make the second half of
+            the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
     """
 
@@ -210,7 +209,6 @@ class SimplePPOModule(TorchRLModule):
         self.vf = FCNet(vf_config)
 
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
-
 
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:
@@ -380,7 +378,7 @@ class SimplePPOModule(TorchRLModule):
             "entropy": entropy,
             "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
-        bsize = batch['obs'].shape[0]
+        bsize = batch["obs"].shape[0]
         print(f"keys in the batch = {list(batch.keys())}")
         e = time.time()
         print(f"bsize: {bsize}, fwd_train_time_ms: {(e - s) * 1000:8.6f}")

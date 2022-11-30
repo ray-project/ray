@@ -22,6 +22,7 @@ from ray.rllib.models.specs.specs_base import TensorSpec
 ModuleID = str
 logger = logging.getLogger(__name__)
 
+
 @ExperimentalAPI
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
@@ -189,13 +190,14 @@ class RLModule(abc.ABC):
         """Forward-pass during exploration. See forward_exploration for details."""
 
     # @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(self, 
-        batch: SampleBatchType, 
+    def forward_train(
+        self,
+        batch: SampleBatchType,
         filter: bool = True,
         cache: bool = False,
         input_exact_match: bool = False,
-        output_exact_match: bool = False, 
-        **kwargs
+        output_exact_match: bool = False,
+        **kwargs,
     ) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
@@ -212,13 +214,13 @@ class RLModule(abc.ABC):
         # output = self._forward_train(batch)
 
         output = self._check_specs(
-            "forward_train", 
-            batch, 
+            "forward_train",
+            batch,
             filter=filter,
-            cache=cache, 
-            input_exact_match=input_exact_match, 
-            output_exact_match=output_exact_match, 
-            **kwargs
+            cache=cache,
+            input_exact_match=input_exact_match,
+            output_exact_match=output_exact_match,
+            **kwargs,
         )
         return output
 
@@ -254,17 +256,16 @@ class RLModule(abc.ABC):
 
         return MultiAgentRLModule
 
-
     def _check_specs(
-        self, 
-        method_name: str, 
-        input_data, 
+        self,
+        method_name: str,
+        input_data,
         filter: bool = True,
         cache: bool = False,
         input_exact_match: bool = False,
         output_exact_match: bool = False,
-        **kwargs
-    ):  
+        **kwargs,
+    ):
         s = time.time()
         func = getattr(self, "_" + method_name)
         input_spec = f"_input_specs_{method_name.split('_')[-1]}"
@@ -312,15 +313,15 @@ class RLModule(abc.ABC):
 
         return output_data
 
-    def __validate_specs(self, data, spec, exact_match, filter, func, cache, tag="data"):
+    def __validate_specs(
+        self, data, spec, exact_match, filter, func, cache, tag="data"
+    ):
         is_mapping = isinstance(spec, ModelSpec)
         is_tensor = isinstance(spec, TensorSpec)
 
         if is_mapping:
             if not isinstance(data, Mapping):
-                raise ValueError(
-                    f"{tag} must be a Mapping, got {type(data).__name__}"
-                )
+                raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
             if self.__should_validate(cache, func) or filter:
                 data = NestedDict(data)
 
@@ -346,7 +347,6 @@ class RLModule(abc.ABC):
                     )
 
         return data
-
 
     def __should_validate(self, cache, func):
         return not cache or func.__name__ not in self.__checked_specs_cache__

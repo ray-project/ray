@@ -150,7 +150,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
         if obs.shape[0] > 1:
-            print(f"FCNET, bsize: {obs.shape[0]}, fwd_time_ms: {(time.time() - s) * 1000:.3f}")
+            print(
+                f"FCNET, bsize: {obs.shape[0]}, fwd_time_ms: {(time.time() - s) * 1000:.3f}"
+            )
         return logits, state
 
     @override(TorchModelV2)
@@ -158,7 +160,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         s = time.time()
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            out =  self._value_branch(
+            out = self._value_branch(
                 self._value_branch_separate(self._last_flat_in)
             ).squeeze(1)
         else:

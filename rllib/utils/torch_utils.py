@@ -70,8 +70,8 @@ def apply_grad_clipping(
         else:
             num_none_grads += 1
 
-    # Note (Kourosh): grads could indeed be zero. This method should still return 
-    # grad_gnorm in that case. 
+    # Note (Kourosh): grads could indeed be zero. This method should still return
+    # grad_gnorm in that case.
     if num_none_grads == len(optimizer.param_groups):
         # No grads available
         return {}

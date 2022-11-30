@@ -472,7 +472,7 @@ class TorchPolicyV2(Policy):
                 model_config=self.config["model"],
                 framework=self.framework,
             )
-            
+
         return model, dist_class
 
     @override(Policy)
@@ -637,7 +637,7 @@ class TorchPolicyV2(Policy):
             fetches["model"] = self.model.metrics()
         else:
             fetches["model"] = {}
-        
+
         fetches.update(
             {
                 "custom_metrics": learn_stats,
@@ -740,7 +740,7 @@ class TorchPolicyV2(Policy):
                 batch = self._loaded_batches[0][0]
             else:
                 batch = self._loaded_batches[0][0][offset : offset + device_batch_size]
-            
+
             return self.learn_on_batch(batch)
 
         if len(self.devices) > 1:
@@ -795,7 +795,9 @@ class TorchPolicyV2(Policy):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
-                    "model": {} if is_overridden(self.make_rl_module) else model.metrics(),
+                    "model": {}
+                    if is_overridden(self.make_rl_module)
+                    else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
                     # above.
@@ -832,7 +834,7 @@ class TorchPolicyV2(Policy):
         tower_outputs = self._multi_gpu_parallel_grad_calc([postprocessed_batch])
 
         all_grads, grad_info = tower_outputs[0]
-        print('grad_info_before_stats_fn: ', grad_info)
+        print("grad_info_before_stats_fn: ", grad_info)
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.stats_fn(postprocessed_batch))
@@ -1198,7 +1200,10 @@ class TorchPolicyV2(Policy):
                             self.extra_grad_process(opt, loss_out[opt_idx])
                         )
 
-                        print("extra_grad_process: ", self.extra_grad_process(opt, loss_out[opt_idx]))
+                        print(
+                            "extra_grad_process: ",
+                            self.extra_grad_process(opt, loss_out[opt_idx]),
+                        )
 
                         grads = []
                         # Note that return values are just references;
