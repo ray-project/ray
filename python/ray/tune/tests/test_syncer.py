@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import List, Optional
 from unittest.mock import patch
 
@@ -362,6 +363,27 @@ def test_syncer_not_running_sync(temp_data_dirs):
         local_dir=tmp_source,
         remote_dir="memory:///test/test_syncer_not_running_sync",
     )
+
+
+def test_syncer_timeout(temp_data_dirs):
+    """Check that a sync times out when the sync process is hanging."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    def _hanging_sync_up_command(*args, **kwargs):
+        time.sleep(200)
+
+    class _HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return (_hanging_sync_up_command, {})
+
+    syncer = _HangingSyncer(sync_period=60, sync_timeout=1)
+    syncer.sync_up(
+        local_dir=tmp_source, remote_dir="memory:///test/test_syncer_timeout"
+    )
+    with pytest.raises(tune.TuneError):
+        syncer.wait()
 
 
 def test_syncer_not_running_sync_last_failed(caplog, temp_data_dirs):
