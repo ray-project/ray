@@ -8,7 +8,8 @@ from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
 from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ActionConnectorDataType
 

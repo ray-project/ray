@@ -11,7 +11,8 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.connector import Connector, ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,

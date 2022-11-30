@@ -6,9 +6,8 @@ from ray.rllib.connectors.connector import (
     Connector,
     ConnectorContext,
     ConnectorPipeline,
-    get_connector,
-    register_connector,
 )
+from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
 
