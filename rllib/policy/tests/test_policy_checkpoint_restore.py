@@ -1,25 +1,25 @@
 #!/usr/bin/env python
 
+import os
+from pathlib import Path
 import unittest
 
 import ray
+from ray.rllib.algorithms.appo.appo import APPOConfig
 
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy import Policy
-
-# We need to call this here so that TF does not complain that we should have imported
-# earlier
-try_import_tf()
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
-    config = PPOConfig()
+    config = (
+        PPOConfig().rollouts(num_rollout_workers=0).evaluation(evaluation_num_workers=0)
+    )
     for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
-        algo2 = config.build(env="PongNoFrameskip-v4")
+        algo2 = config.build(env="Pendulum-v1")
 
         algo1.train()
         algo2.train()
@@ -38,7 +38,7 @@ def _do_checkpoint_twice_test(framework):
         Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
 
 
-class TestPolicyFromCheckpointTwiceTF(unittest.TestCase):
+class TestPolicyFromCheckpoint(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -50,31 +50,45 @@ class TestPolicyFromCheckpointTwiceTF(unittest.TestCase):
     def test_policy_from_checkpoint_twice_tf(self):
         return _do_checkpoint_twice_test("tf")
 
-
-class TestPolicyFromCheckpointTwiceTF2(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
     def test_policy_from_checkpoint_twice_tf2(self):
         return _do_checkpoint_twice_test("tf2")
 
-
-class TestPolicyFromCheckpointTwiceTorch(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
     def test_policy_from_checkpoint_twice_torch(self):
         return _do_checkpoint_twice_test("torch")
+
+    def test_add_policy_connector_enabled(self):
+        rllib_dir = Path(__file__).parent.parent.parent
+        path_to_checkpoint = os.path.join(
+            rllib_dir,
+            "tests",
+            "data",
+            "checkpoints",
+            "APPO_CartPole-v1-connector-enabled",
+            "policies",
+            "default_policy",
+        )
+
+        policy = Policy.from_checkpoint(path_to_checkpoint)
+
+        self.assertIsNotNone(policy)
+
+        # Add this policy to a trainer.
+        trainer = APPOConfig().framework(framework="torch").build("CartPole-v0")
+
+        # Add the entire policy.
+        self.assertIsNotNone(trainer.add_policy("test_policy", policy=policy))
+
+        # Add the same policy, but using individual parameter API.
+        self.assertIsNotNone(
+            trainer.add_policy(
+                "test_policy_2",
+                policy_cls=type(policy),
+                observation_space=policy.observation_space,
+                action_space=policy.action_space,
+                config=policy.config,
+                policy_state=policy.get_state(),
+            )
+        )
 
 
 if __name__ == "__main__":
