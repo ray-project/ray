@@ -609,7 +609,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                 };
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskFailureCause(task_id, callback);
+            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
