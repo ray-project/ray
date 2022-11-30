@@ -942,7 +942,6 @@ class WorkerSet:
             env_creator=env_creator,
             validate_env=validate_env,
             default_policy_class=self._policy_class,
-            tf_session_creator=None,
             config=config,
             worker_index=worker_index,
             num_workers=num_workers,

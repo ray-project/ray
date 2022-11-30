@@ -202,12 +202,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_w_1000_policies_appo",
+    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-w-1000-policies-appo.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
