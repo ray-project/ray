@@ -5,6 +5,7 @@ import pytest
 from ray.util.ray_executor import RayExecutor
 import time
 from concurrent.futures._base import TimeoutError
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 
 def test_remote_function_runs_on_local_instance():
@@ -13,11 +14,13 @@ def test_remote_function_runs_on_local_instance():
         assert result == 10_000
 
 
+
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
         futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
             assert result == 10_000
+
 
 
 def test_remote_function_runs_on_specified_instance(call_ray_start):
@@ -201,6 +204,31 @@ def test_with_syntax_invokes_shutdown():
     with RayExecutor() as ex:
         pass
     assert ex._shutdown_lock
+
+
+# ----------------------------------------------------------------------------------------------------
+# ThreadPool/ProcessPool comparison
+# ----------------------------------------------------------------------------------------------------
+def f_process(x):
+    return len([i for i in range(x) if i % 2 == 0])
+
+
+def test_conformity_with_processpool():
+    with RayExecutor() as ex:
+        ray_result = ex.submit(f_process, 100).result()
+    with ProcessPoolExecutor() as ppe:
+        ppe_result = ppe.submit(f_process, 100).result()
+    assert type(ray_result) == type(ppe_result)
+    assert ray_result == ppe_result
+
+
+def test_conformity_with_threadpool():
+    with RayExecutor() as ex:
+        ray_result = ex.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+    with ThreadPoolExecutor() as tpe:
+        tpe_result = tpe.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+    assert type(ray_result) == type(tpe_result)
+    assert ray_result.result() == tpe_result.result()
 
 
 if __name__ == "__main__":
