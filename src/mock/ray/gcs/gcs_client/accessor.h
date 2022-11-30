@@ -202,7 +202,7 @@ class MockErrorInfoAccessor : public ErrorInfoAccessor {
   MOCK_METHOD(Status,
               AsyncReportJobError,
               (const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-               const StatusCallback &callback),
+               StatusCallback callback),
               (override));
 };
 
