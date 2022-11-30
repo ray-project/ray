@@ -449,7 +449,9 @@ E.g., Get a particular log file from a node
 
     .. code-block:: bash
 
-        # You could get the node id / node ip from `ray list nodes` 
+        # You could get the node id / node ip from `ray list nodes`
+        ray logs cluster gcs_server.out --node-id <NODE_ID>
+        # `ray logs cluster` is alias to `ray logs` when querying with globs.
         ray logs gcs_server.out --node-id <NODE_ID> 
 
 .. tabbed:: Python SDK
@@ -471,6 +473,9 @@ E.g., Stream a log file from a node
 
         # You could get the node id / node ip from `ray list nodes` 
         ray logs raylet.out --node-ip <NODE_IP> --follow
+        # Or,
+        ray logs cluster raylet.out --node-ip <NODE_IP> --follow
+
 
 .. tabbed:: Python SDK
 
@@ -479,9 +484,29 @@ E.g., Stream a log file from a node
         from ray.experimental.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
+        # The loop will block with `follow=True`
         for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
             print(line)
 
+E.g., Stream log from an actor with actor id
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabbed:: CLI
+
+    .. code-block:: bash
+
+        ray logs actor --id=<ACTOR_ID> --follow
+
+.. tabbed:: Python SDK
+
+    .. code-block:: python
+
+        from ray.experimental.state.api import get_log
+
+        # You could get the actor's ID from the output of `ray list actors`.
+        # The loop will block with `follow=True`
+        for line in get_log(actor_id=<ACTOR_ID>, follow=True):
+            print(line)
 
 E.g., Stream log from a pid 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
