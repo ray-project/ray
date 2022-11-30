@@ -692,12 +692,15 @@ class EagerTFPolicyV2(Policy):
         # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
-            logger.warning(
-                "Cannot restore an optimizer's state for tf eager! Keras "
-                "is not able to save the v1.x optimizers (from "
-                "tf.compat.v1.train) since they aren't compatible with "
-                "checkpoints."
-            )
+            if not type(self).__name__.endswith("_traced") and log_once(
+                "set_state_optimizer_vars_tf_eager_policy_v2"
+            ):
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints."
+                )
             for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                 opt_var.assign(value)
         # Set exploration's state.

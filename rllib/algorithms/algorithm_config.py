@@ -3,7 +3,17 @@ import gym
 from gym.spaces import Space
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Container,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -12,6 +22,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -28,6 +39,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
+    AgentID,
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
@@ -267,11 +279,11 @@ class AlgorithmConfig:
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_map_cache = None
         self.policy_mapping_fn = (
             lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
         )
         self.policies_to_train = None
+        self.policy_states_are_swappable = False
         self.observation_fn = None
         self.count_steps_by = "env_steps"
 
@@ -344,6 +356,12 @@ class AlgorithmConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        self.min_time_s_per_reporting = DEPRECATED_VALUE
+        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
+        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
+        self.input_evaluation = DEPRECATED_VALUE
+        self.policy_map_cache = DEPRECATED_VALUE
+
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
@@ -358,7 +376,6 @@ class AlgorithmConfig:
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.input_evaluation = DEPRECATED_VALUE
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
 
@@ -458,9 +475,9 @@ class AlgorithmConfig:
                     for k in [
                         "policies",
                         "policy_map_capacity",
-                        "policy_map_cache",
                         "policy_mapping_fn",
                         "policies_to_train",
+                        "policy_states_are_swappable",
                         "observation_fn",
                         "count_steps_by",
                     ]
@@ -1601,13 +1618,21 @@ class AlgorithmConfig:
         self,
         *,
         policies=NotProvided,
-        policy_map_capacity=NotProvided,
-        policy_map_cache=NotProvided,
-        policy_mapping_fn=NotProvided,
-        policies_to_train=NotProvided,
-        observation_fn=NotProvided,
-        count_steps_by=NotProvided,
+        policy_map_capacity: Optional[int] = NotProvided,
+        policy_mapping_fn: Optional[
+            Callable[[AgentID, "Episode"], PolicyID]
+        ] = NotProvided,
+        policies_to_train: Optional[
+            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+        ] = NotProvided,
+        policy_states_are_swappable: Optional[bool] = NotProvided,
+        observation_fn: Optional[Callable] = NotProvided,
+        count_steps_by: Optional[str] = NotProvided,
+        # Deprecated args:
         replay_mode=DEPRECATED_VALUE,
+        # Now done via Ray object store, which has its own cloud-supported
+        # spillover mechanism.
+        policy_map_cache=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
@@ -1622,9 +1647,6 @@ class AlgorithmConfig:
                 observation- and action spaces of the policies, and any extra config.
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
-            policy_map_cache: Where to store overflowing (least-recently used) policies?
-                Could be a directory (str) or an S3 location. None for using the
-                default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
                 is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
@@ -1636,6 +1658,19 @@ class AlgorithmConfig:
                 or not, given the particular batch). This allows you to have a policy
                 trained only on certain data (e.g. when playing against a certain
                 opponent).
+            policy_states_are_swappable: Whether all Policy objects in this map can be
+                "swapped out" via a simple `state = A.get_state(); B.set_state(state)`,
+                where `A` and `B` are policy instances in this map. You should set
+                this to True for significantly speeding up the PolicyMap's cache lookup
+                times, iff your policies all share the same neural network
+                architecture and optimizer types. If True, the PolicyMap will not
+                have to garbage collect old, least recently used policies, but instead
+                keep them in memory and simply override their state with the state of
+                the most recently accessed one.
+                For example, in a league-based training setup, you might have 100s of
+                the same policies in your map (playing against each other in various
+                combinations), but all of them share the same state structure
+                (are "swappable").
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
@@ -1681,9 +1716,6 @@ class AlgorithmConfig:
         if policy_map_capacity is not NotProvided:
             self.policy_map_capacity = policy_map_capacity
 
-        if policy_map_cache is not NotProvided:
-            self.policy_map_cache = policy_map_cache
-
         if policy_mapping_fn is not NotProvided:
             # Attempt to create a `policy_mapping_fn` from config dict. Helpful
             # is users would like to specify custom callable classes in yaml files.
@@ -1693,6 +1725,12 @@ class AlgorithmConfig:
 
         if observation_fn is not NotProvided:
             self.observation_fn = observation_fn
+
+        if policy_map_cache != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(policy_map_cache=..)",
+                error=True,
+            )
 
         if replay_mode != DEPRECATED_VALUE:
             deprecation_warning(
@@ -1729,6 +1767,9 @@ class AlgorithmConfig:
                         "to add its ID to that list."
                     )
             self.policies_to_train = policies_to_train
+
+        if policy_states_are_swappable is not None:
+            self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
 

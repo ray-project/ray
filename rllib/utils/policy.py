@@ -2,8 +2,18 @@ import gym
 import logging
 import numpy as np
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Mapping
-import tree
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
+import tree  # pip install dm_tree
 
 
 import ray.cloudpickle as pickle
@@ -68,7 +78,7 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
 @PublicAPI
 def create_policy_for_framework(
     policy_id: str,
-    policy_class: "Policy",
+    policy_class: Type["Policy"],
     merged_config: PartialAlgorithmConfigDict,
     observation_space: gym.Space,
     action_space: gym.Space,
@@ -294,10 +304,8 @@ def __check_atari_obs_space(obs):
     # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
     #  connectors (and don't auto-wrap in RW anymore)
     if any(
-        [
-            o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
-            for o in tree.flatten(obs)
-        ]
+        o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
+        for o in tree.flatten(obs)
     ):
         if log_once("warn_about_possibly_non_wrapped_atari_env"):
             logger.warning(

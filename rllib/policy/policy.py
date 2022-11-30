@@ -53,6 +53,7 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -286,6 +287,10 @@ class Policy(metaclass=ABCMeta):
                 "Cannot create new Policy."
             )
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+        actual_class = get_tf_eager_cls_if_necessary(
+            pol_spec.policy_class,
+            pol_spec.config,
+        )
 
         if pol_spec.config["framework"] == "tf":
             from ray.rllib.policy.tf_policy import TFPolicy
@@ -293,7 +298,7 @@ class Policy(metaclass=ABCMeta):
             return TFPolicy._tf1_from_state_helper(state)
 
         # Create the new policy.
-        new_policy = pol_spec.policy_class(
+        new_policy = actual_class(
             # Note(jungong) : we are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
             # and some others name it observation_space.
@@ -965,6 +970,32 @@ class Policy(metaclass=ABCMeta):
             state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
+        if "policy_spec" in state:
+            policy_spec = PolicySpec.deserialize(state["policy_spec"])
+            # Assert spaces remained the same.
+            if (
+                policy_spec.observation_space is not None
+                and policy_spec.observation_space != self.observation_space
+            ):
+                logger.warning(
+                    "`observation_space` in given policy state ("
+                    f"{policy_spec.observation_space}) does not match this Policy's "
+                    f"observation space ({self.observation_space})."
+                )
+            if (
+                policy_spec.action_space is not None
+                and policy_spec.action_space != self.action_space
+            ):
+                logger.warning(
+                    "`action_space` in given policy state ("
+                    f"{policy_spec.action_space}) does not match this Policy's "
+                    f"action space ({self.action_space})."
+                )
+            # Override config, if part of the spec.
+            if policy_spec.config:
+                self.config = policy_spec.config
+
+        # Override NN weights.
         self.set_weights(state["weights"])
         self.restore_connectors(state)
 
