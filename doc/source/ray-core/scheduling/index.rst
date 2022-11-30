@@ -5,6 +5,8 @@ Scheduling
 
 For each task or actor, Ray will choose a node to run it and the scheduling decision is based on the following factors.
 
+.. _ray-scheduling-resources:
+
 Resources
 ---------
 
@@ -23,6 +25,8 @@ Resource requirements are **hard** requirements meaning that only feasible nodes
 If there are feasible nodes, Ray will either choose an avaialbe node or wait until a unavailable node to become available
 depending on other factors discussed below.
 If all nodes are infeasible, the task or actor cannot be scheduled until feasible nodes are added to the cluster.
+
+.. _ray-scheduling-strategies:
 
 Scheduling Strategies
 ---------------------
@@ -83,6 +87,8 @@ desired task or actor placements. It has the following known limitations:
     :language: python
     :start-after: __node_affinity_scheduling_strategy_start__
     :end-before: __node_affinity_scheduling_strategy_end__
+
+.. _ray-scheduling-locality:
 
 Locality-Aware Scheduling
 -------------------------
