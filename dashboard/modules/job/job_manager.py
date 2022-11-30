@@ -141,7 +141,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    WAIT_FOR_JOB_TERMINATION_S = 3
+    WAIT_FOR_JOB_TERMINATION_S = 5
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
     def __init__(
@@ -384,7 +384,16 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                    if "RAY_JOB_STOP_SIGNAL" not in os.environ:
+                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                    else:
+                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL")
+                        if stop_signal not in ["SIGINT", "SIGTERM"]:
+                            logger.warning(f"{stop_signal} not a valid stop signal. Terminating job.")
+                            child_process.terminate()
+                        else:
+                            child_process.send_signal(eval(f"signal.{stop_signal}"))
+
                     try:
                         child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
                     except subprocess.TimeoutExpired:
