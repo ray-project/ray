@@ -7,10 +7,6 @@ import time
 from concurrent.futures._base import TimeoutError
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
-# ----------------------------------------------------------------------------------------------------
-# parameter tests
-# ----------------------------------------------------------------------------------------------------
-
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
@@ -49,11 +45,6 @@ def test_map_times_out():
         i1 = ex.map(lambda x: time.sleep(x), [2], timeout=1)
         with pytest.raises(TimeoutError):
             i1.__next__()
-
-
-# ----------------------------------------------------------------------------------------------------
-# basic Actor tests
-# ----------------------------------------------------------------------------------------------------
 
 
 @ray.remote
@@ -143,11 +134,6 @@ def test_remote_actor_runs_on_local_instance_with_map_chunks():
         )
     for idx, result in enumerate(futures_iter):
         assert result == f"A-Actor-{idx}"
-
-
-# ----------------------------------------------------------------------------------------------------
-# shutdown tests
-# ----------------------------------------------------------------------------------------------------
 
 
 def test_cannot_submit_after_shutdown():

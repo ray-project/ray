@@ -5,22 +5,21 @@ from concurrent.futures import Executor
 import ray
 from ray.util.annotations import PublicAPI
 
-def _make_remote():
-    @ray.remote
-    def remote_fn(fn, *args, **kwargs):
-        return fn(*args, **kwargs)
-    return remote_fn
 
 @PublicAPI
 class RayExecutor(Executor):
+    """`RayExecutor` is a drop-in replacement for `ProcessPoolExecutor` and
+    `ThreadPoolExecutor` from `concurrent.futures` but distributes and executes
+    the specified tasks over a Ray cluster instead of multiple processes or
+    threads.
+    """
+
     _shutdown_lock = False
     _futures = {}
 
     def __init__(self, **kwargs):
-        """
-        Initialises a new RayExecutor instance which can be used as a drop-in
-        replacement for ProcessPoolExecutor or ThreadPoolExecutor from
-        concurrent.futures.
+        """Initialises a new RayExecutor instance which distributes tasks over
+        a Ray cluster.
 
         Args:
             All keyword arguments are passed to ray.init() (see
@@ -30,8 +29,19 @@ class RayExecutor(Executor):
 
                 RayExecutor(address='192.168.0.123:25001')
 
+            Note: excluding an address will initialise a local Ray cluster.
+
         """
-        self.__remote_fn = _make_remote()
+
+        """
+        The following is necessary because `@ray.remote` is only available at runtime.
+        """
+
+        @ray.remote
+        def remote_fn(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+        self.__remote_fn = remote_fn
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
     @staticmethod
@@ -41,11 +51,19 @@ class RayExecutor(Executor):
     def submit(self, fn, /, *args, **kwargs):
         """Submits a callable to be executed with the given arguments.
 
-        Schedules the callable to be executed as fn(*args, **kwargs) and returns
+        Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
         a Future instance representing the execution of the callable.
 
         Returns:
             A Future representing the given call.
+
+        Usage example:
+
+        .. code-block:: python
+
+            with RayExecutor() as ex:
+                future = ex.submit(lambda x: x * x, 100)
+                result = future.result()
         """
         self._check_shutdown_lock()
         oref = self.__remote_fn.remote(fn, *args, **kwargs)
@@ -58,11 +76,30 @@ class RayExecutor(Executor):
         https://docs.ray.io/en/latest/ray-core/actors.html) to be executed with
         the given arguments.
 
-        Schedules the callable to be executed as fn(*args, **kwargs) and returns
+        Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
         a Future instance representing the execution of the callable.
 
         Returns:
             A Future representing the given call.
+
+
+        Usage example:
+
+        .. code-block:: python
+
+            @ray.remote
+            class Actor0:
+                def __init__(self, name):
+                    self.name = name
+
+                def actor_function(self, arg):
+                    return f"{self.name}-Actor-{arg}"
+
+            a = Actor0.options(name="A", get_if_exists=True).remote("A")
+            with RayExecutor() as ex:
+                future = ex.submit_actor_function(a.actor_function, 0)
+                result = future.result()
+
         """
         self._check_shutdown_lock()
         oref = self.__actor_fn(fn, *args, **kwargs)
@@ -71,7 +108,7 @@ class RayExecutor(Executor):
         return future
 
     def map(self, fn, *iterables, timeout=None, chunksize=1):
-        """Returns an iterator equivalent to map(fn, iter).
+        """Returns an iterator equivalent to `map(fn, iter)`.
 
         Args:
             fn: A callable that will take as many arguments as there are
@@ -82,13 +119,22 @@ class RayExecutor(Executor):
                 before being passed to a child process.
 
         Returns:
-            An iterator equivalent to: map(func, *iterables) but the calls may
+            An iterator equivalent to: `map(func, *iterables)` but the calls may
             be evaluated out-of-order.
 
         Raises:
             TimeoutError: If the entire result iterator could not be generated
                 before the given timeout.
-            Exception: If fn(*args) raises for any values.
+            Exception: If `fn(*args)` raises for any values.
+
+        Usage example:
+
+        .. code-block:: python
+
+            with RayExecutor() as ex:
+                futures = ex.map(lambda x: x * x, [100, 100, 100])
+                results = [future.result() for future in futures()]
+
         """
         self._check_shutdown_lock()
         results_list = []
@@ -98,7 +144,7 @@ class RayExecutor(Executor):
         return itertools.chain(*results_list)
 
     def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
-        """Returns an iterator equivalent to map(fn, iter).
+        """Returns an iterator equivalent to `map(fn, iter)`.
 
         Args:
             fn: A callable Actor function (see
@@ -110,13 +156,30 @@ class RayExecutor(Executor):
                 before being passed to a child process.
 
         Returns:
-            An iterator equivalent to: map(func, *iterables) but the calls may
+            An iterator equivalent to: `map(func, *iterables)` but the calls may
             be evaluated out-of-order.
 
         Raises:
             TimeoutError: If the entire result iterator could not be generated
                 before the given timeout.
-            Exception: If fn(*args) raises for any values.
+            Exception: If `fn(*args)` raises for any values.
+
+        Usage example:
+
+        .. code-block:: python
+
+            @ray.remote
+            class Actor0:
+                def __init__(self, name):
+                    self.name = name
+
+                def actor_function(self, arg):
+                    return f"{self.name}-Actor-{arg}"
+
+            a = Actor0.options(name="A", get_if_exists=True).remote("A")
+            with RayExecutor(address=call_ray_start) as ex:
+                futures = ex.map_actor_function(a.actor_function, [0, 0, 0])
+                results = [future.result() for future in futures]
         """
         results_list = []
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
@@ -128,7 +191,7 @@ class RayExecutor(Executor):
     def _get_chunks(*iterables, chunksize):
         """
         https://github.com/python/cpython/blob/main/Lib/concurrent/futures/process.py#L186
-        Iterates over zip()ed iterables in chunks.
+        Iterates over zip()-ed iterables in chunks.
         """
         it = zip(*iterables)
         while True:
@@ -183,8 +246,8 @@ class RayExecutor(Executor):
     def shutdown(self, wait=True, *, cancel_futures=False):
         """Clean-up the resources associated with the Executor.
 
-        It is safe to call this method several times. Otherwise, no other
-        methods can be called after this one.
+        It is safe to call this method several times. No other methods can be
+        called after this one.
 
         Args:
             wait: If True then shutdown will not return until all running
