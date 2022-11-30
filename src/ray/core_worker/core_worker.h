@@ -75,38 +75,39 @@ class TaskCounter {
                 return;
               }
               auto func_name = std::get<0>(key);
-              auto is_retry = std::get<2>(key) ? "1" : "0";
+              auto is_retry = std::get<2>(key);
               int64_t running_total = counter_.Get(key);
               int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
               int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+              auto is_retry_label = is_retry ? "1" : "0";
               // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
               // them out to avoid double-counting.
               ray::stats::STATS_tasks.Record(
                   running_total - num_in_get - num_in_wait,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
                    {"Name", func_name},
-                   {"IsRetry", is_retry},
+                   {"IsRetry", is_retry_label},
                    {"Source", "executor"}});
               // Negate the metrics recorded from the submitter process for these tasks.
               ray::stats::STATS_tasks.Record(
                   -running_total,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
                    {"Name", func_name},
-                   {"IsRetry", is_retry},
+                   {"IsRetry", is_retry_label},
                    {"Source", "executor"}});
               // Record sub-state for get.
               ray::stats::STATS_tasks.Record(
                   num_in_get,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
                    {"Name", func_name},
-                   {"IsRetry", is_retry},
+                   {"IsRetry", is_retry_label},
                    {"Source", "executor"}});
               // Record sub-state for wait.
               ray::stats::STATS_tasks.Record(
                   num_in_wait,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
                    {"Name", func_name},
-                   {"IsRetry", is_retry},
+                   {"IsRetry", is_retry_label},
                    {"Source", "executor"}});
             });
   }
