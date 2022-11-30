@@ -2254,30 +2254,14 @@ py_test(
 )
 
 py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    name = "policy/tests/test_policy_checkpoint_restore",
+    main = "policy/tests/test_policy_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf2",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF2"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_torch",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTorch"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
+    ]),
+    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
 )
 
 py_test(

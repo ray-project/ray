@@ -92,11 +92,9 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
-    assert policy.agent_connectors is None and policy.agent_connectors is None, (
-        "Can not create connectors for a policy that already has connectors. This "
-        "can happen if you add a Policy that has connectors attached to a "
-        "RolloutWorker with add_policy()."
-    )
+    assert (
+        policy.agent_connectors is None and policy.agent_connectors is None
+    ), "Can not create connectors for a policy that already has connectors."
 
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_config(ctx, config)

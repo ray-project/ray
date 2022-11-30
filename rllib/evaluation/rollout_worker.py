@@ -1366,18 +1366,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             config=self.config,
             policy=policy,
             seed=self.seed,
+            policy_states={policy_id: policy_state},
         )
-
-        new_policy = self.policy_map[policy_id]
-        # Set the state of the newly created policy.
-        if policy_state:
-            new_policy.set_state(policy_state)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
-        return new_policy
+        return self.policy_map[policy_id]
 
     @DeveloperAPI
     def remove_policy(
@@ -1896,6 +1892,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
         seed: Optional[int] = None,
+        policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
 
@@ -1908,6 +1905,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             policy: If the policy to add already exists, user can provide it here.
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
+            policy_states: Optional dict from PolicyIDs to PolicyStates to
+                restore the states of the policies being built.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -1973,8 +1972,22 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
             self.policy_map[name] = new_policy
 
+            restore_states = (policy_states or {}).get(name, None)
+            # Set the state of the newly created policy before syncing filters, etc.
+            if restore_states:
+                new_policy.set_state(restore_states)
+
             if merged_conf.enable_connectors:
-                create_connectors_for_policy(new_policy, merged_conf)
+                # Note(jungong) : We should only create new connectors for the
+                # policy iff we are creating a new policy from scratch. i.e,
+                # we should NOT create new connectors when we already have the
+                # policy object created before this function call or have the
+                # restoring states from the caller.
+                # Also note that we cannot just check the existence of connectors
+                # to decide whether we should create connectors because we may be
+                # restoring a policy that has 0 connectors configured.
+                if not policy and not restore_states:
+                    create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
                 filter_shape = tree.map_structure(
