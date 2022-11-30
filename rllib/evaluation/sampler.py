@@ -200,7 +200,7 @@ class SyncSampler(SamplerInput):
                 episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
-            sample_collector_class: An optional Samplecollector sub-class to
+            sample_collector_class: An optional SampleCollector sub-class to
                 use to collect, store, and retrieve environment-, model-,
                 and sampler data.
             render: Whether to try to render the environment after each step.
