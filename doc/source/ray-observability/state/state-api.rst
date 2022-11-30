@@ -451,8 +451,7 @@ E.g., Get a particular log file from a node
 
         # You could get the node id / node ip from `ray list nodes`
         ray logs cluster gcs_server.out --node-id <NODE_ID>
-        # Or simply `ray logs ...` since `ray logs cluster` is alias to `ray logs`
-        # when querying with log file blobs
+        # `ray logs cluster` is alias to `ray logs` when querying with globs.
         ray logs gcs_server.out --node-id <NODE_ID> 
 
 .. tabbed:: Python SDK
@@ -474,6 +473,9 @@ E.g., Stream a log file from a node
 
         # You could get the node id / node ip from `ray list nodes` 
         ray logs raylet.out --node-ip <NODE_IP> --follow
+        # Or,
+        ray logs cluster raylet.out --node-ip <NODE_IP> --follow
+
 
 .. tabbed:: Python SDK
 
