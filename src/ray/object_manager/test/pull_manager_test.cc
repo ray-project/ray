@@ -1086,8 +1086,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 
   // A wait request comes in. It takes priority over the task requests.
   refs = CreateObjectRefs(1);
-  auto wait_req_id =
-      pull_manager_.Pull(refs, BundlePriority::WAIT_REQUEST, "", false, &objects_to_locate);
+  auto wait_req_id = pull_manager_.Pull(
+      refs, BundlePriority::WAIT_REQUEST, "", false, &objects_to_locate);
   wait_oids.push_back(ObjectRefsToIds(refs)[0]);
   pull_manager_.OnLocationChange(
       wait_oids[0], client_ids, "", NodeID::Nil(), false, object_size);
@@ -1098,8 +1098,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 
   // A worker request comes in.
   refs = CreateObjectRefs(1);
-  auto get_req_id1 =
-      pull_manager_.Pull(refs, BundlePriority::GET_REQUEST, "", false, &objects_to_locate);
+  auto get_req_id1 = pull_manager_.Pull(
+      refs, BundlePriority::GET_REQUEST, "", false, &objects_to_locate);
   get_oids.push_back(ObjectRefsToIds(refs)[0]);
   // Nothing has changed yet because the size information for the worker's
   // request is not available.
@@ -1122,8 +1122,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // Another worker request comes in. It takes priority over the wait request
   // once its size is available.
   refs = CreateObjectRefs(1);
-  auto get_req_id2 =
-      pull_manager_.Pull(refs, BundlePriority::GET_REQUEST, "", false, &objects_to_locate);
+  auto get_req_id2 = pull_manager_.Pull(
+      refs, BundlePriority::GET_REQUEST, "", false, &objects_to_locate);
   get_oids.push_back(ObjectRefsToIds(refs)[0]);
   AssertNumActiveRequestsEquals(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
