@@ -36,6 +36,12 @@ def tasks_by_name_and_state(info) -> dict:
     return tasks_breakdown(info, lambda s: (s.labels["Name"], s.labels["State"]))
 
 
+def tasks_by_all(info) -> dict:
+    return tasks_breakdown(
+        info, lambda s: (s.labels["Name"], s.labels["State"], s.labels["IsRetry"])
+    )
+
+
 def tasks_breakdown(info, key_fn) -> dict:
     res = raw_metrics(info)
     if "ray_tasks" in res:
@@ -340,14 +346,15 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        ("f", "FAILED"): 2.0,
-        ("f", "FINISHED"): 1.0,
-        ("Phaser.__init__", "FINISHED"): 1.0,
-        ("Phaser.inc", "FINISHED"): 1.0,
-        ("Phaser.inc", "FAILED"): 2.0,
+        ("f", "FAILED", "0"): 1.0,
+        ("f", "FAILED", "1"): 1.0,
+        ("f", "FINISHED", "1"): 1.0,
+        ("Phaser.__init__", "FINISHED", "0"): 1.0,
+        ("Phaser.inc", "FINISHED", "0"): 1.0,
+        ("Phaser.inc", "FAILED", "0"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_name_and_state(info) == expected,
+        lambda: tasks_by_all(info) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
