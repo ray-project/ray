@@ -1,12 +1,12 @@
 import abc
-from typing import Mapping, Any
+from typing import Any, List, Mapping
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    PublicAPI,
 )
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
@@ -26,7 +26,6 @@ class RLOptimizer(abc.ABC):
 
         module = RLModule(...)
         rl_optim = RLOptimizer(module, config)
-        optimizers = rl_optim.construct_optimizers()
         sample_batch = ...
         fwd_out = module.forward_train(sample_batch)
         loss_dict = rl_optim.compute_loss(fwd_out)
@@ -34,7 +33,7 @@ class RLOptimizer(abc.ABC):
         # compute gradients of loss w.r.t. trainable variables
         ...
 
-        for optim in optimizers:
+        for optim in rl_optim.optimizers:
             optim.step()
             optim.zero_grad()
 
@@ -44,6 +43,7 @@ class RLOptimizer(abc.ABC):
     def __init__(self, module: RLModule, config: Mapping[str, Any]):
         self.module = module
         self._config = config
+        self._optimizers = self._configure_optimizers
 
     @abc.abstractmethod
     def compute_loss(self, fwd_out: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -57,16 +57,37 @@ class RLOptimizer(abc.ABC):
             A dictionary of tensors used for optimizing self._module.
         """
 
-    @abc.abstractmethod
-    def construct_optimizers(self):
-        """Constructs the optimizers for the module's parameters.
-
-        Returns:
-            A list of optimizers for the module's parameters.
-        """
-
     @OverrideToImplementCustomLogic
     @staticmethod
-    def on_after_compute_loss(loss_dict: Mapping[str, Any]):
+    def on_after_compute_loss(loss_dict: Mapping[str, Any]) -> Mapping[str, Any]:
         """Called after `compute_loss` is called."""
         return loss_dict
+
+    @abc.abstractmethod
+    def _configure_optimizers(self) -> List[Any]:
+        """Configures the optimizers for self._module.
+
+        Returns:
+            A list of optimizers to be used for optimizing self._module.
+        """
+
+    @property
+    def get_optimizers(self) -> List[Any]:
+        """Returns the list of optimizers for this optimizer."""
+        return self._optimizers
+
+    @abc.abstractmethod
+    def get_state(self) -> List[Mapping[str, Any]]:
+        """Returns the optimizer state.
+
+        Returns:
+            The optimizer state.
+        """
+
+    @abc.abstractmethod
+    def set_state(self, state: List[Mapping[str, Any]]):
+        """Sets the optimizer state.
+
+        Args:
+            state: The optimizer state.
+        """
