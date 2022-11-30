@@ -19,7 +19,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestPolicyStateSwapping(unittest.TestCase):
-    """Tests, whether Policies can be "swapped out" via their state on a GPU."""
+    """Tests, whether Policies' states can be swapped out via their state on a GPU."""
 
     @classmethod
     def setUpClass(cls) -> None:
