@@ -31,6 +31,8 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
+     * - ``2.2.0``
+       - ``2022.2.0``
      * - ``2.1.0``
        - ``2022.2.0``
      * - ``2.0.0``
