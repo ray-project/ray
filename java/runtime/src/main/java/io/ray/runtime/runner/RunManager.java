@@ -83,12 +83,12 @@ public class RunManager {
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
     final boolean exited = p.waitFor(timeout, unit);
-    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
-
     if (!exited) {
+      String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
       throw new RuntimeException("The process was not exited in time. output:\n" + output);
     }
 
+    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     if (p.exitValue() != 0) {
       String sb =
           "The exit value of the process is "
