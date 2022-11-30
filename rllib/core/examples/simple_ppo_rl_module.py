@@ -128,18 +128,20 @@ class FCNet(nn.Module):
         super().__init__()
         self.input_dim = config.input_dim
         self.hidden_layers = config.hidden_layers
-
-        activation_class = getattr(nn, config.activation)()
+        
+        activation_class = getattr(nn, config.activation, lambda: None)()
         self.layers = []
         self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
         for i in range(len(self.hidden_layers) - 1):
-            self.layers.append(activation_class)
+            if config.activation != "linear":
+                self.layers.append(activation_class)
             self.layers.append(
                 nn.Linear(self.hidden_layers[i], self.hidden_layers[i + 1])
             )
 
         if config.output_dim is not None:
-            self.layers.append(activation_class)
+            if config.activation != "linear":
+                self.layers.append(activation_class)
             self.layers.append(nn.Linear(self.hidden_layers[-1], config.output_dim))
 
         if config.output_dim is None:

@@ -90,6 +90,8 @@ class PPOTorchPolicyWithRLModule(
             activation = "Tanh"
         elif activation == "relu":
             activation = "ReLU"
+        elif activation == "linear":
+            activation = "linear"
         else:
             raise ValueError(f"Unsupported activation: {activation}")
 
