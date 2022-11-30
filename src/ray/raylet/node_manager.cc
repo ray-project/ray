@@ -338,9 +338,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_service_(ray_syncer_),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
-          RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
-          RayConfig::instance().memory_monitor_interval_ms(),
+          RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -2071,7 +2071,6 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     return;
   }
   auto shutdown_after_reply = []() {
-    rpc::DrainAndResetServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
@@ -3059,9 +3058,9 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
       << not_retriable_recommendation_ss.str()
       << "To adjust the kill "
          "threshold, set the environment variable "
-         "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+         "`RAY_memory_usage_threshold` when starting Ray. To disable "
          "worker killing, set the environment variable "
-         "`RAY_memory_monitor_interval_ms` to zero.";
+         "`RAY_memory_monitor_refresh_ms` to zero.";
   return oom_kill_suggestions_ss.str();
 }
 
