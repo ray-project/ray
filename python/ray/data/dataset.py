@@ -3392,6 +3392,7 @@ class Dataset(Generic[T]):
         block = output.build()
         return _block_to_df(block)
 
+    @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
@@ -3409,6 +3410,7 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
 
+    @DeveloperAPI
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
@@ -3435,6 +3437,7 @@ class Dataset(Generic[T]):
             for block in self.get_internal_block_refs()
         ]
 
+    @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
