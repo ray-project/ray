@@ -115,6 +115,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):
+        self.trial_executor.cleanup()
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
