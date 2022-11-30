@@ -144,12 +144,12 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
 
     def test_text(self):
-        # NOTE (kourosh): This unittest will automatically get activated on CI once 
+        # NOTE (kourosh): This unittest will automatically get activated on CI once
         # we upgrade gym
         if not text_space_class:
             print("Skipping test_text, since gym version is too old")
             return
-        
+
         expected_space = text_space_class(min_length=3, max_length=10, charset="abc")
         d = gym_space_to_dict(expected_space)
         sp = gym_space_from_dict(d)
@@ -184,7 +184,6 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
         self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
         self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
-
 
 
 if __name__ == "__main__":

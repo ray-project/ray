@@ -13,6 +13,7 @@ from ray.rllib.utils.spaces.simplex import Simplex
 
 text_space_class = getattr(gym.spaces, "Text", None)
 
+
 def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
 
