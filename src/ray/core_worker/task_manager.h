@@ -314,38 +314,43 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false});
-    }
-
-    void SetStatus(rpc::TaskStatus new_status) {
-      auto is_retry = IsRetry();
-      counter.Swap({spec.GetName(), status, is_retry},
-                   {spec.GetName(), new_status, is_retry});
+      auto new_status =
+          std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
+      counter.Increment(new_status);
       status = new_status;
     }
 
-    rpc::TaskStatus GetStatus() const { return status; }
+    void SetStatus(rpc::TaskStatus new_status) {
+      auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
+      counter.Swap(status, new_tuple);
+      status = new_tuple;
+    }
+
+    void MarkRetryOnFailed() {
+      // Record a separate counter increment for retries. This means that if a task
+      // is retried N times, we show it as N separate task counts.
+      counter.Increment({spec.GetName(), rpc::TaskStatus::FAILED, is_retry_});
+      is_retry_ = true;
+    }
+
+    void MarkRetryOnResubmit() {
+      // Record a separate counter increment for resubmits. This means that if a task
+      // is resubmitted N times, we show it as N separate task counts.
+      counter.Increment({spec.GetName(), rpc::TaskStatus::FINISHED, is_retry_});
+      is_retry_ = true;
+    }
+
+    rpc::TaskStatus GetStatus() const { return std::get<1>(status); }
 
     // Get the NodeID where the task is executed.
     NodeID GetNodeId() const { return node_id_; }
     // Set the NodeID where the task is executed.
     void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
-    bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
+    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
-    }
-
-    bool IsRetry() const { return num_successful_executions_ > 0; }
-
-    int NumSuccessfulExecutions() const { return num_successful_executions_; }
-
-    void IncNumSuccessfulExecutions() {
-      if (num_successful_executions_ == 0) {
-        counter.Swap({spec.GetName(), status, false}, {spec.GetName(), status, true});
-      }
-      num_successful_executions_ += 1;
+      return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -369,7 +374,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // due to out of memory failure.
     int32_t num_oom_retries_left;
     // Objects returned by this task that are reconstructable. This is set
-    // initially to the task's return objects, since if the task fails, these
+
     // objects may be reconstructed by resubmitting the task. Once the task
     // finishes its first execution, then the objects that the task returned by
     // value are removed from this set because they can be inlined in any
@@ -385,14 +390,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
+    // Number of times this task successfully completed execution so far.
+    int num_successful_executions = 0;
 
    private:
-    // Number of times this task successfully completed execution so far.
-    int num_successful_executions_ = 0;
-    // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
+    // The task's current execution and metric status (name, status, is_retry).
+    std::tuple<std::string, rpc::TaskStatus, bool> status;
     // The node id where task is executed.
     NodeID node_id_;
+    // Whether this is a task retry due to task failure.
+    bool is_retry_ = false;
   };
 
   /// Update nested ref count info and store the in-memory value for a task's

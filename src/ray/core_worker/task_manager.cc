@@ -125,6 +125,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     if (!it->second.IsPending()) {
       resubmit = true;
       it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      it->second.MarkRetryOnResubmit();
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -376,13 +377,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
-    it->second.IncNumSuccessfulExecutions();
-
     if (is_application_error) {
       it->second.SetStatus(rpc::TaskStatus::FAILED);
     } else {
       it->second.SetStatus(rpc::TaskStatus::FINISHED);
     }
+    // ORDER: this must be called after setting the status above to FAILED/FINISHED.
+    // Otherwise, we may record metrics incorrectly under "IsRetry=1".
+    it->second.num_successful_executions++;
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -450,6 +452,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     }
     if (will_retry) {
       it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      it->second.MarkRetryOnFailed();
     }
   }
 
@@ -688,7 +691,7 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   auto it = submissible_tasks_.find(task_id);
   RAY_CHECK(it != submissible_tasks_.end())
       << "Tried to store return values for task that was not pending " << task_id;
-  first_execution = it->second.NumSuccessfulExecutions() == 0;
+  first_execution = it->second.num_successful_executions == 0;
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
   }

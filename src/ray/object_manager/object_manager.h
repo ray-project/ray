@@ -105,7 +105,8 @@ class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                         BundlePriority prio,
-                        const std::string &task_name) = 0;
+                        const std::string &task_name,
+                        bool is_retry) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(const std::string &task_name,

@@ -318,9 +318,21 @@ import time
 
 ray.init("auto")
 
-@ray.remote(retry_exceptions=True)
+@ray.remote
+class Phaser:
+    def __init__(self):
+        self.i = 0
+
+    def inc(self):
+        self.i += 1
+        if self.i < 3:
+            raise ValueError("First two tries will fail")
+
+phaser = Phaser.remote()
+
+@ray.remote(retry_exceptions=True, max_retries=3)
 def f():
-    assert False
+    ray.get(phaser.inc.remote())
 
 f.remote()
 time.sleep(999)
@@ -328,10 +340,16 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FAILED": 1.0,  # Only recorded as finished once.
+        ("f", "FAILED"): 2.0,
+        ("f", "FINISHED"): 1.0,
+        ("Phaser.__init__", "FINISHED"): 1.0,
+        ("Phaser.inc", "FINISHED"): 1.0,
+        ("Phaser.inc", "FAILED"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_name_and_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
     proc.kill()
 
@@ -347,7 +365,7 @@ import os
 
 ray.init("auto")
 
-@ray.remote(max_retries=3)
+@ray.remote(max_retries=0)
 def f():
     print("RUNNING FAILING TASK")
     os._exit(1)

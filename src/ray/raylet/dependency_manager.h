@@ -60,8 +60,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
           // Of the waiting tasks of this name, some fraction may be inactive (blocked on
           // object store memory availability). Get this breakdown by querying the pull
           // manager.
-          int64_t num_inactive = std::min(
-              num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
+          int64_t num_inactive =
+              std::min(num_total,
+                       object_manager_.PullManagerNumInactivePullsByTaskName(key.first,
+                                                                             key.second));
           // Offset the metric values recorded from the owner process.
           ray::stats::STATS_tasks.Record(
               -num_total,
@@ -239,7 +241,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
           task_name(task_name),
           is_retry(is_retry) {
       if (num_missing_dependencies > 0) {
-        waiting_task_counter_map.Increment(task_name);
+        waiting_task_counter_map.Increment({task_name, is_retry});
       }
     }
     /// The objects that the task depends on. These are the arguments to the
