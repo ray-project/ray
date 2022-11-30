@@ -1057,7 +1057,7 @@ cc_test(
 
 cc_test(
     name = "task_event_buffer_test",
-    size="small",
+    size = "small",
     srcs = ["src/ray/core_worker/test/task_event_buffer_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
