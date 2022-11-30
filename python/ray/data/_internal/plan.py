@@ -251,11 +251,13 @@ class ExecutionPlan:
         # don't want to trigger full execution for a schema read. If we want to
         # trigger execution to get schema, we'll trigger read tasks progressively
         # until a viable schema is available, below.
-        metadata = blocks.get_metadata(fetch_if_missing=False)
+        metadata = blocks.get_metadata(fetch_if_missing=fetch_if_missing)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            if m.schema is not None and (
+                m.num_rows is None or m.num_rows > 0 or m.num_cols > 0
+            ):
                 return m.schema
         if not fetch_if_missing:
             return None
@@ -263,7 +265,9 @@ class ExecutionPlan:
         # For lazy block lists, this launches read tasks and fetches block metadata
         # until we find valid block schema.
         for _, m in blocks.iter_blocks_with_metadata():
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            if m.schema is not None and (
+                m.num_rows is None or m.num_rows > 0 or m.num_cols > 0
+            ):
                 return m.schema
         return None
 
