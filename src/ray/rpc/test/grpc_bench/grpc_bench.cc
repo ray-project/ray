@@ -49,5 +49,20 @@ class GreeterGrpcService : public GrpcService {
 };
 
 int main() {
+  const auto env = std::getenv("GRPC_SERVER_CPUS");
+  const auto parallelism =
+      env ? std::atoi(env) : std::thread::hardware_concurrency();
+  
+  GrpcServer server("grpc_bench", 50051, false, parallelism);
+  instrumented_io_context main_service;
+  std::thread t([&main_service] {
+    boost::asio::io_service::work work(main_service);
+    main_service.run();
+  });
+  GreeterServiceHandler handler;
+  GreeterGrpcService grpc_service(main_service, handler);
+  server.RegisterService(grpc_service);
+  server.Run();
+  
   return 0;
 }

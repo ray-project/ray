@@ -1767,6 +1767,20 @@ cc_library(
 )
 
 cc_test(
+    name = "grpc_server_client_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/grpc_server_client_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        ":test_service_cc_grpc",
+    ],
+)
+
+cc_test(
     name = "gcs_server_rpc_test",
     size = "small",
     srcs = [
