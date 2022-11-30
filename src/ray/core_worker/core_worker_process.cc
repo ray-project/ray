@@ -109,13 +109,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
 
-  {
-    // Initialize global worker instance.
-    auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = worker;
-  }
-
   // Assume stats module will be initialized exactly once in once process.
   // So it must be called in CoreWorkerProcess constructor and will be reused
   // by all of core worker.
@@ -133,7 +126,16 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
+
+  // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+
+  {
+    // Initialize global worker instance.
+    auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
+    absl::WriterMutexLock lock(&mutex_);
+    core_worker_ = worker;
+  }
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
