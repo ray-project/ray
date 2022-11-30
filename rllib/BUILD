@@ -1995,7 +1995,7 @@ py_test(
 py_test(
     name = "policy/tests/test_policy_state_swapping",
     tags = ["team:rllib", "policy", "gpu"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_policy_state_swapping.py"]
 )
 
