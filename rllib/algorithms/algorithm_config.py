@@ -1926,7 +1926,7 @@ class AlgorithmConfig:
                 a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
             _enable_rl_module_api: Experimental flag.
-                If True, the RLlib Module API will be used for creating the neural 
+                If True, the RLlib Module API will be used for creating the neural
                 network modules instead of the ModelV2 API.
 
         Returns:
