@@ -73,22 +73,24 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
 
 void TaskEventBufferImpl::Stop() {
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
-  {
-    absl::MutexLock lock(&mutex_);
-    if (gcs_client_) {
-      // Stop GCS client
-      gcs_client_->Disconnect();
-    }
 
-    io_service_.stop();
-  }
-
+  // Shutting down the io service to exit the io_thread. This should prevent
+  // any other callbacks to be run on the io thread.
+  io_service_.stop();
   if (io_thread_.joinable()) {
     RAY_LOG(DEBUG) << "Joining io thread from TaskEventBuffer";
     io_thread_.join();
   }
 
-  if (gcs_client_) {
+  {
+    absl::MutexLock lock(&mutex_);
+    // It's now safe to disconnect the GCS client since it will not be used by any
+    // callbacks.
+    if (gcs_client_) {
+      // Stop GCS client
+      gcs_client_->Disconnect();
+    }
+
     gcs_client_.reset();
   }
 }

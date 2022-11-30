@@ -1156,12 +1156,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
-  if (worker_context_.GetCurrentTask() == nullptr) {
-    task_event_buffer_->AddTaskStatusEvent(worker_context_.GetCurrentTaskID(),
-                                           rpc::TaskStatus::RUNNING_IN_RAY_GET,
-                                           /* task_info */ nullptr,
-                                           /* task_state_update */ nullptr);
-  } else {
+  if (worker_context_.GetCurrentTask() != nullptr) {
+    // This will ignore task status events from driver running ray.get, which doesn't have
+    // a name and task spec.
     task_event_buffer_->AddTaskStatusEvent(
         worker_context_.GetCurrentTaskID(),
         rpc::TaskStatus::RUNNING_IN_RAY_GET,
