@@ -19,9 +19,9 @@ tf1, tf, tfv = try_import_tf()
 
 def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
-    config = PPOConfig() \
-        .rollouts(num_rollout_workers=0) \
-        .evaluation(evaluation_num_workers=0)
+    config = (
+        PPOConfig().rollouts(num_rollout_workers=0).evaluation(evaluation_num_workers=0)
+    )
     for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
         algo2 = config.build(env="Pendulum-v1")
