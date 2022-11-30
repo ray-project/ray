@@ -15,6 +15,8 @@ class RayExecutor(Executor):
     """
 
     _shutdown_lock = False
+    """A dictionary of futures and associated Ray object references generated
+    by the current instance of RayExecutor"""
     _futures = {}
 
     def __init__(self, **kwargs):
