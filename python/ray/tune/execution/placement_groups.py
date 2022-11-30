@@ -9,7 +9,7 @@ from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.air.execution.resources.request import ResourceRequest
 from ray.tune.resources import Resources
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import (
     PlacementGroup,
     get_placement_group,
@@ -68,7 +68,7 @@ def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
     return resources
 
 
-@Deprecated
+@PublicAPI(stability="beta")
 class PlacementGroupFactory(ResourceRequest):
     """Request for bundles of resources.
 

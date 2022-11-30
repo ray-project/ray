@@ -66,6 +66,26 @@ class FixedAllocatedResource(AllocatedResource):
 
 @DeveloperAPI
 class FixedResourceManager(ResourceManager):
+    """Fixed budget based resource manager.
+
+    This resource manager keeps track of a fixed set of resources. When resources
+    are acquired, they are subtracted from the budget. When resources are freed,
+    they are added back to the budget.
+
+    The resource manager still requires resources to be requested before they become
+    available. However, because the resource requests are virtual, this will not
+    trigger autoscaling.
+
+    Additionally, resources are not reserved on request, only on acquisition. Thus,
+    acquiring a resource can change the availability of other requests. Note that
+    this behavior may be changed in future implementations.
+
+    Args:
+        total_resources: Budget of resources to manage. Defaults to all available
+            resources in the current task or all cluster resources (if outside a task).
+
+    """
+
     _resource_cls: AllocatedResource = FixedAllocatedResource
 
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
@@ -83,6 +103,7 @@ class FixedResourceManager(ResourceManager):
     @property
     def _available_resources(self) -> Dict[str, float]:
         available_resources = self._total_resources.copy()
+
         for used_resources in self._used_resources:
             all_resources = _sum_bundle_resources(used_resources.bundles)
             for k, v in all_resources.items():
