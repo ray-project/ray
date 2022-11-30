@@ -124,7 +124,7 @@ class AgentCollector:
         # the buffer must contain eleven values from t=[-10, ..., 0] for us to index
         # properly. Since state_out at t=0 is missing, we substitute it with a buffer
         # value that should never make it into batches built for training.
-        self.gained_from_inference = set()
+        self.data_cols_with_dummy_values = set()
 
     @property
     def training(self) -> bool:
@@ -315,22 +315,22 @@ class AgentCollector:
                 if should_flatten_action_key:
                     v = flatten_to_single_ndarray(v)
                 # Briefly remove dummy value to add to buffer
-                if k in self.gained_from_inference:
+                if k in self.data_cols_with_dummy_values:
                     dummy = self.buffers[k][0].pop(-1)
                 self.buffers[k][0].append(v)
                 # Add back dummy value
-                if k in self.gained_from_inference:
+                if k in self.data_cols_with_dummy_values:
                     self.buffers[k][0].append(dummy)
             # Flatten all other columns.
             else:
                 flattened = tree.flatten(v)
                 for i, sub_list in enumerate(self.buffers[k]):
                     # Briefly remove dummy value to add to buffer
-                    if k in self.gained_from_inference:
+                    if k in self.data_cols_with_dummy_values:
                         dummy = sub_list.pop(-1)
                     sub_list.append(flattened[i])
                     # Add back dummy value
-                    if k in self.gained_from_inference:
+                    if k in self.data_cols_with_dummy_values:
                         sub_list.append(dummy)
 
         # In inference mode, we don't need to keep all of trajectory in memory
@@ -477,7 +477,7 @@ class AgentCollector:
                     math.ceil(
                         (
                             len(d)
-                            - int(data_col in self.gained_from_inference)
+                            - int(data_col in self.data_cols_with_dummy_values)
                             - self.shift_before
                         )
                         / view_req.batch_repeat_value
@@ -685,7 +685,7 @@ class AgentCollector:
         return is_state
 
     def _prepare_for_gained_during_inference(self, data_col):
-        self.gained_from_inference.add(data_col)
+        self.data_cols_with_dummy_values.add(data_col)
         # For items gained during inference, we prepend a dummy value here so
         # that view requirements viewing these is not shifted by 1
         for b in self.buffers[data_col]:
