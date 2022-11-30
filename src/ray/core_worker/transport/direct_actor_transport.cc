@@ -208,7 +208,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
-      reply->set_is_cancelled_before_running(true);
+      reply->set_was_cancelled_before_running(true);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };

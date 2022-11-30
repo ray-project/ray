@@ -66,7 +66,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   bool ReplyPushTask(Status status = Status::OK(),
                      bool exit = false,
                      bool is_retryable_error = false,
-                     bool is_cancelled_before_running = false) {
+                     bool was_cancelled_before_running = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -78,8 +78,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (is_retryable_error) {
       reply.set_is_retryable_error(true);
     }
-    if (is_cancelled_before_running) {
-      reply.set_is_cancelled_before_running(true);
+    if (was_cancelled_before_running) {
+      reply.set_was_cancelled_before_running(true);
     }
     callback(status, reply);
     callbacks.pop_front();

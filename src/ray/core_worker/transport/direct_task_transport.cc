@@ -622,7 +622,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (reply.is_cancelled_before_running()) {
+          if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
             RAY_UNUSED(
