@@ -8,8 +8,8 @@ from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 from ray.rllib.connectors.connector import AgentConnector
 from ray.rllib.connectors.connector import (
     ConnectorContext,
-    register_connector,
 )
+from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter

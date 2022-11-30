@@ -12,7 +12,8 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -32,7 +33,7 @@ class TestAgentConnector(unittest.TestCase):
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
@@ -50,7 +51,7 @@ class TestAgentConnector(unittest.TestCase):
         c = ObsPreprocessorConnector(ctx)
         name, params = c.to_state()
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
 
         obs = obs_space.sample()
@@ -81,7 +82,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
@@ -102,7 +103,7 @@ class TestAgentConnector(unittest.TestCase):
         c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         sample_batch = {
@@ -494,7 +495,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
         name, params = agent_connector.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
             check(restored.connectors[cidx].to_state(), c.to_state())
