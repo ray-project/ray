@@ -72,6 +72,8 @@ torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
+    from ray.rllib.core.rl_module import RLModule
+
 
 logger = logging.getLogger(__name__)
 
@@ -364,8 +366,9 @@ class Policy(metaclass=ABCMeta):
         self.action_connectors = None
 
     @ExperimentalAPI
+    @abstractmethod
     @OverrideToImplementCustomLogic
-    def make_rl_module(self):
+    def make_rl_module(self) -> "RLModule":
         """Returns the RL Module"""
 
     @DeveloperAPI
@@ -1266,7 +1269,7 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # with RL modules you want the explore to be True for initialization of the
         # tensors and placeholder you'd need for training
-        explore = is_overridden(self.make_rl_module)
+        explore = self.config._enable_rl_module_api
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )

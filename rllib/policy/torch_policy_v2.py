@@ -86,7 +86,7 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        if is_overridden(self.make_rl_module):
+        if self.config._enable_rl_module_api:
             model = self.make_rl_module()
             dist_class = None
         else:
@@ -796,7 +796,7 @@ class TorchPolicyV2(Policy):
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {}
-                    if is_overridden(self.make_rl_module)
+                    if self.config._enable_rl_module_api
                     else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update

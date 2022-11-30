@@ -15,6 +15,7 @@ from ray.rllib.policy.torch_mixins import (
     KLCoeffMixin,
     LearningRateSchedule,
 )
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -39,7 +40,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PPOTorchPolicyV2(
+class PPOTorchPolicyWithRLModule(
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
@@ -81,6 +82,7 @@ class PPOTorchPolicyV2(
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
+    @override(Policy)
     def make_rl_module(self):
 
         activation = self.config["model"]["fcnet_activation"]

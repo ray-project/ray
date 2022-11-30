@@ -1,7 +1,7 @@
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
     env: Pendulum-v1
-    run: PPO-v2
+    run: PPO
     stop:
     #     episode_reward_mean: -500
         timesteps_total: 400000
@@ -19,3 +19,5 @@ pendulum-ppo:
         num_sgd_iter: 6
         observation_filter: MeanStdFilter
         seed: 42
+        enable_connectors: True
+        _enable_rl_module_api: True

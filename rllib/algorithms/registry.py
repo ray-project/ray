@@ -169,13 +169,6 @@ def _import_ppo():
     return ppo.PPO, ppo.PPOConfig().to_dict()
 
 
-def _import_ppo_v2():
-    import ray.rllib.algorithms.ppo_v2 as ppo
-
-    # everything is v2 here
-    return ppo.PPO, ppo.PPOConfig().to_dict()
-
-
 def _import_qmix():
     import ray.rllib.algorithms.qmix as qmix
 
@@ -245,7 +238,6 @@ ALGORITHMS = {
     "MBMPO": _import_mbmpo,
     "PG": _import_pg,
     "PPO": _import_ppo,
-    "PPO-v2": _import_ppo_v2,
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
     "RNNSAC": _import_rnnsac,

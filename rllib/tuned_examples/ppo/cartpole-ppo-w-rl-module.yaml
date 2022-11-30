@@ -19,3 +19,4 @@ cartpole-ppo:
             fcnet_activation: relu
             vf_share_layers: False
         enable_connectors: True
+        _enable_rl_module_api: True
