@@ -5,7 +5,10 @@ from pkg_resources._vendor.packaging.version import parse as parse_version
 import numpy as np
 import pyarrow as pa
 
-from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
+from ray.air.util.tensor_extensions.utils import (
+    _is_ndarray_variable_shaped_tensor,
+    _create_strict_ragged_ndarray,
+)
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
@@ -664,10 +667,11 @@ class ArrowVariableShapedTensorArray(
             np_data_buffer = np.concatenate(raveled)
         dtype = np_data_buffer.dtype
         if dtype.type is np.object_:
+            types_and_shapes = [(f"dtype={a.dtype}", f"shape={a.shape}") for a in arr]
             raise ValueError(
                 "ArrowVariableShapedTensorArray only supports heterogeneous-shaped "
-                "tensor collections, not arbitrarily nested ragged tensors. Got: "
-                f"{arr}"
+                "tensor collections, not arbitrarily nested ragged tensors. Got "
+                f"arrays: {types_and_shapes}"
             )
         pa_dtype = pa.from_numpy_dtype(dtype)
         if dtype.type is np.bool_:
@@ -720,7 +724,7 @@ class ArrowVariableShapedTensorArray(
             arrs = [self._to_numpy(i, zero_copy_only) for i in range(len(self))]
             # Return ragged NumPy ndarray in the ndarray of ndarray pointers
             # representation.
-            return np.array(arrs, dtype=object)
+            return _create_strict_ragged_ndarray(arrs)
         data = self.storage.field("data")
         shapes = self.storage.field("shape")
         value_type = data.type.value_type
