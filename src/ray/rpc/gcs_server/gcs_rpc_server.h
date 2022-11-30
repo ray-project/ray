@@ -587,7 +587,6 @@ class TaskInfoGcsServiceHandler {
                                       SendReplyCallback send_reply_callback) = 0;
 };
 
-// TODO(rickyx): Use an independent io service for the task info handling.
 /// The `GrpcService` for `TaskInfoGcsService`.
 class TaskInfoGrpcService : public GrpcService {
  public:

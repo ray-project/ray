@@ -600,9 +600,7 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  if (task_event_buffer_) {
-    task_event_buffer_->Stop();
-  }
+  task_event_buffer_->Stop();
 
   if (gcs_client_) {
     // We should disconnect gcs client first otherwise because it contains

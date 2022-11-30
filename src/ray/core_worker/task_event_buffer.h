@@ -35,29 +35,56 @@ namespace worker {
 class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
+
+  /// Add a task event with optional task metadata info.
+  ///
+  /// \param task_id Task ID of the task.
+  /// \param task_status Status of the task event.
+  /// \param task_info Immutable TaskInfoEntry of metadata for the task.
+  /// \param task_state_update Mutable task states updated for task execution.
   virtual void AddTaskStatusEvent(
       TaskID task_id,
       rpc::TaskStatus task_status,
       std::unique_ptr<rpc::TaskInfoEntry> task_info,
       std::unique_ptr<rpc::TaskStateEntry> task_state_update) = 0;
 
+  /// Add a profile event.
+  ///
+  /// \param task_id Task id of the task.
+  /// \param event The profile event.
+  /// \param component_type Type of the component, e.g. worker.
+  /// \param component_id Id of the component, e.g. worker id.
+  /// \param node_ip_address Node IP address of this node.
   virtual void AddProfileEvent(TaskID task_id,
                                rpc::ProfileEventEntry event,
                                const std::string &component_type,
                                const std::string &component_id,
                                const std::string &node_ip_address) = 0;
 
+  /// Flushing task events to GCS.
+  ///
+  /// This function will be called periodically configured by
+  /// `RAY_task_events_report_interval_ms`, and send task events stored in a buffer to
+  /// GCS. If GCS has not responded to a previous flush, it will defer the flushing to
+  /// the next interval (if not forced.)
+  ///
+  /// \param force When set to true, buffered events will be sent to GCS even if GCS has
+  ///       not responded to the previous flush.
   virtual void FlushEvents(bool forced) = 0;
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   virtual void Stop() = 0;
 
+  /// Get all task events stored in the buffer.
   virtual rpc::TaskEventData GetAllTaskEvents() = 0;
 };
 
 /// An in-memory buffer for storing task state events, and flushing them periodically to
 /// GCS. Task state events will be recorded by other core components, i.e. core worker
 /// and raylet.
+/// The buffer has its own io_context and io_thread, that's isolated from other
+/// components.
+///
 /// If any of the gRPC call failed, the task events will be silently dropped. This
 /// is probably fine since this usually indicated a much worse issue.
 /// If GCS failed to respond quickly enough on the next flush, no gRPC will be made and
@@ -72,16 +99,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
  public:
   /// Constructor
   ///
-  /// \param io_service IO service to run the periodic flushing routines.
   /// \param gcs_client GCS client
+  /// \param manual_flush Test only flag to disable periodical flushing events.
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client,
                       bool manual_flush = false);
 
-  /// Add a task event with optional task metadata info.
-  ///
-  /// \param task_id Task ID of the task.
-  /// \param task_info Immutable TaskInfoEntry of metadata for the task.
-  /// \param task_status Current task status to be recorded.
   void AddTaskStatusEvent(TaskID task_id,
                           rpc::TaskStatus task_status,
                           std::unique_ptr<rpc::TaskInfoEntry> task_info,
@@ -113,15 +135,16 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
  private:
-  /// Mutex guarding task_events_map_.
+  /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 
-  /// ASIO IO service event loop. Must be started by the caller.
+  /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
 
   /// Work guard to prevent the io_context from exiting when no work.
   // boost::asio::io_service::work io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+
   /// Dedicated io thread for running the periodical runner and the GCS client.
   std::thread io_thread_;
 

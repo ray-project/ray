@@ -28,7 +28,8 @@ using AddTaskEventCallback = std::function<void(Status status, const TaskID &tas
 
 /// GcsTaskManger is responsible for capturing task states change reported from other
 /// components, i.e. raylets/workers through grpc handles.
-/// This class is thread-safe.
+/// This class has its own io_context and io_thread, that's separate from other GCS
+/// services.
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
@@ -51,7 +52,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param events_by_task Events by a single task.
   Status AddTaskEventForTask(const TaskID &task_id, rpc::TaskEvents &&events_by_task);
 
-  /// Mutex guarding tasks_reported_
+  /// Mutex guarding tasks_reported_.
   absl::Mutex mutex_;
 
   /// Total set of tasks id reported to GCS, this might be larger than the actual tasks
