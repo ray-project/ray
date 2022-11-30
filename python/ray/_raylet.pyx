@@ -785,7 +785,7 @@ cdef void execute_task(
         try:
             if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                      and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_interval_ms() == 0):
+                    ray._config.memory_monitor_refresh_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
