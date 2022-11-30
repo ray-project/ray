@@ -117,7 +117,7 @@ class AgentCollector:
         # each time a (non-initial!) observation is added.
         self.agent_steps = 0
         # Keep track of view requirements that have a view on columns that we gain from
-        # inference and also need for inference. These have dummy values prepended in
+        # inference and also need for inference. These have dummy values appended in
         # buffers to account for the missing value when building for inference
         # Example: We have one 'state_in' view requirement that has a view on our
         # state_outs at t=[-10, ..., -1]. At any given build_for_inference()-call,
@@ -380,7 +380,7 @@ class AgentCollector:
                 self._fill_buffer_with_initial_values(
                     data_col, view_req, build_for_inference=True
                 )
-                self._prepare_for_gained_during_inference(data_col)
+                self._prepare_for_data_cols_with_dummy_values(data_col)
 
             # Keep an np-array cache, so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -684,9 +684,9 @@ class AgentCollector:
 
         return is_state
 
-    def _prepare_for_gained_during_inference(self, data_col):
+    def _prepare_for_data_cols_with_dummy_values(self, data_col):
         self.data_cols_with_dummy_values.add(data_col)
-        # For items gained during inference, we prepend a dummy value here so
+        # For items gained during inference, we append a dummy value here so
         # that view requirements viewing these is not shifted by 1
         for b in self.buffers[data_col]:
             b.append(b[-1])
