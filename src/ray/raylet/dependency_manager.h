@@ -33,7 +33,8 @@ class TaskDependencyManagerInterface {
   virtual bool RequestTaskDependencies(
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects,
-      const std::string &task_name) = 0;
+      const std::string &task_name,
+      bool is_retry) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
@@ -53,28 +54,31 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
-    waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name) mutable {
-      int64_t num_total = waiting_tasks_counter_.Get(task_name);
+    waiting_tasks_counter_.SetOnChangeCallback([this](std::pair<std::string, bool> key) mutable {
+      int64_t num_total = waiting_tasks_counter_.Get(key);
       // Of the waiting tasks of this name, some fraction may be inactive (blocked on
       // object store memory availability). Get this breakdown by querying the pull
       // manager.
       int64_t num_inactive = std::min(
-          num_total, object_manager_.PullManagerNumInactivePullsByTaskName(task_name));
+          num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
       // Offset the metric values recorded from the owner process.
       ray::stats::STATS_tasks.Record(
           -num_total,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-           {"Name", task_name},
+           {"Name", key.first},
+           {"IsRetry", key.second ? "1" : "0"},
            {"Source", "dependency_manager"}});
       ray::stats::STATS_tasks.Record(
           num_total - num_inactive,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-           {"Name", task_name},
+           {"Name", key.first},
+           {"IsRetry", key.second ? "1" : "0"},
            {"Source", "dependency_manager"}});
       ray::stats::STATS_tasks.Record(
           num_inactive,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", task_name},
+           {"Name", key.first},
+           {"IsRetry", key.second ? "1" : "0"},
            {"Source", "dependency_manager"}});
     });
   }
@@ -152,7 +156,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
-                               const std::string &task_name);
+                               const std::string &task_name,
+                               bool is_retry);
 
   /// Cancel a task's dependencies. We will no longer attempt to fetch any
   /// remote dependencies, if no other task or worker requires them.
@@ -223,12 +228,13 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
     TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
-                     CounterMap<std::string> &counter_map,
-                     const std::string &task_name)
+                     CounterMap<std::pair<std::string, bool>> &counter_map,
+                     const std::string &task_name, bool is_retry)
         : dependencies(std::move(deps)),
           num_missing_dependencies(dependencies.size()),
           waiting_task_counter_map(counter_map),
-          task_name(task_name) {
+          task_name(task_name),
+          is_retry(is_retry) {
       if (num_missing_dependencies > 0) {
         waiting_task_counter_map.Increment(task_name);
       }
@@ -245,13 +251,15 @@ class DependencyManager : public TaskDependencyManagerInterface {
     /// manager.
     uint64_t pull_request_id = 0;
     /// Reference to the counter map for metrics tracking.
-    CounterMap<std::string> &waiting_task_counter_map;
+    CounterMap<std::pair<std::string, bool>> &waiting_task_counter_map;
     /// The task name used for metrics tracking.
     const std::string task_name;
+    /// Whether this task was a retry.
+    const bool is_retry;
 
     void IncrementMissingDependencies() {
       if (num_missing_dependencies == 0) {
-        waiting_task_counter_map.Increment(task_name);
+        waiting_task_counter_map.Increment({task_name, is_retry});
       }
       num_missing_dependencies++;
     }
@@ -259,7 +267,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
     void DecrementMissingDependencies() {
       num_missing_dependencies--;
       if (num_missing_dependencies == 0) {
-        waiting_task_counter_map.Decrement(task_name);
+        waiting_task_counter_map.Decrement({task_name, is_retry});
       }
     }
   };
@@ -303,7 +311,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// Counts the number of active task dependency fetches by task name. The counter
   /// total will be less than or equal to the size of queued_task_requests_.
-  CounterMap<std::string> waiting_tasks_counter_;
+  CounterMap<std::pair<std::string, bool>> waiting_tasks_counter_;
 
   friend class DependencyManagerTest;
 };

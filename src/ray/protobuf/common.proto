@@ -630,6 +630,8 @@ enum TaskStatus {
   FINISHED = 9;
   // The task has finished but failed with an Exception or system error.
   FAILED = 10;
+  // The task failed, but will be retried again.
+  FAILED_WILL_RETRY = 11;
 }
 
 // Debug info for a referenced object.

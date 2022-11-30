@@ -376,7 +376,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
-    it->second.num_successful_executions++;
+    it->second.IncNumSuccessfulExecutions();
 
     if (is_application_error) {
       it->second.SetStatus(rpc::TaskStatus::FAILED);
@@ -688,7 +688,7 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   auto it = submissible_tasks_.find(task_id);
   RAY_CHECK(it != submissible_tasks_.end())
       << "Tried to store return values for task that was not pending " << task_id;
-  first_execution = it->second.num_successful_executions == 0;
+  first_execution = it->second.NumSuccessfulExecutions() == 0;
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
   }

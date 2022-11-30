@@ -73,7 +73,7 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
-using TaskStatusCounter = CounterMap<std::pair<std::string, rpc::TaskStatus>>;
+using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback =
@@ -99,11 +99,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     task_counter_.SetOnChangeCallback(
-        [this](const std::pair<std::string, rpc::TaskStatus> key)
+        [this](const std::tuple<std::string, rpc::TaskStatus, bool> key)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               ray::stats::STATS_tasks.Record(task_counter_.Get(key),
-                                             {{"State", rpc::TaskStatus_Name(key.second)},
-                                              {"Name", key.first},
+                                             {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                                              {"Name", std::get<0>(key)},
+                                              {"IsRetry", std::get<2>(key) ? "1" : "0"},
                                               {"Source", "owner"}});
             });
     reference_counter_->SetReleaseLineageCallback(
@@ -312,11 +313,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
+      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false});
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
+      auto is_retry = IsRetry();
+      counter.Swap({spec.GetName(), status, is_retry}, {spec.GetName(), new_status, is_retry});
       status = new_status;
     }
 
@@ -331,6 +333,21 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     bool IsWaitingForExecution() const {
       return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
+    }
+
+    bool IsRetry() {
+      return num_successful_executions_ > 0;
+    }
+
+    int NumSuccessfulExecutions() {
+      return num_successful_executions_;
+    }
+
+    void IncNumSuccessfulExecutions() {
+      if (num_successful_executions_ == 0) {
+        counter.Swap({spec.GetName(), status, false}, {spec.GetName(), status, true});
+      }
+      num_successful_executions_ += 1;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -353,8 +370,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;
-    // Number of times this task successfully completed execution so far.
-    int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set
     // initially to the task's return objects, since if the task fails, these
     // objects may be reconstructed by resubmitting the task. Once the task
@@ -374,6 +389,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     int64_t lineage_footprint_bytes = 0;
 
    private:
+    // Number of times this task successfully completed execution so far.
+    int num_successful_executions_ = 0;
     // The task's current execution status.
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
     // The node id where task is executed.

@@ -347,7 +347,7 @@ import os
 
 ray.init("auto")
 
-@ray.remote
+@ray.remote(max_retries=3)
 def f():
     print("RUNNING FAILING TASK")
     os._exit(1)
