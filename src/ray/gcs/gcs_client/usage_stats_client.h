@@ -36,7 +36,6 @@ class UsageStatsClient {
   static constexpr char kExtraUsageTagPrefix[] = "extra_usage_tag_";
   static constexpr char kUsageStatsNamespace[] = "usage_stats";
 
-  instrumented_io_context &io_service_;
   std::unique_ptr<GcsClient> gcs_client_;
 };
 }  // namespace gcs

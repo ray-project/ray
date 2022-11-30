@@ -58,7 +58,11 @@ def _get_ray_setup_spec():
 
 def _resolve_install_from_source_ray_dependencies():
     """Find the Ray dependencies when Ray is installed from source."""
-    return _get_ray_setup_spec().install_requires
+    deps = (
+        _get_ray_setup_spec().install_requires + _get_ray_setup_spec().extras["default"]
+    )
+    # Remove duplicates
+    return list(set(deps))
 
 
 def _inject_ray_to_conda_site(
