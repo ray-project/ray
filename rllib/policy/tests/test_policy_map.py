@@ -47,7 +47,7 @@ class TestPolicyMap(unittest.TestCase):
 
                 expected = [f"pol{j}" for j in range(max(i - 1, 0), i + 1)]
                 self.assertEqual(list(policy_map._deque), expected)
-                self.assertEqual(list(policy_map._cache.keys()), expected)
+                self.assertEqual(list(policy_map.cache.keys()), expected)
                 self.assertEqual(
                     policy_map._valid_keys, {f"pol{j}" for j in range(i + 1)}
                 )
@@ -72,8 +72,8 @@ class TestPolicyMap(unittest.TestCase):
                 # now.
                 self.assertTrue(policy_map._deque[-1] == pid)
                 self.assertTrue(len(policy_map._deque) == 2)
-                self.assertTrue(len(policy_map._cache) == 2)
-                self.assertTrue(pid in policy_map._cache)
+                self.assertTrue(len(policy_map.cache) == 2)
+                self.assertTrue(pid in policy_map.cache)
                 check(
                     pol.compute_single_action(dummy_obs, explore=False)[0], actions[pid]
                 )

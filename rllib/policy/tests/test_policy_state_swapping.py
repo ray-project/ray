@@ -98,8 +98,8 @@ class TestPolicyStateSwapping(unittest.TestCase):
                 # item now.
                 self.assertTrue(policy_map._deque[-1] == pid)
                 self.assertTrue(len(policy_map._deque) == capacity)
-                self.assertTrue(len(policy_map._cache) == capacity)
-                self.assertTrue(pid in policy_map._cache)
+                self.assertTrue(len(policy_map.cache) == capacity)
+                self.assertTrue(pid in policy_map.cache)
                 # Actually compute one action to trigger tracing operations of
                 # the graph. These may be performed lazily by the DL framework.
                 check(

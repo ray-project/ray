@@ -78,10 +78,11 @@ class PolicyMap(dict):
 
         self.policy_states_are_swappable = policy_states_are_swappable
 
+        # The actual cache with the in-memory policy objects.
+        self.cache: Dict[str, Policy] = {}
+
         # Set of keys that may be looked up (cached or not).
         self._valid_keys: Set[str] = set()
-        # The actual cache with the in-memory policy objects.
-        self._cache: Dict[str, Policy] = {}
         # The doubly-linked list holding the currently in-memory objects.
         self._deque = deque()
 
@@ -105,10 +106,10 @@ class PolicyMap(dict):
 
         # Item already in cache -> Rearrange deque (promote `item` to
         # "most recently used") and return it.
-        if item in self._cache:
+        if item in self.cache:
             self._deque.remove(item)
             self._deque.append(item)
-            return self._cache[item]
+            return self.cache[item]
 
         # Item not currently in cache -> Get from stash and - if at capacity -
         # remove leftmost one.
@@ -133,7 +134,7 @@ class PolicyMap(dict):
         else:
             policy = Policy.from_state(policy_state)
 
-        self._cache[item] = policy
+        self.cache[item] = policy
         # Promote the item to most recently one.
         self._deque.append(item)
 
@@ -143,7 +144,7 @@ class PolicyMap(dict):
     @override(dict)
     def __setitem__(self, key: PolicyID, value: Policy):
         # Item already in cache -> Rearrange deque.
-        if key in self._cache:
+        if key in self.cache:
             self._deque.remove(key)
 
         # Item not currently in cache -> store new value and - if at capacity -
@@ -157,7 +158,7 @@ class PolicyMap(dict):
         self._deque.append(key)
 
         # Update our cache.
-        self._cache[key] = value
+        self.cache[key] = value
         self._valid_keys.add(key)
 
     @with_lock
@@ -166,10 +167,10 @@ class PolicyMap(dict):
         # Make key invalid.
         self._valid_keys.remove(key)
         # Remove policy from memory if currently cached.
-        if key in self._cache:
-            policy = self._cache[key]
+        if key in self.cache:
+            policy = self.cache[key]
             self._close_session(policy)
-            del self._cache[key]
+            del self.cache[key]
         # Remove Ray object store reference (if this ID has already been stored
         # there), so the item gets garbage collected.
         if key in self._policy_state_refs:
@@ -249,8 +250,8 @@ class PolicyMap(dict):
         """
         # Get policy's state for writing to object store.
         dropped_policy_id = self._deque.popleft()
-        assert dropped_policy_id in self._cache
-        policy = self._cache[dropped_policy_id]
+        assert dropped_policy_id in self.cache
+        policy = self.cache[dropped_policy_id]
         policy_state = policy.get_state()
 
         # If we don't simply swap out vs an existing policy:
@@ -259,7 +260,7 @@ class PolicyMap(dict):
             self._close_session(policy)
 
         # Remove from memory. This will clear the tf Graph as well.
-        del self._cache[dropped_policy_id]
+        del self.cache[dropped_policy_id]
 
         # Store state in Ray object store.
         self._policy_state_refs[dropped_policy_id] = ray.put(policy_state)
