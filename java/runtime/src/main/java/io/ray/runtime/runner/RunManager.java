@@ -76,7 +76,8 @@ public class RunManager {
     return runCommand(command, 30, TimeUnit.SECONDS);
   }
 
-  public static String runCommand(List<String> command, long timeout, TimeUnit unit) throws IOException, InterruptedException {
+  public static String runCommand(List<String> command, long timeout, TimeUnit unit)
+      throws IOException, InterruptedException {
     LOGGER.info("Starting process with command: {}", Joiner.on(" ").join(command));
 
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
