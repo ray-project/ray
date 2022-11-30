@@ -3,7 +3,7 @@
 import importlib
 import sys
 
-from typing import Any, Type
+from typing import Any
 from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 
 from ray.util.annotations import PublicAPI

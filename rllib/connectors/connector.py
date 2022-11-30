@@ -14,7 +14,6 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
