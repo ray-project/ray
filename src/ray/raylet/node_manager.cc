@@ -3069,7 +3069,7 @@ void NodeManager::SetTaskFailureReason(const TaskID &task_id,
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
   ray::TaskFailureEntry entry(failure_reason);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
-  if (result.second) {
+  if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
                         "task, the previous failure will be removed. Task id: "
                      << task_id;
