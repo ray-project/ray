@@ -17,7 +17,7 @@ from ray.tests.test_memory_pressure import (
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
     with ray.init(
-        address='local',
+        address="local",
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
