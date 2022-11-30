@@ -81,6 +81,7 @@ class MyAlgo(Algorithm):
         num_env_steps = 0
 
         # PPO batch size fixed at 200.
+        # TODO: Use `max_env_steps=200` option of synchronous_parallel_sample instead.
         while num_env_steps < 200:
             ma_batches = synchronous_parallel_sample(
                 worker_set=self.workers, concat=False

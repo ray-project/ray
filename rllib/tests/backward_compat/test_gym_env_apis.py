@@ -86,7 +86,7 @@ class TestGymEnvAPIs(unittest.TestCase):
 
         self.assertRaisesRegex(
             ValueError,
-            "Your gymnasium.Env's `reset()` method",
+            ".*In particular, the `reset\\(\\)` method seems to be faulty..*",
             lambda: test_(),
         )
 

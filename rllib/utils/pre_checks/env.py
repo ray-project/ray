@@ -173,21 +173,23 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
-    sampled_action = env.action_space.sample()
     sampled_observation = env.observation_space.sample()
-    # Check if observation generated from stepping the environment is
-    # contained within the observation space
+    sampled_action = env.action_space.sample()
+
+    # Check, whether resetting works as expected.
     try:
-        obs_and_infos = env.reset(seed=42, options={})
+        env.reset()
     except Exception as e:
         raise ValueError(
-            "Your gymnasium.Env's `reset()` method raised an Exception! Make sure it's "
-            "signature is `reset(self, *, seed=None, options=None)`."
+            "Your gymnasium.Env's `reset()` method raised an Exception!"
         ) from e
 
     # No more gym < 0.26 support! Error and explain the user how to upgrade to
     # gymnasium.
     try:
+        # Important: Don't seed the env here by accident.
+        # User would not notice and get stuck with an always fixed seeded env.
+        obs_and_infos = env.reset(seed=None, options={})
         check_old_gym_env(reset_results=obs_and_infos)
     except Exception as e:
         raise ValueError(
@@ -197,6 +199,8 @@ def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
         ) from e
     reset_obs, reset_infos = obs_and_infos
 
+    # Check if observation generated from resetting the environment is
+    # contained within the observation space.
     if not env.observation_space.contains(reset_obs):
         temp_sampled_reset_obs = convert_element_to_space_type(
             reset_obs, sampled_observation
