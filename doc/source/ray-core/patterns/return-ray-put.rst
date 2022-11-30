@@ -9,9 +9,8 @@ Returning ray.put() ObjectRefs are considered anti-patterns for the following re
 - It disallows inlining small return values: Ray has a performance optimization to return small (<= 100KB) values inline directly to the caller, avoiding going through the distributed object store.
   On the other hand, ``ray.put()`` will unconditionally store the value to the object store which makes the optimization for small return values impossible.
 - Returning ObjectRefs involves extra distributed reference counting protocol which is slower than returning the values directly.
-- It's less fault tolerant: the worker process that calls ``ray.put()`` is the owner of the return value and the return value fates share with the owner meaning that if the worker process dies, the return value is lost.
-  In contrast, the caller process (often to be the driver) is the owner of the return value if it's returned directly.
-  Fate sharing with the caller process is better than fate sharing with the callee process given that it's the caller that uses the return value.
+- It's less fault tolerant: the worker process that calls ``ray.put()`` is the "owner" of the returned ``ObjectRef`` and the return value fate shares with the owner. If the worker process dies, the return value is lost.
+  In contrast, the caller process (often the driver) is the owner of the return value if it's returned directly.
 
 Code example
 ------------
@@ -30,7 +29,7 @@ If you want to return multiple values and you know the number of returns before 
     :start-after: __return_static_multi_values_start__
     :end-before: __return_static_multi_values_end__
 
-If you don't know the number of returns before calling the task, you should use the :ref:`dynamic generator <dynamic-generators>` if possible.
+If you don't know the number of returns before calling the task, you should use the :ref:`dynamic generator <dynamic-generators>` pattern if possible.
 
 .. literalinclude:: ../doc_code/anti_pattern_return_ray_put.py
     :language: python
