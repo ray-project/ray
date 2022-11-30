@@ -23,7 +23,8 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
                                          bool manual_flush)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
-      gcs_client_(std::move(gcs_client)) {
+      gcs_client_(std::move(gcs_client)),
+      task_events_data_() {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   if (report_interval_ms <= 0) {
     gcs_client_.reset();
@@ -143,8 +144,9 @@ void TaskEventBufferImpl::AddProfileEvent(TaskID task_id,
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
-  RAY_CHECK(recording_on_) << "Task state events reporting should have be on. Set "
-                              "RAY_task_events_report_interval_ms > 0 to turn on";
+  if (!recording_on_) {
+    return;
+  }
   std::unique_ptr<rpc::TaskEventData> cur_task_events_data =
       std::make_unique<rpc::TaskEventData>();
   {

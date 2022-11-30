@@ -109,6 +109,7 @@ build:asan --copt -fsanitize=address
 build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
+test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 # This config is only for running ASAN with LLVM toolchain on Linux.
 # https://github.com/google/sanitizers/issues/1017

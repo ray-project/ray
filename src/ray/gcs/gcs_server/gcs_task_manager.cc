@@ -22,8 +22,7 @@
 namespace ray {
 namespace gcs {
 
-GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
-    : io_service_(io_service) {
+GcsTaskManager::GcsTaskManager() {
   io_service_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("task_events");
     // Keep io_service_ alive.

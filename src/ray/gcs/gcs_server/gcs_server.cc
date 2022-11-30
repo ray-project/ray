@@ -626,10 +626,10 @@ void GcsServer::InitGcsWorkerManager() {
 }
 
 void GcsServer::InitGcsTaskManager() {
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(task_events_io_service_);
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
   // Register service.
-  task_info_service_.reset(
-      new rpc::TaskInfoGrpcService(task_events_io_service_, *gcs_task_manager_));
+  task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
+                                                        *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
 }
 

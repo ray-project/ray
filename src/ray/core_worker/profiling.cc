@@ -32,7 +32,7 @@ ProfileEvent::ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
                            const std::string &event_name,
                            TaskID task_id,
                            const std::string &worker_type,
-                           const std::string &worker_id, 
+                           const std::string &worker_id,
                            const std::string &node_ip_address)
     : task_event_buffer_(task_event_buffer),
       task_id_(task_id),

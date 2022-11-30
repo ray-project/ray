@@ -818,7 +818,7 @@ Status StatsInfoAccessor::AsyncGetAll(
 }
 
 Status TaskInfoAccessor::AsyncAddTaskEventData(
-    std::unique_ptr<rpc::TaskEventData> data_ptr, const StatusCallback &callback) {
+    std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
   RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
   rpc::AddTaskEventDataRequest request;
   // Prevent copy here
