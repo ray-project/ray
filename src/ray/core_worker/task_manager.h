@@ -101,11 +101,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> key)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              ray::stats::STATS_tasks.Record(task_counter_.Get(key),
-                                             {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
-                                              {"Name", std::get<0>(key)},
-                                              {"IsRetry", std::get<2>(key) ? "1" : "0"},
-                                              {"Source", "owner"}});
+              ray::stats::STATS_tasks.Record(
+                  task_counter_.Get(key),
+                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name", std::get<0>(key)},
+                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                   {"Source", "owner"}});
             });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -318,7 +319,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     void SetStatus(rpc::TaskStatus new_status) {
       auto is_retry = IsRetry();
-      counter.Swap({spec.GetName(), status, is_retry}, {spec.GetName(), new_status, is_retry});
+      counter.Swap({spec.GetName(), status, is_retry},
+                   {spec.GetName(), new_status, is_retry});
       status = new_status;
     }
 
@@ -335,13 +337,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
-    bool IsRetry() {
-      return num_successful_executions_ > 0;
-    }
+    bool IsRetry() { return num_successful_executions_ > 0; }
 
-    int NumSuccessfulExecutions() {
-      return num_successful_executions_;
-    }
+    int NumSuccessfulExecutions() { return num_successful_executions_; }
 
     void IncNumSuccessfulExecutions() {
       if (num_successful_executions_ == 0) {

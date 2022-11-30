@@ -167,7 +167,9 @@ class TaskCounter {
     RAY_CHECK(num_tasks_running_ >= 0);
   }
 
-  void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status, bool is_retry) {
+  void SetMetricStatus(const std::string &func_name,
+                       rpc::TaskStatus status,
+                       bool is_retry) {
     absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Increment({func_name, is_retry});
@@ -178,7 +180,9 @@ class TaskCounter {
     }
   }
 
-  void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status, bool is_retry) {
+  void UnsetMetricStatus(const std::string &func_name,
+                         rpc::TaskStatus status,
+                         bool is_retry) {
     absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Decrement({func_name, is_retry});

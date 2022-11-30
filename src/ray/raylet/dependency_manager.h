@@ -54,33 +54,35 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
-    waiting_tasks_counter_.SetOnChangeCallback([this](std::pair<std::string, bool> key) mutable {
-      int64_t num_total = waiting_tasks_counter_.Get(key);
-      // Of the waiting tasks of this name, some fraction may be inactive (blocked on
-      // object store memory availability). Get this breakdown by querying the pull
-      // manager.
-      int64_t num_inactive = std::min(
-          num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
-      // Offset the metric values recorded from the owner process.
-      ray::stats::STATS_tasks.Record(
-          -num_total,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-           {"Name", key.first},
-           {"IsRetry", key.second ? "1" : "0"},
-           {"Source", "dependency_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_total - num_inactive,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-           {"Name", key.first},
-           {"IsRetry", key.second ? "1" : "0"},
-           {"Source", "dependency_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_inactive,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", key.first},
-           {"IsRetry", key.second ? "1" : "0"},
-           {"Source", "dependency_manager"}});
-    });
+    waiting_tasks_counter_.SetOnChangeCallback(
+        [this](std::pair<std::string, bool> key) mutable {
+          int64_t num_total = waiting_tasks_counter_.Get(key);
+          // Of the waiting tasks of this name, some fraction may be inactive (blocked on
+          // object store memory availability). Get this breakdown by querying the pull
+          // manager.
+          int64_t num_inactive = std::min(
+              num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
+          // Offset the metric values recorded from the owner process.
+          ray::stats::STATS_tasks.Record(
+              -num_total,
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
+          ray::stats::STATS_tasks.Record(
+              num_total - num_inactive,
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
+          ray::stats::STATS_tasks.Record(
+              num_inactive,
+              {{"State",
+                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
+        });
   }
 
   /// Check whether an object is locally available.
@@ -229,7 +231,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   struct TaskDependencies {
     TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
                      CounterMap<std::pair<std::string, bool>> &counter_map,
-                     const std::string &task_name, bool is_retry)
+                     const std::string &task_name,
+                     bool is_retry)
         : dependencies(std::move(deps)),
           num_missing_dependencies(dependencies.size()),
           waiting_task_counter_map(counter_map),

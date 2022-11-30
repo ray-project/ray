@@ -169,7 +169,8 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id,
     const std::vector<rpc::ObjectReference> &required_objects,
-    const std::string &task_name, bool is_retry) {
+    const std::string &task_name,
+    bool is_retry) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
 
