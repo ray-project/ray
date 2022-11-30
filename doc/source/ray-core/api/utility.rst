@@ -7,6 +7,8 @@ Utility
 
    ray.util.ActorPool
    ray.util.queue.Queue
+   ray.util.concurrent.futures.RayExecutor
+
    ray.nodes
    ray.cluster_resources
    ray.available_resources
