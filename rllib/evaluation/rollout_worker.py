@@ -1914,7 +1914,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
             capacity=config.policy_map_capacity,
-            policies_swappable=config.policies_swappable,
+            policy_states_are_swappable=config.policy_states_are_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}

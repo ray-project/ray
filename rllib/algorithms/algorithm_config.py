@@ -283,7 +283,7 @@ class AlgorithmConfig:
             lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
         )
         self.policies_to_train = None
-        self.policies_swappable = False
+        self.policy_states_are_swappable = False
         self.observation_fn = None
         self.count_steps_by = "env_steps"
 
@@ -477,7 +477,7 @@ class AlgorithmConfig:
                         "policy_map_capacity",
                         "policy_mapping_fn",
                         "policies_to_train",
-                        "policies_swappable",
+                        "policy_states_are_swappable",
                         "observation_fn",
                         "count_steps_by",
                     ]
@@ -1625,7 +1625,7 @@ class AlgorithmConfig:
         policies_to_train: Optional[
             Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = NotProvided,
-        policies_swappable: Optional[bool] = NotProvided,
+        policy_states_are_swappable: Optional[bool] = NotProvided,
         observation_fn: Optional[Callable] = NotProvided,
         count_steps_by: Optional[str] = NotProvided,
         # Deprecated args:
@@ -1658,10 +1658,19 @@ class AlgorithmConfig:
                 or not, given the particular batch). This allows you to have a policy
                 trained only on certain data (e.g. when playing against a certain
                 opponent).
-            policies_swappable: Whether all policies in the multi-agent policy map
-                (`self.policies`) can be "swapped out" by a simple
-                `s = A.get_state(); B.set_state(s)`, where `A` and `B` are policy
-                instances in the map.
+            policy_states_are_swappable: Whether all Policy objects in this map can be
+                "swapped out" via a simple `state = A.get_state(); B.set_state(state)`,
+                where `A` and `B` are policy instances in this map. You should set
+                this to True for significantly speeding up the PolicyMap's cache lookup
+                times, iff your policies all share the same neural network
+                architecture and optimizer types. If True, the PolicyMap will not
+                have to garbage collect old, least recently used policies, but instead
+                keep them in memory and simply override their state with the state of
+                the most recently accessed one.
+                For example, in a league-based training setup, you might have 100s of
+                the same policies in your map (playing against each other in various
+                combinations), but all of them share the same state structure
+                (are "swappable").
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
@@ -1759,8 +1768,8 @@ class AlgorithmConfig:
                     )
             self.policies_to_train = policies_to_train
 
-        if policies_swappable is not None:
-            self.policies_swappable = policies_swappable
+        if policy_states_are_swappable is not None:
+            self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
 
