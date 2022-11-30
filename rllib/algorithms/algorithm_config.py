@@ -617,7 +617,7 @@ class AlgorithmConfig:
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
 
-        # RLModule API only works with connectors. 
+        # RLModule API only works with connectors.
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
@@ -1926,7 +1926,8 @@ class AlgorithmConfig:
                 a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
             _enable_rl_module_api: Experimental flag.
-                If True, the RLlib Module API will be used for creating the neural network modules instead of the ModelV2 API.
+                If True, the RLlib Module API will be used for creating the neural 
+                network modules instead of the ModelV2 API.
 
         Returns:
             This updated AlgorithmConfig object.

@@ -95,8 +95,7 @@ class TestPPO(unittest.TestCase):
             config, frameworks=("torch"), with_eager_tracing=True
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
-            # for env in ["CartPole-v1", "Pendulum-v1"]:
-            for env in ["CartPole-v1"]:
+            for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
                 # TODO (Kourosh): for now just do lstm=False
                 for lstm in [False]:
@@ -141,7 +140,7 @@ class TestPPO(unittest.TestCase):
             .rollouts(
                 # Run locally.
                 num_rollout_workers=0,
-                enable_connectors=True
+                enable_connectors=True,
             )
             .experimental(_enable_rl_module_api=True)
         )
