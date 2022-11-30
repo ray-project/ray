@@ -15,6 +15,8 @@ Utility
    ray.util.accelerators.tpu.get_current_pod_worker_count
    ray.util.accelerators.tpu.get_current_pod_name
 
+   ray.util.concurrent.futures.RayExecutor
+
    ray.nodes
    ray.cluster_resources
    ray.available_resources
