@@ -1,8 +1,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/rpc/test/helloworld.pb.h"
-#include "src/ray/rpc/test/helloworld.grpc.pb.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.pb.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
 
 using namespace ray;
 using namespace ray::rpc;
@@ -63,6 +63,6 @@ int main() {
   GreeterGrpcService grpc_service(main_service, handler);
   server.RegisterService(grpc_service);
   server.Run();
-  
+  t.join();
   return 0;
 }
