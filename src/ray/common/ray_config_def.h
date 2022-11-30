@@ -85,10 +85,14 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
 <<<<<<< HEAD
+<<<<<<< HEAD
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 =======
 RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 >>>>>>> ae0f8d72f (Revert "[core] OOM killer: adjust defaults (#30553)" (#30652))
+=======
+RAY_CONFIG(float, memory_usage_threshold, 0.95)
+>>>>>>> abbc46475 ([core] OOM killer: 2.2 readiness (#30682))
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
@@ -101,7 +105,7 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// This value is useful for larger host where the memory_usage_threshold could
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)512 * 1024 * 1024)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
@@ -403,7 +407,7 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
-RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 0)
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
