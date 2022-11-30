@@ -4,7 +4,6 @@ halfcheetah-rand-direc-maml:
     stop:
         training_iteration: 1000    
     config:
-        horizon: 100
         rollout_fragment_length: 100
         num_envs_per_worker: 20
         inner_adaptation_steps: 1

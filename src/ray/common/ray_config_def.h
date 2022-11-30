@@ -84,7 +84,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// memory_usage_threshold_fraction and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.95)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
@@ -97,7 +97,7 @@ RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
 /// This value is useful for larger host where the memory_usage_threshold_fraction could
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)512 * 1024 * 1024)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
@@ -398,7 +398,7 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
-RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -710,9 +710,16 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// A feature flag to enable pull based health check.
 RAY_CONFIG(bool, pull_based_healthcheck, true)
+/// The following are configs for the health check. They are borrowed
+/// from k8s health probe (shorturl.at/jmTY3)
+
+/// The delay to send the first health check.
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+/// The interval between two health check.
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+/// The timeout for a health check.
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+/// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
 /// Use madvise to prevent worker/raylet coredumps from including

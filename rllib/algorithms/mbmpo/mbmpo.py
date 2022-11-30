@@ -110,8 +110,6 @@ class MBMPOConfig(AlgorithmConfig):
         self.maml_optimizer_steps = 8
         # Inner adaptation step size.
         self.inner_lr = 1e-3
-        # Horizon of the environment (200 in MB-MPO paper).
-        self.horizon = 200
         # Dynamics ensemble hyperparameters.
         self.dynamics_model = {
             "custom_model": DynamicsEnsembleCustomModel,
@@ -174,7 +172,6 @@ class MBMPOConfig(AlgorithmConfig):
         inner_adaptation_steps: Optional[int] = NotProvided,
         maml_optimizer_steps: Optional[int] = NotProvided,
         inner_lr: Optional[float] = NotProvided,
-        horizon: Optional[int] = NotProvided,
         dynamics_model: Optional[dict] = NotProvided,
         custom_vector_env: Optional[type] = NotProvided,
         num_maml_steps: Optional[int] = NotProvided,
@@ -200,7 +197,6 @@ class MBMPOConfig(AlgorithmConfig):
             maml_optimizer_steps: Number of MAML steps per meta-update iteration
                 (PPO steps).
             inner_lr: Inner adaptation step size.
-            horizon: Horizon of the environment (200 in MB-MPO paper).
             dynamics_model: Dynamics ensemble hyperparameters.
             custom_vector_env: Workers sample from dynamics models, not from actual
                 envs.
@@ -236,8 +232,6 @@ class MBMPOConfig(AlgorithmConfig):
             self.maml_optimizer_steps = maml_optimizer_steps
         if inner_lr is not NotProvided:
             self.inner_lr = inner_lr
-        if horizon is not NotProvided:
-            self.horizon = horizon
         if dynamics_model is not NotProvided:
             self.dynamics_model.update(dynamics_model)
         if custom_vector_env is not NotProvided:
