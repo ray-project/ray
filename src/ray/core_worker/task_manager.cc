@@ -377,14 +377,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
+    it->second.num_successful_executions++;
+
     if (is_application_error) {
       it->second.SetStatus(rpc::TaskStatus::FAILED);
     } else {
       it->second.SetStatus(rpc::TaskStatus::FINISHED);
     }
-    // ORDER: this must be called after setting the status above to FAILED/FINISHED.
-    // Otherwise, we may record metrics incorrectly under "IsRetry=1".
-    it->second.num_successful_executions++;
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of

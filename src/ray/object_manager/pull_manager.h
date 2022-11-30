@@ -233,7 +233,7 @@ class PullManager {
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const std::pair<std::string, bool> task_name;
+    const std::pair<std::string, bool> task_key;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);
@@ -288,7 +288,7 @@ class PullManager {
       requests.emplace(request_id, request);
       if (request.IsPullable()) {
         inactive_requests.emplace(request_id);
-        inactive_by_name.Increment(request.task_name);
+        inactive_by_name.Increment(request.task_key);
         RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
       }
     }
@@ -296,16 +296,16 @@ class PullManager {
     void ActivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(inactive_requests.erase(request_id), 1u);
       active_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_name;
-      inactive_by_name.Decrement(task_name);
+      auto task_name = map_find_or_die(requests, request_id).task_key;
+      inactive_by_name.Decrement(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
     void DeactivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(active_requests.erase(request_id), 1u);
       inactive_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_name;
-      inactive_by_name.Increment(task_name);
+      auto task_name = map_find_or_die(requests, request_id).task_key;
+      inactive_by_name.Increment(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
@@ -313,8 +313,8 @@ class PullManager {
       RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_name;
-      inactive_by_name.Increment(task_name);
+      auto task_name = map_find_or_die(requests, request_id).task_key;
+      inactive_by_name.Increment(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
@@ -326,21 +326,21 @@ class PullManager {
       auto it = inactive_requests.find(request_id);
       if (it != inactive_requests.end()) {
         inactive_requests.erase(it);
-        auto task_name = map_find_or_die(requests, request_id).task_name;
-        inactive_by_name.Decrement(task_name);
+        auto task_name = map_find_or_die(requests, request_id).task_key;
+        inactive_by_name.Decrement(task_key);
         RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
       }
     }
 
     void RemoveBundlePullRequest(uint64_t request_id) {
-      auto task_name = map_find_or_die(requests, request_id).task_name;
+      auto task_name = map_find_or_die(requests, request_id).task_key;
       requests.erase(request_id);
       if (active_requests.find(request_id) != active_requests.end()) {
         active_requests.erase(request_id);
       }
       if (inactive_requests.find(request_id) != inactive_requests.end()) {
         inactive_requests.erase(request_id);
-        inactive_by_name.Decrement(task_name);
+        inactive_by_name.Decrement(task_key);
       }
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
