@@ -216,11 +216,9 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env,
                                                                    jclass,
                                                                    jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
-  rpc::Address owner_address;
-  // Ignore the outcome for now.
   const auto &rpc_address =
       CoreWorkerProcess::GetCoreWorker().GetOwnerAddressOrDie(object_id);
-  return NativeStringToJavaByteArray(env, owner_address.SerializeAsString());
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
 }
 
 JNIEXPORT jbyteArray JNICALL
