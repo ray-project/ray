@@ -25,7 +25,7 @@ In this example, we will save batches of experiences generated during online tra
 
     $ rllib train \
         --run=PG \
-        --env=CartPole-v0 \
+        --env=CartPole-v1 \
         --config='{"output": "/tmp/cartpole-out", "output_max_file_size": 5000000}' \
         --stop='{"timesteps_total": 100000}'
 
@@ -45,7 +45,7 @@ Then, we can tell DQN to train using these previously generated experiences with
 
     $ rllib train \
         --run=DQN \
-        --env=CartPole-v0 \
+        --env=CartPole-v1 \
         --config='{
             "input": "/tmp/cartpole-out",
             "explore": false}'
@@ -89,7 +89,7 @@ As an example, we generate an evaluation dataset for off-policy estimation:
 
     $ rllib train \
         --run=PG \
-        --env=CartPole-v0 \
+        --env=CartPole-v1 \
         --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
         --stop='{"timesteps_total": 10000}'
 
@@ -110,7 +110,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
 
     config = (
         DQNConfig()
-        .environment(env="CartPole-v0")
+        .environment(env="CartPole-v1")
         .framework("torch")
         .offline_data(input_="/tmp/cartpole-out")
         .evaluation(
@@ -176,7 +176,7 @@ Example: Converting external experiences to batch format
 --------------------------------------------------------
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
+This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
 
 .. literalinclude:: ../../../rllib/examples/saving_experiences.py
    :language: python
@@ -206,7 +206,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 
     $ rllib train \
         --run=DQN \
-        --env=CartPole-v0 \
+        --env=CartPole-v1 \
         --config='{
             "input": {
                 "/tmp/cartpole-out": 0.4,
@@ -323,8 +323,6 @@ You can configure experience input for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 
 .. code-block:: python
@@ -420,8 +418,6 @@ You can configure experience output for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 .. code-block:: python
 

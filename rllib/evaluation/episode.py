@@ -89,7 +89,7 @@ class Episode:
         self.total_reward: float = 0.0
         self.length: int = 0
         self.started = False
-        self.episode_id: int = random.randrange(int(2e9))
+        self.episode_id: int = random.randrange(int(1e18))
         self.env_id = env_id
         self.worker = worker
         self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
@@ -115,19 +115,6 @@ class Episode:
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
-
-    @DeveloperAPI
-    def soft_reset(self) -> None:
-        """Clears rewards and metrics, but retains RNN and other state.
-
-        This is used to carry state across multiple logical episodes in the
-        same env (i.e., if `soft_horizon` is set).
-        """
-        self.length = 0
-        self.episode_id = random.randrange(int(2e9))
-        self.total_reward = 0.0
-        self.agent_rewards = defaultdict(float)
-        self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
     def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> PolicyID:

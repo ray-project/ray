@@ -230,20 +230,10 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message GetGcsSchedulingStatsRequest {}
-
-message GetGcsSchedulingStatsReply {
-  GcsStatus status = 1;
-  repeated TaskSpec infeasible_tasks = 2;
-  repeated TaskSpec ready_tasks = 3;
-}
-
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Check alive.
-  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message AddProfileDataRequest {
@@ -608,9 +598,6 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-  // Get current scheduling stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
-      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
@@ -632,5 +619,7 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

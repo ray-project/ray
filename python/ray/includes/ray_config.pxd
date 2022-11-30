@@ -71,8 +71,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool use_ray_syncer() const
 
-        c_bool REDIS_ENABLE_SSL() const
-
         c_string REDIS_CA_CERT() const
 
         c_string REDIS_CA_PATH() const
@@ -82,3 +80,15 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_string REDIS_CLIENT_KEY() const
 
         c_string REDIS_SERVER_NAME() const
+
+        c_bool pull_based_healthcheck() const
+
+        int64_t health_check_initial_delay_ms() const
+
+        int64_t health_check_period_ms() const
+
+        int64_t health_check_timeout_ms() const
+
+        int64_t health_check_failure_threshold() const
+
+        uint64_t memory_monitor_interval_ms() const

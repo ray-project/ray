@@ -41,7 +41,7 @@ Ray actors are essentially stateful services that anyone with an instance (a han
     :start-after: __defining_actor_start__
     :end-before: __defining_actor_end__
 
-We define a Ray actor by decorating a normal Python class with :ref:`ray.remote() <ray-remote-ref>`.
+We define a Ray actor by decorating a normal Python class with :ref:`ray.remote <ray-remote-ref>`.
 The progress actor has ``report_progress()`` method that will be called by sampling tasks to update their progress individually
 and ``get_progress()`` method to get the overall progress.
 
@@ -55,7 +55,7 @@ Ray tasks are stateless functions. They execute asynchronously, and run in paral
     :start-after: __defining_task_start__
     :end-before: __defining_task_end__
 
-To convert a normal Python function as a Ray task, we decorate the function with :ref:`ray.remote() <ray-remote-ref>`.
+To convert a normal Python function as a Ray task, we decorate the function with :ref:`ray.remote <ray-remote-ref>`.
 The sampling task takes a progress actor handle as an input and reports progress to it.
 The above code shows an example of calling actor methods from tasks.
 

@@ -120,7 +120,7 @@ def get_ddpg_tf_policy(
             self,
         ) -> List["tf.keras.optimizers.Optimizer"]:
             """Create separate optimizers for actor & critic losses."""
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 self.global_step = get_variable(0, tf_name="global_step")
                 self._actor_optimizer = tf.keras.optimizers.Adam(
                     learning_rate=self.config["actor_lr"]
@@ -143,7 +143,7 @@ def get_ddpg_tf_policy(
         def compute_gradients_fn(
             self, optimizer: LocalOptimizer, loss: TensorType
         ) -> ModelGradients:
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 tape = optimizer.tape
                 pol_weights = self.model.policy_variables()
                 actor_grads_and_vars = list(
@@ -203,7 +203,7 @@ def get_ddpg_tf_policy(
                 self._critic_grads_and_vars
             )
             # Increment global step & apply ops.
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 self.global_step.assign_add(1)
                 return tf.no_op()
             else:
@@ -326,7 +326,7 @@ def get_ddpg_tf_policy(
             # Compute RHS of bellman equation.
             q_t_selected_target = tf.stop_gradient(
                 tf.cast(train_batch[SampleBatch.REWARDS], tf.float32)
-                + gamma ** n_step * q_tp1_best_masked
+                + gamma**n_step * q_tp1_best_masked
             )
 
             # Compute the error (potentially clipped).

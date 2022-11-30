@@ -50,7 +50,8 @@ class TaskFinisherInterface {
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true) = 0;
 
-  virtual void MarkTaskWaitingForExecution(const TaskID &task_id) = 0;
+  virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                           const NodeID &node_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -75,7 +76,8 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::pair<std::string, rpc::TaskStatus>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
+using RetryTaskCallback =
+    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -97,12 +99,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     task_counter_.SetOnChangeCallback(
-        [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
-          ray::stats::STATS_tasks.Record(value,
-                                         {{"State", rpc::TaskStatus_Name(key.second)},
-                                          {"Name", key.first},
-                                          {"Source", "owner"}});
-        });
+        [this](const std::pair<std::string, rpc::TaskStatus> key)
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+              ray::stats::STATS_tasks.Record(task_counter_.Get(key),
+                                             {{"State", rpc::TaskStatus_Name(key.second)},
+                                              {"Name", key.first},
+                                              {"Source", "owner"}});
+            });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -275,7 +278,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Record that the given task is scheduled and wait for execution.
   ///
   /// \param[in] task_id The task that is will be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id) override;
+  /// \param[in] node_id The node id that this task wil be running.
+  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -290,6 +294,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;
+
+  /// Record OCL metrics.
+  void RecordMetrics();
 
  private:
   struct TaskEntry {
@@ -314,6 +321,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     }
 
     rpc::TaskStatus GetStatus() const { return status; }
+
+    // Get the NodeID where the task is executed.
+    NodeID GetNodeId() const { return node_id_; }
+    // Set the NodeID where the task is executed.
+    void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
@@ -364,6 +376,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    private:
     // The task's current execution status.
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
+    // The node id where task is executed.
+    NodeID node_id_;
   };
 
   /// Update nested ref count info and store the in-memory value for a task's

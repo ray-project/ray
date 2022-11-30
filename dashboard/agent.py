@@ -6,6 +6,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import signal
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -13,7 +14,7 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
+from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -38,7 +39,7 @@ _RAYLET_LOG_MAX_PUBLISH_LINES = 20
 
 # Reads at most this amount of Raylet logs from the tail, for publishing and
 # checking if the Raylet was terminated gracefully.
-_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024**2
 
 try:
     create_task = asyncio.create_task
@@ -70,6 +71,7 @@ class DashboardAgent:
         runtime_env_dir: str,
         logging_params: dict,
         agent_id: int,
+        session_name: str,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -93,6 +95,7 @@ class DashboardAgent:
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
         self.agent_id = agent_id
+        self.session_name = session_name
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -172,9 +175,38 @@ class DashboardAgent:
             """Check if raylet is dead and fate-share if it is."""
             try:
                 curr_proc = psutil.Process()
+                parent_death_cnt = 0
                 while True:
                     parent = curr_proc.parent()
-                    if parent is None or parent.pid == 1 or self.ppid != parent.pid:
+                    # If the parent is dead, it is None.
+                    parent_gone = parent is None
+                    init_assigned_for_parent = False
+                    parent_changed = False
+
+                    if parent:
+                        # Sometimes, the parent is changed to the `init` process.
+                        # In this case, the parent.pid is 1.
+                        init_assigned_for_parent = parent.pid == 1
+                        # Sometimes, the parent is dead, and the pid is reused
+                        # by other processes. In this case, this condition is triggered.
+                        parent_changed = self.ppid != parent.pid
+
+                    if parent_gone or init_assigned_for_parent or parent_changed:
+                        parent_death_cnt += 1
+                        logger.warning(
+                            f"Raylet is considered dead {parent_death_cnt} X. "
+                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
+                            f"will kill itself. Parent: {parent}, "
+                            f"parent_gone: {parent_gone}, "
+                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
+                            f"parent_changed: {parent_changed}."
+                        )
+                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
+                            await asyncio.sleep(
+                                dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
+                            )
+                            continue
+
                         log_path = os.path.join(self.log_dir, "raylet.out")
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
@@ -224,11 +256,13 @@ class DashboardAgent:
                         else:
                             logger.info(msg)
                         sys.exit(0)
+                    else:
+                        parent_death_cnt = 0
                     await asyncio.sleep(
-                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
+                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:
@@ -262,9 +296,10 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        internal_kv._internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]),
+        await self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
+            json.dumps([http_port, self.grpc_port]).encode(),
+            True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
@@ -418,7 +453,7 @@ if __name__ == "__main__":
         help=(
             "Minimal agent only contains a subset of features that don't "
             "require additional dependencies installed when ray is installed "
-            "by `pip install ray[default]`."
+            "by `pip install 'ray[default]'`."
         ),
     )
     parser.add_argument(
@@ -433,8 +468,16 @@ if __name__ == "__main__":
         help="ID to report when registering with raylet",
         default=os.getpid(),
     )
+    parser.add_argument(
+        "--session-name",
+        required=False,
+        type=str,
+        default=None,
+        help="The session name (cluster id) of this cluster.",
+    )
 
     args = parser.parse_args()
+
     try:
         logging_params = dict(
             logging_level=args.logging_level,
@@ -444,7 +487,11 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
-        setup_component_logger(**logging_params)
+        logger = setup_component_logger(**logging_params)
+
+        # Initialize event loop, see Dashboard init code for caveat
+        # w.r.t grpc server init in the DashboardAgent initializer.
+        loop = ray._private.utils.get_or_create_event_loop()
 
         agent = DashboardAgent(
             args.node_ip_address,
@@ -463,9 +510,23 @@ if __name__ == "__main__":
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
             agent_id=args.agent_id,
+            session_name=args.session_name,
         )
 
-        loop = asyncio.get_event_loop()
+        def sigterm_handler():
+            logger.warning("Exiting with SIGTERM immediately...")
+            # Exit code 0 will be considered as an expected shutdown
+            os._exit(signal.SIGTERM)
+
+        if sys.platform != "win32":
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the agent. Most of the underlying
+            # async tasks run by the agent head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
         loop.run_until_complete(agent.run())
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")

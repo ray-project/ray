@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -178,7 +179,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                                                           {actor_creation_return_id});
     }
 
-    retry_task_callback_(spec, /*delay=*/false);
+    RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                  << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
+    retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
   }
 
   return true;
@@ -460,7 +463,14 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                 << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId();
-    retry_task_callback_(spec, /*delay=*/true);
+    // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
+    // on by some tests.
+    int32_t delay_ms = task_failed_due_to_oom
+                           ? ExponentialBackoff::GetBackoffMs(
+                                 spec.AttemptNumber(),
+                                 RayConfig::instance().task_oom_retry_delay_base_ms())
+                           : RayConfig::instance().task_retry_delay_ms();
+    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -764,7 +774,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
+                                              const NodeID &node_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
@@ -772,6 +783,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  it->second.SetNodeId(node_id);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -789,14 +801,17 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
     const auto &task_state = task_entry.GetStatus();
+    const auto &node_id = task_entry.GetNodeId();
     rpc::TaskType type;
     if (task_spec.IsNormalTask()) {
       type = rpc::TaskType::NORMAL_TASK;
     } else if (task_spec.IsActorCreationTask()) {
       type = rpc::TaskType::ACTOR_CREATION_TASK;
+      entry->set_actor_id(task_spec.ActorCreationId().Binary());
     } else {
       RAY_CHECK(task_spec.IsActorTask());
       type = rpc::TaskType::ACTOR_TASK;
+      entry->set_actor_id(task_spec.ActorId().Binary());
     }
     entry->set_type(type);
     entry->set_name(task_spec.GetName());
@@ -804,6 +819,9 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
     entry->set_scheduling_state(task_state);
     entry->set_job_id(task_spec.JobId().Binary());
+    if (!node_id.IsNil()) {
+      entry->set_node_id(node_id.Binary());
+    }
     entry->set_task_id(task_spec.TaskId().Binary());
     entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
@@ -812,6 +830,11 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
   reply->set_tasks_total(total);
+}
+
+void TaskManager::RecordMetrics() {
+  absl::MutexLock lock(&mu_);
+  task_counter_.FlushOnChangeCallbacks();
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

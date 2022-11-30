@@ -57,6 +57,17 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
+void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
+                                      rpc::CheckAliveReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_ray_version(kRayVersion);
+  for (const auto &addr : request.raylet_address()) {
+    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
+  }
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -181,8 +192,10 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
+    auto node_addr =
+        node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
+    node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
-
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
       listener(node);
@@ -202,6 +215,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
+    node_map_.left.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
