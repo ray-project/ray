@@ -180,15 +180,11 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
   } = worker;
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
-  const workerLogUrl = coreWorker
-    ? newIA
-      ? `/new/logs/${encodeURIComponent(logUrl)}?fileName=${
-          coreWorker.workerId
-        }`
-      : `/log/${encodeURIComponent(logUrl)}?fileName=${coreWorker.workerId}`
-    : newIA
-    ? `/new/logs/${encodeURIComponent(logUrl)}`
-    : `/log/${encodeURIComponent(logUrl)}`;
+  const workerLogUrl =
+    (newIA
+      ? `/new/logs/${encodeURIComponent(logUrl)}`
+      : `/log/${encodeURIComponent(logUrl)}`) +
+    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
