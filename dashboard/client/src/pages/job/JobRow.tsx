@@ -41,15 +41,10 @@ export const JobRow = ({
 
   const progressBar = (() => {
     if (!driverExists) {
-      return "-";
+      return <MiniTaskProgressBar />;
     }
     if (!progress || error) {
-      if (status === "SUCCEEDED" || status === "FAILED") {
-        // Show a fake all-green progress bar.
-        return <MiniTaskProgressBar numFinished={1} showTooltip={false} />;
-      } else {
-        return "unavailable";
-      }
+      return "unavailable";
     }
     if (status === "SUCCEEDED" || status === "FAILED") {
       // TODO(aguo): Show failed tasks in progress bar once supported.
