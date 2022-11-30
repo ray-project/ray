@@ -1299,7 +1299,7 @@ class Node:
                 dead.
         """
         self._kill_process_type(
-            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive, wait=True
+            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive
         )
         # Clear GCS client and address to indicate no GCS server is running.
         self._gcs_address = None
