@@ -13,12 +13,13 @@ class RayExecutor(Executor):
     the specified tasks over a Ray cluster instead of multiple processes or
     threads.
     """
+
     _shutdown_lock = False
     _futures = {}
 
     def __init__(self, **kwargs):
-        """
-        Initialises a new RayExecutor instance which distributes tasks over a Ray cluster.
+        """Initialises a new RayExecutor instance which distributes tasks over
+        a Ray cluster.
 
         Args:
             All keyword arguments are passed to ray.init() (see
@@ -35,9 +36,11 @@ class RayExecutor(Executor):
         """
         The following is necessary because `@ray.remote` is only available at runtime.
         """
+
         @ray.remote
         def remote_fn(fn, *args, **kwargs):
             return fn(*args, **kwargs)
+
         self.__remote_fn = remote_fn
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
