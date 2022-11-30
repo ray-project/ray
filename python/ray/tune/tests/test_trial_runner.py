@@ -3,7 +3,6 @@ import sys
 import unittest
 
 import ray
-from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 
 from ray import tune
@@ -19,9 +18,6 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrialRunnerTest(unittest.TestCase):
-    def _resourceManager(self):
-        return PlacementGroupResourceManager()
-
     def setUp(self):
         _register_all()  # re-register the evicted objects
 
@@ -34,7 +30,7 @@ class TrialRunnerTest(unittest.TestCase):
         def train(config, reporter):
             reporter(timesteps_total=1)
 
-        trial_executor = RayTrialExecutor(resource_manager=self._resourceManager())
+        trial_executor = RayTrialExecutor()
         register_trainable("f1", train)
 
         experiments = {
@@ -61,10 +57,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
         snapshot = TrialStatusSnapshot()
-        runner = TrialRunner(
-            callbacks=[TrialStatusSnapshotTaker(snapshot)],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory(
@@ -86,10 +79,7 @@ class TrialRunnerTest(unittest.TestCase):
         # Since each trial will occupy the full custom resources,
         # there are at most 1 trial running at any given moment.
         snapshot = TrialStatusSnapshot()
-        runner = TrialRunner(
-            callbacks=[TrialStatusSnapshotTaker(snapshot)],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "a": 2}]),
@@ -109,10 +99,7 @@ class TrialRunnerTest(unittest.TestCase):
         # Since each trial will occupy the full custom resources,
         # there are at most 1 trial running at any given moment.
         snapshot = TrialStatusSnapshot()
-        runner = TrialRunner(
-            callbacks=[TrialStatusSnapshotTaker(snapshot)],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1}, {"a": 2}]),
@@ -129,9 +116,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner(
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
-        )
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=0.5),
         }
@@ -168,10 +153,7 @@ class TrialRunnerTest(unittest.TestCase):
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
 
         snapshot = TrialStatusSnapshot()
-        runner = TrialRunner(
-            callbacks=[TrialStatusSnapshotTaker(snapshot)],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         for t in trials:
             runner.add_trial(t)
 
@@ -189,10 +171,7 @@ class TrialRunnerTest(unittest.TestCase):
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         snapshot = TrialStatusSnapshot()
-        runner = TrialRunner(
-            callbacks=[TrialStatusSnapshotTaker(snapshot)],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         for t in trials:
             runner.add_trial(t)
 
@@ -204,9 +183,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testMultiStepRun2(self):
         """Checks that runner.step throws when overstepping."""
         ray.init(num_cpus=1)
-        runner = TrialRunner(
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
-        )
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=0),
@@ -241,10 +218,7 @@ class TrialRunnerTest(unittest.TestCase):
                 return TrialScheduler.NOOP
 
         scheduler = ChangingScheduler()
-        runner = TrialRunner(
-            scheduler=scheduler,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(scheduler=scheduler)
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=0),
@@ -255,7 +229,9 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 1)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"), 1
+        )
         self.assertRaises(
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0))
         )
@@ -265,7 +241,9 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.PAUSED)
         # extra step for tune loop to stage the resource requests.
         runner.step()
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 2)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"), 2
+        )
 
     def testQueueFilling(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
@@ -293,10 +271,7 @@ class TrialRunnerTest(unittest.TestCase):
             }
         )
 
-        runner = TrialRunner(
-            search_alg=search_alg,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
+        runner = TrialRunner(search_alg=search_alg)
 
         runner.step()
         runner.step()
@@ -309,11 +284,6 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(runner._trials[0].status, Trial.RUNNING)
         self.assertEqual(runner._trials[1].status, Trial.RUNNING)
         self.assertEqual(runner._trials[2].status, Trial.PENDING)
-
-
-class FixedResourceTrialRunnerTest(TrialRunnerTest):
-    def _resourceManager(self):
-        return FixedResourceManager()
 
 
 if __name__ == "__main__":
