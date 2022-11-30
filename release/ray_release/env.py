@@ -3,7 +3,7 @@ from typing import Dict
 
 from ray_release.exception import ReleaseTestConfigError
 
-DEFAULT_ENVIRONMENT = "staging"
+DEFAULT_ENVIRONMENT = "prod"
 
 
 def load_environment(environment_name: str) -> Dict[str, str]:
