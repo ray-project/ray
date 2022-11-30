@@ -49,7 +49,8 @@ GcsActorScheduler::GcsActorScheduler(
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
+      !actor->GetCreationTaskSpecification().GetRequiredResources().IsEmpty()) {
     ScheduleByGcs(actor);
   } else {
     ScheduleByRaylet(actor);
@@ -93,7 +94,8 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   };
 
   // Queue and schedule the actor locally (gcs).
-  cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
+  RayTask task(actor->GetCreationTaskSpecification(), actor->GetOwnerNodeID().Binary());
+  cluster_task_manager_->QueueAndScheduleTask(task,
                                               /*grant_or_reject*/ false,
                                               /*is_selected_based_on_locality*/ false,
                                               /*reply*/ reply.get(),

@@ -85,6 +85,7 @@ class ClusterResourceScheduler {
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of
   ///  scheduling decision.
+  ///  \param preferred_node_id: the node where the task is preferred to be placed.
   ///  \param is_infeasible[out]: It is set
   ///  true if the task is not schedulable because it is infeasible.
   ///
@@ -94,6 +95,7 @@ class ClusterResourceScheduler {
                                             bool prioritize_local_node,
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
+                                            const std::string &preferred_node_id,
                                             bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from
@@ -160,10 +162,11 @@ class ClusterResourceScheduler {
   ///  \param scheduling_strategy: Strategy about how to schedule this task.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: True if we want to avoid local node.
-  ///  \param violations: The number of soft constraint violations associated
+  ///  \param preferred_node_id: The node where the task is preferred to be placed.
+  ///  \param violations[out]: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
@@ -173,6 +176,7 @@ class ClusterResourceScheduler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool actor_creation,
       bool force_spillback,
+      const std::string &preferred_node_id,
       int64_t *violations,
       bool *is_infeasible);
 
@@ -188,6 +192,7 @@ class ClusterResourceScheduler {
       bool requires_object_store_memory,
       bool actor_creation,
       bool force_spillback,
+      const std::string &preferred_node_id,
       int64_t *violations,
       bool *is_infeasible);
 

@@ -335,6 +335,7 @@ void LocalTaskManager::SpillWaitingTasks() {
           /*prioritize_local_node*/ true,
           /*exclude_local_node*/ task_dependencies_blocked,
           /*requires_object_store_memory*/ true,
+          /*preferred_node_id*/ task.GetPreferredNodeID(),
           &is_infeasible);
     } else {
       // If scheduling strategy is spread, we prefer honoring spread decision
@@ -380,6 +381,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       /*prioritize_local_node*/ true,
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
+      /*preferred_node_id*/ work->task.GetPreferredNodeID(),
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
@@ -1020,7 +1022,12 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      total_normal_task_resources += allocated_instances->ToResourceRequest();
+      auto resource_request = allocated_instances->ToResourceRequest();
+      // Blocked normal task workers have temporarily released its allocated CPU.
+      if (worker->IsBlocked()) {
+        resource_request.Set(ResourceID::CPU(), 0);
+      }
+      total_normal_task_resources += resource_request;
     }
   }
   return total_normal_task_resources;
