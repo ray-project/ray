@@ -82,12 +82,14 @@ class PullManager {
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
   /// \param task_name Name of the task for the pull, or empty string.
+  /// \param is_retry Whether this is a task retry.
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 BundlePriority prio,
                 const std::string &task_name,
+                bool is_retry,
                 std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
@@ -170,8 +172,8 @@ class PullManager {
 
   void SetOutOfDisk(const ObjectID &object_id);
 
-  int64_t NumInactivePulls(const std::string &task_name) const {
-    return task_argument_bundles_.inactive_by_name.Get(task_name);
+  int64_t NumInactivePulls(const std::string &task_name, bool is_retry) const {
+    return task_argument_bundles_.inactive_by_name.Get({task_name, is_retry});
   }
 
  private:
@@ -223,14 +225,15 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
     BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const std::string &task_name)
-        : objects(std::move(requested_objects)), task_name(task_name) {}
+                      const std::string &task_name,
+                      bool is_retry)
+        : objects(std::move(requested_objects)), task_name({task_name, is_retry}) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const std::string task_name;
+    const std::pair<std::string, bool> task_name;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);
@@ -275,7 +278,7 @@ class PullManager {
     // order of pull).
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
-    CounterMap<std::string> inactive_by_name;
+    CounterMap<std::pair<std::string, bool>> inactive_by_name;
 
     bool Empty() const { return requests.empty(); }
 
