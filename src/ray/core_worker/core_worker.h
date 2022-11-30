@@ -200,15 +200,17 @@ class TaskCounter {
     counter_.ForEachEntry(
         [&total_counts](const std::tuple<std::string, TaskStatusType, bool> &key,
                         int64_t value) mutable {
-          total_counts[key.first].resize(3, 0);
-          if (key.second == kPending) {
-            total_counts[key.first][0] = value;
-          } else if (key.second == kRunning) {
-            total_counts[key.first][1] = value;
-          } else if (key.second == kFinished) {
-            total_counts[key.first][2] = value;
+          auto func_name = std::get<0>(key);
+          auto status = std::get<1>(key);
+          total_counts[func_name].resize(3, 0);
+          if (status == kPending) {
+            total_counts[func_name][0] = value;
+          } else if (status == kRunning) {
+            total_counts[func_name][1] = value;
+          } else if (status == kFinished) {
+            total_counts[func_name][2] = value;
           } else {
-            RAY_CHECK(false) << "Invalid task status type " << key.second;
+            RAY_CHECK(false) << "Invalid task status type " << status;
           }
         });
 

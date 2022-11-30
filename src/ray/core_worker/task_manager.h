@@ -337,9 +337,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
-    bool IsRetry() { return num_successful_executions_ > 0; }
+    bool IsRetry() const { return num_successful_executions_ > 0; }
 
-    int NumSuccessfulExecutions() { return num_successful_executions_; }
+    int NumSuccessfulExecutions() const { return num_successful_executions_; }
 
     void IncNumSuccessfulExecutions() {
       if (num_successful_executions_ == 0) {
