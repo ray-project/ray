@@ -17,6 +17,7 @@ from ray.tests.test_memory_pressure import (
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
     with ray.init(
+        address='local',
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
@@ -56,28 +57,6 @@ def task_with_nested_actor(
         dummy = alloc_mem(first_bytes)
         ray.get(leaker.allocate.remote(second_bytes))
     return dummy[0]
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_churn_long_running(
-    ray_with_memory_monitor,
-):
-    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction - 0.1
-    )
-    ray.get(
-        allocate_memory.options(max_retries=0).remote(
-            long_running_bytes, post_allocate_sleep_s=30
-        )
-    )
-    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 0.2
-    )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
 
 
 @pytest.mark.skipif(
@@ -269,3 +248,25 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref2)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_churn_long_running(
+    ray_with_memory_monitor,
+):
+    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction - 0.1
+    )
+    ray.get(
+        allocate_memory.options(max_retries=0).remote(
+            long_running_bytes, post_allocate_sleep_s=30
+        )
+    )
+    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.2
+    )
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
