@@ -58,6 +58,38 @@ class PlacementGroupAllocatedResource(AllocatedResource):
 
 @DeveloperAPI
 class PlacementGroupResourceManager(ResourceManager):
+    """Resource manager using placement groups as the resource backend.
+
+    Ray core does not emit events when resources are available. Instead, we
+    have to periodically request and update the scheduling state of the
+    placement groups.
+
+    Internally, the placement group lifecycle is like this:
+    - Resources are requested with ``request_resources()``
+    - A placement group is scheduled ("staged")
+    - A ``PlacementGroup.ready()`` is scheduled ("staging future")
+    - We update the scheduling state when we need to
+        (e.g. when ``has_resources_ready()`` is called)
+    - When staging futures resolved, a placement group is moved from "staging"
+        to "ready"
+    - When a resource request is canceled, we remove a placement group from "staging".
+        If there are not staged placement groups (because they are already "ready"),
+        we remove one from "ready" instead.
+    - When a resource is acquired, the pg is removed from "ready" and moved
+        to "acquired"
+    - When a resource is freed, the pg is removed from "acquired" and destroyed
+
+    Per default, placement group scheduling state is refreshed every time when
+    resource state is inquired, but not more often than once every ``update_interval``
+    seconds. Alternatively, staging futures can be retrieved (and awaited) with
+    ``get_resource_futures()`` and state update can be force with ``update_state()``.
+
+    Args:
+        update_interval: Minimum interval in seconds between updating scheduling
+            state of placement groups.
+
+    """
+
     _resource_cls: AllocatedResource = PlacementGroupAllocatedResource
 
     def __init__(self, update_interval: float = 0.1):

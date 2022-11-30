@@ -21,4 +21,11 @@ class VirtualAllocatedResource(AllocatedResource):
 
 @DeveloperAPI
 class VirtualResourceManager(FixedResourceManager):
+    """Budget based resource manager that does not bind remote objects to resources.
+
+    This resource manager will not bind remote objects to the allocated resources,
+    thus making them available for the remote task to use or pass on.
+
+    """
+
     _resource_cls: AllocatedResource = VirtualAllocatedResource

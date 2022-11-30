@@ -1,10 +1,10 @@
 from typing import Dict, Optional
 from ray.air.execution.resources.request import ResourceRequest
 from ray.tune.resources import Resources
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-@Deprecated
+@PublicAPI(stability="beta")
 class PlacementGroupFactory(ResourceRequest):
     """Request for bundles of resources.
 
