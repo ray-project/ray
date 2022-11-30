@@ -366,7 +366,6 @@ class Policy(metaclass=ABCMeta):
         self.action_connectors = None
 
     @ExperimentalAPI
-    @abstractmethod
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
         """Returns the RL Module"""
@@ -1269,7 +1268,7 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # with RL modules you want the explore to be True for initialization of the
         # tensors and placeholder you'd need for training
-        explore = self.config._enable_rl_module_api
+        explore = self.config["_enable_rl_module_api"]
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )

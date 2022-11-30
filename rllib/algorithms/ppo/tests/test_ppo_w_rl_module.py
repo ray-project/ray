@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.algorithms.ppo_v2 as ppo
+import ray.rllib.algorithms.ppo as ppo
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -141,7 +141,9 @@ class TestPPO(unittest.TestCase):
             .rollouts(
                 # Run locally.
                 num_rollout_workers=0,
+                enable_connectors=True
             )
+            .experimental(_enable_rl_module_api=True)
         )
         obs = np.array(0)
 

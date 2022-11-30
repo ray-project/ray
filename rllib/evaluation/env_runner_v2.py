@@ -1,8 +1,8 @@
+from collections import defaultdict
 import logging
 import time
-from collections import defaultdict
+import tree
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
-
 import numpy as np
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv

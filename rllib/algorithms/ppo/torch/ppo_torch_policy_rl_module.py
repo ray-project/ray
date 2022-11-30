@@ -27,7 +27,7 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_rl_module import (
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     SimplePPOModule,
     PPOModuleConfig,
     FCConfig,
@@ -124,8 +124,6 @@ class PPOTorchPolicyWithRLModule(
             vf_config=vf_config,
             free_log_std=free_log_std,
         )
-
-        breakpoint()
 
         return SimplePPOModule(config_)
 

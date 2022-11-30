@@ -297,11 +297,9 @@ class PPO(Algorithm):
         if config["framework"] == "torch":
             import ray.rllib.algorithms.ppo as ppo
             if config._enable_rl_module_api:
-                from ppo.torch.ppo_torch_policy_rl_module import PPOTorchPolicyWithRLModule
-                return PPOTorchPolicyWithRLModule
+                return ppo.PPOTorchPolicyWithRLModule
             else:
-                from ppo.ppo_torch_policy import PPOTorchPolicy
-                return PPOTorchPolicy
+                return ppo.PPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
