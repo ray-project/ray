@@ -227,7 +227,7 @@ class PullManager {
     BundlePullRequest(std::vector<ObjectID> requested_objects,
                       const std::string &task_name,
                       bool is_retry)
-        : objects(std::move(requested_objects)), task_name({task_name, is_retry}) {}
+        : objects(std::move(requested_objects)), task_key({task_name, is_retry}) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
     // All the objects that are pullable.
@@ -296,7 +296,7 @@ class PullManager {
     void ActivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(inactive_requests.erase(request_id), 1u);
       active_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_key;
+      auto task_key = map_find_or_die(requests, request_id).task_key;
       inactive_by_name.Decrement(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
@@ -304,7 +304,7 @@ class PullManager {
     void DeactivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(active_requests.erase(request_id), 1u);
       inactive_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_key;
+      auto task_key = map_find_or_die(requests, request_id).task_key;
       inactive_by_name.Increment(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
@@ -313,7 +313,7 @@ class PullManager {
       RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.emplace(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_key;
+      auto task_key = map_find_or_die(requests, request_id).task_key;
       inactive_by_name.Increment(task_key);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
@@ -326,14 +326,14 @@ class PullManager {
       auto it = inactive_requests.find(request_id);
       if (it != inactive_requests.end()) {
         inactive_requests.erase(it);
-        auto task_name = map_find_or_die(requests, request_id).task_key;
+        auto task_key = map_find_or_die(requests, request_id).task_key;
         inactive_by_name.Decrement(task_key);
         RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
       }
     }
 
     void RemoveBundlePullRequest(uint64_t request_id) {
-      auto task_name = map_find_or_die(requests, request_id).task_key;
+      auto task_key = map_find_or_die(requests, request_id).task_key;
       requests.erase(request_id);
       if (active_requests.find(request_id) != active_requests.end()) {
         active_requests.erase(request_id);

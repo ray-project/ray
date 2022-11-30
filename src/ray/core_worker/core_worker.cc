@@ -66,10 +66,11 @@ class ScopedTaskMetricSetter {
     auto task_spec = ctx.GetCurrentTask();
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
+      is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
+      is_retry_ = false;
     }
-    is_retry_ = task_spec->IsRetry();
     ctr_.SetMetricStatus(task_name_, status, is_retry_);
   }
 
