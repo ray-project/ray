@@ -40,7 +40,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
         )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
-        act_space = gym.spaces.Discrete(100000)
+        act_space = gym.spaces.Discrete(100)
         num_policies = 2
         capacity = 1
 
@@ -79,13 +79,13 @@ class TestPolicyStateSwapping(unittest.TestCase):
                 policy_map["pol0"]._dummy_batch,
             )
 
-            actions = {
-                pid: p.compute_single_action(dummy_obs, explore=False)[0]
+            logits = {
+                pid: p.compute_single_action(dummy_obs)[2]["action_dist_inputs"]
                 for pid, p in policy_map.items()
             }
             # Make sure policies output different deterministic actions. Otherwise,
             # this test would not work.
-            check(actions["pol0"], actions["pol1"], false=True)
+            check(logits["pol0"], logits["pol1"], atol=0.0000001, false=True)
 
             # Test proper policy state swapping.
             for i in range(50):
@@ -103,8 +103,8 @@ class TestPolicyStateSwapping(unittest.TestCase):
                 # Actually compute one action to trigger tracing operations of
                 # the graph. These may be performed lazily by the DL framework.
                 check(
-                    pol.compute_single_action(dummy_obs, explore=False)[0],
-                    actions[pid],
+                    pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"],
+                    logits[pid],
                 )
 
             # Test, whether training (on the GPU) will affect the state swapping.
@@ -119,20 +119,23 @@ class TestPolicyStateSwapping(unittest.TestCase):
 
                 # Make sure, we really changed the NN during training and update our
                 # actions dict.
-                old_actions = actions[pid]
-                actions[pid] = pol.compute_single_action(dummy_obs, explore=False)[0]
-                check(actions[pid], old_actions, false=True)
+                old_logits = logits[pid]
+                logits[pid] = (
+                    pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"]
+                )
+                check(logits[pid], old_logits, atol=0.0000001, false=True)
 
             # Make sure policies output different deterministic actions. Otherwise,
             # this test would not work.
-            check(actions["pol0"], actions["pol1"], false=True)
+            check(logits["pol0"], logits["pol1"], atol=0.0000001, false=True)
 
             # Once more, test proper policy state swapping.
             for i in range(50):
                 pid = f"pol{i % num_policies}"
                 pol = policy_map[pid]
                 check(
-                    pol.compute_single_action(dummy_obs, explore=False)[0], actions[pid]
+                    pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"],
+                    logits[pid],
                 )
 
 
