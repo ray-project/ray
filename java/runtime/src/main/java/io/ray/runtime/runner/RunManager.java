@@ -72,9 +72,7 @@ public class RunManager {
    * @param command The command to start the process with.
    */
   public static String runCommand(List<String> command) throws IOException, InterruptedException {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Starting process with command: {}", Joiner.on(" ").join(command));
-    }
+    LOGGER.info("Starting process with command: {}", Joiner.on(" ").join(command));
 
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
