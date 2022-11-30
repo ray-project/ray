@@ -183,6 +183,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "gcs_storage": gcs_storage_type,
+            "dashboard_enabled": "enabled",
         }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
@@ -194,6 +195,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
+            "dashboard_enabled": "enabled",
         }
 
 
@@ -1070,6 +1072,7 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "gcs_storage": gcs_storage_type,
+            "dashboard_enabled": "enabled",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1408,6 +1411,7 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
+                "dashboard_enabled": "enabled",
             }
             assert num_nodes == 2
             return True
@@ -1486,15 +1490,15 @@ def test_usages_stats_dashboard(
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
         def verify():
-            dashboard_enalbed = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+            dashboard_enabled = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
                 "dashboard_enabled"
             ]
             if os.environ.get("RAY_MINIMAL") == "1":
-                return dashboard_enalbed == "minimal"
+                return dashboard_enabled == "minimal"
             elif include_dashboard:
-                return dashboard_enalbed == "enabled"
+                return dashboard_enabled == "enabled"
             elif not include_dashboard:
-                return dashboard_enalbed == "disabled"
+                return dashboard_enabled == "disabled"
             else:
                 # not reachable.
                 assert False
