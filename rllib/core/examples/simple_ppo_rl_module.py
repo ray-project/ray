@@ -278,7 +278,7 @@ class SimplePPOModule(TorchRLModule):
                 "obs": self.encoder.input_specs()
                 if self.encoder
                 else self.pi.input_specs(),
-                "action": TorchTensorSpec("b, da", da=action_dim),
+                "actions": TorchTensorSpec("b, da", da=action_dim),
             }
         )
 
@@ -309,7 +309,7 @@ class SimplePPOModule(TorchRLModule):
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
 
-        logp = action_dist.logp(batch["action"].squeeze(-1))
+        logp = action_dist.logp(batch["actions"].squeeze(-1))
         entropy = action_dist.entropy()
         return {
             "action_dist": action_dist,
