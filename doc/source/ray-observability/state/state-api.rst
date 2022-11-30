@@ -503,8 +503,7 @@ E.g., Stream log from an actor with actor id
         from ray.experimental.state.api import get_log
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
-        # You could get the actor's ID from the actor's handle, e.g.
-        # `your_actor._actor_id.hex()` or with `ray list actors`.
+        # You could get the actor's ID from the output of `ray list actors`.
         # The loop will block with `follow=True`
         for line in get_log(actor_id=<ACTOR_ID>, follow=True):
             print(line)
