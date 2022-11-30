@@ -3786,21 +3786,21 @@ class Dataset(Generic[T]):
         """
         return self._plan.has_computed_output()
 
-    def stats(self) -> str:
-        """Returns a string containing execution timing information."""
-        return self._plan.stats().summary_string()
-    # TODO(Scott): add param for returning stats object
-    # def stats(self, return_stats_obj: bool = False) -> Union[str, DatasetStats]:
-    #     """Returns a string containing execution timing information, 
-    #     or optionally the underlying `DatasetStats` object.
-    #         Args:
-    #         return_stats_obj: If True, return the underlying `DatasetStats` 
-    #             object instead of the summary string.
-    #     """
-    #     dataset_stats_obj = self._plan.stats()
-    #     if return_stats_obj:
-    #         return dataset_stats_obj
-    #     return dataset_stats_obj.summary_string()
+    def stats(self, return_stats_obj: bool = False) -> Union[str, DatasetStats]:
+        """Returns a string containing execution timing information,
+        or optionally the underlying `DatasetStats` object.
+
+        Args:
+            return_stats_obj: If True, return the underlying `DatasetStats`
+            object instead of the summary string.
+        """
+        dataset_stats_obj = self._get_stats_object()
+        if return_stats_obj:
+            return dataset_stats_obj
+        return dataset_stats_obj.summary_string()
+
+    def _get_stats_object(self) -> DatasetStats:
+        return self._plan.stats()
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
