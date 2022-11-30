@@ -245,8 +245,8 @@ class ExecutionPlan:
                 self._stages_after_snapshot[-1], RandomizeBlocksStage
             ):
                 # If RandomizeBlocksStage is last stage, we execute it (regardless of
-                # the fetch_if_missing), since RandomizeBlocksStage is just randomize
-                # the references (super cheap).
+                # the fetch_if_missing), since RandomizeBlocksStage is just changing 
+                # the order of references (hence super cheap).
                 self.execute()
             else:
                 return None
