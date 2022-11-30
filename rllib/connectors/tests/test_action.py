@@ -22,7 +22,7 @@ class TestActionConnector(unittest.TestCase):
         connectors = [ConvertToNumpyConnector(ctx)]
         pipeline = ActionConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ActionConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ConvertToNumpyConnector))
 
@@ -34,7 +34,7 @@ class TestActionConnector(unittest.TestCase):
 
         self.assertEqual(name, "ConvertToNumpyConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ConvertToNumpyConnector))
 
         action = torch.Tensor([8, 9])
@@ -54,7 +54,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "NormalizeActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, NormalizeActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (0.5, [], {}))
@@ -71,7 +71,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "ClipActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (8.8, [], {}))
@@ -88,7 +88,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "ImmutableActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ImmutableActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (np.array([8.8]), [], {}))

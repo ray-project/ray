@@ -33,7 +33,7 @@ class TestAgentConnector(unittest.TestCase):
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
@@ -51,7 +51,7 @@ class TestAgentConnector(unittest.TestCase):
         c = ObsPreprocessorConnector(ctx)
         name, params = c.to_state()
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
 
         obs = obs_space.sample()
@@ -82,7 +82,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
@@ -103,7 +103,7 @@ class TestAgentConnector(unittest.TestCase):
         c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         sample_batch = {
@@ -495,7 +495,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
         name, params = agent_connector.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
             check(restored.connectors[cidx].to_state(), c.to_state())

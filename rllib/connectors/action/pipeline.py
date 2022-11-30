@@ -46,7 +46,7 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
         for state in params:
             try:
                 name, subparams = state
-                connectors.append(get_connector(ctx, name, subparams))
+                connectors.append(get_connector(name, ctx, subparams))
             except Exception as e:
                 logger.error(f"Failed to de-serialize connector state: {state}")
                 raise e

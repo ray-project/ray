@@ -118,7 +118,7 @@ def restore_connectors_for_policy(
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config
-    return get_connector(ctx, name, params)
+    return get_connector(name, ctx, params)
 
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
