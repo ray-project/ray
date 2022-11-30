@@ -82,12 +82,10 @@ public class RunManager {
     ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
     final boolean exited = p.waitFor(timeout, unit);
-    String errorOutput = IOUtils.toString(p.getErrorStream(), Charset.defaultCharset());
-    String stdOutput = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
+    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
 
-    final String outputs = String.format("Error output:\n%s\nStd output:\n%s", errorOutput, stdOutput);
     if (!exited) {
-      throw new RuntimeException("The process was not exited in time.\n" + outputs);
+      throw new RuntimeException("The process was not exited in time. output:\n" + output);
     }
 
     if (p.exitValue() != 0) {
@@ -97,9 +95,10 @@ public class RunManager {
               + ". Command: "
               + Joiner.on(" ").join(command)
               + "\n"
-              + outputs;
+              + "output:\n"
+              + output;
       throw new RuntimeException(sb);
     }
-    return outputs;
+    return output;
   }
 }
