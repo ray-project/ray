@@ -19,7 +19,9 @@ class RLOptimizer(abc.ABC):
 
     Abstract Methods:
         compute_loss: computing a loss to optimize rl_module over.
-        construct_optimizers: constructing the optimizers for rl_module.
+        _configure_optimizers: constructing the optimizers for rl_module.
+        get_state: getting the state of the optimizer.
+        set_state: setting the state of the optimizer.
 
     Example:
     .. code-block:: python
@@ -33,7 +35,7 @@ class RLOptimizer(abc.ABC):
         # compute gradients of loss w.r.t. trainable variables
         ...
 
-        for optim in rl_optim.optimizers:
+        for optim in rl_optim.get_optimizers():
             optim.step()
             optim.zero_grad()
 
@@ -43,7 +45,7 @@ class RLOptimizer(abc.ABC):
     def __init__(self, module: RLModule, config: Mapping[str, Any]):
         self.module = module
         self._config = config
-        self._optimizers = self._configure_optimizers
+        self._optimizers = self._configure_optimizers()
 
     @abc.abstractmethod
     def compute_loss(self, fwd_out: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -71,7 +73,6 @@ class RLOptimizer(abc.ABC):
             A list of optimizers to be used for optimizing self._module.
         """
 
-    @property
     def get_optimizers(self) -> List[Any]:
         """Returns the list of optimizers for this optimizer."""
         return self._optimizers
