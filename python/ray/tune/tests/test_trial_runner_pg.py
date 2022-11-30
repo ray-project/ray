@@ -85,6 +85,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         )
 
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
+        trial_executor.setup(max_pending_trials=max_num_parallel, trainable_kwargs={})
 
         this = self
 
@@ -130,7 +131,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 # The number of PGs should decrease when trials finish
                 # We allow a constant excess of 1 here because the trial will
                 # be TERMINATED and the resources only returned after the trainable
-                # cleanup future succeeded. Becuase num_finished will increase,
+                # cleanup future succeeded. Because num_finished will increase,
                 # this still asserts that the number of PGs goes down over time.
                 this.assertGreaterEqual(
                     max(scheduled, len(trials)) - num_finished + 1 + num_parallel_reuse,
