@@ -279,6 +279,7 @@ public class ReferenceCountingTest extends BaseTest {
       checkRefCounts(ImmutableMap.of());
     }
   }
+
   public void testDependencyRefCounts5() {
     {
       // Test that regular plasma dependency refcounts are decremented once the
@@ -299,7 +300,6 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
-
   }
 
   private static int fooBasicPinning(Object arg) {
