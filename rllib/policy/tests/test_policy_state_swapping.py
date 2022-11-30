@@ -120,9 +120,9 @@ class TestPolicyStateSwapping(unittest.TestCase):
                 # Make sure, we really changed the NN during training and update our
                 # actions dict.
                 old_logits = logits[pid]
-                logits[pid] = (
-                    pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"]
-                )
+                logits[pid] = pol.compute_single_action(dummy_obs)[2][
+                    "action_dist_inputs"
+                ]
                 check(logits[pid], old_logits, atol=0.0000001, false=True)
 
             # Make sure policies output different deterministic actions. Otherwise,
