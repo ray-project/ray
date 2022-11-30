@@ -28,6 +28,22 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
   rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
+ProfileEvent::ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
+                           const std::string &event_name,
+                           TaskID task_id,
+                           const std::string &worker_type,
+                           const std::string &worker_id, 
+                           const std::string &node_ip_address)
+    : task_event_buffer_(task_event_buffer),
+      task_id_(task_id),
+      component_type_(worker_type),
+      component_id_(worker_id),
+      node_ip_address_(node_ip_address) {
+  use_task_event_ = true;
+  event_.set_start_time(absl::GetCurrentTimeNanos());
+  event_.set_event_name(event_name);
+}
+
 Profiler::Profiler(WorkerContext &worker_context,
                    const std::string &node_ip_address,
                    instrumented_io_context &io_service,

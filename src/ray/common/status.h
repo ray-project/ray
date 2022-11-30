@@ -112,6 +112,8 @@ enum class StatusCode : char {
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
+  // Resource exhausted (due to system limit or app limit)
+  ResourceExhausted = 29,
 };
 
 #if defined(__clang__)
@@ -229,6 +231,10 @@ class RAY_EXPORT Status {
 
   static Status GrpcUnknown(const std::string &msg) {
     return Status(StatusCode::GrpcUnknown, msg);
+  }
+
+  static Status ResourceExhausted(const std::string &msg) {
+    return Status(StatusCode::ResourceExhausted, msg);
   }
 
   static StatusCode StringToCode(const std::string &str);

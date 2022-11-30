@@ -104,6 +104,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
+    RecordTaskStatusEvent(inserted.first->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
   }
 
   return returned_refs;
@@ -125,6 +126,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     if (!it->second.IsPending()) {
       resubmit = true;
       it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -380,8 +382,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (is_application_error) {
       it->second.SetStatus(rpc::TaskStatus::FAILED);
+      RecordTaskStatusEvent(it->second, rpc::TaskStatus::FAILED);
     } else {
       it->second.SetStatus(rpc::TaskStatus::FINISHED);
+      RecordTaskStatusEvent(it->second, rpc::TaskStatus::FINISHED);
     }
     num_pending_tasks_--;
 
@@ -450,6 +454,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     }
     if (will_retry) {
       it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
     }
   }
 
@@ -500,6 +505,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
     it->second.SetStatus(rpc::TaskStatus::FAILED);
+    RecordTaskStatusEvent(it->second, rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -771,6 +777,7 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
   if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
     it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+    RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -784,6 +791,39 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   it->second.SetNodeId(node_id);
+  RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
+}
+
+std::unique_ptr<rpc::TaskInfoEntry> TaskManager::MakeTaskInfoEntry(
+    const TaskSpecification &task_spec) const {
+  auto task_info = std::make_unique<rpc::TaskInfoEntry>();
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info->set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info->set_type(type);
+  task_info->set_name(task_spec.GetName());
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  // NOTE(rickyx): we will have scheduling states recorded in the events list.
+  task_info->set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info->set_job_id(task_spec.JobId().Binary());
+
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_parent_task_id(task_spec.ParentTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+
+  return task_info;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -835,6 +875,35 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   task_counter_.FlushOnChangeCallbacks();
+}
+
+void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status) {
+  std::unique_ptr<rpc::TaskInfoEntry> task_info = nullptr;
+  std::unique_ptr<rpc::TaskStateEntry> task_state_update = nullptr;
+  switch (status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    // Initialize a new TaskInfoEntry
+    task_info = MakeTaskInfoEntry(task_entry.spec);
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    RAY_CHECK(!task_entry.GetNodeId().IsNil())
+        << "Node ID should have been set on the TaskEntry before updating it's status "
+           "to "
+           "SUBMITTED_TO_WORKER.";
+    // Update the node id
+    task_state_update = std::make_unique<rpc::TaskStateEntry>(rpc::TaskStateEntry());
+    task_state_update->set_node_id(task_entry.GetNodeId().Binary());
+    break;
+  }
+  default: {
+    // Do nothing
+  }
+  }
+  task_event_buffer_->AddTaskStatusEvent(task_entry.spec.TaskId(),
+                                         status,
+                                         std::move(task_info),
+                                         std::move(task_state_update));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

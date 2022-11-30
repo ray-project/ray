@@ -622,4 +622,23 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskEventDataRequest {
+  TaskEventData data = 1;
+}
+
+message AddTaskEventDataReply {
+  GcsStatus status = 1;
+  // Number of tasks where tasks are reported successfully.
+  uint64 num_success = 2;
+  // Number of tasks failed to be added to GCS.
+  uint64 num_failure = 3;
+}
+
+// Service for task info access
+// TODO: actually rename it to TaskStateInfoGcsService
+service TaskInfoGcsService {
+  // Add task event data to GCS.
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+}
 ///////////////////////////////////////////////////////////////////////////////

@@ -46,6 +46,7 @@ enum TablePrefix {
   PLACEMENT_GROUP = 18;
   KV = 19;
   ACTOR_TASK_SPEC = 20;
+  TASK_STATE = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -200,6 +201,78 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
+message ProfileEventEntry {
+  // The start timestamp of the event time.
+  int64 start_time = 1;
+  // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
+  // change.
+  int64 end_time = 2;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  string extra_data = 3;
+  // Customized event name if not a TaskStatus change point event.
+  string event_name = 4;
+}
+
+message ProfileEvents {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  string component_type = 1;
+  // An identifier for the component that generated the event.
+  bytes component_id = 2;
+  // Node IP address
+  string node_ip_address = 3;
+  // Events
+  repeated ProfileEventEntry events = 4;
+}
+
+// Represents task states which could be changed during task execution.
+message TaskStateEntry {
+  // The node of the associated task
+  bytes node_id = 1;
+}
+
+message TaskStatusEvents {
+  // Represents a single task event entry.
+  //  - It could be a task status event that represents a TaskStatus change, which
+  //    only has a corresponding start_time.
+  message TaskStatusEventEntry {
+    // The start timestamp of the event time.
+    int64 start_time = 1;
+    // The task status associated with this event.
+    TaskStatus task_status = 2;
+  }
+
+  // Metadata shared by all events
+  // Task immutable metadata info
+  TaskInfoEntry task_info = 1;
+  // Task mutable state info, which could be changed during task execution
+  TaskStateEntry task_state = 2;
+
+  // List of task status events (e.g. PENDING, RUNNING)
+  repeated TaskStatusEventEntry events = 3;
+}
+
+// Represents envents from a single task. This follows a composition strucuture,
+// i.e., each type of events should be made into it's own embedded field. This is
+// assuming different event types are rarely queried together and independent.
+message TaskEvents {
+  // Metadata shared by all event types
+  // Mirror info in task_info
+  bytes task_id = 1;
+  // TaskStatusEvents
+  TaskStatusEvents status_events = 2;
+  // ProfileEvents
+  ProfileEvents profile_events = 3;
+}
+
+// Represents a compact list of task state events by different tasks,
+// where each task has a list of state change events.
+message TaskEventData {
+  // A batch of task state change events.
+  repeated TaskEvents events_by_task = 1;
+}
+
 message ResourceTableData {
   // The total capacity of this resource type.
   double resource_capacity = 1;
@@ -268,8 +341,9 @@ message JobConfig {
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
-  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
-  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
+  // search path for user code. This will be used as `CLASSPATH` in Java, and
+  // `PYTHONPATH` in Python. In C++, libraries under these paths will be loaded by
+  // 'dlopen'.
   repeated string code_search_path = 3;
   // Runtime environment to run the code
   RuntimeEnvInfo runtime_env_info = 4;
@@ -315,8 +389,9 @@ message WorkerTableData {
   WorkerType worker_type = 5;
   // This is for AddWorker.
   map<string, bytes> worker_info = 6;
-  // The exception thrown in creation task. This field is set if this worker died because
-  // of exception thrown in actor's creation task. Only applies when is_alive=false.
+  // The exception thrown in creation task. This field is set if this worker died
+  // because of exception thrown in actor's creation task. Only applies when
+  // is_alive=false.
   RayException creation_task_exception = 18;
   // Whether it's an intentional disconnect, only applies then `is_alive` is false.
   optional WorkerExitType exit_type = 19;
