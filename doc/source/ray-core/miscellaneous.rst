@@ -265,7 +265,7 @@ Resource broadcasting
 *********************
 
 .. note::
-  There is an ongoing `project <https://github.com/ray-project/ray/issues/30631>`_ changing the
+  There is an ongoing `work <https://github.com/ray-project/ray/issues/30631>`_ changing the
   algorithm to pull-based which doesn't require tuning these parameters.
 
 
