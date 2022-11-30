@@ -4079,7 +4079,7 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     assert count == 3
 
     # The number of partitions should not affect the map_batches() result.
-    assert ds1.take_all() == ds2.take_all()
+    assert len(ds1.take_all()) == len(ds2.take_all())
 
 
 def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
