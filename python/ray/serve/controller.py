@@ -364,13 +364,16 @@ class ServeController:
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
-            previous_deployment = self.deployment_state_manager.get_deployment(name)
-            if previous_deployment is None:
-                deployment_config.num_replicas = autoscaling_config.min_replicas
+            if autoscaling_config.initial_replicas is not None:
+                deployment_config.num_replicas = autoscaling_config.initial_replicas
             else:
-                deployment_config.num_replicas = (
-                    previous_deployment.deployment_config.num_replicas
-                )
+                previous_deployment = self.deployment_state_manager.get_deployment(name)
+                if previous_deployment is None:
+                    deployment_config.num_replicas = autoscaling_config.min_replicas
+                else:
+                    deployment_config.num_replicas = (
+                        previous_deployment.deployment_config.num_replicas
+                    )
 
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
