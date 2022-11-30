@@ -40,7 +40,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
         )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
-        act_space = gym.spaces.Discrete(10000)
+        act_space = gym.spaces.Discrete(100000)
         num_policies = 2
         capacity = 1
 
