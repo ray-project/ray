@@ -1972,20 +1972,21 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
             self.policy_map[name] = new_policy
 
-            restore_state = (
-                policy_states and name in policy_states and policy_states[name]
-            )
+            restore_states = (policy_states or {}).get(name, None)
             # Set the state of the newly created policy before syncing filters, etc.
-            if restore_state:
-                new_policy.set_state(policy_states[name])
+            if restore_states:
+                new_policy.set_state(restore_states)
 
             if merged_conf.enable_connectors:
-                # Note(jungong) : we should NOT decide whether new connectors
-                # need to be created for this policy by checking whether it
-                # already has connectors or not. We may be restoring a policy
-                # that had 0 connectors configured.
-                if not policy and not restore_state:
-                    # Not restoring an existing policy. Create new connectors.
+                # Note(jungong) : We should only create new connectors for the
+                # policy iff we are creating a new policy from scratch. i.e,
+                # we should NOT create new connectors when we already have the
+                # policy object created before this function call or have the
+                # restoring states from the caller.
+                # Also note that we cannot just check the existence of connectors
+                # to decide whether we should create connectors because we may be
+                # restoring a policy that has 0 connectors configured.
+                if not policy and not restore_states:
                     create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:

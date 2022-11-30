@@ -2259,7 +2259,7 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/policies/default_policy",
+        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
     ]),
     srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
 )
