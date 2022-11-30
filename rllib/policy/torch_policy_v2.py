@@ -31,7 +31,11 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -628,14 +632,23 @@ class TorchPolicyV2(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
         if self.model and hasattr(self.model, "metrics"):
             fetches["model"] = self.model.metrics()
         else:
             fetches["model"] = {}
+        
         fetches.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
 
@@ -776,14 +789,21 @@ class TorchPolicyV2(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {} if is_overridden(self.make_rl_module) else model.metrics(),
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates - 1 - (batch.num_grad_updates or 0)
+                    ),
                 }
             )
-
         batch_fetches.update(self.extra_compute_grad_fetches())
 
         return batch_fetches

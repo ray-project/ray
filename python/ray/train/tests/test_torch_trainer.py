@@ -1,5 +1,6 @@
 import contextlib
 import pytest
+import time
 import torch
 import os
 
@@ -178,6 +179,24 @@ def test_torch_session_errors(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_single_worker_failure(ray_start_4_cpus):
+    """Tests if training fails upon any worker failure."""
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=single_worker_fail,
+        scaling_config=scaling_config,
+    )
+    with pytest.raises(ValueError):
+        trainer.fit()
+
+
 # See comment in backend.py::_warn_about_bad_checkpoint_type
 # for why test_torch_bad_checkpoint_warning is commented out
 
@@ -343,6 +362,16 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     )
     results = trainer.fit()
     assert results.checkpoint
+
+
+def test_torch_prepare_model_deprecated():
+    model = torch.nn.Linear(1, 1)
+
+    with pytest.raises(DeprecationWarning):
+        train.torch.prepare_model(model, wrap_ddp=True)
+
+    with pytest.raises(DeprecationWarning):
+        train.torch.prepare_model(model, ddp_kwargs={"x": "y"})
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
@@ -339,11 +340,6 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
-
         _Inner.__name__ = trainable_name
         return _Inner
     else:
@@ -398,7 +394,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 def with_resources(
     trainable: Union[Type["Trainable"], Callable],
     resources: Union[
-        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+        Dict[str, float],
+        PlacementGroupFactory,
+        ScalingConfig,
+        Callable[[dict], PlacementGroupFactory],
     ],
 ):
     """Wrapper for trainables to specify resource requests.
@@ -415,8 +414,9 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, or callable that takes
-            in a config dict and returns a placement group factory.
+        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+            or callable that takes in a config dict and returns a placement
+            group factory.
 
     Example:
 
@@ -448,6 +448,8 @@ def with_resources(
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
+    elif isinstance(resources, ScalingConfig):
+        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):

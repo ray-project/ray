@@ -54,7 +54,7 @@ Datasets and Placement Groups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Datasets configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
-``ray.data.context.DatasetContext.get_current().scheduling_strategy``. This scheduling strategy will schedule these tasks and actors outside any present
+:class:`ray.data.context.DatasetContext.get_current().scheduling_strategy <ray.data.context.DatasetContext>`. This scheduling strategy will schedule these tasks and actors outside any present
 placement group. If you want to force Datasets to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Datasets), you can set ``ray.data.context.DatasetContext.get_current().scheduling_strategy = None``.
 
 This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
@@ -114,9 +114,11 @@ This section describes how Datasets manages execution and object store memory.
 Execution Memory
 ~~~~~~~~~~~~~~~~
 
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (and Python heap memory if conversion to non-Arrow format is needed). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
 
-This means that large block sizes can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
+Datasets attempts to bound its heap memory usage to `num_execution_slots * max_block_size`. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.context.DatasetContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker will automatically split the output into multiple smaller blocks to avoid running out of heap memory.
+
+Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
 Object Store Memory
 ~~~~~~~~~~~~~~~~~~~
@@ -139,6 +141,8 @@ Different ways of creating Datasets leads to a different starting internal forma
 * Reading tabular files (Parquet, CSV, JSON) creates Arrow blocks initially.
 * Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
 * Reading NumPy files or converting from NumPy ndarrays creates Arrow blocks.
+* Reading TFRecord file creates Arrow blocks.
+* Reading MongoDB creates Arrow blocks.
 
 However, this internal format is not exposed to the user. Datasets converts between formats
 as needed internally depending on the specified ``batch_format`` of transformations.
