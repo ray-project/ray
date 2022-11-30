@@ -53,16 +53,24 @@ config = (
             )
         ),
     )
+    # On the eval track, always let policy 0 play so we get its results in each results
+    # dict.
+    .evaluation(
+        evaluation_config={
+            "policy_mapping_fn": (
+                lambda aid, eps, worker, **kw: "pol"
+                + str(0 if aid == 0 else np.random.randint(num_trainable, num_policies))
+            ),
+        },
+        # Only play 5 episodes on eval track.
+        evaluation_duration=5,
+        evaluation_num_workers=1,
+        evaluation_interval=1,
+    )
 )
 
 # Define some stopping criteria.
-stop = dict(
-    {
-        # Any of the learning policies may reach the reward in order for this test
-        # to succeed (to speed things up a little; some trainable policies may receive
-        # more or less data and may thus learn more or less quickly).
-        f"policy_reward_mean/pol{i}": 50.0
-        for i in range(num_trainable)
-    },
-    **{"timesteps_total": 400000},
-)
+stop = {
+    "evaluation/policy_reward_mean/pol0": 50.0,
+    "timesteps_total": 400000,
+}
