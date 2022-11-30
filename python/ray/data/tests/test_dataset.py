@@ -1427,11 +1427,15 @@ def test_schema(ray_start_regular_shared):
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
+    ds5 = ds4.filter(lambda x: x["a"] == "bye")
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert (
         str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+    )
+    assert (
+        str(ds5) == "Dataset(num_blocks=1, num_rows=0, schema={a: string, b: double})"
     )
 
 
