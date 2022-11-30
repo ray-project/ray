@@ -233,8 +233,6 @@ class AlgorithmConfig:
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
-        self.horizon = None
-        self.soft_horizon = False
         self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
@@ -267,7 +265,6 @@ class AlgorithmConfig:
         }
 
         # `self.multi_agent()`
-        self._is_multi_agent = False
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_map_cache = None
@@ -362,6 +359,8 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
+        self.horizon = DEPRECATED_VALUE
+        self.soft_horizon = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -650,7 +649,10 @@ class AlgorithmConfig:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
-                default_policy_cls = self.algo_class.get_default_policy_class(self)
+                default_policy_cls = None
+                if self.algo_class:
+                    default_policy_cls = self.algo_class.get_default_policy_class(self)
+
                 policies = self.policies
                 policy_specs = (
                     [
@@ -682,6 +684,29 @@ class AlgorithmConfig:
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+        if self.input_ == "sampler" and self.off_policy_estimation_methods:
+            raise ValueError(
+                "Off-policy estimation methods can only be used if the input is a "
+                "dataset. We currently do not support applying off_policy_esitmation "
+                "method on a sampler input."
+            )
+
+        if self.input_ == "dataset":
+            # if we need to read a ray dataset set the parallelism and
+            # num_cpus_per_read_task from rollout worker settings
+            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
+            if self.in_evaluation:
+                # If using dataset for evaluation, the parallelism gets set to
+                # evaluation_num_workers for backward compatibility and num_cpus gets
+                # set to num_cpus_per_worker from rollout worker. User only needs to
+                # set evaluation_num_workers.
+                self.input_config["parallelism"] = self.evaluation_num_workers or 1
+            else:
+                # If using dataset for training, the parallelism and num_cpus gets set
+                # based on rollout worker parameters. This is for backwards
+                # compatibility for now. User only needs to set num_rollout_workers.
+                self.input_config["parallelism"] = self.num_rollout_workers or 1
 
     def build(
         self,
@@ -970,8 +995,6 @@ class AlgorithmConfig:
         recreate_failed_workers: Optional[bool] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
-        horizon: Optional[int] = NotProvided,
-        soft_horizon: Optional[bool] = NotProvided,
         no_done_at_end: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
@@ -979,6 +1002,8 @@ class AlgorithmConfig:
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        horizon=DEPRECATED_VALUE,
+        soft_horizon=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1073,23 +1098,7 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
-            horizon: Number of steps after which the episode is forced to terminate.
-                Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
-            soft_horizon: Calculate rewards but don't reset the environment when the
-                horizon is hit. This allows value estimation and RNN state to span
-                across logical episodes denoted by horizon. This only has an effect
-                if horizon != inf.
-            no_done_at_end: Don't set 'done' at the end of the episode.
-                In combination with `soft_horizon`, this works as follows:
-                - no_done_at_end=False soft_horizon=False:
-                Reset env and add `done=True` at end of each episode.
-                - no_done_at_end=True soft_horizon=False:
-                Reset env, but do NOT add `done=True` at end of the episode.
-                - no_done_at_end=False soft_horizon=True:
-                Do NOT reset env at horizon, but add `done=True` at the horizon
-                (pretending the episode has terminated).
-                - no_done_at_end=True soft_horizon=True:
-                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
+            no_done_at_end: If True, don't set a 'done=True' at the end of the episode.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1166,10 +1175,6 @@ class AlgorithmConfig:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
-        if horizon is not NotProvided:
-            self.horizon = horizon
-        if soft_horizon is not NotProvided:
-            self.soft_horizon = soft_horizon
         if no_done_at_end is not NotProvided:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not NotProvided:
@@ -1185,6 +1190,21 @@ class AlgorithmConfig:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
+
+        # Deprecated settings.
+        if horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(horizon=..)",
+                new="You should wrap your gymnasium.Env with a "
+                "gymnasium.wrappers.TimeLimit wrapper.",
+                error=True,
+            )
+        if soft_horizon != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(soft_horizon=..)",
+                new="Your gymnasium.Env.step() should handle soft resets internally.",
+                error=True,
+            )
 
         return self
 
@@ -1480,8 +1500,10 @@ class AlgorithmConfig:
                 - A callable that takes an `IOContext` object as only arg and returns a
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
-            input_config: Arguments accessible from the IOContext for configuring custom
-                input.
+            input_config: Arguments that describe the settings for reading the input.
+                If input is `sample`, this will be environment configuation, e.g.
+                `env_name` and `env_config`, etc. See `EnvContext` for more info.
+                If the input is `dataset`, this will be e.g. `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
@@ -1517,6 +1539,35 @@ class AlgorithmConfig:
         if input_ is not NotProvided:
             self.input_ = input_
         if input_config is not NotProvided:
+            if not isinstance(input_config, dict):
+                raise ValueError(
+                    f"input_config must be a dict, got {type(input_config)}."
+                )
+            # TODO (Kourosh) Once we use a complete sepration between rollout worker
+            # and input dataset reader we can remove this.
+            # For now Error out if user attempts to set these parameters.
+            msg = "{} should not be set in the input_config. RLlib will use {} instead."
+            if input_config.get("num_cpus_per_read_task") is not None:
+                raise ValueError(
+                    msg.format(
+                        "num_cpus_per_read_task",
+                        "config.resources(num_cpus_per_worker=..)",
+                    )
+                )
+            if input_config.get("parallelism") is not None:
+                if self.in_evaluation:
+                    raise ValueError(
+                        msg.format(
+                            "parallelism",
+                            "config.evaluation(evaluation_num_workers=..)",
+                        )
+                    )
+                else:
+                    raise ValueError(
+                        msg.format(
+                            "parallelism", "config.rollouts(num_rollout_workers=..)"
+                        )
+                    )
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
@@ -1679,12 +1730,6 @@ class AlgorithmConfig:
                     )
             self.policies_to_train = policies_to_train
 
-        # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
-        # PolicyID found in policies dict.
-        self._is_multi_agent = (
-            len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
-        )
-
         return self
 
     def is_multi_agent(self) -> bool:
@@ -1694,7 +1739,7 @@ class AlgorithmConfig:
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return self._is_multi_agent
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -2208,6 +2253,56 @@ class AlgorithmConfig:
                 return pid in pols
 
         return policies, is_policy_to_train
+
+    def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
+        """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
+
+        Only applicable for algorithms, whose train_batch_size should be directly
+        dependent on rollout_fragment_length (synchronous sampling, on-policy PG algos).
+
+        If rollout_fragment_length != "auto", makes sure that the product of
+        `rollout_fragment_length` x `num_rollout_workers` x `num_envs_per_worker`
+        roughly (10%) matches the provided `train_batch_size`. Otherwise, errors with
+        asking the user to set rollout_fragment_length to `auto` or to a matching
+        value.
+
+        Also, only checks this if `train_batch_size` > 0 (DDPPO sets this
+        to -1 to auto-calculate the actual batch size later).
+
+        Raises:
+            ValueError: If there is a mismatch between user provided
+            `rollout_fragment_length` and `train_batch_size`.
+        """
+        if (
+            self.rollout_fragment_length != "auto"
+            and not self.in_evaluation
+            and self.train_batch_size > 0
+        ):
+            min_batch_size = (
+                max(self.num_rollout_workers, 1)
+                * self.num_envs_per_worker
+                * self.rollout_fragment_length
+            )
+            batch_size = min_batch_size
+            while batch_size < self.train_batch_size:
+                batch_size += min_batch_size
+            if (
+                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+                or batch_size - min_batch_size - self.train_batch_size
+                > (0.1 * self.train_batch_size)
+            ):
+                suggested_rollout_fragment_length = self.train_batch_size // (
+                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                )
+                raise ValueError(
+                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
+                    "value 10% off of that cannot be achieved with your other "
+                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length})! "
+                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    f"{suggested_rollout_fragment_length}."
+                )
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

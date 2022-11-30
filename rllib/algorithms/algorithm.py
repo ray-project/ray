@@ -26,12 +26,14 @@ from typing import (
     Union,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
@@ -50,7 +52,7 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline import get_offline_io_resource_bundles
+from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
     ImportanceSampling,
@@ -94,6 +96,7 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -124,19 +127,12 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
-    """Returns the given config dict merged with common agent confs.
-
-    Args:
-        extra_config: A user defined partial config
-            which will get merged with a default AlgorithmConfig() object and returned
-            as plain python dict.
-
-    Returns:
-        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
-            plus `extra_config`.
-    """
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=False,
+)
+def with_common_config(extra_config):
     return Algorithm.merge_trainer_configs(
         AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
     )
@@ -600,7 +596,8 @@ class Algorithm(Trainable):
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
-        if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
+        # Note: We skip workerset creation if we need to do offline evaluation
+        if self._should_create_evaluation_rollout_workers(self.evaluation_config):
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
             )
@@ -622,6 +619,26 @@ class Algorithm(Trainable):
 
             if self.config["enable_async_evaluation"]:
                 self._evaluation_weights_seq_number = 0
+
+        self.evaluation_dataset = None
+        if (
+            self.evaluation_config.off_policy_estimation_methods
+            and not self.evaluation_config.ope_split_batch_by_episode
+        ):
+            # the num worker is set to 0 to avoid creating shards. The dataset will not
+            # be repartioned to num_workers blocks.
+            logger.info("Creating evaluation dataset ...")
+            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
+
+            # Dataset should be in form of one episode per row. in case of bandits each
+            # row is just one time step. To make the computation more efficient later
+            # we remove the time dimension here.
+            parallelism = self.evaluation_config.evaluation_num_workers or 1
+            batch_size = max(ds.count() // parallelism, 1)
+            self.evaluation_dataset = ds.map_batches(
+                remove_time_dim, batch_size=batch_size
+            )
+            logger.info("Evaluation dataset created")
 
         self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
         ope_types = {
@@ -657,7 +674,7 @@ class Algorithm(Trainable):
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
                     "either a class path or a sub-class of ray.rllib."
-                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
+                    "offline.offline_evaluator::OfflineEvaluator"
                 )
 
         # Run `on_algorithm_init` callback after initialization is done.
@@ -798,6 +815,9 @@ class Algorithm(Trainable):
         """
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
+
+        if self.evaluation_dataset is not None:
+            return {"evaluation": self._run_offline_evaluation()}
 
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
@@ -1450,11 +1470,51 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
+        else:
+            # Just preprocess observations, similar to how it used to be done before.
+            pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+            # convert the observation to array if possible
+            if not isinstance(observation, (np.ndarray, dict, tuple)):
+                try:
+                    observation = np.asarray(observation)
+                except Exception:
+                    raise ValueError(
+                        f"Observation type {type(observation)} cannot be converted to "
+                        f"np.ndarray."
+                    )
+            if pp:
+                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+                pp = pp[0]
+
+                if not pp.is_identity():
+                    # Note(Kourosh): This call will leave the policy's connector
+                    # in eval mode. would that be a problem?
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {SampleBatch.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
+
+                    # TODO (Kourosh): Create a new util method for algorithm that
+                    # computes actions based on raw inputs from env and can keep track
+                    # of its own internal state.
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    # make sure the state is reset since we are only applying the
+                    # preprocessor
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:
@@ -1693,8 +1753,8 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to add.
                 IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
-                or a dot `.` or space ` ` at the end of the ID.
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -2015,50 +2075,62 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        default_config = cls.get_default_config()
-        # TODO: Have to make this work for now for AlgorithmConfigs (returned by
-        #  get_default_config(). Use only AlgorithmConfigs once all Algorithms
-        #  return an AlgorothmConfig from their get_default_config() method.
-        if not isinstance(default_config, dict):
-            default_config = default_config.to_dict()
-        cf = dict(default_config, **config)
-        eval_cf = cf["evaluation_config"] or {}
+        cf = cls.get_default_config().update_from_dict(config)
+        cf.validate()
+        cf.freeze()
 
+        # get evaluation config
+        eval_cf = cf.get_evaluation_config_object()
+        eval_cf.validate()
+        eval_cf.freeze()
+
+        # resources for local worker
         local_worker = {
-            "CPU": cf["num_cpus_for_driver"],
-            "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+            "CPU": cf.num_cpus_for_local_worker,
+            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
         }
+
+        bundles = [local_worker]
+
+        # resources for rollout env samplers
         rollout_workers = [
             {
-                "CPU": cf["num_cpus_per_worker"],
-                "GPU": cf["num_gpus_per_worker"],
-                **cf["custom_resources_per_worker"],
+                "CPU": cf.num_cpus_per_worker,
+                "GPU": cf.num_gpus_per_worker,
+                **cf.custom_resources_per_worker,
             }
-            for _ in range(cf["num_workers"])
+            for _ in range(cf.num_rollout_workers)
         ]
 
-        bundles = [local_worker] + rollout_workers
-
-        if cf["evaluation_interval"]:
+        # resources for evaluation env samplers or datasets (if any)
+        if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            bundles += [
+            evaluation_bundle = [
                 {
-                    "CPU": eval_cf.get(
-                        "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                    ),
-                    "GPU": eval_cf.get(
-                        "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                    ),
-                    **eval_cf.get(
-                        "custom_resources_per_worker", cf["custom_resources_per_worker"]
-                    ),
+                    "CPU": eval_cf.num_cpus_per_worker,
+                    "GPU": eval_cf.num_gpus_per_worker,
+                    **eval_cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["evaluation_num_workers"])
+                for _ in range(eval_cf.evaluation_num_workers)
             ]
+        else:
+            # resources for offline dataset readers during evaluation
+            # Note (Kourosh): we should not claim extra workers for
+            # training on the offline dataset, since rollout workers have already
+            # claimed it.
+            # Another Note (Kourosh): dataset reader will not use placement groups so
+            # whatever we specify here won't matter because dataset won't even use it.
+            # Disclaimer: using ray dataset in tune may cause deadlock when multiple
+            # tune trials get scheduled on the same node and do not leave any spare
+            # resources for dataset operations. The workaround is to limit the
+            # max_concurrent trials so that some spare cpus are left for dataset
+            # operations. This behavior should get fixed by the dataset team. more info
+            # found here:
+            # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
+            evaluation_bundle = []
 
-        # In case our I/O reader/writer requires conmpute resources.
-        bundles += get_offline_io_resource_bundles(cf)
+        bundles += rollout_workers + evaluation_bundle
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -2195,6 +2267,28 @@ class Algorithm(Trainable):
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
         )
+
+    @override(Trainable)
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
+        # Override this method to make sure, the `config` key of the returned results
+        # contains the proper Tune config dict (instead of an AlgorithmConfig object).
+        auto_filled = super().get_auto_filled_metrics(
+            now, time_this_iter, debug_metrics_only
+        )
+        if "config" not in auto_filled:
+            raise KeyError("`config` key not found in auto-filled results dict!")
+
+        # If `config` key is no dict (but AlgorithmConfig object) ->
+        # make sure, it's a dict to not break Tune APIs.
+        if not isinstance(auto_filled["config"], dict):
+            assert isinstance(auto_filled["config"], AlgorithmConfig)
+            auto_filled["config"] = auto_filled["config"].to_dict()
+        return auto_filled
 
     @classmethod
     def merge_trainer_configs(
@@ -2584,6 +2678,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
+
         eval_results = {
             "evaluation": {
                 "episode_reward_max": np.nan,
@@ -2616,20 +2711,21 @@ class Algorithm(Trainable):
         else:
             eval_results = eval_func_to_use()
 
-        # After evaluation, do a round of health check to see if any of
-        # the failed workers are back.
-        self.restore_workers(self.evaluation_workers)
+        if self.evaluation_workers is not None:
+            # After evaluation, do a round of health check to see if any of
+            # the failed workers are back.
+            self.restore_workers(self.evaluation_workers)
 
-        # Add number of healthy evaluation workers after this iteration.
-        eval_results["evaluation"][
-            "num_healthy_workers"
-        ] = self.evaluation_workers.num_healthy_remote_workers()
-        eval_results["evaluation"][
-            "num_in_flight_async_reqs"
-        ] = self.evaluation_workers.num_in_flight_async_reqs()
-        eval_results["evaluation"][
-            "num_remote_worker_restarts"
-        ] = self.evaluation_workers.num_remote_worker_restarts()
+            # Add number of healthy evaluation workers after this iteration.
+            eval_results["evaluation"][
+                "num_healthy_workers"
+            ] = self.evaluation_workers.num_healthy_remote_workers()
+            eval_results["evaluation"][
+                "num_in_flight_async_reqs"
+            ] = self.evaluation_workers.num_in_flight_async_reqs()
+            eval_results["evaluation"][
+                "num_remote_worker_restarts"
+            ] = self.evaluation_workers.num_remote_worker_restarts()
 
         return eval_results
 
@@ -2657,6 +2753,46 @@ class Algorithm(Trainable):
             results.update(train_results)
 
         return results, train_iter_ctx
+
+    def _run_offline_evaluation(self):
+        """Runs offline evaluation via `OfflineEvaluator.estimate_on_dataset()` API.
+
+        This method will be used when `evaluation_dataset` is provided.
+        Note: This will only work if the policy is a single agent policy.
+
+        Returns:
+            The results dict from the offline evaluation call.
+        """
+        assert len(self.workers.local_worker().policy_map) == 1
+
+        parallelism = self.evaluation_config.evaluation_num_workers or 1
+        offline_eval_results = {"off_policy_estimator": {}}
+        for evaluator_name, offline_evaluator in self.reward_estimators.items():
+            offline_eval_results["off_policy_estimator"][
+                evaluator_name
+            ] = offline_evaluator.estimate_on_dataset(
+                self.evaluation_dataset,
+                n_parallelism=parallelism,
+            )
+        return offline_eval_results
+
+    @classmethod
+    def _should_create_evaluation_rollout_workers(cls, eval_config: "AlgorithmConfig"):
+        """Determines whether we need to create evaluation workers.
+
+        Returns False if we need to run offline evaluation
+        (with ope.estimate_on_dastaset API) or when local worker is to be used for
+        evaluation. Note: We only use estimate_on_dataset API with bandits for now.
+        That is when ope_split_batch_by_episode is False. TODO: In future we will do
+        the same for episodic RL OPE.
+        """
+        run_offline_evaluation = (
+            eval_config.get("off_policy_estimation_methods")
+            and not eval_config.ope_split_batch_by_episode
+        )
+        return not run_offline_evaluation and (
+            eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
+        )
 
     @staticmethod
     def _automatic_evaluation_duration_fn(

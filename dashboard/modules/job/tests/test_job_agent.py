@@ -1,6 +1,6 @@
-import asyncio
 import logging
 import os
+from ray._private.utils import get_or_create_event_loop
 import requests
 import shutil
 import sys
@@ -41,7 +41,7 @@ from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
-EVENT_LOOP = asyncio.get_event_loop()
+EVENT_LOOP = get_or_create_event_loop()
 
 
 @pytest.fixture
@@ -227,14 +227,11 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    # Conda env takes longer to install, causing flakiness.
-    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
-
     wait_for_condition(
         partial(
             _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
         ),
-        timeout=timeout,
+        timeout=60,
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent

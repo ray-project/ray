@@ -11,7 +11,8 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.connector import Connector, ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
@@ -117,7 +118,7 @@ def restore_connectors_for_policy(
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config
-    return get_connector(ctx, name, params)
+    return get_connector(name, ctx, params)
 
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
@@ -144,8 +145,8 @@ def maybe_get_filters_for_syncing(rollout_worker, policy_id):
     ]
     # There can only be one filter at a time
     if filter_connectors:
-        assert len(SyncedFilterAgentConnector) == 1, (
-            "ConnectorPipeline has two connectors of type "
+        assert len(filter_connectors) == 1, (
+            "ConnectorPipeline has multiple connectors of type "
             "SyncedFilterAgentConnector but can only have one."
         )
         rollout_worker.filters[policy_id] = filter_connectors[0].filter

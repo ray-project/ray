@@ -1,7 +1,7 @@
 import { makeStyles } from "@material-ui/core";
+import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React from "react";
-import { RouteComponentProps } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -22,11 +22,11 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const JobDetailPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail(props);
-  const jobId = props.match.params.id;
-  const { progress } = useJobProgress(jobId);
+  const { job, msg, params } = useJobDetail();
+  const jobId = params.id;
+  const { progress, error, driverExists } = useJobProgress(jobId);
 
   if (!job) {
     return (
@@ -40,6 +40,54 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
       </div>
     );
   }
+
+  const tasksSectionContents = (() => {
+    if (!driverExists) {
+      return <TaskProgressBar />;
+    }
+    const { status } = job;
+    if (!progress || error) {
+      return (
+        <Alert severity="warning">
+          No tasks visualizations because prometheus is not detected. Please
+          make sure prometheus is running and refresh this page. See:{" "}
+          <a
+            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
+          </a>
+          .
+          <br />
+          If you are hosting prometheus on a separate machine or using a
+          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
+          to your prometheus server when launching ray.
+        </Alert>
+      );
+    }
+    if (status === "SUCCEEDED" || status === "FAILED") {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} showAsComplete />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    } else {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    }
+  })();
 
   return (
     <div className={classes.root}>
@@ -109,16 +157,7 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
-        />
-        <JobTaskNameProgressTable
-          className={classes.taskProgressTable}
-          jobId={jobId}
-        />
-      </TitleCard>
+      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
     </div>
   );
 };
