@@ -51,6 +51,21 @@ def check_old_gym_env(
 
 
 @DeveloperAPI
+def convert_old_gym_space_to_gymnasium_space(space) -> gym.Space:
+    """Converts an old gym (NOT gymnasium) Space into a gymnasium.Space.
+
+    Args:
+        space: The gym.Space to convert to gymnasium.Space.
+
+    Returns:
+         The converted gymnasium.space object.
+    """
+    from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+
+    return gym_space_from_dict(gym_space_to_dict(space))
+
+
+@DeveloperAPI
 def try_import_gymnasium_and_gym():
     try:
         import gymnasium as gym

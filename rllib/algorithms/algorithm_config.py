@@ -1,6 +1,4 @@
 import copy
-import gymnasium as gym
-from gymnasium.spaces import Space
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
@@ -26,6 +24,10 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.gym import (
+    convert_old_gym_space_to_gymnasium_space,
+    try_import_gymnasium_and_gym,
+)
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -41,6 +43,10 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.util import log_once
+
+gym, old_gym = try_import_gymnasium_and_gym()
+Space = gym.Space
+
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -2130,6 +2136,7 @@ class AlgorithmConfig:
 
             if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
                 env_act_space = env.action_space
+
         # Last resort: Try getting the env's spaces from the spaces
         # dict's special __env__ key.
         if spaces is not None:
@@ -2148,8 +2155,16 @@ class AlgorithmConfig:
             if policy_spec.policy_class is None and default_policy_class is not None:
                 policies[pid].policy_class = default_policy_class
 
+            # In case - somehow - an old gym Space made it to here, convert it
+            # to the corresponding gymnasium space.
+            if old_gym and isinstance(policy_spec.observation_space, old_gym.Space):
+                policies[
+                    pid
+                ].observation_space = convert_old_gym_space_to_gymnasium_space(
+                    policy_spec.observation_space
+                )
             # Infer observation space.
-            if policy_spec.observation_space is None:
+            elif policy_spec.observation_space is None:
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
@@ -2196,8 +2211,14 @@ class AlgorithmConfig:
 
                 policies[pid].observation_space = obs_space
 
+            # In case - somehow - an old gym Space made it to here, convert it
+            # to the corresponding gymnasium space.
+            if old_gym and isinstance(policy_spec.action_space, old_gym.Space):
+                policies[pid].action_space = convert_old_gym_space_to_gymnasium_space(
+                    policy_spec.action_space
+                )
             # Infer action space.
-            if policy_spec.action_space is None:
+            elif policy_spec.action_space is None:
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:

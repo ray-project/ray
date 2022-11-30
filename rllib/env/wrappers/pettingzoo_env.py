@@ -2,7 +2,7 @@ from typing import Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 
 
 @PublicAPI
@@ -107,8 +107,10 @@ class PettingZooEnv(MultiAgentEnv):
                 )
 
         # Convert from gym to gymnasium, if necessary.
-        self.observation_space = gym_space_from_dict(gym_space_to_dict(first_obs_space))
-        self.action_space = gym_space_from_dict(gym_space_to_dict(first_action_space))
+        self.observation_space = convert_old_gym_space_to_gymnasium_space(
+            first_obs_space
+        )
+        self.action_space = convert_old_gym_space_to_gymnasium_space(first_action_space)
 
         self._agent_ids = set(self.env.agents)
 
