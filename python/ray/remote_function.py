@@ -187,7 +187,9 @@ class RemoteFunction:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
