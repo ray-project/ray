@@ -420,13 +420,7 @@ class AsyncBatcher(BatcherInterface):
         )
 
         if self.buffer.empty():
-            fetch_thread = threading.Thread(
-                target=self._prefetch_next_batch, args=(batch_format,)
-            )
-            fetch_thread.start()
-            fetch_thread.join()
-            assert not fetch_thread.is_alive()
-            # self._prefetch_next_batch(batch_format)
+            self._prefetch_next_batch(batch_format)
             assert not self.buffer.empty()
 
         try:
