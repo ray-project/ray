@@ -5,7 +5,6 @@ import os
 # For compatibility under py2 to consider unicode as str
 from ray.air import CheckpointConfig
 from ray.tune.utils.serialization import TuneFunctionEncoder
-from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
@@ -156,7 +155,7 @@ def _to_argv(config):
             continue
         if not isinstance(v, bool) or v:  # for argparse flags
             argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, string_types):
+        if isinstance(v, str):
             argv.append(v)
         elif isinstance(v, bool):
             pass

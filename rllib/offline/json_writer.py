@@ -3,7 +3,7 @@ import json
 import logging
 import numpy as np
 import os
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 import time
 
 try:

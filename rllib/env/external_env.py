@@ -1,4 +1,4 @@
-from six.moves import queue
+import queue
 import gym
 import threading
 import uuid

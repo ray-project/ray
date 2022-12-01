@@ -1,5 +1,5 @@
 import copy
-from six.moves import queue
+import queue
 import threading
 from typing import Dict, Optional
 
