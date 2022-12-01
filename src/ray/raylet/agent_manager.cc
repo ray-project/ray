@@ -203,6 +203,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
         << "Runtime env agent is not registered yet. Will retry "
            "GetOrCreateRuntimeEnv for job_id "
         << job_id << " later";
+    RAY_LOG_EVERY_MS(DEBUG, 3 * 10 * 1000)
+        << "Serialized runtime env: " << serialized_runtime_env;
     delay_executor_(
         [this,
          job_id,
@@ -241,6 +243,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
           } else {
             RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
                           << ", error message: " << reply.error_message();
+            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
             callback(false,
                      reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
@@ -251,6 +254,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
               << "Failed to create runtime env for job " << job_id
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
+          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
           callback(false, "", "Failed to request agent.");
         }
       });
@@ -296,6 +300,7 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
             // TODO(sang): Find a better way to delivering error messages in this case.
             RAY_LOG(ERROR) << "Failed to delete runtime env"
                            << ", error message: " << reply.error_message();
+            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
             callback(false);
           }
 
@@ -304,6 +309,7 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
               << "Failed to delete runtime env reference"
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
+          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
           callback(false);
         }
       });

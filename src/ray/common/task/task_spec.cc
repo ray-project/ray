@@ -478,7 +478,19 @@ std::string TaskSpecification::DebugString() const {
   // Print runtime env.
   if (HasRuntimeEnv()) {
     const auto &runtime_env_info = RuntimeEnvInfo();
-
+    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    const auto &uris = runtime_env_info.uris();
+    if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
+      stream << ", runtime_env_uris=";
+      if (!uris.working_dir_uri().empty()) {
+        stream << uris.working_dir_uri() << ":";
+      }
+      for (const auto &uri : uris.py_modules_uris()) {
+        stream << uri << ":";
+      }
+      // Erase the last ":"
+      stream.seekp(-1, std::ios_base::end);
+    }
     stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
     if (runtime_env_info.has_runtime_env_config()) {
       stream << ", eager_install="

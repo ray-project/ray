@@ -843,6 +843,7 @@ class TestNoUserInfoInLogs:
         ray.init()
         with pytest.raises(AssertionError):
             assert_no_user_info_in_logs("ray")
+        assert_no_user_info_in_logs("ray", file_whitelist=["*"])
 
     def test_basic(self, start_cluster, monkeypatch, tmp_path, shutdown_only):
         """Test driver with and without Ray Client."""
