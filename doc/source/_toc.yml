@@ -6,6 +6,7 @@ parts:
       - file: ray-overview/index
       - file: ray-overview/installation
       - file: ray-overview/ray-libraries
+      - file: ray-use-cases/overview
 
   - caption: Ray AI Runtime
     chapters:
@@ -351,4 +352,3 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-contribute/whitepaper
-      - file: ray-use-cases/overview

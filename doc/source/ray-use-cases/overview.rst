@@ -1,10 +1,35 @@
 .. _ref-use-cases:
 
-Ray Use Cases
-=============
+Use Cases Index
+===============
 
-This is the start of collecting some Ray use cases. It is not a replacement for blog posts
-but is meant to be an engineering resource that you can use to build your own use cases.
+This page serves as an index of common Ray use cases for scalable ML. It
+indexes references to blogs, code examples, and presentations present elsewhere in the
+Ray documentation.
+
+Batch Inference
+---------------
+
+.. TODO
+  we should add some TODOs here
+
+Batch Training
+--------------
+
+Model Serving
+-------------
+
+Distributed Training
+--------------------
+
+Hyperparameter Tuning
+---------------------
+
+Reinforcement Learning
+----------------------
+
+End-to-End ML Workflows
+-----------------------
 
 .. panels::
     :container: container pb-4
