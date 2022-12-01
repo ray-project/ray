@@ -596,6 +596,13 @@ def node_ip_address_from_perspective(address: str):
         The IP address by which the local node can be reached from the address.
     """
     ip_address, port = address.rsplit(":", 1)
+    if ip_address == "8.8.8.8":
+        my_pod_ip = os.environ.get("BYTED_RAY_POD_IP")
+        if my_pod_ip is not None and my_pod_ip != "":
+            if my_pod_ip[0] != "[":
+                my_pod_ip = "[" + my_pod_ip + "]"
+            return my_pod_ip
+
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # This command will raise an exception if there is no internet
@@ -612,9 +619,6 @@ def node_ip_address_from_perspective(address: str):
                 node_ip_address = socket.gethostbyname(host_name)
             except Exception:
                 pass
-        my_pod_ip = os.environ.get("MY_POD_IP")
-        if my_pod_ip is not None and my_pod_ip != "":
-            node_ip_address = my_pod_ip
     finally:
         s.close()
 
