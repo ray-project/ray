@@ -63,7 +63,6 @@ namespace ray {
 // grpc status
 #define STATUS_CODE_GRPC_UNAVAILABLE "GrpcUnavailable"
 #define STATUS_CODE_GRPC_UNKNOWN "GrpcUnknown"
-#define STATUS_CODE_RESOURCE_EXHAUSTED "ResourceExhausted"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -112,7 +111,6 @@ std::string Status::CodeAsString() const {
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
       {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
       {StatusCode::GrpcUnknown, STATUS_CODE_GRPC_UNKNOWN},
-      {StatusCode::ResourceExhausted, STATUS_CODE_RESOURCE_EXHAUSTED},
   };
 
   auto it = code_to_str.find(code());
@@ -147,7 +145,6 @@ StatusCode Status::StringToCode(const std::string &str) {
       {STATUS_CODE_OBJECT_STORE_ALREADY_SEALED, StatusCode::ObjectAlreadySealed},
       {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
       {STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL, StatusCode::TransientObjectStoreFull},
-      {STATUS_CODE_RESOURCE_EXHAUSTED, StatusCode::ResourceExhausted},
   };
 
   auto it = str_to_code.find(str);
