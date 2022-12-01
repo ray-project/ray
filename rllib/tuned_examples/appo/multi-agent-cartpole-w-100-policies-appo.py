@@ -72,5 +72,5 @@ config = (
 # Define some stopping criteria.
 stop = {
     "evaluation/policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 500000,
+    "timesteps_total": 1000000,
 }
