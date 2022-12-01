@@ -1,3 +1,4 @@
+import abc
 import queue
 import random
 import threading
@@ -7,7 +8,9 @@ from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
 
-class BatcherInterface:
+class BatcherInterface(abc.ABC):
+    
+    @abc.abstractmethod
     def add(self, block: Block):
         """Add a block to the block buffer.
 
@@ -16,26 +19,32 @@ class BatcherInterface:
         """
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the buffer."""
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def done_adding(self):
         """Indicate to the batcher that no more blocks will be added to the buffer."""
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def is_done_adding(self) -> bool:
         """Whether this batcher has received an indication that it should no longer receive more blocks."""
         raise NotImplementedError()
-
+    
+    @abc.abstractmethod
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def next_batch(self, batch_format: str = "default") -> Block:
         """Get the next batch from the block buffer with the provided batch format.
 
@@ -382,6 +391,10 @@ class AsyncBatcher(BatcherInterface):
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
         return self.base_batcher.done_adding()
+
+    def is_done_adding(self) -> bool:
+        """Whether this batcher has received an indication that it should no longer receive more blocks."""
+        return self.base_batcher.is_done_adding()
 
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""

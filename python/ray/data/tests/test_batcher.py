@@ -129,33 +129,44 @@ def test_shuffling_batcher():
     )
 
 
-def test_async_batcher():
+# Test for 3 cases
+# 1. Batch size is less than block size
+# 2. Batch size is more than block size
+# 3. Block size is not divisble by batch size
+@pytest.mark.parametrize("batch_size", [4, 16, 7])
+def test_async_batcher(batch_size):
+    """Tests that async batcher overlaps compute"""
     class SleepBatcher(Batcher):
         def next_batch(self, batch_format: str = "default"):
-            time.sleep(1)
+            time.sleep(2)
             return super().next_batch(batch_format)
 
-    base_batcher = SleepBatcher(batch_size=1)
+    base_batcher = SleepBatcher(batch_size=batch_size)
     async_batcher = AsyncBatcher(base_batcher=base_batcher, fetch_timeout_s=5)
 
     def sleep_udf(batch):
         time.sleep(3)
+        return batch
 
-    for i in range(10):
-        new_block = gen_block(num_rows=1)
+    for _ in range(10):
+        new_block = gen_block(num_rows=8)
         async_batcher.add(new_block)
+    async_batcher.done_adding()
 
     start_time = time.time()
-    for i in range(10):
+    outputs = []
+    while async_batcher.has_any():
         next_batch = async_batcher.next_batch()
-        sleep_udf(next_batch)
+        outputs.append(sleep_udf(next_batch))
     end_time = time.time()
 
     total_time = end_time - start_time
-    # We do 10 UDFs of 10 seconds each, so total time should be ~30 seconds.
-    # The 1 seconds sleep in next_batch is overlapped, so does not count towards total time.
-    assert total_time < 32
+    # Total time should be based on number of times the udf is called (which is equal to len(outputs)).
+    # The 2 seconds sleep in next_batch is overlapped, so does not count towards total time.
+    assert total_time < len(outputs)*3 + 3 # 3 second buffer for very first batch.
 
+    # There should be no dropped rows.
+    assert sum(len(output_batch) for output_batch in outputs) == 80, sum(len(output_batch) for output_batch in outputs)  # 10 blocks with 8 rows each.
 
 if __name__ == "__main__":
     import sys
