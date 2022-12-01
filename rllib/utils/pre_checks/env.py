@@ -103,7 +103,7 @@ def check_env(env: EnvType) -> None:
 
 
 @DeveloperAPI
-def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
+def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
     """Checking for common errors in a gymnasium/gym environments.
 
     Args:
