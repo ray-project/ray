@@ -220,15 +220,15 @@ message ProfileEvents {
   string component_type = 1;
   // An identifier for the component that generated the event.
   bytes component_id = 2;
-  // Node IP address
+  // Node IP address.
   string node_ip_address = 3;
-  // Events
+  // Events.
   repeated ProfileEventEntry events = 4;
 }
 
 // Represents task states which could be changed during task execution.
-message TaskStateEntry {
-  // The node of the associated task
+message TaskRunEntry {
+  // The node of the associated task.
   bytes node_id = 1;
 }
 
@@ -243,26 +243,25 @@ message TaskStatusEvents {
     TaskStatus task_status = 2;
   }
 
-  // Metadata shared by all events
-  // Task immutable metadata info
+  // Metadata shared by all events.
+  // Task immutable metadata info.
   TaskInfoEntry task_info = 1;
-  // Task mutable state info, which could be changed during task execution
+  // Task mutable state info, which could be changed during task execution.
   TaskStateEntry task_state = 2;
-
-  // List of task status events (e.g. PENDING, RUNNING)
+  // List of task status events (e.g. PENDING, RUNNING).
   repeated TaskStatusEventEntry events = 3;
 }
 
-// Represents envents from a single task. This follows a composition strucuture,
+// Represents events from a single task. This follows a composition structure,
 // i.e., each type of events should be made into it's own embedded field. This is
 // assuming different event types are rarely queried together and independent.
 message TaskEvents {
-  // Metadata shared by all event types
-  // Mirror info in task_info
+  // Metadata shared by all event types.
+  // Mirror info in task_info.
   bytes task_id = 1;
-  // TaskStatusEvents
+  // TaskStatusEvents.
   TaskStatusEvents status_events = 2;
-  // ProfileEvents
+  // ProfileEvents.
   ProfileEvents profile_events = 3;
 }
 
