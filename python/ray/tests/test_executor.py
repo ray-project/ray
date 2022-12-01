@@ -219,6 +219,20 @@ def test_conformity_with_processpool():
     assert type(ray_result) == type(ppe_result)
     assert ray_result == ppe_result
 
+def test_conformity_with_processpool_map():
+    with RayExecutor() as ex:
+        ray_iter = ex.map(f_process, range(10))
+        ray_result = [i for i in ray_iter]
+    with ProcessPoolExecutor() as ppe:
+        ppe_iter = ppe.map(f_process, range(10))
+        ppe_result = [i for i in ppe_iter]
+    assert hasattr(ray_iter, '__iter__')
+    assert hasattr(ray_iter, '__next__')
+    assert hasattr(ppe_iter, '__iter__')
+    assert hasattr(ppe_iter, '__next__')
+    assert type(ray_result) == type(ppe_result)
+    assert sorted(ray_result) == sorted(ppe_result)
+
 
 def test_conformity_with_threadpool():
     with RayExecutor() as ex:
@@ -228,6 +242,19 @@ def test_conformity_with_threadpool():
     assert type(ray_result) == type(tpe_result)
     assert ray_result.result() == tpe_result.result()
 
+def test_conformity_with_threadpool_map():
+    with RayExecutor() as ex:
+        ray_iter = ex.map(f_process, range(10))
+        ray_result = [i for i in ray_iter]
+    with ThreadPoolExecutor() as tpe:
+        tpe_iter = tpe.map(f_process, range(10))
+        tpe_result = [i for i in tpe_iter]
+    assert hasattr(ray_iter, '__iter__')
+    assert hasattr(ray_iter, '__next__')
+    assert hasattr(tpe_iter, '__iter__')
+    assert hasattr(tpe_iter, '__next__')
+    assert type(ray_result) == type(tpe_result)
+    assert sorted(ray_result) == sorted(tpe_result)
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
