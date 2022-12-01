@@ -712,11 +712,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
-        self._build_policy_map(
-            policy_dict=self.policy_dict,
-            config=self.config,
-            seed=self.seed,
-        )
+        self._build_policy_map(policy_dict=self.policy_dict)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -1363,9 +1359,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
             policy_dict=policy_dict_to_add,
-            config=self.config,
             policy=policy,
-            seed=self.seed,
             policy_states={policy_id: policy_state},
         )
 
@@ -1889,9 +1883,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self,
         *,
         policy_dict: MultiAgentPolicyConfigDict,
-        config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
-        seed: Optional[int] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
@@ -1899,12 +1891,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         Args:
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
-            config: The general AlgorithmConfig to use. May be updated
-                by individual policy config overrides in the given
-                multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
-            seed: An optional random seed to pass to PolicyMap's
-                constructor.
             policy_states: Optional dict from PolicyIDs to PolicyStates to
                 restore the states of the policies being built.
         """
@@ -1912,8 +1899,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            capacity=config.policy_map_capacity,
-            policy_states_are_swappable=config.policy_states_are_swappable,
+            capacity=self.config.policy_map_capacity,
+            policy_states_are_swappable=self.config.policy_states_are_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1928,7 +1915,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             else:
                 # Update the general config with the specific config
                 # for this particular policy.
-                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf: "AlgorithmConfig" = self.config.copy(copy_frozen=False)
                 merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
@@ -1965,7 +1952,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     observation_space=obs_space,
                     action_space=policy_spec.action_space,
                     worker_index=self.worker_index,
-                    seed=seed,
+                    seed=self.seed,
                 )
             else:
                 new_policy = policy
