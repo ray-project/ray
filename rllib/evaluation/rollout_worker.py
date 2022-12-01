@@ -75,13 +75,10 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import (
-    get_gpu_devices as get_tf_gpu_devices,
-    get_tf_eager_cls_if_necessary,
-)
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -245,6 +242,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         *,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
+        tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         config: Optional["AlgorithmConfig"] = None,
         worker_index: int = 0,
         num_workers: Optional[int] = None,
@@ -285,7 +283,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         policies_to_train=DEPRECATED_VALUE,
         extra_python_environs=DEPRECATED_VALUE,
         policy=DEPRECATED_VALUE,
-        tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
     ):
         """Initializes a RolloutWorker instance.
 
@@ -294,6 +291,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 wrapped configuration.
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
+            tf_session_creator: A function that returns a TF session.
+                This is optional and only useful with TFPolicy.
             worker_index: For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
@@ -444,12 +443,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 "config.python_environment(extra_python_environs_for_driver=.., "
                 "extra_python_environs_for_worker=..)",
                 error=True,
-            )
-        if tf_session_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
-                error=False,
             )
 
         self._original_kwargs: dict = locals().copy()
@@ -668,7 +661,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             default_policy_class=self.default_policy_class,
         )
 
-        self.policy_map: Optional[PolicyMap] = None
+        self.policy_map: PolicyMap = None
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
@@ -713,8 +706,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
         self._build_policy_map(
-            policy_dict=self.policy_dict,
+            self.policy_dict,
             config=self.config,
+            session_creator=tf_session_creator,
             seed=self.seed,
         )
 
@@ -1891,10 +1885,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
     def _build_policy_map(
         self,
-        *,
         policy_dict: MultiAgentPolicyConfigDict,
         config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
+        session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
@@ -1906,6 +1900,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
+            session_creator: A callable that creates a tf session
+                (if applicable).
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
         """
@@ -1913,8 +1909,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
+            worker_index=self.worker_index,
+            num_workers=self.num_workers,
             capacity=config.policy_map_capacity,
-            policy_states_are_swappable=config.policy_states_are_swappable,
+            path=config.policy_map_cache,
+            session_creator=session_creator,
+            seed=seed,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1955,24 +1955,20 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            # Create the actual policy object.
-            if policy is None:
-                new_policy = create_policy_for_framework(
-                    policy_id=name,
-                    policy_class=get_tf_eager_cls_if_necessary(
-                        policy_spec.policy_class, merged_conf
-                    ),
-                    merged_config=merged_conf,
-                    observation_space=obs_space,
-                    action_space=policy_spec.action_space,
-                    worker_index=self.worker_index,
-                    seed=seed,
-                )
+            if policy is not None:
+                self.policy_map.insert_policy(name, policy)
             else:
-                new_policy = policy
+                # Create the actual policy object.
+                self.policy_map.create_policy(
+                    name,
+                    policy_spec.policy_class,
+                    obs_space,
+                    policy_spec.action_space,
+                    config_override=None,
+                    merged_config=merged_conf,
+                )
 
-            self.policy_map[name] = new_policy
-
+            new_policy = self.policy_map[name]
             if merged_conf.enable_connectors:
                 create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)

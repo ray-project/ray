@@ -660,7 +660,6 @@ class DynamicTFPolicyV2(TFPolicy):
     def maybe_initialize_optimizer_and_loss(self):
         # We don't need to initialize loss calculation for MultiGPUTowerStack.
         if self._is_tower:
-            self.get_session().run(tf1.global_variables_initializer())
             return
 
         # Loss initialization and model/postprocessing test calls.
