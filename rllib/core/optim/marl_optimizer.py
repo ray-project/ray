@@ -47,25 +47,3 @@ class DefaultMARLLossAndOptim(MultiAgentRLOptimizer):
             else:
                 # TODO: avnishn fill in the value error.
                 raise ValueError
-
-    def compute_optimization_vars(
-        self, fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        multi_agent_optim_vars = {}
-        trainable_module_map = self.trainable_modules
-        for module_id, agent_fwd_out in fwd_out.items():
-            loss_and_optim = trainable_module_map[module_id]
-            loss_dict = loss_and_optim.compute_optimization_vars(agent_fwd_out)
-            multi_agent_optim_vars[module_id] = loss_dict
-        return multi_agent_optim_vars
-
-    def optimize(
-        self, optimization_vars: Mapping[str, Any], **kwargs
-    ) -> Mapping[str, Any]:
-        stats_and_infos = {}
-        trainable_module_map = self.trainable_modules
-        for module_id, module_optim_vars in optimization_vars.items():
-            rl_optimizer = trainable_module_map[module_id]
-            module_stats_and_infos_out = rl_optimizer.optimize(module_optim_vars)
-            stats_and_infos[module_id] = module_stats_and_infos_out
-        return stats_and_infos
