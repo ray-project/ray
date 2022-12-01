@@ -59,7 +59,7 @@ GRAFANA_PANELS = [
     Panel(
         id=26,
         title="Scheduler Task State",
-        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
@@ -75,7 +75,7 @@ GRAFANA_PANELS = [
     Panel(
         id=35,
         title="Active Tasks by Name",
-        description="Current number of (live) tasks with a particular name.",
+        description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
