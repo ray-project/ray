@@ -14,13 +14,11 @@ def test_remote_function_runs_on_local_instance():
         assert result == 10_000
 
 
-
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
         futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
             assert result == 10_000
-
 
 
 def test_remote_function_runs_on_specified_instance(call_ray_start):
