@@ -67,7 +67,7 @@ GRAFANA_PANELS = [
                 legend="{{State}}",
             ),
             Target(
-                expr='sum(max_over_time(ray_tasks{{IsRetry="1",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="1",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}} (retry)",
             ),
         ],
@@ -83,7 +83,7 @@ GRAFANA_PANELS = [
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(ray_tasks{{IsRetry="1",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
                 legend="{{Name}} (retry)",
             ),
         ],
