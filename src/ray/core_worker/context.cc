@@ -152,6 +152,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
+  // TODO(clarng): Remove thread local, refactor performance-sensitive parts to a different class.
   GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
                                           ? TaskID::ForDriverTask(job_id)
                                           : TaskID::Nil(),
@@ -173,11 +174,8 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
-  auto task_spec = GetCurrentTask();
-  if (task_spec) {
-    return task_spec->GetDepth();
-  }
-  return 0;
+  absl::ReaderMutexLock lock(&mutex_);
+  return task_depth_;
 }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
@@ -243,6 +241,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
+
+  // Don't set the depth if this is an actor task. The depth is already set by the actor creation task and we should keep that.
+  if (!task_spec.IsActorTask()) {
+    task_depth_ = task_spec.GetDepth();
+  }
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
   } else if (task_spec.IsActorCreationTask()) {
