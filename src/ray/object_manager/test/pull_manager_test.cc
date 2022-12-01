@@ -294,8 +294,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestPullOrder) {
   auto req_id_3 =
       pull_manager_.Pull(std::vector<rpc::ObjectReference>{refs_1[0], refs_2[0]},
                          prio,
-                         "",
-                         false,
+                         {"", false},
                          &objects_to_locate);
   ASSERT_TRUE(objects_to_locate.empty());
   AssertNumActiveBundlesEquals(3);

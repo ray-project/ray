@@ -329,6 +329,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     void MarkRetryOnFailed() {
       // Record a separate counter increment for retries. This means that if a task
       // is retried N times, we show it as N separate task counts.
+      // Note that the increment is for the "previous" task attempt. From now on, this
+      // task entry will report metrics or the "current" task attempt.
       counter.Increment({spec.GetName(), rpc::TaskStatus::FAILED, is_retry_});
       is_retry_ = true;
     }
@@ -336,6 +338,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     void MarkRetryOnResubmit() {
       // Record a separate counter increment for resubmits. This means that if a task
       // is resubmitted N times, we show it as N separate task counts.
+      // Note that the increment is for the "previous" task attempt. From now on, this
+      // task entry will report metrics or the "current" task attempt.
       counter.Increment({spec.GetName(), rpc::TaskStatus::FINISHED, is_retry_});
       is_retry_ = true;
     }

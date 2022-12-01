@@ -37,7 +37,7 @@ namespace ray {
 
 // Identifier for task metrics reporting, which is tuple of the task name
 // (empty string if unknown), and is_retry bool.
-typedef TaskMetricsKey std::pair<std::string, bool>;
+typedef std::pair<std::string, bool> TaskMetricsKey;
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
