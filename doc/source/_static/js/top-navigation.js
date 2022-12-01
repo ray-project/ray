@@ -87,7 +87,7 @@ topNavContentLeft.append(documentationLink)
 //-- The Learn menu
 learnMenu = document.createElement("div")
 learnMenu.setAttribute("class", "menu")
-learnMenu.innerHTML = "<a href='#'>Learning" + downCaret + "</a>"
+learnMenu.innerHTML = "<a href='#'>Learn" + downCaret + "</a>"
 learnList = document.createElement("ul")
 learnList.innerHTML += "<li><a href='https://discuss.ray.io/'><span class='primary'>Discussion Forum</span><span class='secondary'>Get your Ray questions answered</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
