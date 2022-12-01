@@ -358,7 +358,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
             checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
 
