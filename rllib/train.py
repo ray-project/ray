@@ -79,7 +79,7 @@ def load_experiments_from_file(
         The experiments dict ready to be passed into `tune.run_experiments()`.
     """
 
-    # Yaml file
+    # Yaml file.
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
@@ -92,6 +92,7 @@ def load_experiments_from_file(
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
+
         if not hasattr(module, "config"):
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
