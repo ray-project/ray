@@ -50,7 +50,7 @@ class RayExecutor(Executor):
     def __actor_fn(fn, *args, **kwargs):
         return fn.remote(*args, **kwargs)
 
-    def submit(self, fn, /, *args, **kwargs):
+    def submit(self, fn, *args, **kwargs):
         """Submits a callable to be executed with the given arguments.
 
         Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
