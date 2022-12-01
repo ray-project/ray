@@ -389,10 +389,18 @@ class _BackgroundSyncer(Syncer):
         self._sync_process = None
         self._current_cmd = None
 
+    def _should_continue_existing_sync(self):
+        """Returns whether a previous sync is still running within the timeout."""
+        return (
+            self._sync_process
+            and self._sync_process.is_running
+            and time.time() - self._sync_process.start_time < self.sync_timeout
+        )
+
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
@@ -419,7 +427,7 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync down of {remote_dir} to {local_dir}"
@@ -442,7 +450,7 @@ class _BackgroundSyncer(Syncer):
         raise NotImplementedError
 
     def delete(self, remote_dir: str) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
@@ -458,8 +466,11 @@ class _BackgroundSyncer(Syncer):
 
     def wait(self):
         if self._sync_process:
+            assert self._sync_process.start_time
+            elapsed = time.time() - self._sync_process.start_time
+            time_remaining = max(self.sync_timeout - elapsed, 0)
             try:
-                self._sync_process.wait(timeout=self.sync_timeout)
+                self._sync_process.wait(timeout=time_remaining)
             except Exception as e:
                 raise TuneError(f"Sync process failed: {e}") from e
             finally:
