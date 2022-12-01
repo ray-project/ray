@@ -1,3 +1,10 @@
+/* Remove flicker for announcement top bar replacement */
+.header-item.announcement {
+  background-color: white;
+  color: white;
+  padding: 0pt;
+}
+
 .topnav {
   background-color: white;
   border-bottom: 1px solid rgba(0, 0, 0, .1);
