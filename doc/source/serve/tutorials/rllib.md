@@ -39,11 +39,14 @@ from ray import serve
 
 def train_ppo_model():
     # Configure our PPO algorithm.
-    config = ppo.PPOConfig()\
-        .framework("torch")\
+    config = (
+        ppo.PPOConfig()
+        .environment("CartPole-v1")
+        .framework("torch")
         .rollouts(num_rollout_workers=0)
+    )
     # Create a `PPO` instance from the config.
-    algo = config.build(env="CartPole-v0")
+    algo = config.build()
     # Train for one iteration.
     algo.train()
     # Save state of the trained Algorithm in a checkpoint.
@@ -112,12 +115,16 @@ the `__init__` method of the `ServePPOModel` class that we defined above.
 Now that the model is deployed, let's query it!
 
 ```{code-cell} python3
-import gym
+try:
+    import gymnasium as gym
+    env = gym.make("CartPole-v1", apply_api_compatibility=True)
+except Exception:
+    import gym
+    env = gym.make("CartPole-v1")
 import requests
 
 
 for _ in range(5):
-    env = gym.make("CartPole-v0")
     obs = env.reset()
 
     print(f"-> Sending observation {obs}")
