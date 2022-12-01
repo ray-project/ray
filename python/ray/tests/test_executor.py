@@ -73,6 +73,18 @@ class ActorTest2:
         return self.value
 
 
+def test_even_detached_actors_do_not_persist_after_shutdown():
+    @ray.remote
+    class Actor:
+        pass
+
+    with RayExecutor():
+        Actor.options(name="test0", lifetime="detached").remote()
+    with RayExecutor():
+        with pytest.raises(ValueError):
+            ray.get_actor("test0")
+
+
 def test_remote_actor_on_local_instance():
     a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
     with RayExecutor() as ex:
