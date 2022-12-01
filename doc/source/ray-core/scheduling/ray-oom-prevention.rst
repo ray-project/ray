@@ -18,16 +18,16 @@ The memory monitor is a component that runs within the :ref:`raylet <whitepaper>
 
 .. note::
 
-    The memory monitor is in :ref:`beta <api-stability-beta>`. It is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
+    The memory monitor is in :ref:`beta <api-stability-beta>`. It is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
 
 How do I configure the memory monitor?
 --------------------------------------
 
 The memory monitor is controlled by the following environment variables:
 
-- ``RAY_memory_monitor_interval_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
+- ``RAY_memory_monitor_refresh_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
-- ``RAY_memory_usage_threshold_fraction (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
+- ``RAY_memory_usage_threshold (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this value and the free space is
   below min_memory_free_bytes then it will start killing processes to free up space. Ranges from [0, 1].
 
@@ -77,11 +77,11 @@ To speed up the example, set ``RAY_task_oom_retries=1`` on the application so th
 
     (raylet) [2022-11-17 09:16:52,264 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
     (raylet) 
-    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
     (raylet) [2022-11-17 09:17:03,461 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
     (raylet) 
-    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
     Traceback (most recent call last):
       File "oom.py", line 11, in <module>
@@ -103,7 +103,7 @@ To speed up the example, set ``RAY_task_oom_retries=1`` on the application so th
     91043   0.07    /home/ray/anaconda3/bin/python -u /home/ray/github/rayclarng/ray/python/ray/dashboard/agent.py --nod...
     90935   0.07    /home/ray/anaconda3/bin/python /home/ray/github/rayclarng/ray/python/ray/dashboard/dashboard.py --ho...
     90870   0.07    python oom.py
-    Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
 Verify the task was indeed executed twice via ``task_oom_retry``:
 
@@ -132,7 +132,7 @@ The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries
 
     .. code-block:: bash
 
-        RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.4 ray start --head
+        RAY_memory_usage_threshold=0.4 ray start --head
 
 
     Let's create an application two_actors.py that submits two actors, where the first one is retriable and the second one is non-retriable.

@@ -431,43 +431,40 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });
-  auto request2 = Mocker::GenCreatePlacementGroupRequest();
-  RegisterPlacementGroup(request2, [&registered_placement_group_count](Status status) {
-    ++registered_placement_group_count;
-  });
-  ASSERT_EQ(registered_placement_group_count, 2);
+  ASSERT_EQ(registered_placement_group_count, 1);
   WaitForExpectedPgCount(1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
-  placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
+  OnPlacementGroupCreationSuccess(placement_group);
+
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
-  // placement group. The placement group state is set to `RESCHEDULING` and will be
-  // scheduled first.
+  // placement group. The placement group state is set to `RESCHEDULING`
   mock_placement_group_scheduler_->group_on_dead_node_ =
       placement_group->GetPlacementGroupID();
   mock_placement_group_scheduler_->bundles_on_dead_node_.push_back(0);
   gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
-
-  // Trigger scheduling `RESCHEDULING` placement group.
-  auto finished_group = std::make_shared<gcs::GcsPlacementGroup>(
-      placement_group->GetPlacementGroupTableData(), counter_);
-  OnPlacementGroupCreationSuccess(finished_group);
-  ASSERT_EQ(finished_group->GetState(), rpc::PlacementGroupTableData::CREATED);
-  WaitForExpectedPgCount(1);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
             placement_group->GetPlacementGroupID());
   const auto &bundles =
       mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
   EXPECT_TRUE(NodeID::FromBinary(bundles[0]->GetMessage().node_id()).IsNil());
   EXPECT_FALSE(NodeID::FromBinary(bundles[1]->GetMessage().node_id()).IsNil());
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::RESCHEDULING);
+
+  // Test placement group rescheduling success.
+  OnPlacementGroupCreationSuccess(placement_group);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  WaitForExpectedPgCount(1);
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
+  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
   placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), true);
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   WaitForExpectedPgCount(1);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
             placement_group->GetPlacementGroupID());
