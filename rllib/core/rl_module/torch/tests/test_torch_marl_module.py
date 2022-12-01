@@ -255,7 +255,7 @@ class TestMARLModule(unittest.TestCase):
             for aid in agent_obs.keys():
                 iteration_data[aid] = {
                     "obs": obs[aid],
-                    "action": action[aid][None]
+                    "actions": action[aid][None]
                     if action[aid].ndim == 0
                     else action[aid],
                     "reward": np.array(reward[aid])[None],

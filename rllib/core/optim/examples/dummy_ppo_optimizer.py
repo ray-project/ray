@@ -31,10 +31,18 @@ class DummyPPOTorchOptimizer(RLOptimizer):
         }
         return loss_dict
 
-    def construct_optimizers(self):
+    def _configure_optimizers(self):
         return [
             torch.optim.SGD(self.module.parameters(), lr=self._config.get("lr", 1e-3))
         ]
+
+    def get_state(self):
+        return [optim.state_dict() for optim in self.optimizers]
+
+    def set_state(self, state):
+        assert len(state) == len(self.optimizers)
+        for optim, optim_state in zip(self.optimizers, state):
+            optim.load_state_dict(optim_state)
 
 
 class DummyPPOTorchTrainer:
@@ -43,7 +51,6 @@ class DummyPPOTorchTrainer:
         optimizer_config = {}
         self._module = SimplePPOModule(module_config)
         self._rl_optimizer = DummyPPOTorchOptimizer(self._module, optimizer_config)
-        self._optimizers = self._rl_optimizer.construct_optimizers()
 
     @staticmethod
     def on_after_compute_gradients(gradients_dict):
@@ -95,7 +102,7 @@ class DummyPPOTorchTrainer:
     def apply_gradients(self, gradients):
         """Perform an update on self._module"""
         del gradients
-        for optimizer in self._optimizers:
+        for optimizer in self._rl_optimizer.get_optimizers():
             optimizer.step()
             optimizer.zero_grad()
 
@@ -112,14 +119,12 @@ if __name__ == "__main__":
     trainer.set_state(dict(module_state=module_for_inference.get_state()))
 
     obs = env.reset()
-    returns_to_go = 0
     _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
     for _ in range(env._max_episode_steps):
         _obs.append(obs)
         fwd_out = module_for_inference.forward_inference({"obs": to_tensor(obs)[None]})
         action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
         next_obs, reward, done, info = env.step(action)
-        returns_to_go += reward
         _next_obs.append(next_obs)
         _actions.append([action])
         _rewards.append([reward])
