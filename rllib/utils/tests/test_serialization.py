@@ -146,7 +146,7 @@ class TestGymCheckEnv(unittest.TestCase):
     def test_text(self):
         # NOTE (kourosh): This unittest will automatically get activated on CI once
         # we upgrade gym
-        if not text_space_class:
+        if text_space_class is None:
             print("Skipping test_text, since gym version is too old")
             return
 
