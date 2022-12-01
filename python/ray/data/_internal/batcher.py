@@ -2,7 +2,6 @@ import queue
 import random
 import threading
 from typing import Optional, List
-from numpy import ma
 
 from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
