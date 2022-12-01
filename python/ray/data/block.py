@@ -25,6 +25,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 
 import psutil
+from ray.util.scheduling_strategies import SchedulingStrategyT
 
 try:
     import resource
@@ -225,6 +226,7 @@ class BlockMetadata:
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     input_files: Optional[List[str]]
     exec_stats: Optional[BlockExecStats]
+    scheduling_strategy: Optional[SchedulingStrategyT]
 
     def __post_init__(self):
         if self.input_files is None:
@@ -343,7 +345,10 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: List[str],
+        exec_stats: Optional[BlockExecStats],
+        scheduling_strategy: Optional[SchedulingStrategyT],
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -352,6 +357,7 @@ class BlockAccessor(Generic[T]):
             schema=self.schema(),
             input_files=input_files,
             exec_stats=exec_stats,
+            scheduling_strategy=scheduling_strategy,
         )
 
     def zip(self, other: "Block[T]") -> "Block[T]":

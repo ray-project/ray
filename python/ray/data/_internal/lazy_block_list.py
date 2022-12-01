@@ -20,6 +20,7 @@ from ray.data.block import (
 from ray.data.context import DatasetContext
 from ray.data.datasource import ReadTask
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import SchedulingStrategyT
 
 
 class LazyBlockList(BlockList):
@@ -586,6 +587,7 @@ class LazyBlockList(BlockList):
             self._execution_started = True
         task = self._tasks[task_idx]
         context = DatasetContext.get_current()
+        scheduling_strategy = self._remote_args.get("scheduling_strategy")
         if context.block_splitting_enabled:
             return (
                 cached_remote_fn(_execute_read_task_split)
@@ -596,6 +598,7 @@ class LazyBlockList(BlockList):
                     context=DatasetContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
+                    scheduling_strategy=scheduling_strategy,
                 ),
                 None,
             )
@@ -609,6 +612,7 @@ class LazyBlockList(BlockList):
                     context=DatasetContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
+                    scheduling_strategy=scheduling_strategy,
                 )
             )
 
@@ -636,6 +640,7 @@ def _execute_read_task_nosplit(
     context: DatasetContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
+    scheduling_strategy: Optional[SchedulingStrategyT],
 ) -> Tuple[Block, BlockMetadata]:
     DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
@@ -648,7 +653,7 @@ def _execute_read_task_nosplit(
 
     metadata = task.get_metadata()
     metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=metadata.input_files, exec_stats=stats.build()
+        input_files=metadata.input_files, exec_stats=stats.build(), scheduling_strategy=scheduling_strategy,
     )
     stats_actor.record_task.remote(stats_uuid, i, [metadata])
     return block, metadata
@@ -660,6 +665,7 @@ def _execute_read_task_split(
     context: DatasetContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
+    scheduling_strategy: Optional[SchedulingStrategyT],
 ) -> Iterable[Union[Block, List[BlockMetadata]]]:
     """Execute read task with dynamic block splitting.
 
@@ -679,6 +685,7 @@ def _execute_read_task_split(
         metadata = BlockAccessor.for_block(block).get_metadata(
             input_files=input_files,
             exec_stats=block_exec_stats.build(),
+            scheduling_strategy=scheduling_strategy,
         )
         yield block
         blocks_metadata.append(metadata)
