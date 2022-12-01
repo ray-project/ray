@@ -228,41 +228,34 @@ message ProfileEvents {
 
 // Represents task states which could be changed during task execution.
 message TaskStateEntry {
-  // The node of the associated task.
+  // Node that runs the task.
   bytes node_id = 1;
+  // Timestamp when status changes to PENDING_ARGS_AVAIL.
+  int64 pending_args_avail_ts = 2;
+  // Timestamp when status changes to PENDING_NODE_ASSIGNEMENT.
+  int64 pending_node_assignement_ts = 3;
+  // Timestamp when status changes to SUBMITTED_TO_WORKER.
+  int64 submitted_to_worker_ts = 4;
+  // Timestamp when status changes to RUNNING.
+  int64 running_ts = 5;
+  // Timestamp when status changes to FINISHED.
+  int64 finished_ts = 6;
+  // Timestamp when status changes to FAILED.
+  int64 failed_ts = 7;
 }
 
-message TaskStatusEvents {
-  // Represents a single task event entry.
-  //  - It could be a task status event that represents a TaskStatus change, which
-  //    only has a corresponding start_time.
-  message TaskStatusEventEntry {
-    // The start timestamp of the event time.
-    int64 start_time = 1;
-    // The task status associated with this event.
-    TaskStatus task_status = 2;
-  }
-
-  // Metadata shared by all events.
-  // Task immutable metadata info.
-  TaskInfoEntry task_info = 1;
-  // Task mutable state info, which could be changed during task execution.
-  TaskStateEntry task_state = 2;
-  // List of task status events (e.g. PENDING, RUNNING).
-  repeated TaskStatusEventEntry events = 3;
-}
-
-// Represents events from a single task. This follows a composition structure,
-// i.e., each type of events should be made into it's own embedded field. This is
-// assuming different event types are rarely queried together and independent.
+// Represents events and state changes from a single task run.
 message TaskEvents {
   // Metadata shared by all event types.
-  // Mirror info in task_info.
   bytes task_id = 1;
-  // TaskStatusEvents.
-  TaskStatusEvents status_events = 2;
-  // ProfileEvents.
-  ProfileEvents profile_events = 3;
+  // The current retry attempt number for the task.
+  int32 attempt_number = 2;
+  // Task Spec.
+  TaskSpec task_spec = 3;
+  // Task state updates.
+  TaskStateUpdate state_updates = 4;
+  // Task profiling events.
+  ProfileEvents profile_events = 5;
 }
 
 // Represents a compact list of task state events by different tasks,
