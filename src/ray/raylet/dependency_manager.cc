@@ -170,8 +170,7 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id,
     const std::vector<rpc::ObjectReference> &required_objects,
-    const std::string &task_name,
-    bool is_retry) {
+    const TaskMetricsKey &task_key) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
 
@@ -180,7 +179,7 @@ bool DependencyManager::RequestTaskDependencies(
   auto inserted = queued_task_requests_.emplace(
       task_id,
       std::make_unique<TaskDependencies>(
-          std::move(deduped_ids), waiting_tasks_counter_, task_name, is_retry));
+          std::move(deduped_ids), waiting_tasks_counter_, task_key));
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
                              << task_id;
   auto &task_entry = inserted.first->second;
@@ -200,8 +199,8 @@ bool DependencyManager::RequestTaskDependencies(
   }
 
   if (!required_objects.empty()) {
-    task_entry->pull_request_id = object_manager_.Pull(
-        required_objects, BundlePriority::TASK_ARGS, task_name, is_retry);
+    task_entry->pull_request_id =
+        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_key);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
                    << " request: " << task_entry->pull_request_id;
   }

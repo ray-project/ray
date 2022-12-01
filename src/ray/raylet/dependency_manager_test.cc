@@ -33,8 +33,7 @@ class MockObjectManager : public ObjectManagerInterface {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
-                const std::string &task_name,
-                bool is_retry) {
+                const TaskMetricsKey &task_key) {
     if (prio == BundlePriority::GET_REQUEST) {
       active_get_requests.insert(req_id);
     } else if (prio == BundlePriority::WAIT_REQUEST) {
@@ -57,8 +56,7 @@ class MockObjectManager : public ObjectManagerInterface {
            active_task_requests.count(request_id);
   }
 
-  int64_t PullManagerNumInactivePullsByTaskName(const std::string &name,
-                                                bool is_retry) const {
+  int64_t PullManagerNumInactivePullsByTaskName(const TaskMetricsKey &task_key) const {
     return 0;
   }
 
@@ -106,7 +104,7 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "foo", false);
+      task_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(NumWaiting("bar"), 0);
   ASSERT_EQ(NumWaiting("foo"), 1);
@@ -142,7 +140,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     bool ready = dependency_manager_.RequestTaskDependencies(
-        task_id, ObjectIdsToRefs({argument_id}), "foo", false);
+        task_id, ObjectIdsToRefs({argument_id}), {"foo", false});
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each task.
     ASSERT_EQ(object_manager_mock_.active_task_requests.size(), i + 1);

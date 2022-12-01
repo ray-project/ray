@@ -35,6 +35,10 @@
 
 namespace ray {
 
+// Identifier for task metrics reporting, which is tuple of the task name
+// (empty string if unknown), and is_retry bool.
+typedef TaskMetricsKey std::pair<std::string, bool>;
+
 enum BundlePriority {
   /// Bundle requested by ray.get().
   GET_REQUEST,
@@ -81,15 +85,13 @@ class PullManager {
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
-  /// \param task_name Name of the task for the pull, or empty string.
-  /// \param is_retry Whether this is a task retry.
+  /// \param task_key Task name and whether it is a retry.
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 BundlePriority prio,
-                const std::string &task_name,
-                bool is_retry,
+                const TaskMetricsKey &task_key,
                 std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
@@ -172,8 +174,8 @@ class PullManager {
 
   void SetOutOfDisk(const ObjectID &object_id);
 
-  int64_t NumInactivePulls(const std::string &task_name, bool is_retry) const {
-    return task_argument_bundles_.inactive_by_name.Get({task_name, is_retry});
+  int64_t NumInactivePulls(const TaskMetricsKey &task_key) const {
+    return task_argument_bundles_.inactive_by_name.Get(task_key);
   }
 
  private:
@@ -225,15 +227,14 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
     BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const std::string &task_name,
-                      bool is_retry)
-        : objects(std::move(requested_objects)), task_key({task_name, is_retry}) {}
+                      const TaskMetricsKey &task_key)
+        : objects(std::move(requested_objects)), task_key(task_key) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const std::pair<std::string, bool> task_key;
+    const TaskMetricsKey task_key;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);

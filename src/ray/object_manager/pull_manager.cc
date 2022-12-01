@@ -47,8 +47,7 @@ PullManager::PullManager(
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            BundlePriority prio,
-                           const std::string &task_name,
-                           bool is_retry,
+                           const TaskMetricsKey &task_key,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
   // To avoid edge cases dealing with duplicated object ids in the bundle,
   // canonicalize the set up-front by dropping all duplicates.
@@ -62,8 +61,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     }
   }
 
-  BundlePullRequest bundle_pull_request(
-      ObjectRefsToIds(deduplicated), task_name, is_retry);
+  BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated), task_key);
   const uint64_t req_id = next_req_id_++;
   RAY_LOG(DEBUG) << "Start pull request " << req_id
                  << ". Bundle size: " << bundle_pull_request.objects.size();
