@@ -1,5 +1,5 @@
 # Can expect improvement to -140 reward in ~300-500k timesteps.
-pendulum-ppo:
+pendulum-ppo-v2:
     env: Pendulum-v1
     run: PPO
     stop:

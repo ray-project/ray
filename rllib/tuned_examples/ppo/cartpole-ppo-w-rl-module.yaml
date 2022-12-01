@@ -1,4 +1,4 @@
-cartpole-ppo:
+cartpole-ppo-v2:
     env: CartPole-v1
     run: PPO
     stop:
@@ -13,10 +13,9 @@ cartpole-ppo:
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
         vf_loss_coeff: 0.01
-        sgd_minibatch_size: 1024
         model:
             fcnet_hiddens: [32]
-            fcnet_activation: relu
-            vf_share_layers: False
+            fcnet_activation: linear
+            vf_share_layers: true
         enable_connectors: True
         _enable_rl_module_api: True
