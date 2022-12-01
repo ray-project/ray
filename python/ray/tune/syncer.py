@@ -187,7 +187,7 @@ class _BackgroundProcess:
             self._process = None
             raise TimeoutError(
                 f"{getattr(self._fn, '__name__', str(self._fn))} did not finish "
-                "running within the timeout of {timeout} seconds."
+                f"running within the timeout of {timeout} seconds."
             )
 
         self._process = None
@@ -474,6 +474,8 @@ class _BackgroundSyncer(Syncer):
             try:
                 self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
+                if isinstance(e, TimeoutError):
+                    raise e
                 raise TuneError(f"Sync process failed: {e}") from e
             finally:
                 self._sync_process = None
