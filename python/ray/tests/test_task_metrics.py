@@ -325,6 +325,10 @@ import time
 ray.init("auto")
 
 @ray.remote
+def sleep():
+    time.sleep(999)
+
+@ray.remote
 class Phaser:
     def __init__(self):
         self.i = 0
@@ -339,6 +343,7 @@ phaser = Phaser.remote()
 @ray.remote(retry_exceptions=True, max_retries=3)
 def f():
     ray.get(phaser.inc.remote())
+    ray.get(sleep.remote())
 
 f.remote()
 time.sleep(999)
@@ -346,9 +351,10 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
+        ("sleep", "RUNNING", "0"): 1.0,
         ("f", "FAILED", "0"): 1.0,
         ("f", "FAILED", "1"): 1.0,
-        ("f", "FINISHED", "1"): 1.0,
+        ("f", "RUNNING_IN_RAY_GET", "1"): 1.0,
         ("Phaser.__init__", "FINISHED", "0"): 1.0,
         ("Phaser.inc", "FINISHED", "0"): 1.0,
         ("Phaser.inc", "FAILED", "0"): 2.0,
