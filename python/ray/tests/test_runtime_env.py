@@ -37,6 +37,7 @@ from ray._private.utils import (
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
+from ray.job_submission import JobSubmissionClient
 
 
 def test_get_wheel_filename():
@@ -834,58 +835,78 @@ def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None
                     assert user_info not in line, (file, user_info, line)
 
 
-# TODO(architkulkarni): Also test Ray Client and Ray Job Submission codepaths
-def test_no_user_info_in_logs(monkeypatch, tmp_path):
-    monkeypatch.setenv("RAY_BACKEND_LOG_LEVEL", "debug")
+class TestNoUserInfoInLogs:
+    """Test that no user info (e.g. runtime env env vars) show up in the logs."""
 
-    # Reuse the same "secret" for working_dir, pip, env_vars for convenience.
-    USER_SECRET = "pip-install-test"
-    working_dir = tmp_path / USER_SECRET
-    working_dir.mkdir()
-    ray.init(
-        runtime_env={
+    def test_assert_no_user_info_in_logs(self, shutdown_only):
+        """Test assert_no_user_info_in_logs does not spuriously pass."""
+        ray.init()
+        with pytest.raises(AssertionError):
+            assert_no_user_info_in_logs("ray")
+
+    def test_basic(self, start_cluster, monkeypatch, tmp_path, shutdown_only):
+        """Test driver with and without Ray Client."""
+
+        cluster, address = start_cluster
+
+        # Runtime env logs may still appear in debug logs. Check the debug flag is off.
+        assert os.getenv("RAY_BACKEND_LOG_LEVEL") != "debug"
+
+        # Reuse the same "secret" for working_dir, pip, env_vars for convenience.
+        USER_SECRET = "pip-install-test"
+        working_dir = tmp_path / USER_SECRET
+        working_dir.mkdir()
+        runtime_env = {
             "working_dir": str(working_dir),
             "pip": [USER_SECRET],
+            # Append address to ensure different runtime envs for client and non-client
+            # code paths to force reinstallating the runtime env instead of reusing it.
+            "env_vars": {USER_SECRET: USER_SECRET + str(address)},
+        }
+        ray.init(runtime_env=runtime_env)
+
+        # Run a function to ensure the runtime env is set up.
+        @ray.remote
+        def f():
+            return os.environ.get(USER_SECRET)
+
+        assert USER_SECRET in ray.get(f.remote())
+
+        @ray.remote
+        class Foo:
+            def __init__(self):
+                self.x = os.environ.get(USER_SECRET)
+
+            def get_x(self):
+                return self.x
+
+        foo = Foo.remote()
+        assert USER_SECRET in ray.get(foo.get_x.remote())
+
+        # Generate runtime env failure logs too.
+        bad_runtime_env = {
+            "pip": ["pkg-which-sadly-does-not-exist"],
             "env_vars": {USER_SECRET: USER_SECRET},
         }
-    )
+        with pytest.raises(Exception):
+            ray.get(f.options(runtime_env=bad_runtime_env).remote())
 
-    # Run a function to ensure the runtime env is set up.
-    @ray.remote
-    def f():
-        return os.environ.get(USER_SECRET)
+        using_ray_client = address.startswith("ray://")
+        if not using_ray_client:
+            # Test Job Submission codepath.
+            client = JobSubmissionClient()
+            client.submit_job(entrypoint="echo 'hello world'", runtime_env=runtime_env)
+            client.submit_job(
+                entrypoint="echo 'hello world'", runtime_env=bad_runtime_env
+            )
 
-    assert ray.get(f.remote()) == USER_SECRET
+        # Allow time for log files to be written.
+        time.sleep(5)
 
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            self.x = os.environ.get(USER_SECRET)
+        with pytest.raises(AssertionError):
+            assert_no_user_info_in_logs(USER_SECRET)
 
-        def get_x(self):
-            return self.x
-
-    foo = Foo.remote()
-    assert ray.get(foo.get_x.remote()) == USER_SECRET
-
-    # Generate runtime env failure logs too.
-    bad_runtime_env = {
-        "pip": ["pkg-which-sadly-does-not-exist"],
-        "env_vars": {USER_SECRET: USER_SECRET},
-    }
-    with pytest.raises(Exception):
-        ray.get(f.options(runtime_env=bad_runtime_env).remote())
-
-    # Allow time for log files to be written.
-    time.sleep(5)
-
-    # Check that no_user_info_in_logs works.
-    with pytest.raises(AssertionError):
-        assert_no_user_info_in_logs("ray")
-    with pytest.raises(AssertionError):
-        assert_no_user_info_in_logs(USER_SECRET)
-
-    assert_no_user_info_in_logs(USER_SECRET, file_whitelist=["runtime_env*.log"])
+        assert_no_user_info_in_logs(USER_SECRET, file_whitelist=["runtime_env*.log"])
 
 
 if __name__ == "__main__":
