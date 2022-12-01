@@ -227,7 +227,7 @@ message ProfileEvents {
 }
 
 // Represents task states which could be changed during task execution.
-message TaskRunEntry {
+message TaskStateEntry {
   // The node of the associated task.
   bytes node_id = 1;
 }
