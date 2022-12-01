@@ -227,7 +227,7 @@ message ProfileEvents {
 }
 
 // Represents task states which could be changed during task execution.
-message TaskStateEntry {
+message TaskStateUpdate {
   // Node that runs the task.
   bytes node_id = 1;
   // Timestamp when status changes to PENDING_ARGS_AVAIL.
