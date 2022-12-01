@@ -255,7 +255,8 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::TaskEventData> GenTaskStatusEvents(
-      std::vector<TaskID> task_ids, rpc::TaskStatus status = rpc::TaskStatus::RUNNING) {
+      const std::vector<TaskID> &task_ids,
+      rpc::TaskStatus status = rpc::TaskStatus::RUNNING) {
     auto task_events = std::make_shared<rpc::TaskEventData>();
     for (auto const &task_id : task_ids) {
       auto events = task_events->add_events_by_task();

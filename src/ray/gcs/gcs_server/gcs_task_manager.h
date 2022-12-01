@@ -28,8 +28,11 @@ using AddTaskEventCallback = std::function<void(Status status, const TaskID &tas
 
 /// GcsTaskManger is responsible for capturing task states change reported from other
 /// components, i.e. raylets/workers through grpc handles.
-/// This class has its own io_context and io_thread, that's separate from other GCS
-/// services.
+/// When the maximal number of task events tracked specified by
+/// `RAY_task_events_max_num_task_in_gcs`, older events (approximately by insertion order)
+/// will be dropped.
+/// This class has its own io_context and io_thread, that's separate from
+/// other GCS services.
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
@@ -60,14 +63,22 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// of a simple counter since events from a single task might arrive at separate gRPC
   /// calls. With a simple counter, we are not able to know the exact number of tasks we
   /// are dropping.
-  absl::flat_hash_set<TaskID> tasks_reported_ GUARDED_BY(mutex_);
+  absl::flat_hash_set<TaskID> all_tasks_reported_ GUARDED_BY(mutex_);
 
   /// Current task events tracked. This map might contain less events than the actual task
   /// events reported to GCS due to truncation for capping memory usage.
   /// TODO(rickyx):  Refactor this to an abstraction
   absl::flat_hash_map<TaskID, rpc::TaskEvents> task_events_ GUARDED_BY(mutex_);
 
-  /// Counter for tracking the size of task event.
+  /// A FIFO with maximal size keeping track of Task events.
+  std::vector<TaskID> stored_task_ids_;
+
+  /// An iterator marker into `stored_task_ids_` for keeping track the next Task to
+  /// override if maximal number of task events reached.
+  size_t next_idx_to_override_ = 0;
+
+  /// Counter for tracking the size of task event. This assumes tasks events are never
+  /// removed actively.
   size_t num_bytes_task_events_ = 0;
 
   /// Its own separate IO service and thread.

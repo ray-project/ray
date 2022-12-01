@@ -96,21 +96,34 @@ Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
 
   // Try adding to the storage.
   auto task_event_itr = task_events_.find(task_id);
-  auto max_num_events = RayConfig::instance().task_events_max_num_task_in_gcs();
+  auto max_num_events =
+      static_cast<size_t>(RayConfig::instance().task_events_max_num_task_in_gcs());
   if (task_event_itr == task_events_.end()) {
     // A newly reported task events
-    tasks_reported_.insert(task_id);
-    if (max_num_events >= 0 &&
-        task_events_.size() >= static_cast<size_t>(max_num_events)) {
-      // TODO(rickyx): We might want to evict those events with some semantics, e.g.
-      // finished events, oldest events.
-      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1000)
-          << "Max number of tasks event states(" << max_num_events
-          << ") allowed reached. Dropping task state events. Set "
-             "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
-             "store "
-             "more.";
-      return Status::ResourceExhausted("Max number of task events in GCS reached");
+    all_tasks_reported_.insert(task_id);
+
+    if (max_num_events >= 0) {
+      if (task_events_.size() >= max_num_events) {
+        // Reached max events, do overriding.
+        RAY_CHECK(next_idx_to_override_ < stored_task_ids_.size())
+            << "Tracked indexing of stored task events is out of bound"
+            << next_idx_to_override_ << " >= " << stored_task_ids_.size();
+        auto evict_task_id = stored_task_ids_[next_idx_to_override_];
+        task_events_.erase(evict_task_id);
+
+        // Maintain the override indexing.
+        stored_task_ids_[next_idx_to_override_] = task_id;
+        next_idx_to_override_ = (next_idx_to_override_ + 1) % max_num_events;
+
+        RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1000)
+            << "Max number of tasks event states(" << max_num_events
+            << ") allowed reached. Dropping old task state events. Set "
+               "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
+               "store more.";
+      } else {
+        // Not reached max number of events yet
+        stored_task_ids_.push_back(task_id);
+      }
     }
 
     num_bytes_task_events_ += events_by_task.ByteSizeLong();
@@ -131,5 +144,6 @@ Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
   task_event_itr->second.MergeFrom(events_by_task);
   return Status::OK();
 }
+
 }  // namespace gcs
 }  // namespace ray
