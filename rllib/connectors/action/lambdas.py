@@ -3,8 +3,8 @@ from typing import Any, Callable, Dict, Type
 from ray.rllib.connectors.connector import (
     ActionConnector,
     ConnectorContext,
-    register_connector,
 )
+from ray.rllib.connectors.registry import register_connector
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,

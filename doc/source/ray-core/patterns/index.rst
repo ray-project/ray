@@ -15,6 +15,7 @@ This section is a collection of common design patterns and anti-patterns for wri
     actor-sync
     tree-of-actors
     pipelining
+    return-ray-put
     ray-get-loop
     unnecessary-ray-get
     ray-get-submission-order
