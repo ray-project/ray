@@ -70,9 +70,11 @@ if False:
 # __rllib-compute-action-begin__
 try:
     import gymnasium as gym
+
     env = gym.make(env_name, apply_api_compatibility=True)
 except Exception:
     import gym
+
     env = gym.make(env_name)
 from ray.rllib.algorithms.ppo import PPOConfig
 

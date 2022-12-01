@@ -3,6 +3,7 @@
 # __preprocessing_observations_start__
 try:
     import gymnasium as gym
+
     env = gym.make(
         "GymV26Environment-v0",
         env_id="ALE/Pong-v5",
@@ -10,6 +11,7 @@ try:
     )
 except Exception:
     import gym
+
     env = gym.make("Pong-v0")
 
 # RLlib uses preprocessors to implement transforms such as one-hot encoding
