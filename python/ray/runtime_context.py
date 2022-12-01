@@ -63,15 +63,13 @@ class RuntimeContext(object):
             job ID will be hex format.
 
         Raises:
-            ValueError: If not called in a driver or worker. Generally,
+            AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
+        assert ray.is_initialized(), (
+            "Job ID is not available because " "Ray has not been initialized."
+        )
         job_id = self.worker.current_job_id
-        if job_id.is_nil():
-            raise ValueError(
-                "Job ID is not available. "
-                "One possible reason is that ray.init() was not called."
-            )
         return job_id.hex()
 
     @Deprecated(message="Use get_node_id() instead.")
@@ -98,17 +96,13 @@ class RuntimeContext(object):
             A node id in hex format for this worker or driver.
 
         Raises:
-            ValueError: If not called in a driver or worker. Generally,
+            AssertionError: If not called in a driver or worker. Generally,
                 this means that ray.init() was not called.
         """
-        try:
-            node_id = self.worker.current_node_id
-            assert not node_id.is_nil()
-        except (AttributeError, AssertionError):
-            raise ValueError(
-                "Node ID is not available. "
-                "One possible reason is that ray.init() was not called."
-            )
+        assert ray.is_initialized(), (
+            "Node ID is not available because " "Ray has not been initialized."
+        )
+        node_id = self.worker.current_node_id
         return node_id.hex()
 
     @Deprecated(message="Use get_task_id() instead")
