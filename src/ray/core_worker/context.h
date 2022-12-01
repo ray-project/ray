@@ -31,6 +31,22 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) LOCKS_EXCLUDED(mutex_);
+
+  void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
+
+  void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
+
+  void ResetCurrentTask() LOCKS_EXCLUDED(mutex_);
+
+  uint64_t GetNextTaskIndex() LOCKS_EXCLUDED(mutex_);
+
+  uint64_t GetTaskIndex() LOCKS_EXCLUDED(mutex_);
+
+  // Returns the next put object index; used to calculate ObjectIDs for puts.
+  ObjectIDIndexType GetNextPutIndex() LOCKS_EXCLUDED(mutex_);
+
   const WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
@@ -50,16 +66,8 @@ class WorkerContext {
 
   std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
-
   const TaskID &GetCurrentInternalTaskId() const;
 
-  void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
-
-  void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
-
-  void ResetCurrentTask();
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
@@ -84,13 +92,6 @@ class WorkerContext {
   bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorDetached() const LOCKS_EXCLUDED(mutex_);
-
-  uint64_t GetNextTaskIndex();
-
-  uint64_t GetTaskIndex();
-
-  // Returns the next put object index; used to calculate ObjectIDs for puts.
-  ObjectIDIndexType GetNextPutIndex();
 
   int64_t GetTaskDepth() const;
 
