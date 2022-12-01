@@ -33,13 +33,6 @@ class _CheckpointManager(CommonCheckpointManager):
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         checkpoint_config = checkpoint_config or CheckpointConfig()
-
-        if checkpoint_config.num_to_keep == 0:
-            raise RuntimeError(
-                "Tune requires `num_to_keep` in `CheckpointConfig` to be None "
-                "or a number >= 1."
-            )
-
         super().__init__(checkpoint_strategy=checkpoint_config, delete_fn=delete_fn)
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
