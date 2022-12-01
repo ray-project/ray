@@ -17,7 +17,12 @@ from ray._private.test_utils import (
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
-def test_profiler_endpoints(ray_start_with_dashboard):
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+@pytest.mark.parametrize("native", ["0", "1"])
+def test_profiler_endpoints(ray_start_with_dashboard, native):
     # Sanity check py-spy is installed.
     subprocess.check_call(["py-spy", "--version"])
 
@@ -40,7 +45,7 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     a.do_stuff_infinite.remote()
 
     def get_actor_stack():
-        url = f"{webui_url}/worker/traceback?pid={pid}"
+        url = f"{webui_url}/worker/traceback?pid={pid}&native={native}"
         print("GET URL", url)
         response = requests.get(url)
         print("STATUS CODE", response.status_code)
@@ -51,7 +56,10 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         assert "text/plain" in response.headers["Content-Type"], response.headers
         # Sanity check we got the stack trace text.
         assert "do_stuff_infinite" in content, content
-        assert "ray::core::CoreWorker" in content, content
+        if native == "1":
+            assert "ray::core::CoreWorker" in content, content
+        else:
+            assert "ray::core::CoreWorker" not in content, content
 
     assert wait_until_succeeded_without_exception(
         get_actor_stack,
@@ -61,7 +69,9 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     )
 
     def get_actor_flamegraph():
-        response = requests.get(f"{webui_url}/worker/cpu_profile?pid={pid}")
+        response = requests.get(
+            f"{webui_url}/worker/cpu_profile?pid={pid}&native={native}"
+        )
         response.raise_for_status()
         assert response.headers["Content-Type"] == "image/svg+xml", response.headers
         content = response.content.decode("utf-8")
@@ -69,7 +79,10 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         # Sanity check we got the flame graph SVG.
         assert "<!DOCTYPE svg" in content, content
         assert "do_stuff_infinite" in content, content
-        assert "ray::core" in content, content
+        if native == "1":
+            assert "ray::core" in content, content
+        else:
+            assert "ray::core" not in content, content
 
     assert wait_until_succeeded_without_exception(
         get_actor_flamegraph,
@@ -84,6 +97,10 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
 def test_profiler_failure_message(ray_start_with_dashboard):
     # Sanity check py-spy is installed.
     subprocess.check_call(["py-spy", "--version"])

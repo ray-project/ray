@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -94,8 +94,9 @@ class TorchPredictor(DLPredictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+        self, inputs: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
@@ -106,7 +107,7 @@ class TorchPredictor(DLPredictor):
         output.
 
         Args:
-            tensor: A batch of data to predict on, represented as either a single
+            inputs: A batch of data to predict on, represented as either a single
                 PyTorch tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
@@ -124,8 +125,8 @@ class TorchPredictor(DLPredictor):
 
                 # Use a custom predictor to format model output as a dict.
                 class CustomPredictor(TorchPredictor):
-                    def call_model(self, tensor):
-                        model_output = super().call_model(tensor)
+                    def call_model(self, inputs):
+                        model_output = super().call_model(inputs)
                         return {
                             str(i): model_output[i] for i in range(len(model_output))
                         }
@@ -142,7 +143,7 @@ class TorchPredictor(DLPredictor):
                 Predictions: [1 2], [1 2]
         """
         with torch.no_grad():
-            output = self.model(tensor)
+            output = self.model(inputs)
         return output
 
     def predict(
@@ -213,12 +214,12 @@ class TorchPredictor(DLPredictor):
 
             .. testoutput::
 
-                Standard model predictions: [[1.5487633]
-                 [3.8037925]]
+                Standard model predictions: {'predictions': array([[1.5487633],
+                       [3.8037925]], dtype=float32)}
                 ---
                 Custom model predictions:     predictions
                 0  [0.61623406]
-                1  [  2.857038]
+                1    [2.857038]
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 

@@ -100,7 +100,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     example = EXAMPLES[example_id]
     example_file = get_example_file(example_id)
     example_file, temp_file = download_example_file(example_file)
-    stop = example.get("stop", "{}")
+    stop = example.get("stop")
 
     train_module.file(
         config_file=example_file,

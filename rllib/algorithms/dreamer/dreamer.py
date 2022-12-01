@@ -8,7 +8,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
@@ -22,7 +26,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -100,7 +103,6 @@ class DreamerConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
         self.num_envs_per_worker = 1
-        self.horizon = 1000
         self.batch_mode = "complete_episodes"
         self.clip_actions = False
 
@@ -334,7 +336,7 @@ class Dreamer(Algorithm):
         return DreamerTorchPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Setup buffer.
@@ -348,6 +350,9 @@ class Dreamer(Algorithm):
             < self.config.prefill_timesteps
         ):
             samples = self.workers.local_worker().sample()
+            # Dreamer only ever has one policy and we receive MA batches when
+            # connectors are on
+            samples = convert_ma_batch_to_sample_batch(samples)
             self.local_replay_buffer.add(samples)
 
     @override(Algorithm)

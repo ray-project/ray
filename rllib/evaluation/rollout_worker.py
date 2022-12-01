@@ -53,6 +53,7 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
@@ -63,6 +64,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
@@ -73,10 +75,13 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import (
+    get_gpu_devices as get_tf_gpu_devices,
+    get_tf_eager_cls_if_necessary,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -94,6 +99,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -147,7 +153,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -216,7 +222,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus: The number of CPUs to allocate for the remote actor.
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
-            memory: The heap memory request for the remote actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -228,6 +235,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus=num_gpus,
             memory=memory,
             resources=resources,
+            # Automatically restart failed workers.
+            max_restarts=-1,
         )(cls)
 
     @DeveloperAPI
@@ -236,7 +245,6 @@ class RolloutWorker(ParallelIteratorWorker):
         *,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
-        tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         config: Optional["AlgorithmConfig"] = None,
         worker_index: int = 0,
         num_workers: Optional[int] = None,
@@ -277,6 +285,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policies_to_train=DEPRECATED_VALUE,
         extra_python_environs=DEPRECATED_VALUE,
         policy=DEPRECATED_VALUE,
+        tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
     ):
         """Initializes a RolloutWorker instance.
 
@@ -285,8 +294,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 wrapped configuration.
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
-            tf_session_creator: A function that returns a TF session.
-                This is optional and only useful with TFPolicy.
             worker_index: For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
@@ -300,8 +307,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)
@@ -340,9 +345,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 "batch_mode", "config.rollouts(batch_mode=..)", error=True
             )
         if episode_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "episode_horizon", "config.rollouts(horizon=..)", error=True
-            )
+            deprecation_warning("episode_horizon", error=True)
         if preprocessor_pref != DEPRECATED_VALUE:
             deprecation_warning(
                 "preprocessor_pref", "config.rollouts(preprocessor_pref=..)", error=True
@@ -398,9 +401,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 error=True,
             )
         if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                "soft_horizon", "config.rollouts(soft_horizon=..)", error=True
-            )
+            deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
             deprecation_warning(
                 "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
@@ -444,12 +445,20 @@ class RolloutWorker(ParallelIteratorWorker):
                 "extra_python_environs_for_worker=..)",
                 error=True,
             )
+        if tf_session_creator != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="RolloutWorker(.., tf_session_creator=.., ..)",
+                new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
+                error=False,
+            )
 
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
+
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Default config needed?
         if config is None or isinstance(config, dict):
@@ -534,7 +543,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
             # TODO(sven): Make this per-policy!
-            "timesteps": 0,
+            "timestep": 0,
             # Counter for performed gradient updates per policy in `self.policy_map`.
             # Allows for compiling metrics on the off-policy'ness of an update given
             # that the number of gradient updates of the sampling policies are known
@@ -659,7 +668,7 @@ class RolloutWorker(ParallelIteratorWorker):
             default_policy_class=self.default_policy_class,
         )
 
-        self.policy_map: PolicyMap = None
+        self.policy_map: Optional[PolicyMap] = None
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
@@ -704,9 +713,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
         self._build_policy_map(
-            self.policy_dict,
+            policy_dict=self.policy_dict,
             config=self.config,
-            session_creator=tf_session_creator,
             seed=self.seed,
         )
 
@@ -790,11 +798,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
@@ -810,11 +816,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
-                horizon=self.config.horizon,
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                soft_horizon=self.config.soft_horizon,
                 no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
@@ -1104,11 +1108,8 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
-        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
-        # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
-            # SampleBatch -> Calculate gradients for the default policy.
+            samples = convert_ma_batch_to_sample_batch(samples)
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
@@ -1365,18 +1366,14 @@ class RolloutWorker(ParallelIteratorWorker):
             config=self.config,
             policy=policy,
             seed=self.seed,
+            policy_states={policy_id: policy_state},
         )
-
-        new_policy = self.policy_map[policy_id]
-        # Set the state of the newly created policy.
-        if policy_state:
-            new_policy.set_state(policy_state)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
-        return new_policy
+        return self.policy_map[policy_id]
 
     @DeveloperAPI
     def remove_policy(
@@ -1829,40 +1826,15 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
-
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
         # Close all policies' sessions (if tf static graph).
-        for policy in self.policy_map.values():
+        for policy in self.policy_map.cache.values():
             sess = policy.get_session()
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
-
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this rollout worker instance.
-
-        Useful for when the RolloutWorker class has been converted into a
-        ActorHandle and the user needs to execute some functionality (e.g.
-        add a property) on the underlying policy object.
-
-        Args:
-            func: The function to call, with this RolloutWorker as first
-                argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
-
-        Returns:
-            The return value of the function call.
-        """
-        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
@@ -1915,11 +1887,12 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def _build_policy_map(
         self,
+        *,
         policy_dict: MultiAgentPolicyConfigDict,
         config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
-        session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
+        policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
 
@@ -1930,21 +1903,17 @@ class RolloutWorker(ParallelIteratorWorker):
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
-            session_creator: A callable that creates a tf session
-                (if applicable).
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
+            policy_states: Optional dict from PolicyIDs to PolicyStates to
+                restore the states of the policies being built.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            worker_index=self.worker_index,
-            num_workers=self.num_workers,
             capacity=config.policy_map_capacity,
-            path=config.policy_map_cache,
-            session_creator=session_creator,
-            seed=seed,
+            policy_states_are_swappable=config.policy_states_are_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1985,22 +1954,40 @@ class RolloutWorker(ParallelIteratorWorker):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            if policy is not None:
-                self.policy_map.insert_policy(name, policy)
-            else:
-                # Create the actual policy object.
-                self.policy_map.create_policy(
-                    name,
-                    policy_spec.policy_class,
-                    obs_space,
-                    policy_spec.action_space,
-                    config_override=None,
+            # Create the actual policy object.
+            if policy is None:
+                new_policy = create_policy_for_framework(
+                    policy_id=name,
+                    policy_class=get_tf_eager_cls_if_necessary(
+                        policy_spec.policy_class, merged_conf
+                    ),
                     merged_config=merged_conf,
+                    observation_space=obs_space,
+                    action_space=policy_spec.action_space,
+                    worker_index=self.worker_index,
+                    seed=seed,
                 )
+            else:
+                new_policy = policy
 
-            new_policy = self.policy_map[name]
+            self.policy_map[name] = new_policy
+
+            restore_states = (policy_states or {}).get(name, None)
+            # Set the state of the newly created policy before syncing filters, etc.
+            if restore_states:
+                new_policy.set_state(restore_states)
+
             if merged_conf.enable_connectors:
-                create_connectors_for_policy(new_policy, merged_conf)
+                # Note(jungong) : We should only create new connectors for the
+                # policy iff we are creating a new policy from scratch. i.e,
+                # we should NOT create new connectors when we already have the
+                # policy object created before this function call or have the
+                # restoring states from the caller.
+                # Also note that we cannot just check the existence of connectors
+                # to decide whether we should create connectors because we may be
+                # restoring a policy that has 0 connectors configured.
+                if not policy and not restore_states:
+                    create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
                 filter_shape = tree.map_structure(
