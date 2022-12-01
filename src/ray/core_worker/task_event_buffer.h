@@ -34,11 +34,12 @@ namespace worker {
 /// Dropping of task events
 /// ========================
 /// Task events will be lost in the below cases for now:
-///   1. If any of the gRPC call failed, the task events will be silently dropped. This
-///   is probably fine since this usually indicated a much worse issue.
+///   1. If any of the gRPC call failed, the task events will be dropped and warnings
+///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
 ///   2. More than `RAY_task_events_max_num_task_events_in_buffer` tasks have been stored
-///   in the buffer, any new task events will be dropped.
+///   in the buffer, any new task events will be dropped. In this case, the number of
+///   dropped task events will also be included in the next flush to surface this.
 ///
 /// No overloading of GCS
 /// =====================
