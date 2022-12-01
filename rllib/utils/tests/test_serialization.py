@@ -13,6 +13,9 @@ from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
+# only import gym.spaces.Text if gym is on version 0.25.0 or higher
+text_space_class = getattr(gym.spaces, "Text", None)
+
 
 def _assert_array_equal(eq, a1, a2, margin=None):
     for a in zip(a1, a2):
