@@ -176,7 +176,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "", false);
+      task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
 
   // Tell the task dependency manager that each of the arguments is now
@@ -346,7 +346,7 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "", false);
+      task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
 
@@ -357,7 +357,7 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
 
   TaskID task_id2 = RandomTaskId();
   ready = dependency_manager_.RequestTaskDependencies(
-      task_id2, ObjectIdsToRefs(arguments), "", false);
+      task_id2, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_TRUE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
   dependency_manager_.RemoveTaskDependencies(task_id2);
