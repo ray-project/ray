@@ -81,23 +81,23 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
 /// Threshold when the node is beyond the memory capacity. If the memory is above the
-/// memory_usage_threshold_fraction and free space is below the min_memory_free_bytes then
+/// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
+RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
+RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
 /// The minimum amount of free space. If the memory is above the
-/// memory_usage_threshold_fraction and free space is below min_memory_free_bytes then it
+/// memory_usage_threshold and free space is below min_memory_free_bytes then it
 /// will start killing processes to free up the space. Disabled if it is -1.
 ///
-/// This value is useful for larger host where the memory_usage_threshold_fraction could
+/// This value is useful for larger host where the memory_usage_threshold could
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)512 * 1024 * 1024)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
@@ -106,7 +106,7 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
 /// The process killing is done by memory monitor, which is enabled via
-/// memory_monitor_interval_ms. If the task or actor is not retriable then this value is
+/// memory_monitor_refresh_ms. If the task or actor is not retriable then this value is
 /// ignored. This retry counter is only used when the process is killed due to memory, and
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Note infinite retry (-1) is not
@@ -396,6 +396,10 @@ RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
+/// The base retry delay for exponential backoff when the task fails due to OOM.
+/// No delay if this value is zero.
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
@@ -493,7 +497,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
@@ -706,7 +710,19 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// A feature flag to enable pull based health check.
 RAY_CONFIG(bool, pull_based_healthcheck, true)
+/// The following are configs for the health check. They are borrowed
+/// from k8s health probe (shorturl.at/jmTY3)
+
+/// The delay to send the first health check.
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+/// The interval between two health check.
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+/// The timeout for a health check.
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+/// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
+
+/// Use madvise to prevent worker/raylet coredumps from including
+/// the mapped plasma pages.
+RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
+RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)

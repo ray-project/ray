@@ -63,15 +63,14 @@ if __name__ == "__main__":
             metric="mean_loss",
             mode="min",
             num_samples=5,
+            trial_name_creator=trial_str_creator,
+            trial_dirname_creator=trial_str_creator,
         ),
         param_space={
             "steps": 100,
             "width": tune.randint(10, 100),
             "height": tune.loguniform(10, 100),
         },
-        # Warning: This is an internal property and it's possible that this
-        # API will be changed or dropped without warning. Use with caution!
-        _tuner_kwargs={"trial_name_creator": trial_str_creator},
     )
     results = tuner.fit()
 

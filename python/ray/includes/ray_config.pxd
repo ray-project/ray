@@ -91,4 +91,4 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t health_check_failure_threshold() const
 
-        uint64_t memory_monitor_interval_ms() const
+        uint64_t memory_monitor_refresh_ms() const

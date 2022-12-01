@@ -285,10 +285,6 @@ class NodeResourceInfoGcsServiceHandler {
   virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
                                          GetAllResourceUsageReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetGcsSchedulingStats(GetGcsSchedulingStatsRequest request,
-                                           GetGcsSchedulingStatsReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeResourceInfoGcsService`.
@@ -311,7 +307,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetGcsSchedulingStats);
   }
 
  private:

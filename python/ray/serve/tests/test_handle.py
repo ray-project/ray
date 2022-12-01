@@ -1,6 +1,7 @@
 import concurrent.futures
 import asyncio
 import pytest
+from ray._private.utils import get_or_create_event_loop
 import requests
 
 import ray
@@ -230,7 +231,7 @@ def test_handle_across_loops(serve_instance):
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        asyncio.get_event_loop().run_until_complete(refresh_get())
+        get_or_create_event_loop().run_until_complete(refresh_get())
 
     handle = A.get_handle(sync=False)
 
@@ -239,7 +240,7 @@ def test_handle_across_loops(serve_instance):
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        asyncio.get_event_loop().run_until_complete(cache_get())
+        get_or_create_event_loop().run_until_complete(cache_get())
 
 
 if __name__ == "__main__":

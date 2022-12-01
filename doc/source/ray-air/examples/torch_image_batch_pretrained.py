@@ -1,6 +1,6 @@
-import pandas as pd
 import numpy as np
 
+import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 
@@ -10,20 +10,20 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
-def preprocess(batch: np.ndarray) -> pd.DataFrame:
+def preprocess(image_batch: np.ndarray) -> np.ndarray:
     """
-    User Pytorch code to transform user image.
+    User Pytorch code to transform user image with outer dimension of batch size.
     """
     preprocess = transforms.Compose(
         [
-            transforms.ToTensor(),
-            transforms.Resize(256),
+            # Torchvision's ToTensor does not accept outer batch dimension
             transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    transformed_images = np.array([preprocess(image).numpy() for image in batch])
-    return transformed_images
+    # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
+    transposed_torch_tensor = torch.Tensor(image_batch.transpose(0, 3, 1, 2))
+    return preprocess(transposed_torch_tensor).numpy()
 
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"

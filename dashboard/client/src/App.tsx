@@ -3,14 +3,12 @@ import { ThemeProvider } from "@material-ui/core/styles";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
-import { Provider } from "react-redux";
-import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
 import { getNodeList } from "./service/node";
-import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
 
@@ -122,41 +120,40 @@ const App = () => {
     <ThemeProvider theme={getTheme(theme)}>
       <Suspense fallback={Loading}>
         <GlobalContext.Provider value={context}>
-          <Provider store={store}>
-            <CssBaseline />
-            <HashRouter>
-              <Switch>
+          <CssBaseline />
+          <HashRouter>
+            <Routes>
+              <Route element={<Navigate replace to="/node" />} path="/" />
+              <Route
+                element={<BasicLayout setTheme={setTheme} theme={theme} />}
+              >
+                <Route element={<Index />} path="/summary" />
+                <Route element={<Job />} path="/job" />
+                <Route element={<Node />} path="/node" />
+                <Route element={<Actors />} path="/actors" />
+                <Route element={<Events />} path="/events" />
+                <Route element={<Metrics />} path="/metrics" />
+                {/* TODO(aguo): Refactor Logs component to use optional query
+                params since react-router 6 doesn't support optional path params... */}
                 <Route
-                  component={() => <Redirect to="/node" />}
-                  exact
-                  path="/"
+                  element={<Logs theme={theme as "light" | "dark"} />}
+                  path="/log"
                 />
                 <Route
-                  render={(props) => (
-                    <BasicLayout {...props} setTheme={setTheme} theme={theme}>
-                      <Route component={Index} exact path="/summary" />
-                      <Route component={Job} exact path="/job" />
-                      <Route component={Node} exact path="/node" />
-                      <Route component={Actors} exact path="/actors" />
-                      <Route component={Events} exact path="/events" />
-                      <Route component={Metrics} exact path="/metrics" />
-                      <Route
-                        render={(props) => (
-                          <Logs {...props} theme={theme as "light" | "dark"} />
-                        )}
-                        exact
-                        path="/log/:host?/:path?"
-                      />
-                      <Route component={NodeDetail} path="/node/:id" />
-                      <Route component={JobDetail} path="/job/:id" />
-                      <Route component={CMDResult} path="/cmd/:cmd/:ip/:pid" />
-                      <Route component={Loading} exact path="/loading" />
-                    </BasicLayout>
-                  )}
+                  element={<Logs theme={theme as "light" | "dark"} />}
+                  path="/log/:host"
                 />
-              </Switch>
-            </HashRouter>
-          </Provider>
+                <Route
+                  element={<Logs theme={theme as "light" | "dark"} />}
+                  path="/log/:host/:path"
+                />
+                <Route element={<NodeDetail />} path="/node/:id" />
+                <Route element={<JobDetail />} path="/job/:id" />
+                <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
+                <Route element={<Loading />} path="/loading" />
+              </Route>
+            </Routes>
+          </HashRouter>
         </GlobalContext.Provider>
       </Suspense>
     </ThemeProvider>
