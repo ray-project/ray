@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from functools import partial
 import pytest
+import psutil
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
@@ -45,7 +46,27 @@ EVENT_LOOP = get_or_create_event_loop()
 
 
 @pytest.fixture
-def job_sdk_client():
+def make_sure_dashboard_http_port_unused():
+    for process in psutil.process_iter():
+        should_kill = False
+        try:
+            for conn in process.connections():
+                if conn.laddr.port == DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
+                    should_kill = True
+                    break
+        except Exception:
+            continue
+        if should_kill:
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
+    yield
+
+
+@pytest.fixture
+def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         ip, _ = ctx.address_info["webui_url"].split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
@@ -377,7 +398,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     indirect=True,
 )
 async def test_job_log_in_multiple_node(
-    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+    make_sure_dashboard_http_port_unused,
+    enable_test_module,
+    disable_aiohttp_cache,
+    ray_start_cluster_head,
 ):
     cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
