@@ -379,6 +379,7 @@ def test_syncer_hanging_sync_with_timeout(temp_data_dirs):
             return _hanging_sync_up_command, {}
 
     syncer = _HangingSyncer(sync_period=60, sync_timeout=10)
+
     def sync_up():
         return syncer.sync_up(
             local_dir=tmp_source, remote_dir="memory:///test/test_syncer_timeout"

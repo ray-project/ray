@@ -522,7 +522,9 @@ def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
         return None
 
     if sync_config.syncer == "auto":
-        return _DefaultSyncer(sync_period=sync_config.sync_period)
+        return _DefaultSyncer(
+            sync_period=sync_config.sync_period, sync_timeout=sync_config.sync_timeout
+        )
 
     if isinstance(sync_config.syncer, Syncer):
         return sync_config.syncer
