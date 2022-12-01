@@ -94,19 +94,15 @@ def batch_blocks(
         while batcher.has_batch():
             # While the batcher has full batches, yield batches.
             with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch()
-            with stats.iter_format_batch_s.timer():
-                result = _format_batch(batch, batch_format)
+                batch = batcher.next_batch(batch_format=batch_format)
             with stats.iter_user_s.timer():
-                yield result
+                yield batch
         # Handle remainder batches.
         if block is None and not drop_last and batcher.has_any():
             with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch()
-            with stats.iter_format_batch_s.timer():
-                result = _format_batch(batch, batch_format)
+                batch = batcher.next_batch(batch_format=batch_format)
             with stats.iter_user_s.timer():
-                yield result
+                yield batch
 
     block_window = []  # Handle empty sliding window gracefully.
     context = DatasetContext.get_current()
@@ -134,23 +130,6 @@ def batch_blocks(
 
     # Consume any remaining batches, now that we're done adding blocks to the batcher.
     yield from get_batches()
-
-
-def _format_batch(batch: Block, batch_format: str) -> BatchType:
-    if batch_format == "default" or batch_format == "native":
-        batch = BlockAccessor.for_block(batch).to_default()
-    elif batch_format == "pandas":
-        batch = BlockAccessor.for_block(batch).to_pandas()
-    elif batch_format == "pyarrow":
-        batch = BlockAccessor.for_block(batch).to_arrow()
-    elif batch_format == "numpy":
-        batch = BlockAccessor.for_block(batch).to_numpy()
-    else:
-        raise ValueError(
-            f"The given batch format '{batch_format}' is invalid. Supported "
-            f"`batch_format` values: {'default', 'pandas', 'pyarrow', 'numpy'}."
-        )
-    return batch
 
 
 def _sliding_window(iterable: Iterable, n: int, clear_block_after_read: bool = False):

@@ -1,8 +1,10 @@
 import pytest
+import sys
+import time
 
 import pyarrow as pa
 
-from ray.data._internal.batcher import ShufflingBatcher
+from ray.data._internal.batcher import AsyncBatcher, ShufflingBatcher, Batcher
 
 
 def gen_block(num_rows):
@@ -125,6 +127,34 @@ def test_shuffling_batcher():
         should_batch_be_full=False,
         should_have_batch_after=False,
     )
+
+
+def test_async_batcher():
+    class SleepBatcher(Batcher):
+        def next_batch(self, batch_format: str = "default"):
+            time.sleep(1)
+            return super().next_batch(batch_format)
+
+    base_batcher = SleepBatcher(batch_size=1)
+    async_batcher = AsyncBatcher(base_batcher=base_batcher, fetch_timeout_s=5)
+
+    def sleep_udf(batch):
+        time.sleep(3)
+
+    for i in range(10):
+        new_block = gen_block(num_rows=1)
+        async_batcher.add(new_block)
+
+    start_time = time.time()
+    for i in range(10):
+        next_batch = async_batcher.next_batch()
+        sleep_udf(next_batch)
+    end_time = time.time()
+
+    total_time = end_time - start_time
+    # We do 10 UDFs of 10 seconds each, so total time should be ~30 seconds.
+    # The 1 seconds sleep in next_batch is overlapped, so does not count towards total time.
+    assert total_time < 32
 
 
 if __name__ == "__main__":

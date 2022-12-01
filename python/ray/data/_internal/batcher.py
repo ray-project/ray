@@ -1,5 +1,8 @@
+import queue
 import random
+import threading
 from typing import Optional, List
+from numpy import ma
 
 from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -18,8 +21,12 @@ class BatcherInterface:
         """Whether the block can be added to the buffer."""
         raise NotImplementedError()
 
-    def done_adding(self) -> bool:
+    def done_adding(self):
         """Indicate to the batcher that no more blocks will be added to the buffer."""
+        raise NotImplementedError()
+
+    def is_done_adding(self) -> bool:
+        """Whether this batcher has received an indication that it should no longer receive more blocks."""
         raise NotImplementedError()
 
     def has_batch(self) -> bool:
@@ -30,8 +37,11 @@ class BatcherInterface:
         """Whether this Batcher has any data."""
         raise NotImplementedError()
 
-    def next_batch(self) -> Block:
-        """Get the next batch from the block buffer.
+    def next_batch(self, batch_format: str = "default") -> Block:
+        """Get the next batch from the block buffer with the provided batch format.
+
+        Args:
+            batch_format: The batch format to format the batch to before returning.
 
         Returns:
             A batch represented as a Block.
@@ -81,9 +91,13 @@ class Batcher(BatcherInterface):
         """Whether the block can be added to the buffer."""
         return not self._done_adding
 
-    def done_adding(self) -> bool:
+    def done_adding(self):
         """Indicate to the batcher that no more blocks will be added to the batcher."""
         self._done_adding = True
+
+    def is_done_adding(self) -> bool:
+        """Whether this batcher has received an indication that it should no longer receive more blocks."""
+        return self._done_adding
 
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
@@ -95,7 +109,7 @@ class Batcher(BatcherInterface):
         """Whether this Batcher has any data."""
         return self._buffer_size > 0
 
-    def next_batch(self) -> Block:
+    def next_batch(self, batch_format: str = "default") -> Block:
         """Get the next batch from the block buffer.
 
         Returns:
@@ -147,6 +161,9 @@ class Batcher(BatcherInterface):
             # DataFrame batches that have required concatenation to construct, which
             # always requires a copy. We should elide this copy in those cases.
             batch = batch.slice(0, batch.num_rows(), copy=True)
+
+        # Convert to appropriate batch format.
+        batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
         return batch
 
 
@@ -241,12 +258,16 @@ class ShufflingBatcher(BatcherInterface):
         """
         return self._buffer_size() <= self._buffer_capacity and not self._done_adding
 
-    def done_adding(self) -> bool:
+    def done_adding(self):
         """Indicate to the batcher that no more blocks will be added to the batcher.
 
         No more blocks should be added to the batcher after calling this.
         """
         self._done_adding = True
+
+    def is_done_adding(self) -> bool:
+        """Whether this batcher has received an indication that it should no longer receive more blocks."""
+        return self._done_adding
 
     def has_any(self) -> bool:
         """Whether this batcher has any data."""
@@ -274,7 +295,7 @@ class ShufflingBatcher(BatcherInterface):
             )
         return buffer_size
 
-    def next_batch(self) -> Block:
+    def next_batch(self, batch_format: str = "default") -> Block:
         """Get the next shuffled batch from the shuffle buffer.
 
         Returns:
@@ -316,5 +337,109 @@ class ShufflingBatcher(BatcherInterface):
             self._batch_head : self._batch_head + batch_size
         ]
         self._batch_head += batch_size
+
         # Yield the shuffled batch.
-        return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
+        batch = BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
+
+        # Format the batch to the provided batch format.
+        batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
+
+        return batch
+
+
+class AsyncBatcher(BatcherInterface):
+    """Batcher with async prefetching."""
+
+    def __init__(
+        self,
+        base_batcher: BatcherInterface,
+        buffer_max_size: int = 1,
+        fetch_timeout_s: int = 600,
+    ):
+        """
+        Args:
+            base_batcher: The base batcher.
+            buffer_max_size: The maximum number of batches to buffer for stopping async execution.
+                Increasing the size allows for more computation overlap for very expensive downstream udfs. However
+                it comes at the cost of additional memory overhead.
+            fetch_timeout_s: Seconds to wait while fetching the next batch before timing out.
+        """
+        self.base_batcher = base_batcher
+        self.fetch_timeout_s = fetch_timeout_s
+        self.buffer = queue.Queue(maxsize=buffer_max_size)
+
+    def add(self, block: Block):
+        """Add a block to the block buffer.
+
+        Args:
+            block: Block to add to the block buffer.
+        """
+        self.base_batcher.add(block)
+
+    def can_add(self, block: Block) -> bool:
+        """Whether the block can be added to the buffer."""
+        return self.base_batcher.can_add(block)
+
+    def done_adding(self) -> bool:
+        """Indicate to the batcher that no more blocks will be added to the buffer."""
+        return self.base_batcher.done_adding()
+
+    def has_batch(self) -> bool:
+        """Whether this Batcher has any full batches."""
+        return self.base_batcher.has_batch() or not self.buffer.empty()
+
+    def has_any(self) -> bool:
+        """Whether this Batcher has any data."""
+        return self.base_batcher.has_any() or not self.buffer.empty()
+
+    def _prefetch_next_batch(self, batch_format: str) -> None:
+        while self.base_batcher.has_batch() and not self.buffer.full():
+            next_batch = self.base_batcher.next_batch(batch_format)
+            self.buffer.put(next_batch)
+
+        # Fetch any leftover data.
+        if (
+            not self.buffer.full()
+            and self.base_batcher.has_any()
+            and self.base_batcher.is_done_adding()
+        ):
+            next_batch = self.base_batcher.next_batch(batch_format)
+            self.buffer.put(next_batch)
+
+    def next_batch(self, batch_format: str = "default") -> Block:
+        """Get the next batch from the block buffer.
+
+        Returns:
+            A batch represented as a Block.
+        """
+        # If assert statement passes, then there must be at least some data in the base batcher.
+        assert (
+            not self.buffer.empty()
+            or self.base_batcher.has_batch()
+            or (self.base_batcher.is_done_adding() and self.has_any())
+        )
+
+        if self.buffer.empty():
+            fetch_thread = threading.Thread(
+                target=self._prefetch_next_batch, args=(batch_format,)
+            )
+            fetch_thread.start()
+            fetch_thread.join()
+            assert not fetch_thread.is_alive()
+            # self._prefetch_next_batch(batch_format)
+            assert not self.buffer.empty()
+
+        try:
+            batch = self.buffer.get(block=True, timeout=self.fetch_timeout_s)
+        except queue.Empty:
+            raise RuntimeError(
+                f"Fetching the next batch took longer than {self.fetch_timeout_s} seconds"
+            )
+
+        # Prefetch the next batch before returning the current one.
+        fetch_thread = threading.Thread(
+            target=self._prefetch_next_batch, args=(batch_format,)
+        )
+        fetch_thread.start()
+
+        return batch

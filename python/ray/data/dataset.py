@@ -5,8 +5,6 @@ import os
 import sys
 import time
 import html
-from six.moves import queue
-import threading
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,7 +27,6 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
-from ray.data.block import DataBatch
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
@@ -71,6 +68,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
+    DataBatch,
     KeyFn,
     RowUDF,
     T,
@@ -573,16 +571,6 @@ class Dataset(Generic[T]):
                                 f"the {type(value)} to a `numpy.ndarray`."
                             )
 
-            def fetch_next_batch(block, batcher, batch_queue):
-                batcher.add(block)
-                while batcher.has_batch():
-                    batch = batcher.next_batch()
-                    # Convert to batch format.
-                    formatted_batch = BlockAccessor.for_block(batch).to_batch_format(
-                        batch_format
-                    )
-                    batch_queue.put(formatted_batch)
-
             def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
@@ -592,30 +580,17 @@ class Dataset(Generic[T]):
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
-            batch_queue = queue.Queue()
-
             # Process batches for each block.
             for block in blocks:
-                # Create and format batches in a separate thread.
-                fetch_thread = threading.Thread(
-                    target=fetch_next_batch, args=(block, batcher, batch_queue)
-                )
-                fetch_thread.start()
-
-                batch = None
-                # In the main thread, apply the udf.
-                while batch is None and fetch_thread.is_alive():
-                    batch = batch_queue.get(block=False, timeout=0.01)
-                    yield from process_next_batch(batch)
-
-                while not batch_queue.is_empty():
-                    batch = batch_queue.get(block=True)
+                batcher.add(block)
+                while batcher.has_batch():
+                    batch = batcher.next_batch(batch_format=batch_format)
                     yield from process_next_batch(batch)
 
             # Process any last remainder batch.
             batcher.done_adding()
             if batcher.has_any():
-                batch = batcher.next_batch()
+                batch = batcher.next_batch(batch_format=batch_format)
                 yield from process_next_batch(batch)
 
             # Yield remainder block from output buffer.
