@@ -408,7 +408,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
@@ -435,7 +435,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
