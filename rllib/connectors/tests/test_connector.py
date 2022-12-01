@@ -88,6 +88,11 @@ class TestConnectorPipeline(unittest.TestCase):
             (0, [some_connector]),
             (1, [some_other_connector]),
         ]:
+<<<<<<< HEAD
+=======
+            print(key)
+            print(expected_value)
+>>>>>>> c3c62543a (initial)
             self.assertEqual(pipeline[key], expected_value)
 
 
