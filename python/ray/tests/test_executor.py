@@ -85,6 +85,21 @@ def test_even_detached_actors_do_not_persist_after_shutdown():
             ray.get_actor("test0")
 
 
+def test_same_actor_instance_is_used_for_all_tasks():
+    @ray.remote
+    class Actor:
+        def f_id(self, _):
+            return id(self)
+
+    with RayExecutor() as ex:
+        actor = Actor.remote()
+        result0 = ex.submit_actor_function(actor.f_id, None).result()
+        result1 = ex.submit_actor_function(actor.f_id, None).result()
+        assert result0 == result1
+        results = list(ex.map_actor_function(actor.f_id, range(4)))
+        assert all(i == results[0] for i in results)
+
+
 def test_remote_actor_on_local_instance():
     a = ActorTest0.options(name="A", get_if_exists=True).remote("A")
     with RayExecutor() as ex:
