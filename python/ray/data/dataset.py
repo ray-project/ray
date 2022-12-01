@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.batcher import Batcher
+from ray.data._internal.batcher import Batcher, AsyncBatcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -547,6 +547,9 @@ class Dataset(Generic[T]):
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+
+            if context.async_fetch_batch:
+                batcher = AsyncBatcher(base_batcher=batcher)
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(

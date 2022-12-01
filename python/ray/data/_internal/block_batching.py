@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.batcher import Batcher, ShufflingBatcher, AsyncBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -81,6 +81,11 @@ def batch_blocks(
     else:
         batcher = Batcher(batch_size=batch_size)
 
+    context = DatasetContext.get_current()
+    
+    if context.async_fetch_batch:
+        batcher = AsyncBatcher(base_batcher=batcher)
+
     def get_batches(block: Optional[ObjectRef[Block]] = None) -> Iterator[BatchType]:
         if block is not None:
             with stats.iter_get_s.timer():
@@ -105,7 +110,7 @@ def batch_blocks(
                 yield batch
 
     block_window = []  # Handle empty sliding window gracefully.
-    context = DatasetContext.get_current()
+    
     if (
         prefetch_blocks > 0
         and context.actor_prefetcher_enabled
