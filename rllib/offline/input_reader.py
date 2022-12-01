@@ -28,6 +28,25 @@ class InputReader(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def select_policy_data_build_ma_batch(self, batch: SampleBatchType,
+                                          policy_ids: List = None) -> MultiAgentBatch:
+        """Select what policy's data from the batch we read to operate on.
+
+        When reading data from a multi-agent file for a single agent, we want to
+        select only the policy data we want to train on. Vice versa, in a multi-agent
+        case, only a subset of trained policies may need offline data from the input
+        reader.
+
+        Args:
+            batch: SampleBatch or MultiAgent batch to select policy data from and
+                build a new MultiAgent batch from.
+            policy_ids: Policy IDs to select
+
+        Returns:
+            A MultiAgentBatch containing the policy ID's data.
+        """
+        pass
+
     @PublicAPI
     def tf_input_ops(self, queue_size: int = 1) -> Dict[str, TensorType]:
         """Returns TensorFlow queue ops for reading inputs from this reader.
