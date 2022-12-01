@@ -22,7 +22,7 @@ from ray.data.block import BlockMetadata
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, TuneError, CLIReporter
+from ray.tune import Callback, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -207,7 +207,7 @@ class TunerTest(unittest.TestCase):
             # As the unit test only has access to 4 CPUs on Buildkite.
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
-        with self.assertRaises(TuneError):
+        with self.assertRaises(RuntimeError):
             tuner.fit()
 
         # Test resume
