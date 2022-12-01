@@ -188,6 +188,8 @@ works as follows.
 
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
+.. _ray-task-returns:
+
 Multiple returns
 ----------------
 
