@@ -622,9 +622,16 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id,
-                                                   /*task_failed_due_to_oom*/ false)) {
+          if (reply.was_cancelled_before_running()) {
+            RAY_LOG(DEBUG) << "Task " << task_id
+                           << " was cancelled before it started running.";
+            RAY_UNUSED(
+                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+          } else if (!task_spec.GetMessage().retry_exceptions() ||
+                     !reply.is_retryable_error() ||
+                     !task_finisher_->RetryTaskIfPossible(
+                         task_id,
+                         /*task_failed_due_to_oom*/ false)) {
             task_finisher_->CompletePendingTask(
                 task_id, reply, addr.ToProto(), reply.is_application_error());
           }
@@ -642,7 +649,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   if (get_task_failure_cause_reply_status.ok()) {
-    RAY_LOG(DEBUG) << "Task failure cause "
+    RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
                    << ray::gcs::RayErrorInfoToString(
                           get_task_failure_cause_reply.failure_cause());
     if (get_task_failure_cause_reply.has_failure_cause()) {
@@ -705,8 +712,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-              task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+          RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                                     rpc::ErrorType::TASK_CANCELLED));
           return Status::OK();
         }
       }
