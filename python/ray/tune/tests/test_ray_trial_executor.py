@@ -279,6 +279,15 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Should not wait until end of hang
         assert 0 < end_time < 10
 
+        # In PG backend check that we removed up the placement group after force cleanup
+        if isinstance(
+            self.trial_executor._resource_manager, PlacementGroupResourceManager
+        ):
+            assert all(
+                pg["state"] == "REMOVED"
+                for pg in ray.util.placement_group_table().values()
+            )
+
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
         trial = Trial("__fake")

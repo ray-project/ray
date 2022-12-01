@@ -894,9 +894,20 @@ class RayTrialExecutor:
                 if not next_future_to_clean:
                     break
                 if next_future_to_clean in self._futures:
-                    self._futures.pop(next_future_to_clean)
-                    # Immediately clean this future
+                    event_type, allocated_resources = self._futures.pop(
+                        next_future_to_clean
+                    )
+
+                    assert event_type == _ExecutorEventType.STOP_RESULT
+
+                    # Clean this future
                     _post_stop_cleanup(next_future_to_clean, timeout=0.01)
+
+                    self._resource_manager.free_resources(
+                        allocated_resources=allocated_resources
+                    )
+
+
                 else:
                     # This just means that before the deadline reaches,
                     # the future is already cleaned up.
@@ -1042,11 +1053,11 @@ class RayTrialExecutor:
 
             # It could be STOP future after all, if so, deal with it here.
             if event_type == _ExecutorEventType.STOP_RESULT:
+                # Blocking here is ok as the future returned
+                _post_stop_cleanup(ready[0], timeout=None)
                 self._resource_manager.free_resources(
                     allocated_resources=allocated_resources
                 )
-                # Blocking here is ok as the future returned
-                _post_stop_cleanup(ready[0], timeout=None)
 
         for staged_trial in self._staged_trials:
             resource_request = staged_trial.placement_group_factory
@@ -1204,10 +1215,10 @@ class RayTrialExecutor:
             result_type, trial_or_allocated_resources = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 # This will block, which is ok as the stop future returned
+                _post_stop_cleanup(ready_future, timeout=None)
                 self._resource_manager.free_resources(
                     allocated_resources=trial_or_allocated_resources
                 )
-                _post_stop_cleanup(ready_future, timeout=None)
             else:
                 trial = trial_or_allocated_resources
                 assert isinstance(trial, Trial)
