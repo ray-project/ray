@@ -3,6 +3,10 @@
 Using Predictors for Inference
 ==============================
 
+.. tip::
+   Refer to the blog on `Model Batch Inference in Ray <https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets>`__
+   for an overview of batch inference strategies in Ray and additional examples.
+
 .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 
 .. image:: images/predictors.png
@@ -20,7 +24,7 @@ Ray AIR Predictors are a class that loads models from `Checkpoint` to perform in
 
 Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
 
-Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
+Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition.
 Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
@@ -46,7 +50,7 @@ Batch Prediction
 
 Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
 
-The BatchPredictor takes in a checkpoint and a predictor class and executes 
+The BatchPredictor takes in a checkpoint and a predictor class and executes
 large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
 
 .. note::
@@ -117,10 +121,10 @@ Coming soon!
 Lazy/Pipelined Prediction (experimental)
 ----------------------------------------
 
-If you have a large dataset but not a lot of available memory, you can use the 
+If you have a large dataset but not a lot of available memory, you can use the
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
 
-Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
+Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a
 :class:`DatasetPipeline` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
 
 The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
@@ -145,6 +149,4 @@ To implement a new Predictor for your particular framework, you should subclass 
 
 1. ``_predict_pandas``: Given a pandas.DataFrame input, return a pandas.DataFrame containing predictions.
 2. ``from_checkpoint``: Logic for creating a Predictor from an :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-3. Optionally ``_predict_arrow`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.
-
-
+3. Optionally ``_predict_numpy`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.

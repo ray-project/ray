@@ -27,14 +27,6 @@ namespace raylet {
 class WorkerKillerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context_;
-  MemoryMonitor memory_monitor_ = {
-      io_context_,
-      0 /*usage_threshold*/,
-      -1 /*min_memory_free_bytes*/,
-      0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold,
-         MemorySnapshot system_memory,
-         float usage_threshold) { FAIL() << "Monitor should not be running"; }};
   int32_t port_ = 2389;
   RetriableLIFOWorkerKillingPolicy prefer_retriable_worker_killing_policy_;
   GroupByDepthWorkingKillingPolicy groupby_depth_worker_killing_policy_;
@@ -75,11 +67,17 @@ class WorkerKillerTest : public ::testing::Test {
   }
 };
 
-TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
+TEST_F(WorkerKillerTest, TestRetriableEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   std::shared_ptr<WorkerInterface> worker_to_kill =
-      prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers,
-                                                                 memory_monitor_);
+      prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+  ASSERT_TRUE(worker_to_kill == nullptr);
+}
+
+TEST_F(WorkerKillerTest, TestDepthGroupingEmptyWorkerPoolSelectsNullWorker) {
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  std::shared_ptr<WorkerInterface> worker_to_kill =
+      groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
@@ -112,8 +110,7 @@ TEST_F(WorkerKillerTest,
 
   for (const auto &expected : expected_order) {
     std::shared_ptr<WorkerInterface> worker_to_kill =
-        prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers,
-                                                                   memory_monitor_);
+        prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
     ASSERT_EQ(worker_to_kill->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
@@ -136,7 +133,7 @@ TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasks) {
   };
   for (const auto &expected : expected_order) {
     auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }
@@ -156,7 +153,7 @@ TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasksOnlyOneAtHighestDepth) {
   };
   for (const auto &expected : expected_order) {
     auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }
@@ -178,7 +175,7 @@ TEST_F(WorkerKillerTest, TestDepthGroupingOnlyOneAtAllDepths) {
   };
   for (const auto &expected : expected_order) {
     auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }

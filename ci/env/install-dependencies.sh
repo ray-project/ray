@@ -386,11 +386,11 @@ install_pip_packages() {
     pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
   fi
 
-  # Additional dependency for statsforecast.
+  # Additional dependency for time series libraries.
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
-  if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0"
+  if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
@@ -399,6 +399,16 @@ install_pip_packages() {
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    if [ -n "${ARROW_VERSION-}" ]; then
+      if [ "${ARROW_VERSION-}" = nightly ]; then
+        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+      else
+        pip install -U pyarrow=="${ARROW_VERSION}"
+      fi
+    fi
+    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.

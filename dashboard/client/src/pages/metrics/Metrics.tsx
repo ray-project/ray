@@ -94,6 +94,10 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
+    title: "Scheduler Placement Groups",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+  },
+  {
     title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
@@ -133,7 +137,7 @@ const METRICS_CONFIG = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const { grafanaHost } = useContext(GlobalContext);
+  const { grafanaHost, sessionName } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.THIRTY_MINS,
@@ -198,13 +202,18 @@ export const Metrics = () => {
               ))}
             </TextField>
           </Paper>
+          <Alert severity="info">
+            Tip: You can click on the legend to focus on a specific line in the
+            time-series graph. You can use control/cmd + click to filter out a
+            line in the time-series graph.
+          </Alert>
           <div className={classes.grafanaEmbedsContainer}>
             {METRICS_CONFIG.map(({ title, path }) => (
               <iframe
                 key={title}
                 className={classes.grafanaEmbed}
                 title={title}
-                src={`${grafanaHost}${path}&refresh${timeRangeParams}`}
+                src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
                 width="450"
                 height="400"
                 frameBorder="0"

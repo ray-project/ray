@@ -41,5 +41,5 @@ This section contains commands to :ref:`access logs <state-api-log-doc>` from Ra
 Log CLI allows users to access the log from the cluster. 
 Note that only the logs from alive nodes are available through this API.
 
-.. click:: ray.scripts.scripts:ray_logs
+.. click:: ray.experimental.state.state_cli:logs_state_cli_group
    :prog: ray logs

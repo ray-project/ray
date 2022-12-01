@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray._private.utils import get_or_create_event_loop
 
 
 def test_batching(serve_instance):
@@ -195,10 +196,10 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     # The first should cause a size-one batch to be executed, then
     # the next two should be executed together (signaled by both
     # having the exception).
-    t1 = asyncio.get_event_loop().create_task(call("hi1"))
+    t1 = get_or_create_event_loop().create_task(call("hi1"))
     await asyncio.sleep(0.5)
-    t2 = asyncio.get_event_loop().create_task(call("hi2"))
-    t3 = asyncio.get_event_loop().create_task(call("raise"))
+    t2 = get_or_create_event_loop().create_task(call("hi2"))
+    t3 = get_or_create_event_loop().create_task(call("raise"))
 
     assert await t1 == "hi1"
 
@@ -232,20 +233,20 @@ async def test_batch_size_multiple_long_timeout(use_class):
         else:
             return await long_timeout(arg)
 
-    t1 = asyncio.get_event_loop().create_task(call("hi1"))
-    t2 = asyncio.get_event_loop().create_task(call("hi2"))
+    t1 = get_or_create_event_loop().create_task(call("hi1"))
+    t2 = get_or_create_event_loop().create_task(call("hi2"))
     done, pending = await asyncio.wait([t1, t2], timeout=0.1)
     assert len(done) == 0
-    t3 = asyncio.get_event_loop().create_task(call("hi3"))
+    t3 = get_or_create_event_loop().create_task(call("hi3"))
     done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
     assert set(done) == {t1, t2, t3}
     assert [t1.result(), t2.result(), t3.result()] == ["hi1", "hi2", "hi3"]
 
-    t1 = asyncio.get_event_loop().create_task(call("hi1"))
-    t2 = asyncio.get_event_loop().create_task(call("raise"))
+    t1 = get_or_create_event_loop().create_task(call("hi1"))
+    t2 = get_or_create_event_loop().create_task(call("raise"))
     done, pending = await asyncio.wait([t1, t2], timeout=0.1)
     assert len(done) == 0
-    t3 = asyncio.get_event_loop().create_task(call("hi3"))
+    t3 = get_or_create_event_loop().create_task(call("hi3"))
     done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
     assert set(done) == {t1, t2, t3}
     assert all(isinstance(t.exception(), ZeroDivisionError) for t in done)

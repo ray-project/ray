@@ -1,14 +1,21 @@
-import pandas as pd
-import pandas.testing as pd_testing
-from pathlib import Path
+import json
+import os
 import shutil
 import sys
 import tempfile
 import unittest
+from pathlib import Path
+
+import pandas as pd
+import pandas.testing as pd_testing
+import pytest
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.tune.execution.trial_runner import _load_trial_from_checkpoint
 from ray.tune.experiment import Trial
+from ray.tune.utils.serialization import TuneFunctionDecoder
 
 
 def train(config):
@@ -251,7 +258,41 @@ class TrialRelativeLogdirTest(unittest.TestCase):
             shutil.rmtree(local_dir_moved)
 
 
-if __name__ == "__main__":
-    import pytest
+def test_load_trial_from_json_state(tmpdir):
+    """Check that `Trial.get_json_state` and `_load_trial_from_checkpoint`
+    for saving and loading a Trial is done correctly."""
+    trial = Trial(
+        "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
+    )
+    trial.init_logdir()
+    trial.status = Trial.TERMINATED
 
+    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    trial.checkpoint_manager.on_checkpoint(
+        _TrackedCheckpoint(
+            dir_or_data=checkpoint_logdir,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics={"training_iteration": 1},
+        )
+    )
+
+    json_cp = trial.get_json_state()
+    trial_cp = json.loads(json_cp, cls=TuneFunctionDecoder)
+    # After loading, the trial state should be the same
+    new_trial = _load_trial_from_checkpoint(trial_cp.copy(), stub=True)
+    assert new_trial.get_json_state() == json_cp
+
+    # Specify a new local dir, and the logdir/checkpoint path should be updated
+    with tempfile.TemporaryDirectory() as new_local_dir:
+        new_trial = _load_trial_from_checkpoint(
+            trial_cp.copy(), stub=True, new_local_dir=new_local_dir
+        )
+
+        assert new_trial.logdir.startswith(new_local_dir)
+        assert new_trial.get_trial_checkpoints()[0].dir_or_data.startswith(
+            new_local_dir
+        )
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
