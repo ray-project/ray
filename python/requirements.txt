@@ -17,6 +17,7 @@ pyyaml
 aiosignal
 frozenlist
 requests
+six
 virtualenv>=20.0.24
 
 # Python version-specific requirements
