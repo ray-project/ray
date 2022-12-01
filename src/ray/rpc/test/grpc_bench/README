@@ -12,7 +12,7 @@ To run the test, a docker image need to be built and follow the instruction in g
 | cpp_asio_grpc_coroutine     |   48444 |       29.36 ms |       85.30 ms |      101.51 ms |      189.95 ms |  108.58% |     32.94 MiB |
 | cpp_asio_grpc_unifex        |   48313 |       29.22 ms |       84.43 ms |       98.52 ms |      185.01 ms |  100.04% |     32.45 MiB |
 | cpp_asio_grpc_io_context_coro |   47965 |       30.20 ms |       85.61 ms |      101.98 ms |      193.66 ms |   86.79% |     31.84 MiB |
-| cpp_grpc_st                 |   45345 |       36.19 ms |       86.13 ms |       96.02 ms |      117.74 ms |  165.24% |     82.62 MiB |
+| cpp_ray_grpc                 |   45345 |       36.19 ms |       86.13 ms |       96.02 ms |      117.74 ms |  165.24% |     82.62 MiB |
 -----------------------------------------------------------------------------------------------------------------------------------------
 Benchmark Execution Parameters:
 2a9be17 Tue, 18 Oct 2022 21:36:12 +0200 Dennis Hezel cpp: Update to grpc 1.50.0
