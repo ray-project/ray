@@ -36,7 +36,7 @@ def test_actor_spawn_actor(shutdown_only):
 
 def test_actor_spawn_task(shutdown_only):
     nested_actor = NestedActor.remote()
-    ray.get(nested_actor.run_actor_task.remote(max_depth = 2, spawn_task = True))    
+    ray.get(nested_actor.run_actor_task.remote(max_depth = 2, spawn_task = True))
 
 def test_task_spawn_task(shutdown_only):
     ray.get(nested_task.remote(max_depth = 5, spawn_task = True))

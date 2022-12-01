@@ -97,6 +97,14 @@ struct WorkerThreadContext {
     put_counter_ = 0;
   }
 
+  int64_t GetTaskDepth() {
+    return task_depth_;
+  }
+
+  void SetTaskDepth(int64_t depth) {
+    task_depth_ = depth;
+  }
+
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
@@ -113,6 +121,9 @@ struct WorkerThreadContext {
 
   /// Number of tasks that have been submitted from current task.
   uint64_t task_index_;
+
+  /// The depth of the task or actor.
+  int64_t task_depth_ = 0;
 
   static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
                 "Size of task_index_ doesn't match the unique bytes of a TaskID.");
@@ -152,7 +163,6 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  // TODO(clarng): Remove thread local, refactor performance-sensitive parts to a different class.
   GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
                                           ? TaskID::ForDriverTask(job_id)
                                           : TaskID::Nil(),
@@ -174,8 +184,7 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  return task_depth_;
+  return GetThreadContext().GetTaskDepth();
 }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
@@ -244,7 +253,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
   // Don't set the depth if this is an actor task. The depth is already set by the actor creation task and we should keep that.
   if (!task_spec.IsActorTask()) {
-    task_depth_ = task_spec.GetDepth();
+    GetThreadContext().SetTaskDepth(task_spec.GetDepth());
   }
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
