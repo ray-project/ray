@@ -135,7 +135,7 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
     """
 
     # Check for old gym.Env.
-    if isinstance(env, old_gym.Env):
+    if old_gym and isinstance(env, old_gym.Env):
         raise ValueError(ERR_MSG_OLD_GYM_API.format(env, ""))
 
     # Check that env has observation and action spaces.
