@@ -24,6 +24,7 @@ export const getLogDetail = async (url: string) => {
         const a = li.children[0] as HTMLAnchorElement;
         let href = a.href;
         if (
+          url !== "log_index" &&
           !li.innerText.startsWith("http://") &&
           !li.innerText.startsWith("https://")
         ) {
