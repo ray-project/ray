@@ -26,6 +26,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This proto file is copied from
+//    https://github.com/Tradias/grpc_bench/blob/master/scenarios/complex_proto/helloworld.proto
+// but some fileds got updated to make it work with ray gRPC framework.
+
 syntax = "proto3";
 
 option go_package = "proto/helloworld";
