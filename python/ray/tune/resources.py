@@ -7,7 +7,6 @@ from numbers import Number
 from typing import Optional
 
 from ray.util.annotations import Deprecated, DeveloperAPI
-from six import string_types
 
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune import TuneError
@@ -231,7 +230,7 @@ class Resources(
 def json_to_resources(data: Optional[str]):
     if data is None or data == "null":
         return None
-    if isinstance(data, string_types):
+    if isinstance(data, str):
         data = json.loads(data)
 
     for k in data:
