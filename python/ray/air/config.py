@@ -476,7 +476,7 @@ class FailureConfig:
         if self.fail_fast and self.max_failures != 0:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
-        # Similar check as in TrialRunner
+        # Same check as in TrialRunner
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
