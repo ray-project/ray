@@ -68,12 +68,15 @@ if False:
 
 
 # __rllib-compute-action-begin__
-import gym
+try:
+    import gymnasium as gym
+    env = gym.make(env_name, apply_api_compatibility=True)
+except Exception:
+    import gym
+    env = gym.make(env_name)
 from ray.rllib.algorithms.ppo import PPOConfig
 
-env_name = "CartPole-v1"
-algo = PPOConfig().environment(env=env_name).build()
-env = gym.make(env_name)
+algo = PPOConfig().environment("CartPole-v1").build()
 
 episode_reward = 0
 done = False

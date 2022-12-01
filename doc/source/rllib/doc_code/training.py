@@ -1,9 +1,16 @@
 # flake8: noqa
 
 # __preprocessing_observations_start__
-import gym
-
-env = gym.make("Pong-v0")
+try:
+    import gymnasium as gym
+    env = gym.make(
+        "GymV26Environment-v0",
+        env_id="ALE/Pong-v5",
+        apply_api_compatibility=True,
+    )
+except Exception:
+    import gym
+    env = gym.make("Pong-v0")
 
 # RLlib uses preprocessors to implement transforms such as one-hot encoding
 # and flattening of tuple and dict observations.
@@ -24,15 +31,15 @@ prep.transform(env.reset()).shape
 import numpy as np
 from ray.rllib.algorithms.ppo import PPOConfig
 
-config = (
+algo = (
     PPOConfig()
     .environment("CartPole-v1")
     .framework("tf2")
     .rollouts(num_rollout_workers=0)
+    .build()
 )
-# <ray.rllib.algorithms.ppo.PPOConfig object at 0x7fd020185473>
-algo = config.build()
 # <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>
+
 policy = algo.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -88,9 +95,9 @@ _____________________________________________________________________
 # __get_q_values_dqn_start__
 # Get a reference to the model through the policy
 import numpy as np
-from ray.rllib.algorithms.dqn import DQN
+from ray.rllib.algorithms.dqn import DQNConfig
 
-algo = DQN(env="CartPole-v1", config={"framework": "tf2"})
+algo = DQNConfig().environment("CartPole-v1").framework("tf2").build()
 model = algo.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
