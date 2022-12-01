@@ -33,8 +33,6 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     FCConfig,
 )
 
-import time
-
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -147,8 +145,6 @@ class PPOTorchPolicyWithRLModule(
             The PPO loss tensor given the input batch.
         """
 
-        print("-" * 80)
-        s = time.time()
         fwd_out = model.forward_train(train_batch, filter=False, cache=True)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         state = fwd_out.get("state_out", {})
@@ -239,10 +235,6 @@ class PPOTorchPolicyWithRLModule(
         self.tower_stats[model]["mean_entropy"] = mean_entropy
         self.tower_stats[model]["mean_kl_loss"] = mean_kl_loss
 
-        e2 = time.time()
-        print(
-            f"fwd_batch_size: {train_batch.count}, loss_pass: {(e2 - s) * 1000 :8.6f} ms"
-        )
         return total_loss
 
     # TODO: Make this an event-style subscription (e.g.:

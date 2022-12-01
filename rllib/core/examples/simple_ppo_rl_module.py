@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-import logging
 import gym
 from typing import List, Mapping, Any
 
@@ -21,7 +20,6 @@ import time
 
 
 torch, nn = try_import_torch()
-logger = logging.getLogger(__name__)
 
 
 def get_ppo_loss(fwd_in, fwd_out):
@@ -128,7 +126,7 @@ class FCNet(nn.Module):
         super().__init__()
         self.input_dim = config.input_dim
         self.hidden_layers = config.hidden_layers
-        
+
         activation_class = getattr(nn, config.activation, lambda: None)()
         self.layers = []
         self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
@@ -292,7 +290,6 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
-        s = time.time()
         if self._is_discrete:
             action_spec = TorchTensorSpec("b")
         else:
@@ -310,14 +307,10 @@ class SimplePPOModule(TorchRLModule):
             }
         )
 
-        logger.info(f"input_specs_train_ms: {(time.time() - s) * 1000:8.6f}")
-
         return spec
 
     @override(RLModule)
     def output_specs_train(self) -> ModelSpec:
-
-        s = time.time()
         spec = ModelSpec(
             {
                 SampleBatch.ACTION_DIST: self.__get_action_dist_type(),
@@ -327,8 +320,6 @@ class SimplePPOModule(TorchRLModule):
                 "vf_preds_next_obs": TorchTensorSpec("b", dtype=torch.float32),
             }
         )
-
-        logger.info(f"output_specs_train_ms: {(time.time() - s) * 1000:8.6f}")
         return spec
 
     @override(RLModule)

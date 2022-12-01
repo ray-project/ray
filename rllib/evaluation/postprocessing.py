@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI, is_overridden
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID
 
 
@@ -179,7 +179,7 @@ def compute_gae_for_sample_batch(
             policy.model.view_requirements, index="last"
         )
 
-        if is_overridden(policy.make_rl_module):
+        if policy.config["_enable_rl_module_api"]:
             # TODO (Kourosh) This is a hack which I don't like at all. We need a
             # permanent solution.
             # Note: During sampling you are using the parameters at the beginning of

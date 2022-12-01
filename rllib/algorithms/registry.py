@@ -357,7 +357,6 @@ POLICIES = {
     "PPOTF1Policy": "ppo.ppo_tf_policy",
     "PPOTF2Policy": "ppo.ppo_tf_policy",
     "PPOTorchPolicy": "ppo.ppo_torch_policy",
-    "PPOTorchPolicyV2": "ppo_v2.torch.ppo_torch_policy",
 }
 
 

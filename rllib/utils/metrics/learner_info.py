@@ -83,12 +83,9 @@ class LearnerInfoBuilder:
         for policy_id, results_all_towers in self.results_all_towers.items():
             # Reduce mean across all minibatch SGD steps (axis=0 to keep
             # all shapes as-is).
-            try:
-                info[policy_id] = tree.map_structure_with_path(
-                    _all_tower_reduce, *results_all_towers
-                )
-            except Exception as e:
-                breakpoint()
+            info[policy_id] = tree.map_structure_with_path(
+                _all_tower_reduce, *results_all_towers
+            )
 
         return info
 

@@ -16,11 +16,10 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
 import time
-import logging
+
 from ray.rllib.models.specs.specs_base import TensorSpec
 
 ModuleID = str
-logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI

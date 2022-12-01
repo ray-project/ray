@@ -7,7 +7,6 @@ from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, normc_initializ
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
-import time
 
 torch, nn = try_import_torch()
 
@@ -142,22 +141,16 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         state: List[TensorType],
         seq_lens: TensorType,
     ) -> (TensorType, List[TensorType]):
-        s = time.time()
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)
         logits = self._logits(self._features) if self._logits else self._features
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
-        if obs.shape[0] > 1:
-            print(
-                f"FCNET, bsize: {obs.shape[0]}, fwd_time_ms: {(time.time() - s) * 1000:.3f}"
-            )
         return logits, state
 
     @override(TorchModelV2)
     def value_function(self) -> TensorType:
-        s = time.time()
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             out = self._value_branch(
@@ -165,6 +158,4 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             ).squeeze(1)
         else:
             out = self._value_branch(self._features).squeeze(1)
-        if self._last_flat_in.shape[0] > 1:
-            print("vf_fwd_pass_ms: ", (time.time() - s) * 1000)
         return out
