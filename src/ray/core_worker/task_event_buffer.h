@@ -67,9 +67,6 @@ class TaskEventBuffer {
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   virtual void Stop() = 0;
-
-  /// Get all task events stored in the buffer.
-  virtual rpc::TaskEventData GetAllTaskEvents() = 0;
 };
 
 }  // namespace worker
