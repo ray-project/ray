@@ -1641,7 +1641,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
-
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder,
