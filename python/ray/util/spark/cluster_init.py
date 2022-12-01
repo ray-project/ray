@@ -24,7 +24,7 @@ from .utils import (
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
-    _acquire_lock_for_ray_worker_node_startup,
+    _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_startup,
     _display_databricks_driver_proxy_url,
     gen_cmd_exec_failure_msg,
 )
@@ -406,16 +406,14 @@ def _init_ray_cluster(
         _worker_logger = logging.getLogger("ray.util.spark.worker")
 
         context = TaskContext.get()
-        task_id = context.partitionId()
 
-        _acquire_lock_for_ray_worker_node_startup()
+        worker_port_range_begin, worker_port_range_end = \
+            _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_startup()
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
         os.makedirs(ray_temp_dir, exist_ok=True)
 
-        min_worker_port = 20000 + task_id * 1000
-        max_worker_port = min_worker_port + 999
         ray_worker_node_cmd = [
             ray_exec_path,
             "start",
@@ -426,8 +424,8 @@ def _init_ray_cluster(
             f"--address={ray_head_ip}:{ray_head_port}",
             f"--memory={ray_worker_node_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_node_object_store_mem_bytes}",
-            f"--min-worker-port={min_worker_port}",
-            f"--max-worker-port={max_worker_port}",
+            f"--min-worker-port={worker_port_range_begin}",
+            f"--max-worker-port={worker_port_range_end - 1}",
             *_convert_ray_node_options(worker_options),
         ]
 
