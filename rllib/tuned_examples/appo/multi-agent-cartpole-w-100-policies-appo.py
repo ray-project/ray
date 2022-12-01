@@ -10,7 +10,7 @@ register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 # Number of policies overall in the PolicyMap.
 num_policies = 100
 # Number of those policies that should be trained. These are a subset of `num_policies`.
-num_trainable = 50
+num_trainable = 20
 
 num_envs_per_worker = 5
 
@@ -72,5 +72,5 @@ config = (
 # Define some stopping criteria.
 stop = {
     "evaluation/policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 400000,
+    "timesteps_total": 500000,
 }
