@@ -291,6 +291,12 @@ def run_release_test(
             logger.exception(e)
             command_results = {}
 
+        # Postprocess result:
+        if "last_update" in command_results:
+            command_results["last_update_diff"] = time.time() - command_results.get(
+                "last_update", 0.0
+            )
+
         try:
             command_runner.save_metrics(start_time_unix)
             metrics = command_runner.fetch_metrics()
@@ -298,11 +304,6 @@ def run_release_test(
             logger.exception(f"Could not fetch metrics for test command: {e}")
             metrics = {}
 
-        # Postprocess result:
-        if "last_update" in command_results:
-            command_results["last_update_diff"] = time.time() - command_results.get(
-                "last_update", 0.0
-            )
         if smoke_test:
             command_results["smoke_test"] = True
 
