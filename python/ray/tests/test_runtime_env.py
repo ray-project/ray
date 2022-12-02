@@ -37,7 +37,9 @@ from ray._private.utils import (
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
-from ray.job_submission import JobSubmissionClient
+
+if os.environ.get("RAY_MINIMAL") != "1":
+    from ray.job_submission import JobSubmissionClient
 
 
 def test_get_wheel_filename():
@@ -893,8 +895,10 @@ class TestNoUserInfoInLogs:
             ray.get(f.options(runtime_env=bad_runtime_env).remote())
 
         using_ray_client = address.startswith("ray://")
-        if not using_ray_client:
-            # Test Job Submission codepath.
+
+        # Test Ray Jobs API codepath. Skip for ray_minimal because Ray Jobs API
+        # requires ray[default].
+        if not using_ray_client and os.environ.get("RAY_MINIMAL") != "1":
             client = JobSubmissionClient()
             client.submit_job(entrypoint="echo 'hello world'", runtime_env=runtime_env)
             client.submit_job(
