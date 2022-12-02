@@ -137,7 +137,7 @@ class PhysicalOperator:
 
     def get_tasks(self) -> List[ray.ObjectRef]:
         """Get a list of object references the executor should wait on."""
-        raise []
+        return []
 
     def notify_task_completed(self, task: ray.ObjectRef) -> None:
         """Executor calls this when the given task is completed and local."""

@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     ExchangeOperator,
 )
-from ray.data._internal.execution.bulk_executor import _transform_one
+from ray.data._internal.execution.one_to_one_state import _transform_one
 from ray.data._internal.execution.operators import InputDataBuffer, OneToOneOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats

@@ -48,9 +48,7 @@ class OneToOneOperator(PhysicalOperator):
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
         super().__init__(name, input_dependencies)
-        self._execution_state = OneToOneOperatorState(
-            self.compute_strategy(), self.ray_remote_args()
-        )
+        self._execution_state = OneToOneOperatorState(self)
 
     def get_transform_fn(
         self,
@@ -120,7 +118,7 @@ class MapOperator(OneToOneOperator):
         super().__init__(name, [input_op])
 
     def get_transform_fn(self):
-        transform = self.block_transform
+        transform = self._block_transform
 
         def execute_one(block_bundle: Iterator[Block], _) -> Iterator[Block]:
             def apply_transform(fn, block_bundle):

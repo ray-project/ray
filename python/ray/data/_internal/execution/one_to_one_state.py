@@ -25,7 +25,7 @@ class _Task:
 
 class OneToOneOperatorState:
     def __init__(self, op: "OneToOneOperator"):
-        self._transform = op.get_transform_fn()
+        self._transform_fn = op.get_transform_fn()
         self._compute_strategy = op.compute_strategy()
         self._ray_remote_args = op.ray_remote_args()
         self.outputs = []
