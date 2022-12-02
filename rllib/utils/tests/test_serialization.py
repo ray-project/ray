@@ -13,6 +13,9 @@ from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
+# only import gym.spaces.Text if gym is on version 0.25.0 or higher
+text_space_class = getattr(gym.spaces, "Text", None)
+
 
 def _assert_array_equal(eq, a1, a2, margin=None):
     for a in zip(a1, a2):
@@ -139,6 +142,31 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["box"], gym.spaces.Box))
         self.assertTrue(isinstance(sp["discrete"], gym.spaces.Discrete))
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
+
+    def test_text(self):
+        # NOTE (kourosh): This unittest will automatically get activated on CI once
+        # we upgrade gym
+        if text_space_class is None:
+            print("Skipping test_text, since gym version is too old")
+            return
+
+        expected_space = text_space_class(min_length=3, max_length=10, charset="abc")
+        d = gym_space_to_dict(expected_space)
+        sp = gym_space_from_dict(d)
+
+        self.assertEqual(expected_space.max_length, sp.max_length)
+        self.assertEqual(expected_space.min_length, sp.min_length)
+
+        charset = getattr(expected_space, "character_set", None)
+        if charset is not None:
+            self.assertEqual(expected_space.character_set, sp.character_set)
+        else:
+            charset = getattr(expected_space, "charset", None)
+            if charset is None:
+                raise ValueError(
+                    "Text space does not have charset or character_set attribute."
+                )
+            self.assertEqual(expected_space.charset, sp.charset)
 
     def test_original_space(self):
         space = gym.spaces.Box(low=0.0, high=1.0, shape=(10,))
