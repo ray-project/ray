@@ -1,9 +1,7 @@
 import json
 import logging
-import os
 import asyncio
 import aiohttp.web
-import yaml
 
 import ray
 import ray._private.services
@@ -57,65 +55,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
-    # TODO(sang): Remove it. Legacy code that's not working.
-    @routes.get("/api/launch_profiling")
-    async def launch_profiling(self, req) -> aiohttp.web.Response:
-        ip = req.query["ip"]
-        pid = int(req.query["pid"])
-        duration = int(req.query["duration"])
-        reporter_stub = self._stubs[ip]
-        reply = await reporter_stub.GetProfilingStats(
-            reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration)
-        )
-        profiling_info = (
-            json.loads(reply.profiling_stats)
-            if reply.profiling_stats
-            else reply.std_out
-        )
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Profiling success.", profiling_info=profiling_info
-        )
-
-    @routes.get("/api/ray_config")
-    async def get_ray_config(self, req) -> aiohttp.web.Response:
-        if self._ray_config is None:
-            try:
-                config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
-                with open(config_path) as f:
-                    cfg = yaml.safe_load(f)
-            except yaml.YAMLError:
-                return dashboard_optional_utils.rest_response(
-                    success=False,
-                    message=f"No config found at {config_path}.",
-                )
-            except FileNotFoundError:
-                return dashboard_optional_utils.rest_response(
-                    success=False, message="Invalid config, could not load YAML."
-                )
-
-            payload = {
-                "min_workers": cfg.get("min_workers", "unspecified"),
-                "max_workers": cfg.get("max_workers", "unspecified"),
-            }
-
-            try:
-                payload["head_type"] = cfg["head_node"]["InstanceType"]
-            except KeyError:
-                payload["head_type"] = "unknown"
-
-            try:
-                payload["worker_type"] = cfg["worker_nodes"]["InstanceType"]
-            except KeyError:
-                payload["worker_type"] = "unknown"
-
-            self._ray_config = payload
-
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetched ray config.",
-            **self._ray_config,
-        )
-
     @routes.get("/api/cluster_status")
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
@@ -162,11 +101,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending stack trace request to {}:{}".format(req.query.get("ip"), pid)
+            "Sending stack trace request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
         )
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid)
+            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
         if reply.success:
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
@@ -185,11 +128,18 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if duration > 60:
             raise ValueError(f"The max duration allowed is 60: {duration}.")
         format = req.query.get("format", "flamegraph")
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending CPU profiling request to {}:{}".format(req.query.get("ip"), pid)
+            "Sending CPU profiling request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
         )
         reply = await reporter_stub.CpuProfiling(
-            reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
+            reporter_pb2.CpuProfilingRequest(
+                pid=pid, duration=duration, format=format, native=native
+            )
         )
         if reply.success:
             logger.info(

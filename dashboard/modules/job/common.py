@@ -13,6 +13,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
 )
 
+from ray.util.annotations import PublicAPI
+
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
@@ -25,6 +27,7 @@ JOB_ACTOR_NAME_TEMPLATE = (
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
 
+@PublicAPI(stability="stable")
 class JobStatus(str, Enum):
     """An enumeration for describing the status of a job."""
 
@@ -55,6 +58,7 @@ class JobStatus(str, Enum):
 
 
 # TODO(aguo): Convert to pydantic model
+@PublicAPI(stability="stable")
 @dataclass
 class JobInfo:
     """A class for recording information associated with a job and its execution."""
@@ -147,6 +151,14 @@ class JobInfoStorageClient:
             return None
         else:
             return pickle.loads(pickled_info)
+
+    async def delete_info(self, job_id: str, timeout: int = 30):
+        await self._gcs_aio_client.internal_kv_del(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
+            False,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
+        )
 
     async def put_status(
         self,
@@ -343,6 +355,11 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
+
+
+@dataclass
+class JobDeleteResponse:
+    deleted: bool
 
 
 # TODO(jiaodong): Support log streaming #19415

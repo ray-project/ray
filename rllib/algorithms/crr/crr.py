@@ -17,10 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
-    ResultDict,
-)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -85,32 +82,40 @@ class CRRConfig(AlgorithmConfig):
     ) -> "CRRConfig":
 
         r"""
-        === CRR configs
+        CRR training configuration
 
         Args:
             weight_type: weight type to use `bin` | `exp`.
             temperature: the exponent temperature used in exp weight type.
             max_weight: the max weight limit for exp weight type.
             advantage_type: The way we reduce q values to v_t values
-            `max` | `mean` | `expectation`. `max` and `mean` work for both
-            discrete and continuous action spaces while `expectation` only
-            works for discrete action spaces.
+                `max` | `mean` | `expectation`. `max` and `mean` work for both
+                discrete and continuous action spaces while `expectation` only
+                works for discrete action spaces.
                 `max`: Uses max over sampled actions to estimate the value.
+
                 .. math::
+
                     A(s_t, a_t) = Q(s_t, a_t) - \max_{a^j} Q(s_t, a^j)
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `mean`: Uses mean over sampled actions to estimate the value.
+
                 .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}[Q
-                    (s_t, a^j)]
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+
+                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}
+                    [Q(s_t, a^j)]
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `expectation`: This uses categorical distribution to evaluate
                 the expectation of the q values directly to estimate the value.
+
                 .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,
-                    a^j)]
+
+                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,a^j)]
+
             n_action_sample: the number of actions to sample for v_t estimation.
             twin_q: if True, uses pessimistic q estimation.
             target_network_update_freq: The frequency at which we update the
@@ -182,12 +187,12 @@ class CRR(Algorithm):
     #  default config. config -> Trainer -> config
     #  defining Config class in the same file for now as a workaround.
 
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
-        if self.config.get("target_network_update_freq", None) is None:
-            self.config["target_network_update_freq"] = (
-                self.config["train_batch_size"] * 100
-            )
+
+        self.target_network_update_freq = self.config.target_network_update_freq
+        if self.target_network_update_freq is None:
+            self.target_network_update_freq = self.config.train_batch_size * 100
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
@@ -239,7 +244,7 @@ class CRR(Algorithm):
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(

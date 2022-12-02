@@ -360,10 +360,12 @@ class GTrXLNet(RecurrentNetwork):
 
         return out, [tf.reshape(m, [-1, self.attention_dim]) for m in memory_outs]
 
-    # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self) -> List[np.ndarray]:
-        return []
+        return [
+            tf.zeros(self.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.num_transformer_units)
+        ]
 
     @override(ModelV2)
     def value_function(self) -> TensorType:
@@ -548,13 +550,16 @@ class AttentionWrapper(TFModelV2):
         return model_out, memory_outs
 
     @override(ModelV2)
-    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        return []
-
-    @override(ModelV2)
     def value_function(self) -> TensorType:
         assert self._features is not None, "Must call forward() first!"
         return tf.reshape(self._value_branch(self._features), [-1])
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return [
+            np.zeros(self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.gtrxl.num_transformer_units)
+        ]
 
 
 class Keras_GTrXLNet(tf.keras.Model if tf else object):
@@ -916,3 +921,10 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             memory_outs,
             {SampleBatch.VF_PREDS: tf.reshape(value_outs, [-1])},
         )
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return [
+            np.zeros(self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.gtrxl.num_transformer_units)
+        ]
