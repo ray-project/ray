@@ -23,26 +23,14 @@ export const DurationText = ({ startTime, endTime }: DurationTextProps) => {
 
   let durationText: string;
   let refreshInterval = 1000;
-  if (duration.asMinutes() < 1) {
+  if (duration.asSeconds() < 60) {
     durationText = duration.format("s[s]");
-  } else if (duration.asHours() < 1) {
+  } else if (duration.asSeconds() < 3600) {
     durationText = duration.format("m[m] s[s]");
-  } else if (duration.asDays() < 1) {
+  } else {
     // Only refresh once per minute
     durationText = duration.format("H[h] m[m]");
-    refreshInterval = 1000 * 60;
-  } else if (duration.asMonths() < 1) {
-    // Only refresh once per minute
-    durationText = duration.format("D[d] H[h]");
-    refreshInterval = 1000 * 60;
-  } else if (duration.asYears() < 1) {
-    // Only refresh once per hour
-    durationText = duration.format("M[M] D[d]");
-    refreshInterval = 1000 * 60 * 60;
-  } else {
-    // Only refresh once per hour
-    durationText = duration.format("Y[y] M[M] D[d]");
-    refreshInterval = 1000 * 60 * 60;
+    refreshInterval = 60000;
   }
 
   useEffect(() => {
