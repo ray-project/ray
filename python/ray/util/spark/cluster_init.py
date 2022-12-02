@@ -198,7 +198,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 010.")
+    _logger.warning("Test version 011.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -418,6 +418,9 @@ def _init_ray_cluster(
         # local log dir and temp dir again.
         os.makedirs(ray_temp_dir, exist_ok=True)
 
+        ray_worker_node_dashboard_agent_port = get_random_unused_port(
+            ray_head_ip, min_port=10000, max_port=20000
+        )
         ray_worker_node_cmd = [
             ray_exec_path,
             "start",
@@ -430,6 +433,7 @@ def _init_ray_cluster(
             f"--object-store-memory={ray_worker_node_object_store_mem_bytes}",
             f"--min-worker-port={worker_port_range_begin}",
             f"--max-worker-port={worker_port_range_end - 1}",
+            f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
             *_convert_ray_node_options(worker_options),
         ]
 
