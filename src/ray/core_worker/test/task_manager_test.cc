@@ -16,10 +16,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
@@ -48,6 +50,15 @@ rpc::Address GetRandomWorkerAddr() {
   addr.set_worker_id(WorkerID::FromRandom().Binary());
   return addr;
 }
+
+class MockTaskEventBuffer : public worker::TaskEventBuffer {
+ public:
+  MOCK_METHOD(void, AddTaskEvents, (rpc::TaskEvents task_events), (override));
+
+  MOCK_METHOD(void, FlushEvents, (bool forced), (override));
+
+  MOCK_METHOD(void, Stop, (), (override));
+};
 
 class TaskManagerTest : public ::testing::Test {
  public:
@@ -80,7 +91,8 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &type,
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
-            max_lineage_bytes) {}
+            max_lineage_bytes,
+            std::make_shared<MockTaskEventBuffer>()) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 

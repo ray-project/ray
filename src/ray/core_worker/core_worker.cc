@@ -228,6 +228,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  // Initialize the task state event buffer.
+  auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
+  task_event_buffer_ =
+      std::make_shared<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
@@ -342,7 +347,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       push_error_callback,
-      RayConfig::instance().max_lineage_bytes()));
+      RayConfig::instance().max_lineage_bytes(),
+      task_event_buffer_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -596,6 +602,7 @@ void CoreWorker::Shutdown() {
     // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
+  task_event_buffer_->Stop();
 
   if (gcs_client_) {
     // We should disconnect gcs client first otherwise because it contains
@@ -632,6 +639,9 @@ void CoreWorker::Disconnect(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
   RecordMetrics();
+
+  // Force task state events push before exiting the worker.
+  task_event_buffer_->FlushEvents(/* forced */ true);
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {

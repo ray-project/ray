@@ -17,10 +17,14 @@
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -68,6 +72,81 @@ class TaskEventBuffer {
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   virtual void Stop() = 0;
+};
+
+/// Implementation of TaskEventBuffer.
+///
+/// The buffer has its own io_context and io_thread, that's isolated from other
+/// components.
+///
+/// This class is thread-safe.
+class TaskEventBufferImpl : public TaskEventBuffer {
+ public:
+  /// Constructor
+  ///
+  /// \param gcs_client GCS client
+  /// \param manual_flush Test only flag to disable periodical flushing events.
+  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client,
+                      bool manual_flush = false);
+
+  void AddTaskEvents(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
+
+  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+
+  /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
+  void Stop() LOCKS_EXCLUDED(mutex_) override;
+
+ private:
+  std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    std::vector<rpc::TaskEvents> copy(buffer_);
+    return copy;
+  }
+
+  /// Mutex guarding task_events_data_.
+  absl::Mutex mutex_;
+
+  /// IO service event loop owned by TaskEventBuffer.
+  instrumented_io_context io_service_;
+
+  /// Work guard to prevent the io_context from exiting when no work.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+
+  /// Dedicated io thread for running the periodical runner and the GCS client.
+  std::thread io_thread_;
+
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
+
+  /// Client to the GCS used to push profile events to it.
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
+
+  /// Buffered task events.
+  std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+  std::vector<rpc::TaskEvents> gc_queue_ GUARDED_BY(mutex_);
+
+  /// A iterator into buffer_ that determines which element to be overwritten.
+  size_t iter_ GUARDED_BY(mutex_) = 0;
+
+  size_t num_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+
+  /// Flag to toggle event recording on/off.
+  bool recording_on_ GUARDED_BY(mutex_) = false;
+
+  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
+  /// GCS with too many calls. There is no point sending more events if GCS could not
+  /// process them quick enough.
+  /// This field is accessed in the io_thread_ thus not guarded by mutex.
+  bool grpc_in_progress_ = false;
+
+  /// Stats tracking for debugging and monitoring.
+  std::atomic<size_t> total_events_bytes_ = 0;
+  std::atomic<size_t> total_num_events_ = 0;
+
+  FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
+  FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
+  FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
 };
 
 }  // namespace worker
