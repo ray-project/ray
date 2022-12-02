@@ -32,7 +32,7 @@ Batch inference refers to generating model predictions over a set of input obser
         :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/tasks.png
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: /ray-core/examples/batch_prediction
@@ -40,7 +40,7 @@ Batch inference refers to generating model predictions over a set of input obser
         :text: [Example] Batch Prediction using Ray Core
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/taxi.png
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: /data/examples/nyc_taxi_basic_processing
@@ -49,7 +49,7 @@ Batch inference refers to generating model predictions over a set of input obser
         :classes: btn-link btn-block stretched-link
 
     ---
-    :img-top: /images/ocr.jpg
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: /data/examples/ocr_example
@@ -72,7 +72,7 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
-    :img-top: /images/tasks.png
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: /ray-core/examples/batch_training
@@ -80,7 +80,7 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
         :text: [Example] Batch Training with Ray Core
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/timeseries.png
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: /data/examples/batch_training
@@ -103,7 +103,6 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
         :type: ref
         :text: [Example] Batch Training and Tuning using Ray Tune
         :classes: btn-link btn-block stretched-link
-
     ---
     :img-top: /images/carrot.png
 
@@ -342,6 +341,30 @@ The following highlights feature companies leveraging Ray's unified API to build
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
+    :img-top: /images/shopify.png
+
+    +++
+    .. link-button:: https://shopify.engineering/merlin-shopify-machine-learning-platform
+        :type: url
+        :text: [Blog] The Magic of Merlin - Shopify's New ML Platform
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/uber.png
+
+    +++
+    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
+        :type: url
+        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/carrot.png
+
+    +++
+    .. link-button:: https://www.instacart.com/company/how-its-made/griffin-how-instacarts-ml-platform-tripled-ml-applications-in-a-year/
+        :type: url
+        :text: [Blog] Griffin: How Instacart’s ML Platform Tripled in a year
+        :classes: btn-link btn-block stretched-link
+    ---
     :img-top: /images/predibase.png
 
     +++
@@ -350,20 +373,12 @@ The following highlights feature companies leveraging Ray's unified API to build
         :text: [Talk] Predibase - A low-code deep learning platform built for scale
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/shopify.svg
+    :img-top: /images/gke.png
 
     +++
-    .. link-button:: https://www.youtube.com/watch?v=kbvzvdKH7bc
+    .. link-button:: https://cloud.google.com/blog/products/ai-machine-learning/build-a-ml-platform-with-kubeflow-and-ray-on-gke
         :type: url
-        :text: [Talk] The Magic of Merlin - Shopify's new machine learning platform
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/uber.png
-
-    +++
-    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
-        :type: url
-        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray at Uber
+        :text: [Blog] Building a ML Platform with Kubeflow and Ray on GKE
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ray_logo.png
@@ -371,7 +386,7 @@ The following highlights feature companies leveraging Ray's unified API to build
     +++
     .. link-button:: https://www.youtube.com/watch?v=_L0lsShbKaY
         :type: url
-        :text: [Talk] Panel - ML Platform on Ray
+        :text: [Talk] Ray Summit Panel - ML Platform on Ray
         :classes: btn-link btn-block stretched-link
 
 End-to-End ML Workflows
