@@ -68,24 +68,35 @@ if False:
 
 
 # __rllib-compute-action-begin__
+# Note: `gymnasium` (not `gym`) will be **the** API supported by RLlib from Ray 2.3 on.
+gymnasium = False
 try:
     import gymnasium as gym
 
-    env = gym.make(env_name, apply_api_compatibility=True)
+    gymnasium = True
 except Exception:
     import gym
 
-    env = gym.make("CartPole-v1")
 from ray.rllib.algorithms.ppo import PPOConfig
 
-algo = PPOConfig().environment("CartPole-v1").build()
+env_name = "CartPole-v1"
+env = gym.make(env_name)
+algo = PPOConfig().environment(env_name).build()
 
 episode_reward = 0
-done = False
-obs = env.reset()
-while not done:
+terminated = truncated = False
+
+if gymnasium:
+    obs, info = env.reset()
+else:
+    obs = env.reset()
+
+while not terminated and not truncated:
     action = algo.compute_single_action(obs)
-    obs, reward, done, info = env.step(action)
+    if gymnasium:
+        obs, reward, terminated, truncated, info = env.step(action)
+    else:
+        obs, reward, terminated, info = env.step(action)
     episode_reward += reward
 # __rllib-compute-action-end__
 

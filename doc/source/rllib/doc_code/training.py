@@ -4,15 +4,13 @@
 try:
     import gymnasium as gym
 
-    env = gym.make(
-        "GymV26Environment-v0",
-        env_id="ALE/Pong-v5",
-        apply_api_compatibility=True,
-    )
+    env = gym.make("GymV26Environment-v0", env_id="ALE/Pong-v5")
+    obs, infos = env.reset()
 except Exception:
     import gym
 
-    env = gym.make("Pong-v0")
+    env = gym.make("PongNoFrameskip-v4")
+    obs = env.reset()
 
 # RLlib uses preprocessors to implement transforms such as one-hot encoding
 # and flattening of tuple and dict observations.
@@ -22,9 +20,9 @@ prep = get_preprocessor(env.observation_space)(env.observation_space)
 # <ray.rllib.models.preprocessors.GenericPixelPreprocessor object at 0x7fc4d049de80>
 
 # Observations should be preprocessed prior to feeding into a model
-env.reset().shape
+obs.shape
 # (210, 160, 3)
-prep.transform(env.reset()).shape
+prep.transform(obs).shape
 # (84, 84, 3)
 # __preprocessing_observations_end__
 
