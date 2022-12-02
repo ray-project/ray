@@ -89,7 +89,8 @@ class LearnerThread(threading.Thread):
             if self.local_worker.config.policy_states_are_swappable:
                 self.local_worker.lock()
             multi_agent_results = self.local_worker.learn_on_batch(batch)
-            self.local_worker.unlock()
+            if self.local_worker.config.policy_states_are_swappable:
+                self.local_worker.unlock()
             self.policy_ids_updated.extend(list(multi_agent_results.keys()))
             for pid, results in multi_agent_results.items():
                 learner_info_builder.add_learn_on_batch_results(results, pid)

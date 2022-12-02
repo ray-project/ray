@@ -822,7 +822,8 @@ class Impala(Algorithm):
             },
         }
         local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
-        local_worker.unlock()
+        if self.config.policy_states_are_swappable:
+            local_worker.unlock()
 
         # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
@@ -835,7 +836,8 @@ class Impala(Algorithm):
             if self.config.policy_states_are_swappable:
                 local_worker.lock()
             weights = local_worker.get_weights(policy_ids)
-            local_worker.unlock()
+            if self.config.policy_states_are_swappable:
+                local_worker.unlock()
             weights = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
