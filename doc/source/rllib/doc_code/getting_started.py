@@ -69,13 +69,14 @@ if False:
 
 # __rllib-compute-action-begin__
 # Note: `gymnasium` (not `gym`) will be **the** API supported by RLlib from Ray 2.3 on.
-gymnasium = False
 try:
     import gymnasium as gym
 
     gymnasium = True
 except Exception:
     import gym
+
+    gymnasium = False
 
 from ray.rllib.algorithms.ppo import PPOConfig
 

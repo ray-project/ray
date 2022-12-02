@@ -115,17 +115,24 @@ the `__init__` method of the `ServePPOModel` class that we defined above.
 Now that the model is deployed, let's query it!
 
 ```{code-cell} python3
+# Note: `gymnasium` (not `gym`) will be **the** API supported by RLlib from Ray 2.3 on.
 try:
     import gymnasium as gym
-    env = gym.make("CartPole-v1", apply_api_compatibility=True)
+    gymnasium = True
 except Exception:
     import gym
-    env = gym.make("CartPole-v1")
+    gymnasium = False
+
 import requests
 
 
+env = gym.make("CartPole-v1")
+
 for _ in range(5):
-    obs = env.reset()
+    if gymnasium:
+        obs, infos = env.reset()
+    else:
+        obs = env.reset()
 
     print(f"-> Sending observation {obs}")
     resp = requests.get(
