@@ -71,6 +71,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
+    server->GetServer().GetHealthCheckService()->SetServingStatus(node_id.Hex(), true);
     servers.emplace(node_id, server);
     health_check->AddNode(node_id, channel);
     ++port;
