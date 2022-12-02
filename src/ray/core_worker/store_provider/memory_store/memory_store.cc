@@ -327,11 +327,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       }
     }
     RAY_CHECK(count <= num_objects);
+    const int objects_with_owner = object_ids.size() - objects_without_owner;
 
-    // If we must fail for any exception, OR if every single object requested has
-    // no known owners, then return a failed status, since we are having issues.
+    // If we must fail for any exception, OR if we are requesting more items than
+    // items available with known owners, then return a failed status.
     if (objects_without_owner > 0 &&
-        (abort_if_any_object_is_exception || objects_without_owner == num_objects)) {
+        (abort_if_any_object_is_exception || num_objects > objects_with_owner)) {
       // TODO: Should we include the ObjectIDs in the error?
       std::ostringstream stream;
       stream << "An application is trying to access a Ray object whose owner is "
