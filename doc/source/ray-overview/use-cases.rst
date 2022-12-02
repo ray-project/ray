@@ -19,6 +19,14 @@ Batch inference refers to generating model predictions over a set of input obser
     :img-top: /images/ray_logo.png
 
     +++
+    .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
+        :type: url
+        :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
     .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
         :type: url
         :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
