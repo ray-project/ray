@@ -160,15 +160,7 @@ Learn more about the Tune library with the following talks and user guides.
     +++
     .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
         :type: url
-        :text: [Talk] Ray Tune: Distributed Hyperparameter Optimization Made Simple
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune
-        :type: url
-        :text: [Blog] Hyperparameter Search with Hugging Face Transformers
+        :text: [Talk] Distributed Hyperparameter Optimization Made Simple
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -176,7 +168,7 @@ Learn more about the Tune library with the following talks and user guides.
     +++
     .. link-button:: https://druce.ai/2020/10/hyperparameter-tuning-with-xgboost-ray-tune-hyperopt-and-optuna
         :type: url
-        :text: [Blog] Beyond Grid Search: Using Hyperopt, Optuna, and Ray Tune to hypercharge hyperparameter tuning for XGBoost and LightGBM
+        :text: [Blog] Hyperopt, Optuna, and Ray Tune for XGBoost and LightGBM
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -184,7 +176,7 @@ Learn more about the Tune library with the following talks and user guides.
     +++
     .. link-button:: https://www.cncf.io/blog/2022/02/15/managing-public-cloud-resources-for-deep-learning-training-experiments-and-lessons-learned/
         :type: url
-        :text: [Blog] Managing public cloud resources for deep learning training: experiments and lessons learned
+        :text: [Blog] Managing public cloud resources for deep learning training
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -193,6 +185,14 @@ Learn more about the Tune library with the following talks and user guides.
     .. link-button:: /tune/getting-started
         :type: ref
         :text: [Guide] Getting Started with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune
+        :type: url
+        :text: [Blog] Hyperparameter Search with 🤗 Transformers
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -311,14 +311,6 @@ The following highlights feature companies leveraging Ray's unified API to build
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
-    :img-top: /images/uber.png
-
-    +++
-    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
-        :type: url
-        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray at Uber
-        :classes: btn-link btn-block stretched-link
-    ---
     :img-top: /images/predibase.png
 
     +++
@@ -333,6 +325,14 @@ The following highlights feature companies leveraging Ray's unified API to build
     .. link-button:: https://www.youtube.com/watch?v=kbvzvdKH7bc
         :type: url
         :text: [Talk] The Magic of Merlin - Shopify's new machine learning platform
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/uber.png
+
+    +++
+    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
+        :type: url
+        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray at Uber
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ray_logo.png
