@@ -262,6 +262,7 @@ class RayletClient : public RayletClientInterface {
   /// this will be populated with the current job config.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
+  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -275,7 +276,8 @@ class RayletClient : public RayletClientInterface {
                NodeID *raylet_id,
                int *port,
                std::string *serialized_job_config,
-               StartupToken startup_token);
+               StartupToken startup_token,
+               const std::string &entrypoint);
 
   /// Connect to the raylet via grpc only.
   ///

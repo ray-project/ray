@@ -1,10 +1,13 @@
+import os
 import sys
+import tempfile
 import time
+from unittest import mock
+from typing import List, Iterable
+import zipfile
 
 import pytest
-from unittest import mock
-
-from typing import List, Iterable
+import requests
 
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_policy import (
@@ -17,6 +20,8 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
+import ray.experimental.state.api as state_api
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 
 import ray
 from ray import serve
@@ -873,6 +878,218 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_initial_replicas(serve_instance):
+    @serve.deployment(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            initial_replicas=2,
+            max_replicas=5,
+            downscale_delay_s=3,
+        ),
+    )
+    def f():
+        return os.getpid()
+
+    serve.run(f.bind())
+
+    # f should start with initial_replicas (2) deployments
+    actors = state_api.list_actors(
+        filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+    )
+    print(actors)
+    assert len(actors) == 2
+
+    # f should scale down to min_replicas (1) deployments
+    def check_one_replica():
+        actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 1
+
+    wait_for_condition(check_one_replica, timeout=20)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_preserve_prev_replicas(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_concurrent_queries=5,
+        # The config makes the deployment scale up really quickly and then
+        # wait nearly forever to downscale.
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=2,
+            downscale_delay_s=600,
+            upscale_delay_s=0,
+            metrics_interval_s=1,
+            look_back_period_s=1,
+        ),
+    )
+    def scaler():
+        ray.get(signal.wait.remote())
+        time.sleep(0.2)
+        return os.getpid()
+
+    handle = serve.run(scaler.bind())
+    refs = [handle.remote() for _ in range(10)]
+
+    def check_two_replicas():
+        actors = state_api.list_actors(
+            filters=[
+                ("class_name", "=", "ServeReplica:scaler"),
+                ("state", "=", "ALIVE"),
+            ]
+        )
+        print(actors)
+        return len(actors) == 2
+
+    wait_for_condition(check_two_replicas, retry_interval_ms=1000, timeout=20)
+
+    ray.get(signal.send.remote())
+
+    pids = set(ray.get(refs))
+    assert len(pids) == 2
+
+    # Now re-deploy the application, make sure it is still 2 replicas and it shouldn't
+    # be scaled down.
+    handle = serve.run(scaler.bind())
+    pids = set(ray.get([handle.remote() for _ in range(10)]))
+    assert len(pids) == 2
+
+    def check_num_replicas(live: int, dead: int):
+        live_actors = state_api.list_actors(
+            filters=[
+                ("class_name", "=", "ServeReplica:scaler"),
+                ("state", "=", "ALIVE"),
+            ]
+        )
+        dead_actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:scaler"), ("state", "=", "DEAD")]
+        )
+
+        return len(live_actors) == live and len(dead_actors) == dead
+
+    wait_for_condition(
+        check_num_replicas, retry_interval_ms=1000, timeout=20, live=2, dead=2
+    )
+    ray.get(signal.send.remote())
+
+    # re-deploy the application with initial_replicas. This should override the
+    # previous number of replicas.
+    scaler = scaler.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            initial_replicas=3,
+            max_replicas=5,
+            downscale_delay_s=600,
+            upscale_delay_s=600,
+            metrics_interval_s=1,
+            look_back_period_s=1,
+        )
+    )
+    handle = serve.run(scaler.bind())
+    new_pids = set(ray.get([handle.remote() for _ in range(15)]))
+    assert len(new_pids) == 3
+
+    wait_for_condition(
+        check_num_replicas, retry_interval_ms=1000, timeout=20, live=3, dead=4
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_preserve_prev_replicas_rest_api(serve_instance):
+    signal = SignalActor.options(name="signal", namespace="serve").remote()
+
+    # Step 1: Prepare the script in a zip file so it can be submitted via REST API.
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_path:
+        with zipfile.ZipFile(tmp_path, "w") as zip_obj:
+            with zip_obj.open("app.py", "w") as f:
+                f.write(
+                    """
+from ray import serve
+import ray
+import os
+
+@serve.deployment
+def g():
+    signal = ray.get_actor("signal", namespace="serve")
+    ray.get(signal.wait.remote())
+    return os.getpid()
+
+
+app = g.bind()
+""".encode()
+                )
+
+    # Step 2: Deploy it with max_replicas=1
+    payload = {
+        "import_path": "app:app",
+        "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
+        "deployments": [
+            {
+                "name": "g",
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 1,
+                    "downscale_delay_s": 600,
+                    "upscale_delay_s": 0,
+                    "metrics_interval_s": 1,
+                    "look_back_period_s": 1,
+                },
+            }
+        ],
+    }
+
+    client = ServeSubmissionClient("http://localhost:52365")
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+
+    # Step 3: Verify that it can scale from 0 to 1.
+    @ray.remote
+    def send_request():
+        return requests.get("http://localhost:8000/").text
+
+    ref = send_request.remote()
+
+    def check_num_replicas(num: int):
+        actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:g"), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == num
+
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
+
+    signal.send.remote()
+    existing_pid = ray.get(ref)
+
+    # Step 4: Change the max replicas to 2
+    payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
+
+    # Step 5: Make sure it is the same replica (lightweight change).
+    for _ in range(10):
+        other_pid = ray.get(send_request.remote())
+        assert other_pid == existing_pid
+
+    # Step 6: Make sure initial_replicas overrides previous replicas
+    payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 5
+    payload["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
+    payload["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+    wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
+
+    # Step 7: Make sure original replica is still running (lightweight change)
+    pids = set()
+    for _ in range(15):
+        pids.add(ray.get(send_request.remote()))
+    assert existing_pid in pids
 
 
 if __name__ == "__main__":

@@ -3,10 +3,19 @@ import threading
 
 import ray
 from ray.rllib import _register_all
-from ray.tune import register_trainable
+from ray.tune import register_trainable, SyncConfig
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.error import TuneError
 from ray.tune.utils import diagnose_serialization
+
+
+def test_remote_checkpoint_dir_with_query_string():
+    experiment = Experiment(
+        name="spam",
+        run=lambda config: config,
+        sync_config=SyncConfig(syncer="auto", upload_dir="s3://bucket?scheme=http"),
+    )
+    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
 
 
 class ExperimentTest(unittest.TestCase):

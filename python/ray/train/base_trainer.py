@@ -396,17 +396,18 @@ class BaseTrainer(abc.ABC):
 
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
+        if has_base_dataset:
+            from ray.data.context import DatasetContext
+
+            dataset_context = DatasetContext.get_current()
+        else:
+            dataset_context = None
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
 
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
-
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
 
             @classmethod
             def has_base_dataset(cls) -> bool:
@@ -434,6 +435,10 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                if self.has_base_dataset():
+                    # Set the DatasetContext on the Trainer actor to the DatasetContext
+                    # specified on the driver.
+                    DatasetContext._set_current(dataset_context)
                 super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(

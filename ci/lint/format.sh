@@ -6,7 +6,7 @@
 set -euo pipefail
 
 FLAKE8_VERSION_REQUIRED="3.9.1"
-BLACK_VERSION_REQUIRED="21.12b0"
+BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
 ISORT_VERSION_REQUIRED="5.10.1"
@@ -65,12 +65,16 @@ builtin cd "$ROOT" || exit 1
 # NOTE(edoakes): black version differs based on installation method:
 #   Option 1) 'black, 21.12b0 (compiled: no)'
 #   Option 2) 'black, version 21.12b0'
+#   For newer versions (at least 22.10.0), a second line is printed which must be dropped:
+#
+#     black, 22.10.0 (compiled: yes)
+#     Python (CPython) 3.9.13
 BLACK_VERSION_STR=$(black --version)
 if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
 then
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $2}')
 else
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $3}')
 fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
@@ -140,10 +144,6 @@ MYPY_FILES=(
     'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
     'autoscaler/_private/autoscaler.py'
-    # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
-    # in the CI. Type check once we get serious about type checking:
-    #'ray_operator/operator.py'
-    'ray_operator/operator_utils.py'
     '_private/gcs_utils.py'
 )
 

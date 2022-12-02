@@ -151,6 +151,11 @@ class _TrialInfo:
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
         self._trial_resources = trial.placement_group_factory
+        self._experiment_name = trial.experiment_dir_name
+
+    @property
+    def experiment_name(self):
+        return self._experiment_name
 
     @property
     def trial_name(self):
@@ -353,8 +358,9 @@ class Trial:
         self.relative_logdir = None
         self.runner = None
         self.last_debug = 0
-        self.error_file = None
-        self.pickled_error_file = None
+        self.error_filename = None
+        self.pickled_error_filename = None
+
         self.trial_name_creator = trial_name_creator
         self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
@@ -528,7 +534,7 @@ class Trial:
 
     @classmethod
     def generate_id(cls):
-        return str(uuid.uuid1().hex)[:8]
+        return str(uuid.uuid4().hex)[:8]
 
     @property
     def remote_checkpoint_dir(self):
@@ -593,7 +599,9 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
+    def update_resources(
+        self, resources: Union[Dict, Resources, PlacementGroupFactory]
+    ):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -607,7 +615,7 @@ class Trial:
         placement_group_factory = None
         if isinstance(resources, PlacementGroupFactory):
             placement_group_factory = resources
-        else:
+        elif isinstance(resources, dict):
             resources = Resources(**resources)
 
         self.placement_group_factory = _to_pg_factory(
@@ -615,6 +623,15 @@ class Trial:
         )
 
         self.invalidate_json_state()
+
+    def refresh_default_resource_request(self):
+        """Update trial resources according to the trainable's default resource
+        request, if it is provided."""
+        trainable_cls = self.get_trainable_cls()
+        if trainable_cls:
+            default_resources = trainable_cls.default_resource_request(self.config)
+            if default_resources:
+                self.update_resources(default_resources)
 
     def set_runner(self, runner):
         self.runner = runner
@@ -652,6 +669,18 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
+    @property
+    def error_file(self):
+        if not self.logdir or not self.error_filename:
+            return None
+        return os.path.join(self.logdir, self.error_filename)
+
+    @property
+    def pickled_error_file(self):
+        if not self.logdir or not self.pickled_error_filename:
+            return None
+        return os.path.join(self.logdir, self.pickled_error_filename)
+
     def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
         if isinstance(exc, _TuneRestoreError):
             exc = exc.exc
@@ -667,10 +696,10 @@ class Trial:
             self.num_failures += 1
 
         if self.logdir:
-            self.error_file = os.path.join(self.logdir, "error.txt")
+            self.error_filename = "error.txt"
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
+                self.pickled_error_filename = "error.pkl"
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
@@ -893,6 +922,18 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
+        # Save the relative paths of persistent trial checkpoints
+        # When loading this trial state, the paths should be constructed again
+        # relative to the trial `logdir`, which may have been updated.
+        relative_checkpoint_dirs = []
+        for checkpoint in self.get_trial_checkpoints():
+            checkpoint_dir = checkpoint.dir_or_data
+            assert isinstance(checkpoint_dir, str)
+            relative_checkpoint_dirs.append(
+                os.path.relpath(checkpoint_dir, self.logdir)
+            )
+        state["__relative_checkpoint_dirs"] = relative_checkpoint_dirs
+
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
@@ -903,10 +944,23 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
+        # Retrieve the relative checkpoint dirs
+        relative_checkpoint_dirs = state.pop("__relative_checkpoint_dirs", None)
+
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
+
+        if relative_checkpoint_dirs:
+            for checkpoint, relative_checkpoint_dir in zip(
+                self.get_trial_checkpoints(), relative_checkpoint_dirs
+            ):
+                # Reconstruct the checkpoint dir using the (possibly updated)
+                # trial logdir and the relative checkpoint directory.
+                checkpoint.dir_or_data = os.path.join(
+                    self.logdir, relative_checkpoint_dir
+                )
 
         if not self.stub:
             validate_trainable(self.trainable_name)

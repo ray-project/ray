@@ -17,7 +17,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -34,6 +36,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -47,6 +50,7 @@ struct GcsServerConfig {
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;
+  bool enable_redis_ssl = false;
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
@@ -128,6 +132,9 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
+  /// Initialize usage stats client.
+  void InitUsageStatsClient();
+
   /// Initialize KV manager.
   void InitKVManager();
 
@@ -147,13 +154,6 @@ class GcsServer {
   /// Gets the type of KV storage to use from config.
   std::string StorageType() const;
 
-  /// Store the address of GCS server in Redis.
-  ///
-  /// Clients will look up this address in Redis and use it to connect to GCS server.
-  /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
-  /// server address directly to raylets and get rid of this lookup.
-  void StoreGcsServerAddressInRedis();
-
   /// Print debug info periodically.
   std::string GetDebugState() const;
 
@@ -168,6 +168,8 @@ class GcsServer {
 
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
+
+  void TryGlobalGC();
 
   /// Gcs server configuration.
   const GcsServerConfig config_;
@@ -197,6 +199,8 @@ class GcsServer {
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The health check manager.
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The heartbeat manager.
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
@@ -237,6 +241,8 @@ class GcsServer {
   /// The node id of GCS.
   NodeID gcs_node_id_;
 
+  /// The usage stats client.
+  std::unique_ptr<UsageStatsClient> usage_stats_client_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.
@@ -267,6 +273,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int task_pending_schedule_detected_ = 0;
+  /// Throttler for global gc
+  std::unique_ptr<Throttler> global_gc_throttler_;
 };
 
 }  // namespace gcs

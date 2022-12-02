@@ -47,6 +47,8 @@ cc_library(
         ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -546,6 +548,7 @@ cc_library(
         ":scheduler",
         ":worker_rpc",
         "@boost//:bimap",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -868,6 +871,18 @@ cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "core_worker_resubmit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/core_worker_resubmit_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1533,6 +1548,18 @@ cc_test(
 )
 
 cc_test(
+    name = "exponential_backoff_test",
+    size = "small",
+    srcs = ["src/ray/util/exponential_backoff_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["src/ray/util/sample_test.cc"],
@@ -1607,6 +1634,7 @@ cc_test(
     ],
     deps = [
         ":ray_common",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1807,6 +1835,20 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs_client_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_health_check_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2073,10 +2115,12 @@ cc_library(
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
+        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
+        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -2196,6 +2240,21 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "usage_stats_client_test",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
@@ -2273,6 +2332,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
@@ -2708,7 +2768,6 @@ alias(
     name = "redis-server",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-server-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
     visibility = ["//visibility:public"],
@@ -2718,7 +2777,6 @@ alias(
     name = "redis-cli",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-cli-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
     visibility = ["//visibility:public"],

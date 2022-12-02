@@ -25,6 +25,7 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
@@ -545,7 +546,13 @@ class SyncerCallback(Callback):
         source_ip = self._trial_ips.get(trial.trial_id, None)
 
         if not source_ip:
-            source_ip = trial.get_runner_ip()
+            try:
+                source_ip = trial.get_runner_ip()
+            except RayActorError as e:
+                logger.error(
+                    f"Trial {trial}: An error occurred when trying to get the "
+                    f"node ip where this trial is running: {e}"
+                )
 
             # If it still does not exist, the runner is terminated.
             if not source_ip:

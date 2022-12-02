@@ -106,6 +106,8 @@ class ScalingConfig:
             not trigger properly).
     """
 
+    # If adding new attributes here, please also update
+    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
     num_workers: Optional[Union[int, SampleRange]] = None
     use_gpu: Union[bool, SampleRange] = False
@@ -475,7 +477,7 @@ class FailureConfig:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
         # Same check as in TrialRunner
-        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() != "RAISE"):
+        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
             )

@@ -33,7 +33,6 @@ DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
-DEFINE_string(redis_address, "", "The IP address of redis server.");
 DEFINE_int32(min_worker_port,
              0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -55,7 +54,6 @@ DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(native_library_path,
               "",
               "The native library path which includes the core libraries.");
-DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
@@ -64,6 +62,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
+DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 #ifdef __linux__
 DEFINE_string(plasma_directory,
               "/dev/shm",
@@ -94,7 +93,6 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
-  const std::string redis_address = FLAGS_redis_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
@@ -108,7 +106,6 @@ int main(int argc, char *argv[]) {
   const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
-  const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
@@ -118,6 +115,7 @@ int main(int argc, char *argv[]) {
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
+  const std::string session_name = FLAGS_session_name;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -261,7 +259,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::WorkerIdKey, ""},
             {ray::stats::JobIdKey, ""},
             {ray::stats::VersionKey, kRayVersion},
-            {ray::stats::NodeAddressKey, node_ip_address}};
+            {ray::stats::NodeAddressKey, node_ip_address},
+            {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
         // Initialize the node manager.
@@ -285,13 +284,22 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
+  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client](
+  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
                      const boost::system::error_code &error, int signal_number) {
+    // Make the shutdown handler idempotent since graceful shutdown can be triggered
+    // by many places.
+    if (*shutted_down) {
+      RAY_LOG(INFO) << "Raylet already received SIGTERM. It will ignore the request.";
+      return;
+    }
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+    *shutted_down = true;
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();

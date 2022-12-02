@@ -65,7 +65,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   bool ReplyPushTask(Status status = Status::OK(),
                      bool exit = false,
-                     bool is_retryable_error = false) {
+                     bool is_retryable_error = false,
+                     bool was_cancelled_before_running = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -76,6 +77,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     if (is_retryable_error) {
       reply.set_is_retryable_error(true);
+    }
+    if (was_cancelled_before_running) {
+      reply.set_was_cancelled_before_running(true);
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -138,7 +142,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
-  void MarkTaskWaitingForExecution(const TaskID &task_id) override {}
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -1747,15 +1752,15 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
 
   // Try non-force kill, worker returns normally
   ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
-  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
             task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
-  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1787,14 +1792,35 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
+
+  // Try force kill
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+
+  // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil(), true));
+
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+
+  // Try non-force kill
+  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
+  ASSERT_EQ(worker_client->kill_requests.size(), 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 2);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 2);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
