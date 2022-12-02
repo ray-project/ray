@@ -53,7 +53,16 @@ header_node = container(
     image="ray_ci:v1",
     name="gcs",
     network="{gcs_network.name}",
-    command=["ray", "start", "--head", "--block", "--num-cpus", "0"],
+    command=[
+        "ray",
+        "start",
+        "--head",
+        "--block",
+        "--num-cpus",
+        "0",
+        "--node-manager-port",
+        "9379",
+    ],
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -64,7 +73,15 @@ header_node = container(
 worker_node = container(
     image="ray_ci:v1",
     network="{gcs_network.name}",
-    command=["ray", "start", "--address", "gcs:6379", "--block"],
+    command=[
+        "ray",
+        "start",
+        "--address",
+        "gcs:6379",
+        "--block",
+        "--node-manager-port",
+        "9379",
+    ],
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
