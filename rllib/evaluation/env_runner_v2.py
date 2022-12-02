@@ -1,7 +1,7 @@
 from collections import defaultdict
 import logging
 import time
-import tree
+import tree  # pip install dm_tree
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
 import numpy as np
 

@@ -21,6 +21,8 @@ torch, nn = try_import_torch()
 
 
 def get_ppo_loss(fwd_in, fwd_out):
+    # TODO: we should replace these components later with real ppo components when
+    # RLOptimizer and RLModule are integrated together.
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
     adv = fwd_in[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
@@ -31,6 +33,8 @@ def get_ppo_loss(fwd_in, fwd_out):
     return loss
 
 
+# TODO: Most of the neural network, and model specs in this file will eventually be
+# retreived from the model catalog. That includes FCNet, Encoder, etc.
 def get_shared_encoder_config(env):
     return PPOModuleConfig(
         observation_space=env.observation_space,

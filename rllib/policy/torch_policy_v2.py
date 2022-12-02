@@ -208,8 +208,8 @@ class TorchPolicyV2(Policy):
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
 
-        # if model is an RLModule it won't have tower_stats instead there will be a
-        # self.tower_state[model] -> dict for each tower
+        # If model is an RLModule it won't have tower_stats instead there will be a
+        # self.tower_state[model] -> dict for each tower.
         self.tower_stats = {}
         if not hasattr(self.model, "tower_stats"):
             for model in self.model_gpu_towers:
@@ -627,7 +627,6 @@ class TorchPolicyV2(Policy):
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
         grads, fetches = self.compute_gradients(postprocessed_batch)
-        print("fetches: ", fetches)
 
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
@@ -834,11 +833,9 @@ class TorchPolicyV2(Policy):
         tower_outputs = self._multi_gpu_parallel_grad_calc([postprocessed_batch])
 
         all_grads, grad_info = tower_outputs[0]
-        print("grad_info_before_stats_fn: ", grad_info)
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.stats_fn(postprocessed_batch))
-        print("grad_info: ", grad_info)
 
         fetches = self.extra_compute_grad_fetches()
 

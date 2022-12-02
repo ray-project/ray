@@ -43,7 +43,7 @@ class MyCallbacks(DefaultCallbacks):
 
         algorithm.workers.foreach_policy(
             self._check_lr_torch
-            if algorithm.config["framework"] == "torch"
+            if algorithm.config.framework_str == "torch"
             else self._check_lr_tf
         )
 

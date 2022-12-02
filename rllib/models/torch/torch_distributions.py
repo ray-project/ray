@@ -61,15 +61,6 @@ class TorchDistribution(Distribution, abc.ABC):
             return rsample, self.logp(rsample)
         return rsample
 
-    @override(Distribution)
-    def get_state(self) -> dict:
-        return self._state_dict
-
-    @override(Distribution)
-    def set_state(self, state: dict) -> None:
-        new_dist = self.__class__(*state["args"], **state["kwargs"])
-        self._dist = new_dist._dist
-
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
@@ -262,11 +253,3 @@ class TorchDeterministic(Distribution):
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
         return tuple(np.prod(space.shape, dtype=np.int32))
-
-    @override(Distribution)
-    def get_state(self) -> dict:
-        return {"loc": self.loc}
-
-    @override(Distribution)
-    def set_state(self, state: dict) -> None:
-        self.loc = state["loc"]

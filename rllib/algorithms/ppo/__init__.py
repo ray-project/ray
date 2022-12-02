@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.ppo.ppo import PPOConfig, PPO, DEFAULT_CONFIG
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy, PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rl_module import (
+from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_with_rl_module import (
     PPOTorchPolicyWithRLModule,
 )
 

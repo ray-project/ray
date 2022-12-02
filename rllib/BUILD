@@ -1068,6 +1068,13 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
+py_test(
+    name = "test_ppo_with_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
+)
+
 # PPO Reproducibility
 py_test(
     name = "test_repro_ppo",
@@ -1811,17 +1818,17 @@ py_test(
 )
 
 py_test(
-    name = "test_distributions",
+    name = "test_action_distributions",
     tags = ["team:rllib", "models"],
     size = "medium",
-    srcs = ["models/tests/test_distributions.py"]
+    srcs = ["models/tests/test_action_distributions.py"]
 )
 
 py_test(
-    name = "test_distributions_v2",
+    name = "test_distributions",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/tests/test_distributions_v2.py"]
+    srcs = ["models/tests/test_distributions.py"]
 )
 
 py_test(

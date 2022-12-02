@@ -46,15 +46,24 @@ class PPOTorchPolicyWithRLModule(
 ):
     """PyTorch policy class used with PPO.
 
-    This class is copied from PPOTorchPolicy (V1) and is modified to support RLModules.
+    This class is copied from PPOTorchPolicyV2 and is modified to support RLModules.
     Some subtle differences:
-    - if make_rl_module is implemented by the policy the policy is assumed to be v2 and
-        self.model would be an RLModule
-    - Tower stats no longer belongs to the RLModule
+    - if config._enable_rl_module api is true make_rl_module should be implemented by
+    the policy the policy is assumed to be compatible with rl_modules (i.e. self.model
+    would be an RLModule)
+    - Tower stats no longer belongs to the model (i.e. RLModule) instead it belongs to
+    the policy itself.
     - Connectors should be enabled to use this policy
-    - So far it only works for CartPole and Pendulum (needs model catalog to work for
-        other obs and action spaces)
+    - So far it only works for vectorized obs and action spaces (Fully connected neural
+    networks). we need model catalog to work for other obs and action spaces.
 
+    # TODO: In the future we will deprecate doing all phases of training, exploration,
+    # and inference via one policy abstraction. Instead, we will use separate
+    # abstractions for each phase. For training (i.e. gradient updates, given the
+    # sample that have been collected) we will use RLTrainer which will own one or
+    # possibly many RLModules, and RLOptimizer. For exploration, we will use RLSampler
+    # which will own RLModule, and RLTrajectoryProcessor. The exploration and inference
+    # phase details are TBD but the whole point is to make rllib extremely modular.
     """
 
     def __init__(self, observation_space, action_space, config):

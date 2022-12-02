@@ -7,7 +7,6 @@ import numpy as np
 import os
 from packaging import version
 import platform
-from ray.rllib.utils.nested_dict import NestedDict
 import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
@@ -16,6 +15,7 @@ from typing import (
     Container,
     Dict,
     List,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -47,6 +47,7 @@ from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
@@ -368,7 +369,12 @@ class Policy(metaclass=ABCMeta):
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module"""
+        """Returns the RL Module.
+
+        If RLModule API is enabled (self.config._enable_rllib_module_api=True), this
+        method should be implemented and should return the RLModule instance to use for
+        this Policy. Otherwise, RLlib will error out.
+        """
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -1266,8 +1272,8 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # with RL modules you want the explore to be True for initialization of the
-        # tensors and placeholder you'd need for training
+        # With RL modules you want the explore flag to be True for initialization of the
+        # tensors and placeholder you'd need for training.
         explore = self.config["_enable_rl_module_api"]
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
@@ -1567,13 +1573,24 @@ class Policy(metaclass=ABCMeta):
         return self.get_exploration_state()
 
 
-def get_gym_space_from_struct_of_tensors(value: TensorStructType) -> gym.spaces.Dict:
-    value_dict = NestedDict(value)
-    struct = tree.map_structure(
-        lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
-        value_dict,
-    )
-    space = get_gym_space_from_struct_of_spaces(struct.asdict())
+def get_gym_space_from_struct_of_tensors(
+    value: Union[Mapping, np.ndarray]
+) -> gym.spaces.Dict:
+    if isinstance(value, Mapping):
+        value_dict = NestedDict(value)
+        struct = tree.map_structure(
+            lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
+            value_dict,
+        )
+        space = get_gym_space_from_struct_of_spaces(struct.asdict())
+    elif isinstance(value, np.ndarray):
+        space = gym.spaces.Box(-1.0, 1.0, shape=value.shape[1:], dtype=value.dtype)
+    else:
+        raise ValueError(
+            f"Unsupported type of value {type(value)} passed "
+            "to get_gym_space_from_struct_of_tensors. Only Nested dict with "
+            "np.ndarray leaves or an np.ndarray are supported."
+        )
     return space
 
 
@@ -1585,5 +1602,8 @@ def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces
     elif isinstance(value, tuple):
         return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
     else:
-        assert isinstance(value, gym.spaces.Space)
+        assert isinstance(
+            value, gym.spaces.Space
+        ), "The struct of spaces should only contain dicts, tiples and primitive "
+        "gym spaces."
         return value

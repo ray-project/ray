@@ -621,7 +621,8 @@ class AlgorithmConfig:
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
-                "Please set `config.enable_connectors=True`."
+                "Please enable connectors via "
+                "`config.rollouts(enable_connectors=True)`."
             )
 
         # TODO: Deprecate self.simple_optimizer!
