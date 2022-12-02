@@ -50,7 +50,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -77,7 +76,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -118,7 +116,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -184,7 +181,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -207,7 +203,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -255,7 +250,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -306,7 +300,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,

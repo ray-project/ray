@@ -2966,8 +2966,7 @@ def remote(
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation. This API is
-            in beta and may change before becoming stable.
+            :ref:`runtime-environments` for detailed documentation.
         retry_exceptions: Only for *remote functions*. This specifies whether
             application-level errors should be retried up to max_retries times.
             This can be a boolean or a list of exceptions that should be retried.
@@ -2981,7 +2980,9 @@ def remote(
             "DEFAULT": default hybrid scheduling;
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling.
+            placement group based scheduling;
+            `NodeAffinitySchedulingStrategy`:
+            node id based affinity scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 

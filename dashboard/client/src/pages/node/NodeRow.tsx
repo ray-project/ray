@@ -86,6 +86,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         </Box>
       </TableCell>
       <TableCell>
+        <Link to={`/log/${encodeURIComponent(logUrl)}`}>Log</Link>
+      </TableCell>
+      <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
         </PercentageBar>
@@ -128,9 +131,6 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
-      <TableCell>
-        <Link to={`/log/${encodeURIComponent(logUrl)}`}>Log</Link>
-      </TableCell>
     </TableRow>
   );
 };
@@ -184,6 +184,30 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
+        <Link to={workerLogUrl} target="_blank">
+          Logs
+        </Link>
+        <br />
+        <a
+          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+          target="_blank"
+          title="Sample the current Python stack trace for this worker."
+          rel="noreferrer"
+        >
+          Stack&nbsp;Trace
+        </a>
+        <br />
+        <a
+          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
+          target="_blank"
+          title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+          rel="noreferrer"
+        >
+          Flame&nbsp;Graph
+        </a>
+        <br />
+      </TableCell>
+      <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
         </PercentageBar>
@@ -207,30 +231,6 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
-      <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
-        </Link>
-        <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
-        <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a flame graph."
-          rel="noreferrer"
-        >
-          Flame&nbsp;Graph
-        </a>
-        <br />
-      </TableCell>
     </TableRow>
   );
 };
@@ -261,9 +261,9 @@ export const NodeRows = ({
   const [isExpanded, setExpanded] = useState(startExpanded);
 
   const { data } = useSWR(
-    "getNodeDetail",
-    async () => {
-      const { data } = await getNodeDetail(node.raylet.nodeId);
+    ["getNodeDetail", node.raylet.nodeId],
+    async (_, nodeId) => {
+      const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 
       if (result === false) {

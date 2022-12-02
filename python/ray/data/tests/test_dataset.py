@@ -4656,6 +4656,12 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
+def test_random_block_order_schema(ray_start_regular_shared):
+    df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
+    ds = ray.data.from_pandas(df).randomize_block_order()
+    ds.schema().names == ["a", "b"]
+
+
 def test_random_block_order(ray_start_regular_shared):
 
     # Test BlockList.randomize_block_order.
@@ -4941,19 +4947,16 @@ def test_read_write_local_node(ray_start_cluster):
     # Plain read.
     ds = ray.data.read_parquet(local_path).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
     ).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # With fusion.
     ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
     check_dataset_is_local(ds)
-    assert "1 nodes used" in ds.stats(), ds.stats()
 
     # Write back to local scheme.
     output = os.path.join(local_path, "test_read_write_local_node")

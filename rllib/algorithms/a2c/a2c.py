@@ -20,10 +20,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
-    ResultDict,
-)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +111,10 @@ class A2CConfig(A3CConfig):
         # Call super's validation method.
         super().validate()
 
+        # Synchronous sampling, on-policy PG algo -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
+
         if self.microbatch_size:
             if self.num_gpus > 1:
                 raise AttributeError(
@@ -153,7 +154,7 @@ class A2C(A3C):
         return A2CConfig()
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create a microbatch variable for collecting gradients on microbatches'.
