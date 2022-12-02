@@ -185,7 +185,7 @@ def test_function_table_gc_actor(call_ray_start):
 
 def test_node_liveness_after_restart(ray_start_cluster):
     cluster = ray_start_cluster
-    head = cluster.add_node()
+    cluster.add_node()
     ray.init(cluster.address)
     worker = cluster.add_node(node_manager_port=9037)
     wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
