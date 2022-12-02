@@ -1317,14 +1317,7 @@ class Policy(metaclass=ABCMeta):
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
             if key not in self.view_requirements:
-                if isinstance(value, np.ndarray):
-                    self.view_requirements[key] = ViewRequirement(
-                        space=gym.spaces.Box(
-                            -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype
-                        ),
-                        used_for_compute_actions=False,
-                    )
-                elif isinstance(value, dict):
+                if isinstance(value, (dict, np.ndarray)):
                     # the assumption is that value is a nested_dict of np.arrays leaves
                     space = get_gym_space_from_struct_of_tensors(value)
                     self.view_requirements[key] = ViewRequirement(

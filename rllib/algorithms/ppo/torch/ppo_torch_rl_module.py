@@ -160,6 +160,7 @@ class FCNet(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+
 class PPORLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__(config)
