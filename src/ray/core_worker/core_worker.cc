@@ -1962,9 +1962,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       required_resources,
                       "", /* debugger_breakpoint */
                       -1,
-                      /*depth*/ /*The actor task should use the depth of the actor that it
+                      /*The actor task should use the depth of the actor that it
                                    is running in, which the actor core worker knows*/
-                      "{}",     /* serialized_runtime_env_info */
+                      "{}", /* serialized_runtime_env_info */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
