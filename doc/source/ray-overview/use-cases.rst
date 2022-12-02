@@ -166,6 +166,30 @@ Learn more about the Tune library with the following talks and user guides.
     :img-top: /images/tune.png
 
     +++
+    .. link-button:: https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune
+        :type: url
+        :text: [Blog] Hyperparameter Search with Hugging Face Transformers
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://druce.ai/2020/10/hyperparameter-tuning-with-xgboost-ray-tune-hyperopt-and-optuna
+        :type: url
+        :text: [Blog] Beyond Grid Search: Using Hyperopt, Optuna, and Ray Tune to hypercharge hyperparameter tuning for XGBoost and LightGBM
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.cncf.io/blog/2022/02/15/managing-public-cloud-resources-for-deep-learning-training-experiments-and-lessons-learned/
+        :type: url
+        :text: [Blog] Managing public cloud resources for deep learning training: experiments and lessons learned
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
     .. link-button:: /tune/getting-started
         :type: ref
         :text: [Guide] Getting Started with Ray Tune
