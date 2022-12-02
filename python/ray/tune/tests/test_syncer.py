@@ -396,7 +396,7 @@ def test_syncer_hanging_sync_with_timeout(temp_data_dirs):
         assert sync_up()
         frozen.tick(20)
         # We're 10 seconds past the timeout, waiting should result in a timeout error
-        with pytest.raises(tune.TuneError):
+        with pytest.raises(TimeoutError):
             syncer.wait()
 
 
