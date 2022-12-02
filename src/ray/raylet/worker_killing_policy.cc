@@ -130,13 +130,15 @@ std::string WorkerKillingPolicy::WorkersDebugString(
 std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(
     std::string killing_policy_str) {
   if (killing_policy_str == "group_by_depth") {
-      RAY_LOG(INFO) << "Running GroupByDepth policy.";
+    RAY_LOG(INFO) << "Running GroupByDepth policy.";
     return std::make_shared<GroupByDepthWorkingKillingPolicy>();
   } else if (killing_policy_str == "retriable_lifo") {
     RAY_LOG(INFO) << "Running RetriableLIFO policy.";
     return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
   } else {
-    RAY_LOG(ERROR) << killing_policy_str << " is an invalid killing policy. Defaulting to RetriableLIFO policy.";
+    RAY_LOG(ERROR)
+        << killing_policy_str
+        << " is an invalid killing policy. Defaulting to RetriableLIFO policy.";
     return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
   }
 }
