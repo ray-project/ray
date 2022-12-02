@@ -375,6 +375,7 @@ class AsyncBatcher(BatcherInterface):
         self.base_batcher = base_batcher
         self.fetch_timeout_s = fetch_timeout_s
         self.buffer = queue.Queue(maxsize=buffer_max_size)
+        self.is_thread_running = False
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -431,7 +432,7 @@ class AsyncBatcher(BatcherInterface):
             or (self.base_batcher.is_done_adding() and self.has_any())
         )
 
-        if self.buffer.empty():
+        if self.buffer.empty() and not self.is_thread_running:
             self._prefetch_next_batch(batch_format)
             assert not self.buffer.empty()
 
@@ -447,5 +448,6 @@ class AsyncBatcher(BatcherInterface):
             target=self._prefetch_next_batch, args=(batch_format,)
         )
         fetch_thread.start()
+        self.is_thread_running = True
 
         return batch
