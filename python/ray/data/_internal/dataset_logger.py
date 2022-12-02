@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
@@ -13,9 +12,10 @@ class DatasetLogger:
 
     DEFAULT_DATASET_LOG_PATH = "logs/ray-data.log"
     # Since this class is a wrapper around the base Logger, when we call
-    # `DatasetLogger(...).info(...)`, the file/line number calling the logger will by default
-    # link to functions in this file, `dataset_logger.py`. By setting the `stacklevel`
-    # arg to 2, this allows the logger to fetch the actual caller of `DatasetLogger(...).info(...)`.
+    # `DatasetLogger(...).info(...)`, the file/line number calling the logger will by
+    # default link to functions in this file, `dataset_logger.py`. By setting the
+    # `stacklevel` arg to 2, this allows the logger to fetch the actual caller of
+    # `DatasetLogger(...).info(...)`.
     ROOT_LOGGER_STACK_LEVEL = 2
 
     def __init__(self, log_name: str):
@@ -63,7 +63,9 @@ class DatasetLogger:
             to writing to the log file.
         """
         self.logger.propagate = log_to_stdout
-        self.logger.debug(msg, stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL, *args, **kwargs)
+        self.logger.debug(
+            msg, stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL, *args, **kwargs
+        )
 
     def info(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
         """Calls the standard `Logger.info` method and emits the resulting
