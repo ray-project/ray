@@ -121,4 +121,4 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     :start-after: __accelerator_type_start__
     :end-before: __accelerator_type_end__
 
-See :py:mod:`~ray.util.accelerators` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
