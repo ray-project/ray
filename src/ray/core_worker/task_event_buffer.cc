@@ -24,13 +24,15 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
       gcs_client_(std::move(gcs_client)),
-      task_events_data_() {
+      status_event_on_(RayConfig::instance().enable_status_event()) {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   if (report_interval_ms <= 0) {
     gcs_client_.reset();
     return;
   }
   recording_on_ = true;
+
+  buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -95,113 +97,105 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
-void TaskEventBufferImpl::AddTaskStatusEvent(
-    TaskID task_id,
-    rpc::TaskStatus task_status,
-    std::unique_ptr<rpc::TaskInfoEntry> task_info,
-    std::unique_ptr<rpc::TaskStateEntry> task_state_update) {
+void TaskEventBufferImpl::AddTaskEvents(rpc::TaskEvents &&task_events) {
+  absl::MutexLock lock(&mutex_);
   if (!recording_on_) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
 
-  // TODO(rickyx): What if too many in local buffer? Trigger force flush or drop?
-  auto events_task = task_events_data_.add_events_by_task();
-  events_task->set_task_id(task_id.Binary());
+  auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
+  if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
+    // Too many task events, start overriding older ones.
 
-  auto status_events = events_task->mutable_status_events();
-
-  if (task_state_update) {
-    status_events->mutable_task_state()->Swap(task_state_update.get());
-  }
-
-  if (task_info) {
-    status_events->mutable_task_info()->Swap(task_info.get());
-  }
-
-  // Add the event.
-  auto event = status_events->add_events();
-  event->set_task_status(task_status);
-  event->set_start_time(absl::GetCurrentTimeNanos());
-}
-
-void TaskEventBufferImpl::AddProfileEvent(TaskID task_id,
-                                          rpc::ProfileEventEntry event,
-                                          const std::string &component_type,
-                                          const std::string &component_id,
-                                          const std::string &node_ip_address) {
-  if (!recording_on_) {
+    // Delay GCing
+    gc_queue_.push_back(std::move(task_events));
+    std::swap(buffer_[iter_], gc_queue_.back());
+    iter_ = (iter_ + 1) % limit;
+    num_task_events_dropped_++;
     return;
   }
-  absl::MutexLock lock(&mutex_);
-
-  auto events_task = task_events_data_.add_events_by_task();
-
-  events_task->set_task_id(task_id.Binary());
-  auto profile_events = events_task->mutable_profile_events();
-  profile_events->set_component_type(component_type);
-  profile_events->set_component_id(component_id);
-  profile_events->set_node_ip_address(node_ip_address);
-  profile_events->add_events()->Swap(&event);
+  buffer_.push_back(std::move(task_events));
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!recording_on_) {
     return;
   }
-  std::unique_ptr<rpc::TaskEventData> cur_task_events_data =
-      std::make_unique<rpc::TaskEventData>();
+
+  std::vector<rpc::TaskEvents> task_events;
+  // Will be GC when function returns.
+  std::vector<rpc::TaskEvents> gc_swap;
+  size_t num_task_events_dropped = 0;
   {
     absl::MutexLock lock(&mutex_);
-    RAY_LOG_EVERY_MS(INFO, 30000)
+
+    gc_queue_.swap(gc_swap);
+
+    // TODO(rickyx): change this interval
+    RAY_LOG_EVERY_MS(INFO, 5000)
         << "Pushed task state events to GCS. [total_bytes="
         << (1.0 * total_events_bytes_) / 1024 / 1024
-        << "MiB][total_count=" << total_num_events_ << "]."
-        << "Task event buffer currently has " << task_events_data_.events_by_task_size()
-        << " tasks' events (" << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
-        << "MiB).";
+        << "MiB][total_count=" << total_num_events_
+        << "][total_task_events_dropped=" << num_task_events_dropped_
+        << "][cur_buffer_size=" << buffer_.size() << "].";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
           << "GCS hasn't replied to the previous flush events call (likely overloaded). "
-             "Skipping reporting task state events and retry later. Pending "
-          << task_events_data_.events_by_task_size() << "tasks' events ("
-          << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
-          << "MiB)stored in buffer. ";
+             "Skipping reporting task state events and retry later."
+          << "[cur_buffer_size=" << buffer_.size() << "].";
       return;
     }
 
-    if (task_events_data_.events_by_task_size() == 0) {
+    if (buffer_.size() == 0) {
       return;
     }
 
-    task_events_data_.Swap(cur_task_events_data.get());
+    task_events.reserve(
+        RayConfig::instance().task_events_max_num_task_events_in_buffer());
+    buffer_.swap(task_events);
+    iter_ = 0;
+    num_task_events_dropped = num_task_events_dropped_;
+    num_task_events_dropped_ = 0;
   }
   // mutex released. Below operations should be lock-free.
 
+  // Merge multiple events from a single task attempt run into one task event.
+  absl::flat_hash_map<std::pair<std::string, int>, rpc::TaskEvents> task_events_map;
+  for (auto events : task_events) {
+    auto &task_events_itr =
+        task_events_map[std::make_pair(events.task_id(), events.attempt_number())];
+    task_events_itr.MergeFrom(events);
+  }
+
+  // Convert to rpc::TaskEventsData
+  auto data = std::make_unique<rpc::TaskEventData>();
+  data->set_num_task_events_dropped(num_task_events_dropped);
+  auto num_task_events = task_events_map.size();
+  for (auto itr : task_events_map) {
+    auto events_by_task = data->add_events_by_task();
+    events_by_task->Swap(&itr.second);
+  }
+
   // Some debug tracking.
-  auto num_events = cur_task_events_data->events_by_task_size();
-  RAY_CHECK(num_events > 0) << "There should be some task events to be pushed.";
+  total_num_events_ += num_task_events;
+  total_events_bytes_ += data->ByteSizeLong();
 
-  total_num_events_ += num_events;
-  total_events_bytes_ += cur_task_events_data->ByteSizeLong();
-
-  auto on_complete = [this, num_events](const Status &status) {
+  auto on_complete = [this, num_task_events](const Status &status) {
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to push " << num_events
+      RAY_LOG(WARNING) << "Failed to push " << num_task_events
                        << " task state events to GCS. Data will be lost. [status="
                        << status.ToString() << "]";
     } else {
-      RAY_LOG(DEBUG) << "Push " << num_events << " task state events to GCS.";
+      RAY_LOG(DEBUG) << "Push " << num_task_events << " task state events to GCS.";
     }
     grpc_in_progress_ = false;
   };
 
   // The flag should be unset when on_complete is invoked.
   grpc_in_progress_ = true;
-  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(
-      std::move(cur_task_events_data), on_complete);
+  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
   if (!status.ok()) {
     // If we couldn't even send the data by invoking client side callbacks, there's
     // something seriously wrong, and losing data in this case should not be too

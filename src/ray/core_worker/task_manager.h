@@ -299,8 +299,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_spec TaskSpecification of the task.
   /// \return TaskInfoEntry based on the spec.
-  std::unique_ptr<rpc::TaskInfoEntry> MakeTaskInfoEntry(
-      const TaskSpecification &task_spec) const;
+  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
@@ -441,7 +440,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status the changed status.
-  void RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status);
+  void RecordTaskStatusEvent(const TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

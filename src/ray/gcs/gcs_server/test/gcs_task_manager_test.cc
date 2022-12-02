@@ -59,8 +59,9 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
 
 TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   size_t num_task_events = 100;
+  int32_t num_dropped = 10;
   auto task_ids = GenTaskIDs(num_task_events);
-  auto events_data = Mocker::GenTaskStatusEvents(task_ids);
+  auto events_data = Mocker::GenTaskEventsData(task_ids, 0, num_dropped);
 
   rpc::AddTaskEventDataRequest request;
   rpc::AddTaskEventDataReply reply;
@@ -77,48 +78,11 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
 
   // Assert on RPC reply.
   ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
-  ASSERT_EQ(reply.num_success(), num_task_events);
-  ASSERT_EQ(reply.num_failure(), 0);
 
   // Assert on actual data.
-  absl::MutexLock lock(&task_manager->mutex_);
   ASSERT_EQ(task_manager->task_events_.size(), num_task_events);
-  ASSERT_EQ(task_manager->all_tasks_reported_.size(), num_task_events);
-}
-
-TEST_F(GcsTaskManagerTest, TestAddTaskEventMerge) {
-  size_t num_task_events = 100;
-  auto task_ids = GenTaskIDs(num_task_events);
-  std::vector<rpc::TaskStatus> all_status = {rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                                             rpc::TaskStatus::RUNNING,
-                                             rpc::TaskStatus::FINISHED};
-
-  for (auto status : all_status) {
-    auto event_data = Mocker::GenTaskStatusEvents(task_ids, status);
-
-    rpc::AddTaskEventDataRequest request;
-    rpc::AddTaskEventDataReply reply;
-    std::promise<bool> promise;
-
-    request.mutable_data()->CopyFrom(*event_data);
-
-    task_manager->HandleAddTaskEventData(
-        request,
-        &reply,
-        [&promise](Status, std::function<void()>, std::function<void()>) {
-          promise.set_value(true);
-        });
-    promise.get_future().get();
-    // Assert on RPC reply.
-    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
-    ASSERT_EQ(reply.num_success(), num_task_events);
-    ASSERT_EQ(reply.num_failure(), 0);
-  }
-
-  // Assert on actual data, should only contain a single copy of tasks.
-  absl::MutexLock lock(&task_manager->mutex_);
-  ASSERT_EQ(task_manager->task_events_.size(), num_task_events);
-  ASSERT_EQ(task_manager->all_tasks_reported_.size(), num_task_events);
+  ASSERT_EQ(task_manager->total_num_task_events_reported_, num_task_events);
+  ASSERT_EQ(task_manager->total_num_task_events_dropped_, num_dropped);
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
@@ -136,7 +100,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     rpc::AddTaskEventDataReply reply;
     std::promise<bool> promise;
 
-    auto event_data = Mocker::GenTaskStatusEvents(task_ids);
+    auto event_data = Mocker::GenTaskEventsData(task_ids);
     request.mutable_data()->CopyFrom(*event_data);
 
     task_manager->HandleAddTaskEventData(
@@ -150,18 +114,16 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
 
     // Assert on RPC reply.
     ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
-    ASSERT_EQ(reply.num_success(), task_ids.size());
-    ASSERT_EQ(reply.num_failure(), 0);
   }
 
   // Assert on actual data.
-  absl::MutexLock lock(&task_manager->mutex_);
   ASSERT_EQ(task_manager->task_events_.size(), num_limit);
-  ASSERT_EQ(task_manager->all_tasks_reported_.size(), num_batch1 + num_batch2);
+  ASSERT_EQ(task_manager->total_num_task_events_reported_, num_batch1 + num_batch2);
 
   // Assert all later task events
-  for (auto const &task_id : task_ids2) {
-    EXPECT_EQ(task_manager->task_events_.count(task_id), 1);
+  std::unordered_set<TaskID> task_ids2_set(task_ids2.begin(), task_ids2.end());
+  for (auto &task_event : task_manager->task_events_) {
+    EXPECT_EQ(task_ids2_set.count(TaskID::FromBinary(task_event.task_id())), 1);
   }
 }
 

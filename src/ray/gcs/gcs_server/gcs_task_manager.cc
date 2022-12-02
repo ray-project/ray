@@ -46,103 +46,55 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   io_service_.post(
       [this, reply, send_reply_callback, request = std::move(request)]() {
         size_t num_to_process = request.data().events_by_task_size();
-        // Update each task.
-        reply->set_num_failure(0);
-        reply->set_num_success(0);
+
+        total_num_task_events_dropped_ += request.data().num_task_events_dropped();
 
         auto data = request.data();
         for (auto &events_by_task : *data.mutable_events_by_task()) {
           auto task_id = TaskID::FromBinary(events_by_task.task_id());
-          auto status = AddTaskEventForTask(task_id, std::move(events_by_task));
-
-          if (!status.ok()) {
-            reply->set_num_failure(reply->num_failure() + 1);
-            RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-                << "Failed to add task state events for task. [task_id=" << task_id.Hex()
-                << "][status=" << status.ToString() << "].";
-          } else {
-            reply->set_num_success(reply->num_success() + 1);
-          }
-          RAY_CHECK(reply->num_success() + reply->num_failure() <= num_to_process)
-              << "Processed more task events than available. Too many callbacks called.";
-
-          // Processed all the task events
-          if (reply->num_success() + reply->num_failure() == num_to_process) {
-            RAY_LOG(DEBUG) << "Processed all " << num_to_process
-                           << " task state events, failed=" << reply->num_failure()
-                           << ",success=" << reply->num_success();
-            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-            return;
-          }
-
+          AddTaskEventForTask(std::move(events_by_task));
           RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
         }
-        RAY_LOG(WARNING) << "Empty task events data, num_to_process=" << num_to_process;
-        GCS_RPC_SEND_REPLY(send_reply_callback,
-                           reply,
-                           Status::UnknownError("Empty task event grpc data"));
+
+        // Processed all the task events
+        RAY_LOG(DEBUG) << "Processed all " << num_to_process << " task events";
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       },
       "GcsTaskManager::HandleAddTaskEventData");
 }
 
-Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
-                                           rpc::TaskEvents &&events_by_task) {
-  absl::MutexLock lock(&mutex_);
-
-  RAY_LOG_EVERY_MS(INFO, 30000)
-      << ":GCS current stores " << task_events_.size()
-      << " task event entries, approx size=" << 1.0 * num_bytes_task_events_ / 1024 / 1024
-      << "MiB";
-
-  // Try adding to the storage.
-  auto task_event_itr = task_events_.find(task_id);
+void GcsTaskManager::AddTaskEventForTask(rpc::TaskEvents &&events_by_task) {
+  // TODO(rickyx): revert this interval
+  RAY_LOG_EVERY_MS(INFO, 5000) << "GCS currently stores " << task_events_.size()
+                               << " task event entries, approximate size="
+                               << 1.0 * num_bytes_task_events_ / 1024 / 1024 << "MiB"
+                               << ", total number of task events dropped on worker="
+                               << total_num_task_events_dropped_
+                               << ", total number of task events reported="
+                               << total_num_task_events_reported_;
+  // Add to storage.
   auto max_num_events =
       static_cast<size_t>(RayConfig::instance().task_events_max_num_task_in_gcs());
-  if (task_event_itr == task_events_.end()) {
-    // A newly reported task events
-    all_tasks_reported_.insert(task_id);
 
-    if (max_num_events >= 0) {
-      if (task_events_.size() >= max_num_events) {
-        // Reached max events, do overriding.
-        RAY_CHECK(next_idx_to_override_ < stored_task_ids_.size())
-            << "Tracked indexing of stored task events is out of bound"
-            << next_idx_to_override_ << " >= " << stored_task_ids_.size();
-        auto evict_task_id = stored_task_ids_[next_idx_to_override_];
-        task_events_.erase(evict_task_id);
+  total_num_task_events_reported_++;
+  num_bytes_task_events_ += events_by_task.ByteSizeLong();
 
-        // Maintain the override indexing.
-        stored_task_ids_[next_idx_to_override_] = task_id;
-        next_idx_to_override_ = (next_idx_to_override_ + 1) % max_num_events;
+  // If limit enforced.
+  if (max_num_events > 0 && task_events_.size() >= max_num_events) {
+    num_bytes_task_events_ -= task_events_[next_idx_to_overwrite_].ByteSizeLong();
+    task_events_[next_idx_to_overwrite_] = events_by_task;
 
-        RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1000)
-            << "Max number of tasks event states(" << max_num_events
-            << ") allowed reached. Dropping old task state events. Set "
-               "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
-               "store more.";
-      } else {
-        // Not reached max number of events yet
-        stored_task_ids_.push_back(task_id);
-      }
-    }
-
-    num_bytes_task_events_ += events_by_task.ByteSizeLong();
-    auto inserted = task_events_.emplace(task_id, std::move(events_by_task));
-    if (!inserted.second) {
-      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-          << "Failed to add a new TasEvents to the storage.";
-      return Status::UnknownError("Insert to map failed.");
-    }
-    return Status::OK();
+    next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_events;
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Max number of tasks event (" << max_num_events
+        << ") allowed is reached. Old task events will be overwritten. Set "
+           "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
+           "store more.";
+    return;
   }
 
-  RAY_CHECK(task_event_itr != task_events_.end())
-      << "Should have a valid iterator to the events map.";
-
   num_bytes_task_events_ += events_by_task.ByteSizeLong();
-  // Merge the events with an existing one.
-  task_event_itr->second.MergeFrom(events_by_task);
-  return Status::OK();
+  task_events_.push_back(events_by_task);
 }
 
 }  // namespace gcs

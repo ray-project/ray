@@ -1155,16 +1155,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
-  if (worker_context_.GetCurrentTask() != nullptr) {
-    // This will ignore task status events from driver running ray.get, which doesn't have
-    // a name and task spec.
-    task_event_buffer_->AddTaskStatusEvent(
-        worker_context_.GetCurrentTaskID(),
-        rpc::TaskStatus::RUNNING_IN_RAY_GET,
-        task_manager_->MakeTaskInfoEntry(*worker_context_.GetCurrentTask()),
-        /* task_state_update */ nullptr);
-  }
-
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -2195,10 +2185,12 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     RAY_CHECK(task_event_buffer_) << "Task event buffer should not be nullptr.";
+    auto spec = worker_context_.GetCurrentTask();
     return std::make_unique<worker::ProfileEvent>(
         task_event_buffer_,
         event_type,
         worker_context_.GetCurrentTaskID(),
+        spec == nullptr ? 0 : spec->AttemptNumber(),
         WorkerTypeString(worker_context_.GetWorkerType()),
         worker_context_.GetWorkerID().Binary(),
         options_.node_ip_address);
@@ -2277,10 +2269,15 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
-    task_event_buffer_->AddTaskStatusEvent(task_spec.TaskId(),
-                                           rpc::TaskStatus::RUNNING,
-                                           task_manager_->MakeTaskInfoEntry(task_spec),
-                                           /* task_state_update */ nullptr);
+
+    // Make task event
+    rpc::TaskEvents task_event;
+    task_event.set_task_id(task_spec.TaskId().Binary());
+    task_event.set_attempt_number(task_spec.AttemptNumber());
+    auto state_updates = task_event.mutable_state_updates();
+    state_updates->set_running_ts(absl::GetCurrentTimeNanos());
+    task_event_buffer_->AddTaskEvents(std::move(task_event));
+
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }

@@ -629,10 +629,6 @@ message AddTaskEventDataRequest {
 
 message AddTaskEventDataReply {
   GcsStatus status = 1;
-  // Number of tasks where tasks are reported successfully.
-  uint64 num_success = 2;
-  // Number of tasks failed to be added to GCS.
-  uint64 num_failure = 3;
 }
 
 // Service for task info access

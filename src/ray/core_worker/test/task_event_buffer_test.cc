@@ -28,29 +28,42 @@ namespace worker {
 
 class TaskEventBufferTest : public ::testing::Test {
  public:
-  TaskEventBufferTest()
-      : task_event_buffer_(std::make_unique<TaskEventBufferImpl>(
-            std::make_unique<ray::gcs::MockGcsClient>(),
-            /*manual_flush*/ true)) {}
+  TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000
+}
+  )");
+
+    task_event_buffer_ =
+        std::make_unique<TaskEventBufferImpl>(std::make_unique<ray::gcs::MockGcsClient>(),
+                                              /*manual_flush*/ true);
+  }
 
   virtual void TearDown() { task_event_buffer_->Stop(); };
 
-  std::unique_ptr<TaskEventBufferImpl> task_event_buffer_;
+  rpc::TaskEvents GenTaskEvents(TaskID task_id, uint64_t attempt_num) {
+    rpc::TaskEvents task_events;
+    task_events.set_task_id(task_id.Binary());
+    task_events.set_attempt_number(attempt_num);
+    return task_events;
+  }
+
+  std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
 };
 
 TEST_F(TaskEventBufferTest, TestAddEvent) {
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().events_by_task_size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
 
   // Test add status event
   auto task_id_1 = RandomTaskId();
-  task_event_buffer_->AddTaskStatusEvent(
-      task_id_1, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_1, 0));
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().events_by_task_size(), 1);
+  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 1);
 
-  task_event_buffer_->AddProfileEvent(
-      task_id_1, rpc::ProfileEventEntry(), "dummy_type", "dummy_id", "dummy_ip");
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().events_by_task_size(), 2);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_1, 1));
+  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 2);
 }
 
 TEST_F(TaskEventBufferTest, TestFlushEvents) {
@@ -58,11 +71,10 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   // Adding some events
   for (size_t i = 0; i < num_events; ++i) {
     auto task_id = RandomTaskId();
-    task_event_buffer_->AddTaskStatusEvent(
-        task_id, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+    task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id, 0));
   }
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().events_by_task_size(), num_events);
+  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_events);
 
   // Manually call flush should call GCS client's flushing grpc.
   auto task_gcs_accessor =
@@ -73,7 +85,7 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   task_event_buffer_->FlushEvents(false);
 
   // Expect no more events.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().events_by_task_size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBackPressure) {
@@ -81,8 +93,7 @@ TEST_F(TaskEventBufferTest, TestBackPressure) {
   // Adding some events
   for (size_t i = 0; i < num_events; ++i) {
     auto task_id = RandomTaskId();
-    task_event_buffer_->AddTaskStatusEvent(
-        task_id, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+    task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id, 0));
   }
 
   auto task_gcs_accessor =
@@ -94,13 +105,11 @@ TEST_F(TaskEventBufferTest, TestBackPressure) {
   task_event_buffer_->FlushEvents(false);
 
   auto task_id_1 = RandomTaskId();
-  task_event_buffer_->AddTaskStatusEvent(
-      task_id_1, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_1, 0));
   task_event_buffer_->FlushEvents(false);
 
   auto task_id_2 = RandomTaskId();
-  task_event_buffer_->AddTaskStatusEvent(
-      task_id_2, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_2, 0));
   task_event_buffer_->FlushEvents(false);
 }
 
@@ -109,8 +118,7 @@ TEST_F(TaskEventBufferTest, TestForcedFlush) {
   // Adding some events
   for (size_t i = 0; i < num_events; ++i) {
     auto task_id = RandomTaskId();
-    task_event_buffer_->AddTaskStatusEvent(
-        task_id, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+    task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id, 0));
   }
 
   auto task_gcs_accessor =
@@ -121,13 +129,11 @@ TEST_F(TaskEventBufferTest, TestForcedFlush) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(2);
 
   auto task_id_1 = RandomTaskId();
-  task_event_buffer_->AddTaskStatusEvent(
-      task_id_1, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_1, 0));
   task_event_buffer_->FlushEvents(false);
 
   auto task_id_2 = RandomTaskId();
-  task_event_buffer_->AddTaskStatusEvent(
-      task_id_2, rpc::TaskStatus::RUNNING, nullptr, nullptr);
+  task_event_buffer_->AddTaskEvents(GenTaskEvents(task_id_2, 0));
   task_event_buffer_->FlushEvents(true);
 }
 

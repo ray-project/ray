@@ -794,34 +794,36 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
 }
 
-std::unique_ptr<rpc::TaskInfoEntry> TaskManager::MakeTaskInfoEntry(
+rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
-  auto task_info = std::make_unique<rpc::TaskInfoEntry>();
+  rpc::TaskInfoEntry task_info;
+  return task_info;
+
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
   } else if (task_spec.IsActorCreationTask()) {
     type = rpc::TaskType::ACTOR_CREATION_TASK;
-    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
   } else {
     RAY_CHECK(task_spec.IsActorTask());
     type = rpc::TaskType::ACTOR_TASK;
-    task_info->set_actor_id(task_spec.ActorId().Binary());
+    task_info.set_actor_id(task_spec.ActorId().Binary());
   }
-  task_info->set_type(type);
-  task_info->set_name(task_spec.GetName());
-  task_info->set_language(task_spec.GetLanguage());
-  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  task_info.set_type(type);
+  task_info.set_name(task_spec.GetName());
+  task_info.set_language(task_spec.GetLanguage());
+  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
   // NOTE(rickyx): we will have scheduling states recorded in the events list.
-  task_info->set_scheduling_state(rpc::TaskStatus::NIL);
-  task_info->set_job_id(task_spec.JobId().Binary());
+  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info.set_job_id(task_spec.JobId().Binary());
 
-  task_info->set_task_id(task_spec.TaskId().Binary());
-  task_info->set_parent_task_id(task_spec.ParentTaskId().Binary());
+  task_info.set_task_id(task_spec.TaskId().Binary());
+  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
-  task_info->mutable_required_resources()->insert(resources_map.begin(),
-                                                  resources_map.end());
-  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  task_info.mutable_required_resources()->insert(resources_map.begin(),
+                                                 resources_map.end());
+  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
 
   return task_info;
 }
@@ -877,13 +879,19 @@ void TaskManager::RecordMetrics() {
   task_counter_.FlushOnChangeCallbacks();
 }
 
-void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status) {
-  std::unique_ptr<rpc::TaskInfoEntry> task_info = nullptr;
-  std::unique_ptr<rpc::TaskStateEntry> task_state_update = nullptr;
+void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
+                                        rpc::TaskStatus status) {
+  // Make task event
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(task_entry.spec.TaskId().Binary());
+  task_event.set_attempt_number(task_entry.spec.AttemptNumber());
+  auto state_updates = task_event.mutable_state_updates();
   switch (status) {
   case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
     // Initialize a new TaskInfoEntry
-    task_info = MakeTaskInfoEntry(task_entry.spec);
+    auto task_info = MakeTaskInfoEntry(task_entry.spec);
+    task_event.mutable_task_info()->Swap(&task_info);
+    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
     break;
   }
   case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
@@ -892,18 +900,27 @@ void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus s
            "to "
            "SUBMITTED_TO_WORKER.";
     // Update the node id
-    task_state_update = std::make_unique<rpc::TaskStateEntry>(rpc::TaskStateEntry());
-    task_state_update->set_node_id(task_entry.GetNodeId().Binary());
+    state_updates->set_node_id(task_entry.GetNodeId().Binary());
+    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
     break;
   }
   default: {
     // Do nothing
   }
   }
-  task_event_buffer_->AddTaskStatusEvent(task_entry.spec.TaskId(),
-                                         status,
-                                         std::move(task_info),
-                                         std::move(task_state_update));
+  task_event_buffer_->AddTaskEvents(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

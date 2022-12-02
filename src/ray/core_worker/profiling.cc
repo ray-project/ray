@@ -31,11 +31,13 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
 ProfileEvent::ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
                            const std::string &event_name,
                            TaskID task_id,
+                           uint64_t attempt_number,
                            const std::string &worker_type,
                            const std::string &worker_id,
                            const std::string &node_ip_address)
     : task_event_buffer_(task_event_buffer),
       task_id_(task_id),
+      attempt_number_(attempt_number),
       component_type_(worker_type),
       component_id_(worker_id),
       node_ip_address_(node_ip_address) {

@@ -69,6 +69,7 @@ class ProfileEvent {
   ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
                const std::string &event_name,
                TaskID task_id,
+               uint64_t attempt_number,
                const std::string &worker_type,
                const std::string &worker_id,
                const std::string &node_ip_address);
@@ -76,14 +77,25 @@ class ProfileEvent {
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent() {
     if (use_task_event_) {
+      rpc::TaskEvents task_events;
+      task_events.set_task_id(task_id_.Binary());
+      task_events.set_attempt_number(attempt_number_);
+
+      auto profile_events = task_events.mutable_profile_events();
+      profile_events->set_component_type(component_type_);
+      profile_events->set_component_id(component_id_);
+      profile_events->set_node_ip_address(node_ip_address_);
+
       event_.set_end_time(absl::GetCurrentTimeNanos());
+      auto event = profile_events->add_events();
+      event->Swap(&event_);
+
       // Add task event to the task event buffer
-      task_event_buffer_->AddProfileEvent(
-          task_id_, std::move(event_), component_type_, component_id_, node_ip_address_);
-    } else {
-      rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
-      profiler_->AddEvent(rpc_event_);
+      task_event_buffer_->AddTaskEvents(std::move(task_events));
+      return;
     }
+    rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
+    profiler_->AddEvent(rpc_event_);
   }
 
   // Set extra metadata for the event, which could change during the event.
@@ -114,6 +126,8 @@ class ProfileEvent {
 
   // Task ID
   TaskID task_id_;
+
+  uint64_t attempt_number_;
 
   const std::string component_type_;
   const std::string component_id_;

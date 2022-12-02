@@ -238,13 +238,14 @@ void GcsServer::Stop() {
       gcs_ray_syncer_->Stop();
     }
 
+    gcs_task_manager_->Stop();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
     pubsub_handler_->Stop();
     kv_manager_.reset();
 
-    gcs_task_manager_->Stop();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";

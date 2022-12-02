@@ -53,29 +53,20 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   ///
   /// \param task_id Task's id.
   /// \param events_by_task Events by a single task.
-  Status AddTaskEventForTask(const TaskID &task_id, rpc::TaskEvents &&events_by_task);
+  void AddTaskEventForTask(rpc::TaskEvents &&events_by_task);
 
-  /// Mutex guarding tasks_reported_.
-  absl::Mutex mutex_;
-
-  /// Total set of tasks id reported to GCS, this might be larger than the actual tasks
-  /// stored in GCS due to constrain on the size of GCS table We need a total set instead
-  /// of a simple counter since events from a single task might arrive at separate gRPC
-  /// calls. With a simple counter, we are not able to know the exact number of tasks we
-  /// are dropping.
-  absl::flat_hash_set<TaskID> all_tasks_reported_ GUARDED_BY(mutex_);
+  size_t total_num_task_events_reported_ = 0;
 
   /// Current task events tracked. This map might contain less events than the actual task
   /// events reported to GCS due to truncation for capping memory usage.
   /// TODO(rickyx):  Refactor this to an abstraction
-  absl::flat_hash_map<TaskID, rpc::TaskEvents> task_events_ GUARDED_BY(mutex_);
+  std::vector<rpc::TaskEvents> task_events_;
 
-  /// A FIFO with maximal size keeping track of Task events.
-  std::vector<TaskID> stored_task_ids_;
+  /// Total number of task events dropped on the worker.
+  size_t total_num_task_events_dropped_ = 0;
 
-  /// An iterator marker into `stored_task_ids_` for keeping track the next Task to
-  /// override if maximal number of task events reached.
-  size_t next_idx_to_override_ = 0;
+  /// A iterator into task_events_ that determines which element to be overwritten.
+  size_t next_idx_to_overwrite_ = 0;
 
   /// Counter for tracking the size of task event. This assumes tasks events are never
   /// removed actively.

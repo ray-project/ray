@@ -209,7 +209,7 @@ message ProfileEventEntry {
   int64 end_time = 2;
   // Additional data associated with the event. This data must be serialized
   // using JSON.
-  string extra_data = 3;
+  optional string extra_data = 3;
   // Customized event name if not a TaskStatus change point event.
   string event_name = 4;
 }
@@ -220,50 +220,42 @@ message ProfileEvents {
   string component_type = 1;
   // An identifier for the component that generated the event.
   bytes component_id = 2;
-  // Node IP address
+  // Node IP address.
   string node_ip_address = 3;
-  // Events
+  // Events.
   repeated ProfileEventEntry events = 4;
 }
 
 // Represents task states which could be changed during task execution.
-message TaskStateEntry {
-  // The node of the associated task
-  bytes node_id = 1;
+message TaskStateUpdate {
+  // Node that runs the task.
+  optional bytes node_id = 1;
+  // Timestamp when status changes to PENDING_ARGS_AVAIL.
+  optional int64 pending_args_avail_ts = 2;
+  // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
+  optional int64 pending_node_assignment_ts = 3;
+  // Timestamp when status changes to SUBMITTED_TO_WORKER.
+  optional int64 submitted_to_worker_ts = 4;
+  // Timestamp when status changes to RUNNING.
+  optional int64 running_ts = 5;
+  // Timestamp when status changes to FINISHED.
+  optional int64 finished_ts = 6;
+  // Timestamp when status changes to FAILED.
+  optional int64 failed_ts = 7;
 }
 
-message TaskStatusEvents {
-  // Represents a single task event entry.
-  //  - It could be a task status event that represents a TaskStatus change, which
-  //    only has a corresponding start_time.
-  message TaskStatusEventEntry {
-    // The start timestamp of the event time.
-    int64 start_time = 1;
-    // The task status associated with this event.
-    TaskStatus task_status = 2;
-  }
-
-  // Metadata shared by all events
-  // Task immutable metadata info
-  TaskInfoEntry task_info = 1;
-  // Task mutable state info, which could be changed during task execution
-  TaskStateEntry task_state = 2;
-
-  // List of task status events (e.g. PENDING, RUNNING)
-  repeated TaskStatusEventEntry events = 3;
-}
-
-// Represents envents from a single task. This follows a composition strucuture,
-// i.e., each type of events should be made into it's own embedded field. This is
-// assuming different event types are rarely queried together and independent.
+// Represents events and state changes from a single task run.
 message TaskEvents {
-  // Metadata shared by all event types
-  // Mirror info in task_info
+  // Metadata shared by all event types.
   bytes task_id = 1;
-  // TaskStatusEvents
-  TaskStatusEvents status_events = 2;
-  // ProfileEvents
-  ProfileEvents profile_events = 3;
+  // The current retry attempt number for the task.
+  int32 attempt_number = 2;
+  // Task Info.
+  optional TaskInfoEntry task_info = 3;
+  // Task state updates.
+  optional TaskStateUpdate state_updates = 4;
+  // Task profiling events.
+  optional ProfileEvents profile_events = 5;
 }
 
 // Represents a compact list of task state events by different tasks,
@@ -271,6 +263,8 @@ message TaskEvents {
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
+  // Number of dropped task events due to buffer size limit on workers.
+  int32 num_task_events_dropped = 2;
 }
 
 message ResourceTableData {
@@ -341,9 +335,8 @@ message JobConfig {
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
-  // search path for user code. This will be used as `CLASSPATH` in Java, and
-  // `PYTHONPATH` in Python. In C++, libraries under these paths will be loaded by
-  // 'dlopen'.
+  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
+  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
   repeated string code_search_path = 3;
   // Runtime environment to run the code
   RuntimeEnvInfo runtime_env_info = 4;
@@ -389,9 +382,8 @@ message WorkerTableData {
   WorkerType worker_type = 5;
   // This is for AddWorker.
   map<string, bytes> worker_info = 6;
-  // The exception thrown in creation task. This field is set if this worker died
-  // because of exception thrown in actor's creation task. Only applies when
-  // is_alive=false.
+  // The exception thrown in creation task. This field is set if this worker died because
+  // of exception thrown in actor's creation task. Only applies when is_alive=false.
   RayException creation_task_exception = 18;
   // Whether it's an intentional disconnect, only applies then `is_alive` is false.
   optional WorkerExitType exit_type = 19;
