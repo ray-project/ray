@@ -298,7 +298,7 @@ def _init_ray_cluster(
         ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
     )
     ray_dashboard_agent_port = get_random_unused_port(
-        ray_head_ip, min_port=10000, max_port=11000,
+        ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port, ray_dashboard_port]
     )
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
