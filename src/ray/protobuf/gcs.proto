@@ -250,8 +250,8 @@ message TaskEvents {
   bytes task_id = 1;
   // The current retry attempt number for the task.
   int32 attempt_number = 2;
-  // Task Spec.
-  optional TaskSpec task_spec = 3;
+  // Task Info.
+  optional TaskInfoEntry task_info = 3;
   // Task state updates.
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
