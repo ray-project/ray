@@ -7,6 +7,7 @@ from collections import deque
 
 import aiohttp.web
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
@@ -55,7 +56,6 @@ def actor_table_data_to_dict(message):
         "numRestarts",
         "timestamp",
         "className",
-        "requiredResources",
         "startTime",
         "endTime",
     }
@@ -77,6 +77,7 @@ def actor_table_data_to_dict(message):
     light_message["exitDetail"] = exit_detail
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
+    light_message["requiredResources"] = dict(message.required_resources)
 
     return light_message
 
@@ -240,7 +241,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         return rest_response(
-            success=True, message="All actors fetched.", actors=DataSource.actors
+            success=True,
+            message="All actors fetched.",
+            actors=DataSource.actors,
+            # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
+            convert_google_style=False,
         )
 
     async def run(self, server):
@@ -248,8 +255,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
-
-        asyncio.get_event_loop().create_task(self._cleanup_actors())
+        ray._private.utils.get_or_create_event_loop().create_task(
+            self._cleanup_actors()
+        )
         await asyncio.gather(self._update_actors())
 
     @staticmethod
