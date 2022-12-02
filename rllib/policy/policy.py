@@ -1596,7 +1596,7 @@ class Policy(metaclass=ABCMeta):
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
 
-
+@DeveloperAPI
 def get_gym_space_from_struct_of_tensors(
     value: Union[Mapping, np.ndarray]
 ) -> gym.spaces.Dict:
@@ -1617,7 +1617,7 @@ def get_gym_space_from_struct_of_tensors(
         )
     return space
 
-
+@DeveloperAPI
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
     if isinstance(value, dict):
         return gym.spaces.Dict(
