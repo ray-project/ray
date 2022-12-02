@@ -466,7 +466,11 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
+<<<<<<< HEAD
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
+=======
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 0)
+>>>>>>> 36f1dc064 ([core][state] Task events backend: config and interface definitions [0/n]  (#30829))
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.

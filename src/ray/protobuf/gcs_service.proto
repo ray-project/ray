@@ -601,7 +601,10 @@ service NodeInfoGcsService {
 }
 
 message AddTaskEventDataRequest {
+<<<<<<< HEAD
   // Task event data from core worker.
+=======
+>>>>>>> 36f1dc064 ([core][state] Task events backend: config and interface definitions [0/n]  (#30829))
   TaskEventData data = 1;
 }
 
@@ -609,6 +612,7 @@ message AddTaskEventDataReply {
   GcsStatus status = 1;
 }
 
+<<<<<<< HEAD
 message GetTaskEventsRequest {
   message TaskIDs {
     repeated string vals = 1;
@@ -631,13 +635,18 @@ message GetTaskEventsReply {
   int32 num_status_task_events_dropped = 4;
 }
 
+=======
+>>>>>>> 36f1dc064 ([core][state] Task events backend: config and interface definitions [0/n]  (#30829))
 // Service for task info access.
 service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+<<<<<<< HEAD
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+=======
+>>>>>>> 36f1dc064 ([core][state] Task events backend: config and interface definitions [0/n]  (#30829))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
