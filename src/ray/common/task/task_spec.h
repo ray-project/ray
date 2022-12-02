@@ -213,6 +213,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t AttemptNumber() const;
 
+  bool IsRetry() const;
+
   int32_t MaxRetries() const;
 
   size_t NumArgs() const;

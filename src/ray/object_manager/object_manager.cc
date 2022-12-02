@@ -231,9 +231,9 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
                              BundlePriority prio,
-                             const std::string &task_name) {
+                             const TaskMetricsKey &task_key) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id = pull_manager_->Pull(object_refs, prio, task_name, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, task_key, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,

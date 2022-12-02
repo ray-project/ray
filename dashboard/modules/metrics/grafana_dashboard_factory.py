@@ -59,25 +59,33 @@ GRAFANA_PANELS = [
     Panel(
         id=26,
         title="Scheduler Task State",
-        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
-                expr='sum(max_over_time(ray_tasks{{State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}}",
-            )
+            ),
+            Target(
+                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                legend="{{State}} (retry)",
+            ),
         ],
     ),
     Panel(
         id=35,
         title="Active Tasks by Name",
-        description="Current number of (live) tasks with a particular name.",
+        description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
-                expr='sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
-            )
+            ),
+            Target(
+                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                legend="{{Name}} (retry)",
+            ),
         ],
     ),
     Panel(
