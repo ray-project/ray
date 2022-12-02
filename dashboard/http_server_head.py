@@ -107,7 +107,6 @@ class HttpServerDashboardHead:
             # Note: We always record the usage, but it is not reported
             # if the usage stats is disabled.
             record_extra_usage_tag(TagKey.DASHBOARD_USED, "True")
-            logger.info("pinged")
         except Exception as e:
             logger.warning(
                 "Failed to record the dashboard usage. "
