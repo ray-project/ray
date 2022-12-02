@@ -22,7 +22,7 @@ class TorchDistribution(Distribution, abc.ABC):
     """Wrapper class for torch.distributions."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self._dist = self._get_torch_distribution(*args, **kwargs)
 
     @abc.abstractmethod
@@ -93,6 +93,7 @@ class TorchCategorical(TorchDistribution):
             larger value will result in uniform sampling.
     """
 
+    @override(TorchDistribution)
     def __init__(
         self,
         probs: torch.Tensor = None,
@@ -147,7 +148,7 @@ class TorchDiagGaussian(TorchDistribution):
             Has to be positive.
     """
 
-    @override(Distribution)
+    @override(TorchDistribution)
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
@@ -202,8 +203,9 @@ class TorchDeterministic(Distribution):
         loc: the determinsitic value to return
     """
 
+    @override(Distribution)
     def __init__(self, loc: torch.Tensor) -> None:
-        super().__init__(loc)
+        super().__init__()
         self.loc = loc
 
     @override(Distribution)
