@@ -224,7 +224,15 @@ Learn more about the Train library with the following talks and user guides.
         :text: [Talk] Ray Train, PyTorch, TorchX, and distributed deep learning
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ray_logo.png
+    :img-top: /images/uber.png
+
+    +++
+    .. link-button:: https://www.uber.com/blog/horovod-ray/
+        :type: url
+        :text: [Blog] Elastic Deep Learning with Horovod on Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/uber.png
 
     +++
     .. link-button:: https://www.uber.com/blog/elastic-xgboost-ray/
@@ -306,9 +314,9 @@ The following highlights feature companies leveraging Ray's unified API to build
     :img-top: /images/uber.png
 
     +++
-    .. link-button:: https://www.uber.com/blog/horovod-ray/
+    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
         :type: url
-        :text: [Blog] Elastic Deep Learning with Horovod on Ray
+        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray at Uber
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/predibase.png
