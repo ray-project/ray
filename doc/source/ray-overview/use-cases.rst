@@ -138,6 +138,22 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
+    .. link-button:: https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve
+        :type: url
+        :text: [Blog] Simplify your MLOps with Ray & Ray Serve
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/ray-serve-fastapi-the-best-of-both-worlds
+        :type: url
+        :text: [Blog] Ray Serve + FastAPI: The best of both worlds
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
     .. link-button:: /serve/getting_started
         :type: ref
         :text: [Guide] Getting Started with Ray Serve
@@ -146,9 +162,17 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
+    .. link-button:: /serve/tutorials/rllib
+        :type: ref
+        :text: [Guide] Serving RLlib Models
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
     .. link-button:: /serve/model_composition
         :type: ref
-        :text: [Guide] Model Composition in Ray Serve
+        :text: [Guide] Model Composition in Serve
         :classes: btn-link btn-block stretched-link
 
 Hyperparameter Tuning
