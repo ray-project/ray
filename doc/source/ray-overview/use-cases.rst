@@ -60,7 +60,7 @@ Batch inference refers to generating model predictions over a set of input obser
 Many Model Training
 -------------------
 
-Many model training and tuning are common tasks in simple machine learning use-cases such as time series forecasting. They require fitting of simple models on multiple data batches corresponding to locations, products, etc.
+Many model training is common in ML use cases such as time series forecasting, which require fitting of models on multiple data batches corresponding to locations, products, etc.
 Here, the focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
 
 .. TODO
@@ -116,7 +116,6 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
 Model Serving
 -------------
 
-While Ray is often used for batch workloads, it's unified computational model also makes it a flexible model serving system.
 Ray's official serving solution is Ray Serve.
 Ray Serve is particularly well suited for model composition, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
 
@@ -299,7 +298,7 @@ Learn more about the Train library with the following talks and user guides.
 Reinforcement Learning
 ----------------------
 
-Ray's distributed RL library, RLlib, is an open-source library for reinforcement learning (RL), offering support for production-level, highly distributed RL workloads while maintaining unified and simple APIs for a large variety of industry applications. RLlib is used by industry leaders in many different verticals, such as climate control, industrial control, manufacturing and logistics, finance, gaming, automobile, robotics, boat design, and many others.
+RLlib is an open-source library for reinforcement learning (RL), offering support for production-level, highly distributed RL workloads while maintaining unified and simple APIs for a large variety of industry applications. RLlib is used by industry leaders in many different verticals, such as climate control, industrial control, manufacturing and logistics, finance, gaming, automobile, robotics, boat design, and many others.
 
 .. panels::
     :container: container pb-4
