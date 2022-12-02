@@ -49,11 +49,11 @@ Batch inference refers to generating model predictions over a set of input obser
         :text: [Example] Batch OCR processing using Ray Data
         :classes: btn-link btn-block stretched-link
 
-Batch Training
---------------
+Many Model Training
+-------------------
 
-Batch training and tuning are common tasks in simple machine learning use-cases such as time series forecasting. They require fitting of simple models on multiple data batches corresponding to locations, products, etc.
-To perform batch training requires training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
+Many model training and tuning are common tasks in simple machine learning use-cases such as time series forecasting. They require fitting of simple models on multiple data batches corresponding to locations, products, etc.
+Here, the focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
 
 .. TODO
   Add link to many model training blog.
