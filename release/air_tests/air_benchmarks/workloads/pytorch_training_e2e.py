@@ -1,10 +1,11 @@
+from typing import Dict
 import click
 import time
 import json
 import os
 import numpy as np
-import pandas as pd
 
+import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 import torch.nn as nn
@@ -17,24 +18,26 @@ from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
+from ray.air.util.data_batch_conversion import BatchFormat
 
 
-def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
+def preprocess_image_with_label(batch: np.ndarray) -> Dict[str, np.ndarray]:
     """
     User Pytorch code to transform user image.
     """
     preprocess = transforms.Compose(
         [
-            transforms.ToTensor(),
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df = pd.DataFrame(
-        {"image": [preprocess(image) for image in batch], "label": [1] * len(batch)}
-    )
-    return df
+    # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
+    transposed_torch_tensor = torch.Tensor(batch.transpose(0, 3, 1, 2))
+    return {
+        "image": preprocess(transposed_torch_tensor).numpy(),
+        "label": np.array([1] * len(batch)),
+    }
 
 
 def train_loop_per_worker(config):
@@ -88,7 +91,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
-    preprocessor = BatchMapper(preprocess_image_with_label, batch_format="numpy")
+    preprocessor = BatchMapper(
+        preprocess_image_with_label, batch_format=BatchFormat.NUMPY
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,

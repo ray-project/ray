@@ -537,7 +537,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_1.yaml
+    cluster_compute: compute_gpu_1_g4_8xl.yaml
 
   run:
     timeout: 3600
@@ -561,7 +561,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_16.yaml
+    cluster_compute: compute_gpu_4_g4_12xl.yaml
 
   run:
     timeout: 10800
