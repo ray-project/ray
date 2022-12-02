@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 
 import pytest
 
@@ -17,15 +18,33 @@ from ray.tests.test_memory_pressure import (
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
     with ray.init(
-        num_cpus=1,
+        address='local',
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
             "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
-            "task_oom_retries": 0,
+            "task_oom_retries": 15,
             "min_memory_free_bytes": -1,
+            "worker_killing_policy": "retriable_lifo",
+        },
+    ) as addr:
+        yield addr
+        
+@pytest.fixture
+def ray_with_memory_monitor_depth_grouping_policy(shutdown_only):
+    with ray.init(
+        address='local',
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "memory_usage_threshold": memory_usage_threshold,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
+            "metrics_report_interval_ms": 100,
+            "task_failure_entry_ttl_ms": 2 * 60 * 1000,
+            "task_oom_retries": 15,
+            "min_memory_free_bytes": -1,
+            "worker_killing_policy": "group_by_depth",
         },
     ) as addr:
         yield addr
@@ -62,28 +81,6 @@ def task_with_nested_actor(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_churn_long_running(
-    ray_with_memory_monitor,
-):
-    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold - 0.1
-    )
-    ray.get(
-        allocate_memory.options(max_retries=0).remote(
-            long_running_bytes, post_allocate_sleep_s=30
-        )
-    )
-    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold + 0.2
-    )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
 def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
@@ -94,11 +91,12 @@ def test_deadlock_task_with_nested_task(
         get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.2)
         - task_bytes
     )
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(
             task_with_nested_task.options(max_retries=0).remote(
-                task_bytes=task_bytes, nested_task_bytes=nested_task_bytes, barrier=None
-            )
+                task_bytes=task_bytes, nested_task_bytes=nested_task_bytes
+            ),
+            timeout=60,
         )
 
 
@@ -110,14 +108,15 @@ def test_deadlock_task_with_nested_actor_with_actor_first(
     ray_with_memory_monitor,
 ):
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(
             task_with_nested_actor.remote(
                 first_fraction=memory_usage_threshold - 0.1,
                 second_fraction=memory_usage_threshold + 0.25,
                 leaker=leaker,
                 actor_allocation_first=True,
-            )
+            ),
+            timeout=60,
         )
 
 
@@ -129,14 +128,15 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
     ray_with_memory_monitor,
 ):
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(
             task_with_nested_actor.remote(
                 first_fraction=memory_usage_threshold - 0.1,
                 second_fraction=memory_usage_threshold + 0.25,
                 leaker=leaker,
                 actor_allocation_first=False,
-            )
+            ),
+            timeout=60
         )
 
 
@@ -215,13 +215,12 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
 
 
 @ray.remote
-def task_with_nested_task(task_bytes, nested_task_bytes, barrier=None):
+def task_with_nested_task(task_bytes, nested_task_bytes):
     dummy = alloc_mem(task_bytes)
-    if barrier:
-        ray.get(barrier.wait_all_done.remote())
+    time.sleep(10)
     ray.get(
-        allocate_memory.options(max_retries=0).remote(
-            nested_task_bytes, post_allocate_sleep_s=0.1
+        allocate_memory.options(max_retries=-1).remote(
+            nested_task_bytes, post_allocate_sleep_s=5
         )
     )
     return dummy[0]
@@ -246,18 +245,66 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         - 2 * parent_bytes
     )
 
-    barrier = BarrierActor.options(
-        max_restarts=0, max_task_retries=0, max_concurrency=2
-    ).remote(2)
-
-    ref1 = task_with_nested_task.options(max_retries=0).remote(
-        parent_bytes, nested_bytes, barrier
+    ref1 = task_with_nested_task.options(max_retries=-1).remote(
+        parent_bytes, nested_bytes
     )
-    ref2 = task_with_nested_task.options(max_retries=0).remote(
-        parent_bytes, nested_bytes, barrier
+    ref2 = task_with_nested_task.options(max_retries=-1).remote(
+        parent_bytes, nested_bytes
     )
 
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
-        ray.get(ref1)
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
-        ray.get(ref2)
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+        ray.get(ref1, timeout=120)
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+        ray.get(ref2, timeout=120)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_deadlock_two_sets_of_task_with_nested_task_new_policy(
+    ray_with_memory_monitor_depth_grouping_policy
+):
+    """task_with_nested_task allocates a block of memory, then runs
+    a nested task which also allocates a block memory.
+    This test runs two instances of task_with_nested_task.
+    We expect the second one to fail."""
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        (memory_usage_threshold - 0.05) / 2
+    )
+    nested_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
+        - 2 * parent_bytes
+    )
+
+    ref1 = task_with_nested_task.options(max_retries=-1).remote(
+        parent_bytes, nested_bytes
+    )
+    ref2 = task_with_nested_task.options(max_retries=-1).remote(
+        parent_bytes, nested_bytes
+    )
+
+    ray.get(ref1, timeout=120)
+    ray.get(ref2, timeout=120)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_churn_long_running(
+    ray_with_memory_monitor,
+):
+    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold - 0.1
+    )
+    ray.get(
+        allocate_memory.options(max_retries=0).remote(
+            long_running_bytes, post_allocate_sleep_s=30
+        )
+    )
+    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold + 0.2
+    )
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
