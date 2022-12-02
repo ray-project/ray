@@ -1,6 +1,8 @@
 import os
+import importlib
 from pathlib import Path
 from packaging import version
+import sys
 import unittest
 
 import ray
@@ -18,10 +20,13 @@ from ray.tune.registry import register_env
 class TestBackwardCompatibility(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        os.system("pip install gym==0.23.1")
+        importlib.reload(sys.modules["gym"])
         ray.init()
 
     @classmethod
     def tearDownClass(cls):
+        os.system("pip install gym==0.26.2")
         ray.shutdown()
 
     def test_old_checkpoint_formats(self):
@@ -161,6 +166,5 @@ class TestBackwardCompatibility(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
 
     sys.exit(pytest.main(["-v", __file__]))
