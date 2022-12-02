@@ -66,18 +66,21 @@ class ScopedTaskMetricSetter {
     auto task_spec = ctx.GetCurrentTask();
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
+      is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
+      is_retry_ = false;
     }
-    ctr_.SetMetricStatus(task_name_, status);
+    ctr_.SetMetricStatus(task_name_, status, is_retry_);
   }
 
-  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_); }
+  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_, is_retry_); }
 
  private:
   rpc::TaskStatus status_;
   TaskCounter &ctr_;
   std::string task_name_;
+  bool is_retry_;
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
@@ -2246,7 +2249,7 @@ Status CoreWorker::ExecuteTask(
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name);
+    task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
   }
 
   if (!options_.is_local_mode) {
@@ -2389,7 +2392,7 @@ Status CoreWorker::ExecuteTask(
   }
 
   if (!options_.is_local_mode) {
-    task_counter_.MoveRunningToFinished(func_name);
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
@@ -2649,7 +2652,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  task_counter_.IncPending(func_name);
+  task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.

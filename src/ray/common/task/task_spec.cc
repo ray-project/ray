@@ -180,6 +180,8 @@ bool TaskSpecification::HasRuntimeEnv() const {
 
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
+bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {

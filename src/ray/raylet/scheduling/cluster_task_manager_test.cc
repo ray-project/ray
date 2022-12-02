@@ -192,7 +192,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
-                               const std::string &task_name) {
+                               const TaskMetricsKey &task_key) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
       if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
