@@ -1,13 +1,10 @@
 from typing import Dict, List, Iterator
 
 import ray
-from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.data._internal.execution.interfaces import (
     Executor,
     RefBundle,
     PhysicalOperator,
-    OneToOneOperator,
-    ExchangeOperator,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats

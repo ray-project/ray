@@ -1,10 +1,14 @@
-from typing import Any, Dict, Callable
+from typing import Callable, TYPE_CHECKING
 
-from ray.data._internal.compute import ComputeStrategy
+import ray
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
+from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.operators import OneToOneOperator
 
 
 @ray.remote(num_returns=2)
@@ -15,12 +19,12 @@ def _transform_one(fn: Callable, block: Block) -> (Block, BlockMetadata):
 
 # TODO: handle block splitting?
 class _Task:
-    def __init__(self, block_ref: ray.ObjectRef):
-        self.block_ref = ray.ObjectRef
+    def __init__(self, block_ref: ObjectRef):
+        self.block_ref = block_ref
 
 
 class OneToOneOperatorState:
-    def __init__(self, op: OneToOneOperator):
+    def __init__(self, op: "OneToOneOperator"):
         self._transform = op.get_transform_fn()
         self._compute_strategy = op.compute_strategy()
         self._ray_remote_args = op.ray_remote_args()
@@ -35,7 +39,7 @@ class OneToOneOperatorState:
             out_b, out_m = _transform_one.remote(self._transform_fn, in_b)
             self.tasks[out_m] = _Task(out_b)
 
-    def task_completed(self, ref: ray.ObjectRef) -> None:
+    def task_completed(self, ref: ObjectRef) -> None:
         task = self.tasks.pop(ref)
         block_meta = ray.get(ref)
         self.outputs.append(RefBundle([(task.block_ref, block_meta)]))

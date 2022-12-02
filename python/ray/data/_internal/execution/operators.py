@@ -1,5 +1,6 @@
-from typing import List, Iterator, Optional, Any, Dict
+from typing import List, Iterator, Optional, Any, Dict, Callable
 
+import ray
 from ray.data.block import Block
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
@@ -46,11 +47,14 @@ class OneToOneOperator(PhysicalOperator):
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
-        super().__init__(name, [input_op])
+        super().__init__(name, input_dependencies)
         self._execution_state = OneToOneOperatorState(
-            self.compute_strategy(), self.ray_remote_args())
+            self.compute_strategy(), self.ray_remote_args()
+        )
 
-    def get_transform_fn(self) -> Callable[[Iterator[Block], Dict[str, Any]], Iterator[Block]]:
+    def get_transform_fn(
+        self,
+    ) -> Callable[[Iterator[Block], Dict[str, Any]], Iterator[Block]]:
         """Return the block transformation to run on a worker process.
 
         This callable must be serializable as it will be sent to remote processes.

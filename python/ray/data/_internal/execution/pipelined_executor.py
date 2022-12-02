@@ -8,11 +8,10 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
     PhysicalOperator,
-    OneToOneOperator,
     ExchangeOperator,
 )
 from ray.data._internal.execution.bulk_executor import _transform_one
-from ray.data._internal.execution.operators import InputDataBuffer
+from ray.data._internal.execution.operators import InputDataBuffer, OneToOneOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

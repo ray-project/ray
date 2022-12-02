@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Iterator, Tuple
+from typing import Any, Dict, List, Optional, Iterator, Tuple, Callable
 
 import ray
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -180,6 +179,7 @@ class ExchangeOperator(PhysicalOperator):
     Subclasses:
         AllToAllOperator
     """
+
     pass
 
 
@@ -192,7 +192,7 @@ class AllToAllOperator(ExchangeOperator):
          SortMap
     """
 
-    def __init__(self, preprocessor: Optional[OneToOneOperator] = None):
+    def __init__(self, preprocessor: Optional[Callable] = None):
         self._preprocessor = preprocessor
         self._buffer = []
         self._outbox = None
