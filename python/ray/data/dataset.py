@@ -587,7 +587,9 @@ class Dataset(Generic[T]):
             for block in blocks:
                 batcher.add(block)
                 while batcher.has_batch():
+                    start_time = time.time()
                     batch = batcher.next_batch(batch_format=batch_format)
+                    print(f"next_batch time: {time.time()-start_time}")
                     yield from process_next_batch(batch)
 
             # Process any last remainder batch.
