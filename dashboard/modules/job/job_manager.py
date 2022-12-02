@@ -140,6 +140,8 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    WAIT_FOR_JOB_TERMINATION_S = 3
+    JOB_TERMINATION_POLL_PERIOD_S = 0.1
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
     def __init__(
@@ -303,7 +305,7 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
+    async def _polling(self, child_process: subprocess.Popen) -> int:
         try:
             while child_process is not None:
                 return_code = child_process.poll()
@@ -315,8 +317,15 @@ class JobSupervisor:
                     await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
         except Exception:
             if child_process:
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
+                child_process.terminate()
+
+                start = time.time()
+                while time.time() - start < self.WAIT_FOR_JOB_TERMINATION_S:
+                    if child_process.poll() is not None:
+                        break
+                    time.sleep(self.JOB_TERMINATION_POLL_PERIOD_S)
+                else:
+                    child_process.kill()
             return 1
 
     async def run(
@@ -379,8 +388,15 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                    child_process.kill()
+                    child_process.terminate()
+
+                    start = time.time()
+                    while time.time() - start < self.WAIT_FOR_JOB_TERMINATION_S:
+                        if child_process.poll() is not None:
+                            break
+                        time.sleep(self.JOB_TERMINATION_POLL_PERIOD_S)
+                    else:
+                        child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set

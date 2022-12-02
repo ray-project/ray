@@ -779,6 +779,39 @@ class TestTailLogs:
 
 
 @pytest.mark.asyncio
+async def test_stop_job_gracefully(job_manager):
+    """
+    Stop job should send SIGTERM first, SIGKILL after 3 seconds.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # tmp_file = os.path.join(tmp_dir, "hello")
+        entrypoint = f"""python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+        await async_wait_for_condition(
+            lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+        )
+
+        assert job_manager.stop_job(job_id) is True
+
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped, job_manager=job_manager, job_id=job_id
+        )
+        assert 'SIGTERM signal handled!' in job_manager.get_job_logs(job_id)
+    
+
+@pytest.mark.asyncio
 async def test_logs_streaming(job_manager):
     """Test that logs are streamed during the job, not just at the end."""
 
