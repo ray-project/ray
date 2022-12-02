@@ -1,0 +1,355 @@
+.. _ref-use-cases:
+
+Ray Use Cases
+=============
+
+This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
+
+Batch Inference
+---------------
+
+Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/user_guide.svg
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
+        :type: url
+        :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tasks.png
+
+    +++
+    .. link-button:: /ray-core/examples/batch_prediction
+        :type: ref
+        :text: [Example] Batch Prediction using Ray Core
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/taxi.png
+
+    +++
+    .. link-button:: /data/examples/nyc_taxi_basic_processing
+        :type: ref
+        :text: [Example] Batch Inference on NYC taxi data using Ray Data
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/ocr.jpg
+
+    +++
+    .. link-button:: /data/examples/ocr_example
+        :type: ref
+        :text: [Example] Batch OCR processing using Ray Data
+        :classes: btn-link btn-block stretched-link
+
+Batch Training
+--------------
+
+Batch training and tuning are common tasks in simple machine learning use-cases such as time series forecasting. They require fitting of simple models on multiple data batches corresponding to locations, products, etc.
+To perform batch training requires training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
+
+.. TODO
+  Add link to many model training blog.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/tasks.png
+
+    +++
+    .. link-button:: /ray-core/examples/batch_training
+        :type: ref
+        :text: [Example] Batch Training with Ray Core
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/timeseries.png
+
+    +++
+    .. link-button:: /data/examples/batch_training
+        :type: ref
+        :text: [Example] Batch Training with Ray Datasets
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: /tune/tutorials/tune-run
+        :type: ref
+        :text: [Example] Tune Basic Parallel Experiments
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: /ray-air/examples/batch_tuning
+        :type: ref
+        :text: [Example] Batch Training and Tuning using Ray Tune
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/carrot.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=3t26ucTy0Rs
+        :type: url
+        :text: [Talk] Scaling Instacart fulfillment ML on Ray
+        :classes: btn-link btn-block stretched-link
+
+Model Serving
+-------------
+
+While Ray is often used for batch workloads, it's unified computational model also makes it a flexible model serving system.
+Ray's official serving solution is Ray Serve.
+Ray Serve is particularly well suited for model composition, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
+
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/serve.svg
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=UtH-CMpmxvI
+        :type: url
+        :text: [Talk] Productionizing ML at Scale with Ray Serve
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
+    .. link-button:: /serve/getting_started
+        :type: ref
+        :text: [Guide] Getting Started with Ray Serve
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
+    .. link-button:: /serve/model_composition
+        :type: ref
+        :text: [Guide] Model Composition in Ray Serve
+        :classes: btn-link btn-block stretched-link
+
+Hyperparameter Tuning
+---------------------
+
+Ray's Tune library enables any parallel Ray workload to be run under a hyperparameter tuning algorithm.
+Learn more about the Tune library with the following talks and user guides.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
+        :type: url
+        :text: [Talk] Ray Tune: Distributed Hyperparameter Optimization Made Simple
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: /tune/getting-started
+        :type: ref
+        :text: [Guide] Getting Started with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: /tune/examples/index
+        :type: ref
+        :text: [Gallery] Ray Tune Examples Gallery
+        :classes: btn-link btn-block stretched-link
+
+Distributed Training
+--------------------
+
+Ray's Train library integrates many distributed training frameworks under a simple Trainer API,
+providing distributed orchestration and management capabilities out of the box.
+Learn more about the Train library with the following talks and user guides.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=e-A93QftCfc
+        :type: url
+        :text: [Talk] Ray Train, PyTorch, TorchX, and distributed deep learning
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: /train/train
+        :type: ref
+        :text: [Guide] Getting Started with Ray Train
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: /train/examples
+        :type: ref
+        :text: [Gallery] Ray Train Examples Gallery
+        :classes: btn-link btn-block stretched-link
+
+Reinforcement Learning
+----------------------
+
+Ray's distributed RL library, RLlib, is an open-source library for reinforcement learning (RL), offering support for production-level, highly distributed RL workloads while maintaining unified and simple APIs for a large variety of industry applications. RLlib is used by industry leaders in many different verticals, such as climate control, industrial control, manufacturing and logistics, finance, gaming, automobile, robotics, boat design, and many others.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
+        :type: url
+        :text: [Blog] Intro to RLlib: Example Environments
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: /rllib/rllib-training
+        :type: ref
+        :text: [Guide] Getting Started with RLlib
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: /rllib/rllib-examples
+        :type: ref
+        :text: [Gallery] RLlib Examples Gallery
+        :classes: btn-link btn-block stretched-link
+
+
+ML Platform
+-----------
+
+The following highlights feature companies leveraging Ray's unified API to build simpler, more flexible ML platforms.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/uber.png
+
+    +++
+    .. link-button:: https://www.uber.com/blog/horovod-ray/
+        :type: url
+        :text: [Blog] Elastic Deep Learning with Horovod on Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/predibase.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=B5v9B5VSI7Q
+        :type: url
+        :text: [Talk] Predibase - A low-code deep learning platform built for scale
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/shopify.svg
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=kbvzvdKH7bc
+        :type: url
+        :text: [Talk] The Magic of Merlin - Shopify's new machine learning platform
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=_L0lsShbKaY
+        :type: url
+        :text: [Talk] Panel - ML Platform on Ray
+        :classes: btn-link btn-block stretched-link
+
+End-to-End ML Workflows
+-----------------------
+
+The following are highlighted examples utilizing Ray AIR libraries to implement end-to-end ML workflows.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/text-classification.png
+
+    +++
+    .. link-button:: /ray-air/examples/huggingface_text_classification
+        :type: ref
+        :text: [Example] Text classification with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/image-classification.webp
+
+    +++
+    .. link-button:: /ray-air/examples/torch_image_example
+        :type: ref
+        :text: [Example] Image classification with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/credit.png
+
+    +++
+    .. link-button:: /ray-air/examples/feast_example
+        :type: ref
+        :text: [Example] Credit scoring with Ray and Feast
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tabular-data.png
+
+    +++
+    .. link-button:: /ray-air/examples/xgboost_example
+        :type: ref
+        :text: [Example] Machine learning on tabular data
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/timeseries.png
+
+    +++
+    .. link-button:: /ray-core/examples/automl_for_time_series
+        :type: ref
+        :text: [Example] AutoML for Time Series with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: /ray-air/examples/index
+        :type: ref
+        :text: [Gallery] Full Ray AIR Examples Gallery
+        :classes: btn-link btn-block stretched-link

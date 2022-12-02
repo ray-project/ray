@@ -5,8 +5,8 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/use-cases
       - file: ray-overview/ray-libraries
-      - file: ray-use-cases/overview
 
   - caption: Ray AI Runtime
     chapters:
