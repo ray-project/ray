@@ -140,9 +140,9 @@ class RLModule(abc.ABC):
         """Returns the input specs of the forward_train method."""
         return ModelSpec()
 
-    # @check_specs(
-    #     input_spec="_input_specs_inference", output_spec="_output_specs_inference"
-    # )
+    @check_specs(
+        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
+    )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method.
