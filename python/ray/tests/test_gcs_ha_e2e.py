@@ -49,7 +49,7 @@ redis = container(
     ),
 )
 
-header_node = container(
+head_node = container(
     image="ray_ci:v1",
     name="gcs",
     network="{gcs_network.name}",
@@ -91,8 +91,8 @@ worker_node = container(
 
 
 @pytest.fixture
-def docker_cluster(header_node, worker_node):
-    yield (header_node, worker_node)
+def docker_cluster(head_node, worker_node):
+    yield (head_node, worker_node)
 
 
 scripts = """
@@ -166,7 +166,7 @@ def test_ray_server_basic(docker_cluster):
     # TODO(iycheng): Update serve to better integrate with GCS HA:
     #   - Make sure no task can run in the raylet where GCS is deployed.
 
-    header, worker = docker_cluster
+    head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
     assert b"Adding 1 replica to deployment 'Counter'." in output.output
@@ -179,7 +179,7 @@ def test_ray_server_basic(docker_cluster):
     assert output.exit_code == 0
 
     # Kill the head node
-    header.kill()
+    head.kill()
 
     # Make sure serve is still working
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
@@ -196,7 +196,7 @@ def test_ray_server_basic(docker_cluster):
     sleep(5)
 
     # serve reconfig should continue once GCS is back
-    header.restart()
+    head.restart()
 
     t.join()
 
@@ -211,7 +211,7 @@ import ray
 ray.init("auto")
 print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 """
-    header, worker = docker_cluster
+    head, worker = docker_cluster
 
     def check_alive(n):
         output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
@@ -222,12 +222,12 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 
     # Make sure two nodes are alive
     wait_for_condition(check_alive, n=2)
-    print("header killed")
-    header.kill()
+    print("head killed")
+    head.kill()
 
     sleep(2)
 
-    header.restart()
+    head.restart()
     # When GCS restarts, a new raylet is added
     # and the old dead raylet is going to take a while to be marked dead.
     # So there should be 3 alive nodes
