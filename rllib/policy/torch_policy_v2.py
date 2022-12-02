@@ -1197,11 +1197,6 @@ class TorchPolicyV2(Policy):
                             self.extra_grad_process(opt, loss_out[opt_idx])
                         )
 
-                        print(
-                            "extra_grad_process: ",
-                            self.extra_grad_process(opt, loss_out[opt_idx]),
-                        )
-
                         grads = []
                         # Note that return values are just references;
                         # Calling zero_grad would modify the values.
