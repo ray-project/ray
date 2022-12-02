@@ -2938,8 +2938,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        auto worker_to_kill = this->worker_killing_policy_->SelectWorkerToKill(
-            workers, system_memory);
+        auto worker_to_kill =
+            this->worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";

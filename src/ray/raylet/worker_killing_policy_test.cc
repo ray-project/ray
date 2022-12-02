@@ -70,7 +70,8 @@ class WorkerKillerTest : public ::testing::Test {
 TEST_F(WorkerKillerTest, TestRetriableEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   std::shared_ptr<WorkerInterface> worker_to_kill =
-      prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+      prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers,
+                                                                 MemorySnapshot());
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
@@ -110,7 +111,8 @@ TEST_F(WorkerKillerTest,
 
   for (const auto &expected : expected_order) {
     std::shared_ptr<WorkerInterface> worker_to_kill =
-        prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+        prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers,
+                                                                   MemorySnapshot());
     ASSERT_EQ(worker_to_kill->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
@@ -132,8 +134,8 @@ TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasks) {
       workers[0],
   };
   for (const auto &expected : expected_order) {
-    auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(
+        workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }
@@ -152,8 +154,8 @@ TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasksOnlyOneAtHighestDepth) {
       workers[0],
   };
   for (const auto &expected : expected_order) {
-    auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(
+        workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }
@@ -174,8 +176,8 @@ TEST_F(WorkerKillerTest, TestDepthGroupingOnlyOneAtAllDepths) {
       workers[0],
   };
   for (const auto &expected : expected_order) {
-    auto killed =
-        groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(
+        workers, MemorySnapshot());
     ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }

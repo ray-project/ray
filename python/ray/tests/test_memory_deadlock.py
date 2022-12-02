@@ -18,7 +18,7 @@ from ray.tests.test_memory_pressure import (
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
     with ray.init(
-        address='local',
+        address="local",
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
@@ -31,11 +31,12 @@ def ray_with_memory_monitor(shutdown_only):
         },
     ) as addr:
         yield addr
-        
+
+
 @pytest.fixture
 def ray_with_memory_monitor_depth_grouping_policy(shutdown_only):
     with ray.init(
-        address='local',
+        address="local",
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
@@ -136,7 +137,7 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
                 leaker=leaker,
                 actor_allocation_first=False,
             ),
-            timeout=60
+            timeout=60,
         )
 
 
@@ -263,7 +264,7 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     reason="memory monitor only on linux currently",
 )
 def test_deadlock_two_sets_of_task_with_nested_task_new_policy(
-    ray_with_memory_monitor_depth_grouping_policy
+    ray_with_memory_monitor_depth_grouping_policy,
 ):
     """task_with_nested_task allocates a block of memory, then runs
     a nested task which also allocates a block memory.
