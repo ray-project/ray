@@ -1,4 +1,5 @@
 import sys
+import time
 
 import pytest
 
@@ -191,7 +192,9 @@ def test_node_liveness_after_restart(ray_start_cluster):
 
     cluster.remove_node(worker)
     worker = cluster.add_node(node_manager_port=9037)
-    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+    for _ in range(10):
+        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+        time.sleep(1)
 
 
 @pytest.mark.skipif(
