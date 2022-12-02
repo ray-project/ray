@@ -112,8 +112,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   {
     absl::MutexLock lock(&mutex_);
 
-    // TODO(rickyx): change this interval
-    RAY_LOG_EVERY_MS(INFO, 5000)
+    RAY_LOG_EVERY_MS(INFO, 15000)
         << "Pushed task state events to GCS. [total_bytes="
         << (1.0 * total_events_bytes_) / 1024 / 1024
         << "MiB][total_count=" << total_num_events_
