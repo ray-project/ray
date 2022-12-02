@@ -86,7 +86,8 @@ class LearnerThread(threading.Thread):
             # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
             # tf vs torch).
             learner_info_builder = LearnerInfoBuilder(num_devices=1)
-            self.local_worker.lock()
+            if self.local_worker.config.policy_states_are_swappable:
+                self.local_worker.lock()
             multi_agent_results = self.local_worker.learn_on_batch(batch)
             self.local_worker.unlock()
             self.policy_ids_updated.extend(list(multi_agent_results.keys()))

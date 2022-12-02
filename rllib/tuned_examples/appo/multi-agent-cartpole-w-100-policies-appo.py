@@ -62,10 +62,9 @@ config = (
                 + str(0 if aid == 0 else np.random.randint(num_trainable, num_policies))
             ),
         },
-        # Only play 5 episodes on eval track.
-        evaluation_duration=5,
-        evaluation_num_workers=1,
+        evaluation_num_workers=2,
         evaluation_interval=1,
+        evaluation_parallel_to_training=True,
     )
 )
 
