@@ -15,7 +15,7 @@ def test_dataset_logger(shutdown_only):
     ray.init()
     log_name, msg = "test_name", "test_message_1234"
     logger = DatasetLogger(log_name)
-    logger.info(msg)
+    logger.get_logger().info(msg)
 
     # Read from log file, and parse each component of emitted log row
     session_dir = ray._private.worker._global_node.get_session_dir_path()

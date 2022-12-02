@@ -11,12 +11,6 @@ class DatasetLogger:
     """
 
     DEFAULT_DATASET_LOG_PATH = "logs/ray-data.log"
-    # Since this class is a wrapper around the base Logger, when we call
-    # `DatasetLogger(...).info(...)`, the file/line number calling the logger will by
-    # default link to functions in this file, `dataset_logger.py`. By setting the
-    # `stacklevel` arg to 2, this allows the logger to fetch the actual caller of
-    # `DatasetLogger(...).info(...)`.
-    ROOT_LOGGER_STACK_LEVEL = 2
 
     def __init__(self, log_name: str):
         """Initialize DatasetLogger for a given `log_name`.
@@ -53,101 +47,18 @@ class DatasetLogger:
             file_log_handler.setFormatter(file_log_formatter)
             self.logger.addHandler(file_log_handler)
 
-    def debug(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.debug` method and emits the resulting
-        row to the Datasets log file.
+    def get_logger(self, log_to_stdout: bool = True):
+        """
+        Returns the underlying Logger, with the `propagate` attribute set
+        to the same value as `log_to_stdout`. For example, when
+        `log_to_stdout = False`, we do not want the `DatasetLogger` to
+        propagate up to the base Logger which writes to stdout.
 
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
+        This is a workaround needed due to the DatasetLogger wrapper object
+        not having access to the log caller's scope in Python <3.8.
+        In the future, with Python 3.8 support, we can use the `stacklevel` arg,
+        which allows the logger to fetch the correct calling file/line:
+        `logger.info(msg="Hello world", stacklevel=2)`
         """
         self.logger.propagate = log_to_stdout
-        self.logger.debug(
-            msg, stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL, *args, **kwargs
-        )
-
-    def info(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.info` method and emits the resulting
-        row to the Datasets log file.
-
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
-        """
-        self.logger.propagate = log_to_stdout
-        self.logger.info(
-            msg,
-            stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL,
-            *args,
-            **kwargs,
-        )
-
-    def warning(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.warning` method and emits the resulting
-        row to the Datasets log file.
-
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
-        """
-        self.logger.propagate = log_to_stdout
-        self.logger.warning(
-            msg,
-            stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL,
-            *args,
-            **kwargs,
-        )
-
-    def error(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.error` method and emits the resulting
-        row to the Datasets log file.
-
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
-        """
-        self.logger.propagate = log_to_stdout
-        self.logger.error(
-            msg,
-            stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL,
-            *args,
-            **kwargs,
-        )
-
-    def exception(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.exception` method and emits the resulting
-        row to the Datasets log file.
-
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
-        """
-        self.logger.propagate = log_to_stdout
-        self.logger.exception(
-            msg,
-            stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL,
-            *args,
-            **kwargs,
-        )
-
-    def critical(self, msg: str, log_to_stdout: bool = True, *args, **kwargs):
-        """Calls the standard `Logger.critical` method and emits the resulting
-        row to the Datasets log file.
-
-        Args:
-            msg: Message to log; logs 'msg % args'
-            log_to_stdout: If True, also emit logs to stdout in addition
-            to writing to the log file.
-        """
-        self.logger.propagate = log_to_stdout
-        self.logger.critical(
-            msg,
-            stacklevel=DatasetLogger.ROOT_LOGGER_STACK_LEVEL,
-            *args,
-            **kwargs,
-        )
+        return self.logger

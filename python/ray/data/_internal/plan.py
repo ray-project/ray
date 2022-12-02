@@ -321,9 +321,8 @@ class ExecutionPlan:
                 stats.dataset_uuid = uuid.uuid4().hex
 
                 stats_summary_string = stats.summary_string(include_parent=False)
-                logger.info(
+                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                     msg=stats_summary_string,
-                    log_to_stdout=context.enable_auto_log_stats,
                 )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks

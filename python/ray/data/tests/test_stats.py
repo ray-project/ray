@@ -26,7 +26,10 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    with patch.object(DatasetLogger, "info") as mock_logger:
+    logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        log_to_stdout=enable_auto_log_stats,
+    )
+    with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
         ds = ds.map_batches(lambda x: x)
 
@@ -231,7 +234,10 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    with patch.object(DatasetLogger, "info") as mock_logger:
+    logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        log_to_stdout=enable_auto_log_stats,
+    )
+    with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
         ds = ds.map_batches(lambda x: x)
 
