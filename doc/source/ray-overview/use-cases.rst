@@ -85,7 +85,7 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
     +++
     .. link-button:: /tune/tutorials/tune-run
         :type: ref
-        :text: [Example] Tune Basic Parallel Experiments
+        :text: [Guide] Tune Basic Parallel Experiments
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
