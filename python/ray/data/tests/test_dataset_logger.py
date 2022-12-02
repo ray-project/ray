@@ -14,7 +14,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 def test_dataset_logger(shutdown_only):
     ray.init()
     log_name, msg = "test_name", "test_message_1234"
-    logger = DatasetLogger(log_name).logger
+    logger = DatasetLogger(log_name)
     logger.info(msg)
 
     # Read from log file, and parse each component of emitted log row
