@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import time
+import urllib
 
 from ray import data
 from ray.rllib.offline.io_context import IOContext
@@ -50,7 +51,15 @@ class DatasetWriter(OutputWriter):
         ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
-        self.path = pathlib.Path(output_config["path"]).expanduser().resolve()
+        parsed_path = urllib.urlparse(output_config["path"])
+        self.is_filepath = self.parsed_path.scheme == ""
+        if self.is_filepath:
+            # In case of a true file path resolve it.
+            self.path = pathlib.Path(parsed_path.path).expanduser().resolve()
+        else:
+            # In case of a cloud path keep the string.
+            self.path = output_config["path"]
+
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
             if "max_num_samples_per_file" in output_config
