@@ -117,6 +117,34 @@ class PhysicalOperator:
             return self.input_dependencies[0].num_outputs_total()
         return None
 
+    def add_input(self, refs: RefBundle, input_index: int) -> None:
+        """Called when an upstream result is available."""
+        raise NotImplementedError
+
+    def inputs_done(self, input_index: int) -> None:
+        """Called when an upstream operator finishes."""
+        raise NotImplementedError
+
+    def has_next(self) -> bool:
+        """Returns when a downstream output is available."""
+        raise NotImplementedError
+
+    def get_next(self) -> RefBundle:
+        """Get the next downstream output."""
+        raise NotImplementedError
+
+    def get_tasks(self) -> List[ray.ObjectRef]:
+        """Get a list of object references the executor should wait on."""
+        raise NotImplementedError
+
+    def notify_task_completed(self, task: ray.ObjectRef) -> None:
+        """Executor calls this when the given task is completed and local."""
+        raise NotImplementedError
+
+    def release_unused_resources(self) -> None:
+        """Release any currently unused operator resources."""
+        raise NotImplementedError
+
 
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
@@ -190,22 +218,7 @@ class ExchangeOperator(PhysicalOperator):
     Subclasses:
         AllToAllOperator
     """
-
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
-        """Called when an upstream result is available."""
-        raise NotImplementedError
-
-    def inputs_done(self, input_index: int) -> None:
-        """Called when an upstream operator finishes."""
-        raise NotImplementedError
-
-    def has_next(self) -> bool:
-        """Returns when a downstream output is available."""
-        raise NotImplementedError
-
-    def get_next(self) -> RefBundle:
-        """Get the next downstream output."""
-        raise NotImplementedError
+    pass
 
 
 class AllToAllOperator(ExchangeOperator):
