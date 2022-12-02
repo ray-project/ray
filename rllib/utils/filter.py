@@ -79,13 +79,14 @@ class NoFilter(Filter):
 # http://www.johndcook.com/blog/standard_deviation/
 @DeveloperAPI
 class RunningStat:
-    def __init__(self, shape=None):
+    def __init__(self, shape=()):
         self.num_pushes = 0
         self.mean_array = np.zeros(shape)
         self.std_array = np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
+        # TODO: Remove these safe-guards if not needed anymore.
         other.num_pushes = self.num_pushes if hasattr(self, "num_pushes") else self._n
         other.mean_array = (
             np.copy(self.mean_array)
@@ -273,6 +274,7 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
+        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
             lambda rs: rs.copy(),
             other.running_stats if hasattr(other, "running_stats") else other.rs,
