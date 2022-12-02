@@ -60,6 +60,8 @@ head_node = container(
         "--block",
         "--num-cpus",
         "0",
+        # Fix the port of raylet to make sure raylet restarts at the same
+        # ip:port is treated as a different raylet.
         "--node-manager-port",
         "9379",
     ],
@@ -79,6 +81,8 @@ worker_node = container(
         "--address",
         "gcs:6379",
         "--block",
+        # Fix the port of raylet to make sure raylet restarts at the same
+        # ip:port is treated as a different raylet.
         "--node-manager-port",
         "9379",
     ],
