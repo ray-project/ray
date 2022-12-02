@@ -251,29 +251,6 @@ class DashboardHead:
 
         return metrics
 
-    def _record_dashboard_enabled(self):
-        """
-        Record if the dashboard is enabled or not.
-        Note that if the usage stats is disabled, although we record
-        the information, they are not reported.
-        """
-        try:
-            assert internal_kv._internal_kv_initialized()
-            if self.minimal:
-                record_extra_usage_tag(TagKey.DASHBOARD_ENABLED, "minimal")
-            elif self._modules_to_load == {"UsageStatsHead"}:
-                # This means include_dashboard == False.
-                # When the dashboard is disabled, we only load usage stats.
-                record_extra_usage_tag(TagKey.DASHBOARD_ENABLED, "disabled")
-            else:
-                record_extra_usage_tag(TagKey.DASHBOARD_ENABLED, "enabled")
-        except Exception as e:
-            logger.warning(
-                "Failed to record the dashboard usage. "
-                "This error message is harmless and can be ignored. "
-                f"Error: {e}"
-            )
-
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -283,7 +260,17 @@ class DashboardHead:
         self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
         self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
         self.metrics = await self._setup_metrics(self.gcs_aio_client)
-        self._record_dashboard_enabled()
+        try:
+            assert internal_kv._internal_kv_initialized()
+            # Note: We always record the usage, but it is not reported
+            # if the usage stats is disabled.
+            record_extra_usage_tag(TagKey.DASHBOARD_USED, "False")
+        except Exception as e:
+            logger.warning(
+                "Failed to record the dashboard usage. "
+                "This error message is harmless and can be ignored. "
+                f"Error: {e}"
+            )
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()

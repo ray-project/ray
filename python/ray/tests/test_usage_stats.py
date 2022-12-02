@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import requests
 import pytest
 from jsonschema import validate
 
@@ -183,7 +184,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "gcs_storage": gcs_storage_type,
-            "dashboard_enabled": "enabled",
+            "dashboard_used": False,
         }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
@@ -195,7 +196,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
-            "dashboard_enabled": "enabled",
+            "dashboard_used": False,
         }
 
 
@@ -1072,7 +1073,7 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "gcs_storage": gcs_storage_type,
-            "dashboard_enabled": "enabled",
+            "dashboard_used": False,
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1411,7 +1412,7 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
-                "dashboard_enabled": "enabled",
+                "dashboard_used": False,
             }
             assert num_nodes == 2
             return True
@@ -1467,10 +1468,7 @@ def test_usages_stats_available_when_dashboard_not_included(
         wait_for_condition(verify)
 
 
-@pytest.mark.parametrize("include_dashboard", [False, True])
-def test_usages_stats_dashboard(
-    include_dashboard, monkeypatch, ray_start_cluster, reset_usage_stats
-):
+def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
     Test dashboard usage metrics are correctly reported.
     This is tested on both minimal / non minimal ray.
@@ -1480,30 +1478,35 @@ def test_usages_stats_dashboard(
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=0, include_dashboard=include_dashboard)
-        ray.init(address=cluster.address)
+        cluster.add_node(num_cpus=0)
+        addr = ray.init(address=cluster.address)
 
         """
         Verify the usage_stats.json contains the lib usage.
         """
         temp_dir = pathlib.Path(ray._private.worker._global_node.get_session_dir_path())
+        webui_url = format_web_url(addr["webui_url"])
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
-        def verify():
-            dashboard_enabled = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
-                "dashboard_enabled"
+        def verify_dashboard_not_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
             ]
-            if os.environ.get("RAY_MINIMAL") == "1":
-                return dashboard_enabled == "minimal"
-            elif include_dashboard:
-                return dashboard_enabled == "enabled"
-            elif not include_dashboard:
-                return dashboard_enabled == "disabled"
-            else:
-                # not reachable.
-                assert False
+            return dashboard_used == "False"
 
-        wait_for_condition(verify)
+        wait_for_condition(verify_dashboard_not_used)
+
+        # Open the dashboard will set the dashboard_used == "True".
+        resp = requests.get(webui_url)
+        print(resp)
+
+        def verify_dashboard_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
+            ]
+            return dashboard_used == "True"
+
+        wait_for_condition(verify_dashboard_used)
 
 
 if __name__ == "__main__":
