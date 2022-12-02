@@ -2590,7 +2590,7 @@ cc_binary(
         ":ray_common",
     ],
 )
-    
+
 cc_test(
     name = "ray_syncer_test",
     srcs = ["src/ray/common/test/ray_syncer_test.cc"],
