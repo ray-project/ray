@@ -19,17 +19,15 @@ namespace core {
 
 namespace worker {
 
-TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client,
-                                         bool manual_flush)
+TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
-      gcs_client_(std::move(gcs_client)) {
+      gcs_client_(std::move(gcs_client)) {}
+
+Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
-  if (report_interval_ms <= 0) {
-    gcs_client_.reset();
-    return;
-  }
-  recording_on_ = true;
+  RAY_CHECK(report_interval_ms > 0)
+      << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
   buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
 
@@ -50,26 +48,24 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
-    RAY_LOG(ERROR)
-        << "Failed to connect to GCS, TaskEventBuffer will not report to GCS. [status="
-        << status.ToString() << "].";
-
-    recording_on_ = false;
+    RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
+                   << status.ToString() << "].";
 
     // Early clean up resources.
     gcs_client_.reset();
     Stop();
-    return;
+    return status;
   }
 
-  if (manual_flush) {
-    return;
+  if (!auto_flush) {
+    return Status::OK();
   }
 
   RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms << "ms.";
   periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
                                        report_interval_ms,
                                        "CoreWorker.deadline_timer.flush_task_events");
+  return Status::OK();
 }
 
 void TaskEventBufferImpl::Stop() {
@@ -98,18 +94,12 @@ void TaskEventBufferImpl::Stop() {
 
 void TaskEventBufferImpl::AddTaskEvents(rpc::TaskEvents task_events) {
   absl::MutexLock lock(&mutex_);
-  if (!recording_on_) {
-    return;
-  }
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
   if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
     // Too many task events, start overriding older ones.
-
-    // Delay GCing
-    gc_queue_.push_back(std::move(task_events));
-    std::swap(buffer_[iter_], gc_queue_.back());
-    iter_ = (iter_ + 1) % limit;
+    buffer_[next_idx_to_overwrite_] = std::move(task_events);
+    next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % limit;
     num_task_events_dropped_++;
     return;
   }
@@ -117,18 +107,10 @@ void TaskEventBufferImpl::AddTaskEvents(rpc::TaskEvents task_events) {
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
-  if (!recording_on_) {
-    return;
-  }
-
   std::vector<rpc::TaskEvents> task_events;
-  // Will be GC when function returns.
-  std::vector<rpc::TaskEvents> gc_swap;
   size_t num_task_events_dropped = 0;
   {
     absl::MutexLock lock(&mutex_);
-
-    gc_queue_.swap(gc_swap);
 
     // TODO(rickyx): change this interval
     RAY_LOG_EVERY_MS(INFO, 5000)
@@ -154,7 +136,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     task_events.reserve(
         RayConfig::instance().task_events_max_num_task_events_in_buffer());
     buffer_.swap(task_events);
-    iter_ = 0;
+    next_idx_to_overwrite_ = 0;
     num_task_events_dropped = num_task_events_dropped_;
     num_task_events_dropped_ = 0;
   }

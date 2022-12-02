@@ -57,6 +57,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(void, FlushEvents, (bool forced), (override));
 
+  MOCK_METHOD(bool, Start, (bool manual_flush), (override));
+
   MOCK_METHOD(void, Stop, (), (override));
 };
 

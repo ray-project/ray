@@ -783,6 +783,19 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
+                                              const NodeID &node_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  it->second.SetNodeId(node_id);
+  RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
+}
+
 rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
   rpc::TaskInfoEntry task_info;
@@ -815,19 +828,6 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
 
   return task_info;
-}
-
-void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
-                                              const NodeID &node_id) {
-  absl::MutexLock lock(&mu_);
-  auto it = submissible_tasks_.find(task_id);
-  if (it == submissible_tasks_.end()) {
-    return;
-  }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
-  it->second.SetNodeId(node_id);
-  RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -883,6 +883,9 @@ void TaskManager::RecordMetrics() {
 
 void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
                                         rpc::TaskStatus status) {
+  if (!task_event_buffer_) {
+    return;
+  }
   // Make task event
   rpc::TaskEvents task_event;
   task_event.set_task_id(task_entry.spec.TaskId().Binary());
