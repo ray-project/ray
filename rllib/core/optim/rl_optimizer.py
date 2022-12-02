@@ -1,11 +1,11 @@
 import abc
-from typing import Any, List, Mapping
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.util.annotations import PublicAPI
 
 
@@ -30,7 +30,7 @@ class RLOptimizer(abc.ABC):
         rl_optim = RLOptimizer(module, config)
         sample_batch = ...
         fwd_out = module.forward_train(sample_batch)
-        loss_dict = rl_optim.compute_loss(fwd_out)
+        loss_dict = rl_optim.compute_loss(fwd_out, sample_batch)
 
         # compute gradients of loss w.r.t. trainable variables
         ...
@@ -48,37 +48,34 @@ class RLOptimizer(abc.ABC):
         self._optimizers = self._configure_optimizers()
 
     @abc.abstractmethod
-    def compute_loss(self, fwd_out: Mapping[str, Any]) -> Mapping[str, Any]:
+    def compute_loss(
+        self, fwd_out: Mapping[str, Any], batch: NestedDict
+    ) -> Mapping[str, Any]:
         """Computes variables for optimizing self._module based on fwd_out.
 
         Args:
-            fwd_out: Output from a forward pass on self._module during
+            fwd_out: Output from a call to `forward_train` on self._module during
                 training.
+            batch: The data that was used to compute fwd_out.
 
         Returns:
             A dictionary of tensors used for optimizing self._module.
         """
 
-    @OverrideToImplementCustomLogic
-    @staticmethod
-    def on_after_compute_loss(loss_dict: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Called after `compute_loss` is called."""
-        return loss_dict
-
     @abc.abstractmethod
-    def _configure_optimizers(self) -> List[Any]:
+    def _configure_optimizers(self) -> Mapping[Any, Any]:
         """Configures the optimizers for self._module.
 
         Returns:
-            A list of optimizers to be used for optimizing self._module.
+            A map of optimizers to be used for optimizing self._module.
         """
 
-    def get_optimizers(self) -> List[Any]:
-        """Returns the list of optimizers for this optimizer."""
+    def get_optimizers(self) -> Mapping[Any, Any]:
+        """Returns the map of optimizers for this RLOptimizer."""
         return self._optimizers
 
     @abc.abstractmethod
-    def get_state(self) -> List[Mapping[str, Any]]:
+    def get_state(self) -> Mapping[Any, Any]:
         """Returns the optimizer state.
 
         Returns:
@@ -86,7 +83,7 @@ class RLOptimizer(abc.ABC):
         """
 
     @abc.abstractmethod
-    def set_state(self, state: List[Mapping[str, Any]]):
+    def set_state(self, state: Mapping[Any, Any]):
         """Sets the optimizer state.
 
         Args:
