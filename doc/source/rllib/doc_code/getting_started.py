@@ -75,7 +75,7 @@ try:
 except Exception:
     import gym
 
-    env = gym.make(env_name)
+    env = gym.make("CartPole-v1")
 from ray.rllib.algorithms.ppo import PPOConfig
 
 algo = PPOConfig().environment("CartPole-v1").build()
