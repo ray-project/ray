@@ -16,7 +16,7 @@ Batch inference refers to generating model predictions over a set of input obser
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
-    :img-top: /images/user_guide.svg
+    :img-top: /images/ray_logo.png
 
     +++
     .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
