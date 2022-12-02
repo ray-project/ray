@@ -1504,7 +1504,10 @@ def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stat
             dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
                 "dashboard_used"
             ]
-            return dashboard_used == "True"
+            if os.environ.get("RAY_MINIMAL") == "1":
+                return dashboard_used == "False"
+            else:
+                return dashboard_used == "True"
 
         wait_for_condition(verify_dashboard_used)
 
