@@ -544,7 +544,7 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
+                See `ray.util.accelerators` for accelerator types.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
