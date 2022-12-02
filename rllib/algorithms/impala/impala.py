@@ -811,7 +811,9 @@ class Impala(Algorithm):
         """
         local_worker = self.workers.local_worker()
 
-        # Only need to update workers if there are remote workers.
+        # Update global vars of the local worker.
+        if self.config.policy_states_are_swappable:
+            local_worker.lock()
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
             "num_grad_updates_per_policy": {
@@ -819,6 +821,11 @@ class Impala(Algorithm):
                 for pid in policy_ids or []
             },
         }
+        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
+        if self.config.policy_states_are_swappable:
+            local_worker.unlock()
+
+        # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
             self.workers.num_remote_workers() > 0
@@ -826,7 +833,12 @@ class Impala(Algorithm):
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
-            weights = ray.put(local_worker.get_weights(policy_ids))
+            if self.config.policy_states_are_swappable:
+                local_worker.lock()
+            weights = local_worker.get_weights(policy_ids)
+            if self.config.policy_states_are_swappable:
+                local_worker.unlock()
+            weights = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
@@ -838,9 +850,6 @@ class Impala(Algorithm):
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )
-
-        # Update global vars of the local worker.
-        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
