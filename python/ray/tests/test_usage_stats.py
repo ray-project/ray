@@ -1496,9 +1496,13 @@ def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stat
 
         wait_for_condition(verify_dashboard_not_used)
 
+        if os.environ.get("RAY_MINIMAL") == "1":
+            # In the minimal Ray, dashboard is not available.
+            return
+
         # Open the dashboard will set the dashboard_used == "True".
         resp = requests.get(webui_url)
-        print(resp)
+        resp.raise_for_status()
 
         def verify_dashboard_used():
             dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
