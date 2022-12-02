@@ -61,7 +61,11 @@ config = (
                 lambda aid, eps, worker, **kw: "pol"
                 + str(0 if aid == 0 else np.random.randint(num_trainable, num_policies))
             ),
+<<<<<<< HEAD
         ),
+=======
+        },
+>>>>>>> a4118ff62 ([RLlib] Fix flakey 100-policies LRU cache test. (#30823))
         evaluation_num_workers=2,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
