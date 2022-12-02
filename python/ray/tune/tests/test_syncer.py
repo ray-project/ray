@@ -14,7 +14,7 @@ import ray.cloudpickle as pickle
 from ray import tune
 from ray.air import Checkpoint
 from ray.tune import TuneError
-from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
+from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -166,20 +166,20 @@ class CustomCommandSyncer(Syncer):
 
 def test_sync_string_invalid_uri():
     with pytest.raises(ValueError):
-        _validate_upload_dir(tune.SyncConfig(upload_dir="invalid://some/url"))
+        Syncer.validate_upload_dir("invalid://some/url")
 
 
 def test_sync_string_invalid_local():
     with pytest.raises(ValueError):
-        _validate_upload_dir(tune.SyncConfig(upload_dir="/invalid/dir"))
+        Syncer.validate_upload_dir("/invalid/dir")
 
 
 def test_sync_string_valid_local():
-    _validate_upload_dir(tune.SyncConfig(upload_dir="file:///valid/dir"))
+    Syncer.validate_upload_dir("file:///valid/dir")
 
 
 def test_sync_string_valid_s3():
-    _validate_upload_dir(tune.SyncConfig(upload_dir="s3://valid/bucket"))
+    Syncer.validate_upload_dir("s3://valid/bucket")
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
