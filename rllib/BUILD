@@ -47,9 +47,9 @@
 #   the RLlib Team.
 # - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
 # - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
-#   pipeline, defined in .buildkite/pipeline.gpu.yaml.
+#   pipeline, defined in .buildkite/pipeline.gpu.yml.
 # - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
-#   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
+#   pipeline, defined in .buildkite/pipeline.gpu.large.yml.
 # - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
 #   to certain incompatibilities.
 # - "no_tf_eager_tracing": Exclude this test from tf-eager tracing tests.
@@ -198,6 +198,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -1976,6 +1986,20 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_policy_map",
+    tags = ["team:rllib", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_policy_map.py"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_state_swapping",
+    tags = ["team:rllib", "policy", "gpu"],
+    size = "medium",
+    srcs = ["policy/tests/test_policy_state_swapping.py"]
+)
+
+py_test(
     name = "policy/tests/test_rnn_sequencing",
     tags = ["team:rllib", "policy"],
     size = "small",
@@ -2230,30 +2254,14 @@ py_test(
 )
 
 py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    name = "policy/tests/test_policy_checkpoint_restore",
+    main = "policy/tests/test_policy_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf2",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF2"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_torch",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTorch"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
+    ]),
+    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
 )
 
 py_test(
