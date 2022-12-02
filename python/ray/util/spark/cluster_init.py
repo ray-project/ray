@@ -198,7 +198,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 009.")
+    _logger.warning("Test version 010.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -297,6 +297,9 @@ def _init_ray_cluster(
     ray_dashboard_port = get_random_unused_port(
         ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
     )
+    ray_dashboard_agent_port = get_random_unused_port(
+        ray_head_ip, min_port=10000, max_port=11000,
+    )
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -329,6 +332,7 @@ def _init_ray_cluster(
         "--include-dashboard=true",
         "--dashboard-host=0.0.0.0",
         f"--dashboard-port={ray_dashboard_port}",
+        f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
         # disallow ray tasks with cpu requirements from being scheduled on the head node.
         f"--num-cpus=0",
         # limit the memory allocation to the head node (actual usage may increase beyond this
