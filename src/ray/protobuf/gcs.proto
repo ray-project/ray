@@ -209,7 +209,7 @@ message ProfileEventEntry {
   int64 end_time = 2;
   // Additional data associated with the event. This data must be serialized
   // using JSON.
-  string extra_data = 3;
+  optional string extra_data = 3;
   // Customized event name if not a TaskStatus change point event.
   string event_name = 4;
 }
@@ -229,19 +229,19 @@ message ProfileEvents {
 // Represents task states which could be changed during task execution.
 message TaskStateUpdate {
   // Node that runs the task.
-  bytes node_id = 1;
+  optional bytes node_id = 1;
   // Timestamp when status changes to PENDING_ARGS_AVAIL.
-  int64 pending_args_avail_ts = 2;
+  optional int64 pending_args_avail_ts = 2;
   // Timestamp when status changes to PENDING_NODE_ASSIGNEMENT.
-  int64 pending_node_assignement_ts = 3;
+  optional int64 pending_node_assignement_ts = 3;
   // Timestamp when status changes to SUBMITTED_TO_WORKER.
-  int64 submitted_to_worker_ts = 4;
+  optional int64 submitted_to_worker_ts = 4;
   // Timestamp when status changes to RUNNING.
-  int64 running_ts = 5;
+  optional int64 running_ts = 5;
   // Timestamp when status changes to FINISHED.
-  int64 finished_ts = 6;
+  optional int64 finished_ts = 6;
   // Timestamp when status changes to FAILED.
-  int64 failed_ts = 7;
+  optional int64 failed_ts = 7;
 }
 
 // Represents events and state changes from a single task run.
@@ -251,11 +251,11 @@ message TaskEvents {
   // The current retry attempt number for the task.
   int32 attempt_number = 2;
   // Task Spec.
-  TaskSpec task_spec = 3;
+  optional TaskSpec task_spec = 3;
   // Task state updates.
-  TaskStateUpdate state_updates = 4;
+  optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
-  ProfileEvents profile_events = 5;
+  optional ProfileEvents profile_events = 5;
 }
 
 // Represents a compact list of task state events by different tasks,
