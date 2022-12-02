@@ -116,12 +116,13 @@ class TorchCheckpoint(Checkpoint):
                 # model architecture
                 model_from_chkpt = checkpoint.get_model(create_model())
 
-                # Asser they have the same state dict
+                # Assert they have the same state dict
                 assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
+                print("worked")
 
             .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
+                :hide:
+                :options: +ELLIPSIS
 
                 ...
         """
@@ -180,10 +181,11 @@ class TorchCheckpoint(Checkpoint):
 
                 # Assert the output from the original and checkoint model are the same
                 assert torch.equal(output, pred) 
+                print("worked")
             
             .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
+                :hide:
+                :options: +ELLIPSIS
 
                 ...
         """  
