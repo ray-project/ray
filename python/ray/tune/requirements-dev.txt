@@ -1,6 +1,8 @@
 flake8==3.9.1
 flake8-quotes
-gym>=0.21.0,<0.24.0
+gymnasium==0.26.3
+# TODO(sven): Still needed for Atari (need to be wrapped by gymnasium as it does NOT support Atari yet)
+gym==0.26.2
 scikit-image
 pandas
 requests
