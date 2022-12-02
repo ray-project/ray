@@ -826,7 +826,10 @@ class Impala(Algorithm):
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
-            weights = ray.put(local_worker.get_weights(policy_ids))
+            local_worker.lock()
+            weights = local_worker.get_weights(policy_ids)
+            local_worker.unlock()
+            weights = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
@@ -840,7 +843,9 @@ class Impala(Algorithm):
             )
 
         # Update global vars of the local worker.
+        local_worker.lock()
         local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
+        local_worker.unlock()
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
