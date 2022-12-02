@@ -298,7 +298,7 @@ The following highlights feature companies leveraging Ray's unified API to build
 End-to-End ML Workflows
 -----------------------
 
-The following are highlighted examples utilizing Ray AIR libraries to implement end-to-end ML workflows.
+The following are highlighted examples utilizing Ray AIR to implement end-to-end ML workflows.
 
 .. panels::
     :container: container pb-4
