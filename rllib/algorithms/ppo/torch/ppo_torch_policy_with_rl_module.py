@@ -28,7 +28,7 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    SimplePPOModule,
+    PPORLModule,
     PPOModuleConfig,
     FCConfig,
 )
@@ -134,7 +134,7 @@ class PPOTorchPolicyWithRLModule(
             free_log_std=free_log_std,
         )
 
-        return SimplePPOModule(config_)
+        return PPORLModule(config_)
 
     @override(TorchPolicyV2)
     def loss(
