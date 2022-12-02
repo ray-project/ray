@@ -631,8 +631,7 @@ message AddTaskEventDataReply {
   GcsStatus status = 1;
 }
 
-// Service for task info access
-// TODO: actually rename it to TaskStateInfoGcsService
+// Service for task info access.
 service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);

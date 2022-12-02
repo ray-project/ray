@@ -126,6 +126,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     if (!it->second.IsPending()) {
       resubmit = true;
       it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      it->second.MarkRetryOnResubmit();
       RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
       num_pending_tasks_++;
 
@@ -455,6 +456,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     if (will_retry) {
       it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
       RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      it->second.MarkRetryOnFailed();
     }
   }
 

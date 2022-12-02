@@ -476,8 +476,6 @@ RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
 /// Setting the value to -1 allows unlimited profile events to be sent.
 RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
 
-RAY_CONFIG(bool, enable_status_event, true)
-
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
 

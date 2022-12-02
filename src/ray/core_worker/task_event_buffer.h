@@ -14,18 +14,18 @@
 
 #pragma once
 
-#include <memory>  // std::shared_ptr
+#include <memory>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"               // absl::Mutex
-#include "absl/types/optional.h"                      // std::unique_ptr
-#include "ray/common/asio/instrumented_io_context.h"  // instrumented_io_context
-#include "ray/common/asio/periodical_runner.h"        // PeriodicRunner
-#include "ray/common/id.h"                            // TaskID
-#include "ray/common/task/task_spec.h"                // TaskSpecification
-#include "ray/gcs/gcs_client/gcs_client.h"            // Gcs::GcsClient
-#include "src/ray/protobuf/gcs.pb.h"                  // rpc::TaskEventData
+#include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
@@ -38,11 +38,12 @@ namespace worker {
 /// Dropping of task events
 /// ========================
 /// Task events will be lost in the below cases for now:
-///   1. If any of the gRPC call failed, the task events will be silently dropped. This
-///   is probably fine since this usually indicated a much worse issue.
+///   1. If any of the gRPC call failed, the task events will be dropped and warnings
+///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
 ///   2. More than `RAY_task_events_max_num_task_events_in_buffer` tasks have been stored
-///   in the buffer, any new task events will be dropped.
+///   in the buffer, any new task events will be dropped. In this case, the number of
+///   dropped task events will also be included in the next flush to surface this.
 ///
 /// No overloading of GCS
 /// =====================
