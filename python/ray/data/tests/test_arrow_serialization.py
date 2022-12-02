@@ -45,7 +45,7 @@ def test_bytes_for_bits_auto():
 
 def test_align_bit_offset_auto():
     M = 10
-    n = M * (2 ** 8 - 1)
+    n = M * (2**8 - 1)
     # Represent an integer as a Pyarrow buffer of bytes.
     bytes_ = n.to_bytes(M, sys.byteorder)
     buf = pa.py_buffer(bytes_)

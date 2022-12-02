@@ -39,7 +39,7 @@ _RAYLET_LOG_MAX_PUBLISH_LINES = 20
 
 # Reads at most this amount of Raylet logs from the tail, for publishing and
 # checking if the Raylet was terminated gracefully.
-_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024**2
 
 try:
     create_task = asyncio.create_task
