@@ -203,9 +203,25 @@ Learn more about the Train library with the following talks and user guides.
     :img-top: /images/ray_logo.png
 
     +++
+    .. link-button:: https://www.uber.com/blog/elastic-xgboost-ray/
+        :type: url
+        :text: [Blog] Elastic Distributed Training with XGBoost on Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
     .. link-button:: /train/train
         :type: ref
         :text: [Guide] Getting Started with Ray Train
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: /ray-air/examples/huggingface_text_classification
+        :type: ref
+        :text: [Example] Fine-tune a 🤗 Transformers model
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ray_logo.png
