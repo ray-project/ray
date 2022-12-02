@@ -454,6 +454,28 @@ RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
+/// The interval duration for which task state events will be reported to GCS.
+/// The reported data should only be used for observability.
+/// Setting the value to 0 disables the task event recording and reporting.
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 0)
+
+/// The number of tasks tracked in GCS for task state events. Any additional events
+/// from new tasks will evict events of tasks reported earlier.
+/// Setting the value to -1 allows for unlimited task events stored in GCS.
+RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
+
+/// Max number of task events stored in the buffer on workers. Any additional events
+/// will be dropped.
+/// Setting the value to -1 allows for unlimited task events buffered on workers.
+RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
+
+/// Max number of profile events allowed for a single task when sent to GCS.
+/// NOTE: this limit only applies to the profile events per task in a single
+/// report gRPC call. A task could have more profile events in GCS from multiple
+/// report gRPC call.
+/// Setting the value to -1 allows unlimited profile events to be sent.
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
 
