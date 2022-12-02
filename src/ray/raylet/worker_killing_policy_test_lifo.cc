@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
-#include "ray/raylet/worker_killing_policy_test_util.h"
-
 #include <sys/sysinfo.h>
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_test_util.h"
 
 namespace ray {
 
 namespace raylet {
 
 class WorkerKillerTestLifo : public WorkerKillerTest {
-  protected:
-    RetriableLIFOWorkerKillingPolicy prefer_retriable_worker_killing_policy_;
+ protected:
+  RetriableLIFOWorkerKillingPolicy prefer_retriable_worker_killing_policy_;
 };
 
 TEST_F(WorkerKillerTestLifo, TestRetriableEmptyWorkerPoolSelectsNullWorker) {

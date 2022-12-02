@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
-
 #include <sys/sysinfo.h>
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
+#include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {
 
@@ -68,4 +67,3 @@ class WorkerKillerTest : public ::testing::Test {
 }  // namespace raylet
 
 }  // namespace ray
-
