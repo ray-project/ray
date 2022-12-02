@@ -166,20 +166,39 @@ class CustomCommandSyncer(Syncer):
 
 def test_sync_string_invalid_uri():
     with pytest.raises(ValueError):
-        Syncer.validate_upload_dir("invalid://some/url")
+        sync_config = tune.SyncConfig(upload_dir="invalid://some/url")
+        sync_config.validate_upload_dir()
 
 
 def test_sync_string_invalid_local():
     with pytest.raises(ValueError):
-        Syncer.validate_upload_dir("/invalid/dir")
+        sync_config = tune.SyncConfig(upload_dir="/invalid/dir")
+        sync_config.validate_upload_dir()
 
 
 def test_sync_string_valid_local():
-    Syncer.validate_upload_dir("file:///valid/dir")
+    sync_config = tune.SyncConfig(upload_dir="file:///valid/dir")
+    sync_config.validate_upload_dir()
 
 
 def test_sync_string_valid_s3():
-    Syncer.validate_upload_dir("s3://valid/bucket")
+    sync_config = tune.SyncConfig(upload_dir="s3://valid/bucket")
+    sync_config.validate_upload_dir()
+
+
+def test_sync_config_validate():
+    sync_config = tune.SyncConfig()
+    sync_config.validate_upload_dir()
+
+
+def test_sync_config_validate_custom_syncer():
+    class CustomSyncer(_DefaultSyncer):
+        @classmethod
+        def validate_upload_dir(cls, upload_dir: str) -> bool:
+            return True
+
+    sync_config = tune.SyncConfig(upload_dir="/invalid/dir", syncer=CustomSyncer())
+    sync_config.validate_upload_dir()
 
 
 def test_syncer_sync_up_down(temp_data_dirs):

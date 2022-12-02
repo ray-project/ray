@@ -120,6 +120,20 @@ class SyncConfig:
             max_height="none",
         )
 
+    def validate_upload_dir(self) -> bool:
+        """Checks if ``upload_dir`` is supported by ``syncer``.
+
+        Returns True if ``upload_dir`` is valid, otherwise raises
+        ``ValueError``.
+
+        Args:
+            upload_dir: Path to validate.
+        """
+        if hasattr(self.syncer, "validate_upload_dir"):
+            return self.syncer.validate_upload_dir(self.upload_dir)
+        else:
+            return Syncer.validate_upload_dir(self.upload_dir)
+
 
 class _BackgroundProcess:
     def __init__(self, fn: Callable):
@@ -341,7 +355,7 @@ class Syncer(abc.ABC):
     @classmethod
     def validate_upload_dir(cls, upload_dir: str) -> bool:
         """Checks if ``upload_dir`` is supported by the Syncer.
-        
+
         Returns True if ``upload_dir`` is valid, otherwise raises
         ``ValueError``.
 
