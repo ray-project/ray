@@ -184,7 +184,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "gcs_storage": gcs_storage_type,
-            "dashboard_used": False,
+            "dashboard_used": "False",
         }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
@@ -196,7 +196,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
-            "dashboard_used": False,
+            "dashboard_used": "False",
         }
 
 
@@ -1073,7 +1073,7 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "gcs_storage": gcs_storage_type,
-            "dashboard_used": False,
+            "dashboard_used": "False",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1412,7 +1412,7 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
-                "dashboard_used": False,
+                "dashboard_used": "False",
             }
             assert num_nodes == 2
             return True
