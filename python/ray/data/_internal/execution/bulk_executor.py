@@ -11,37 +11,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
-#
-#
-#@ray.remote(num_returns=2)
-#def _transform_one(op: OneToOneOperator, block: Block) -> (Block, BlockMetadata):
-#    [out] = list(op.execute_one([block], {}))
-#    return out, BlockAccessor.for_block(out).get_metadata([], None)
-#
-#
-#def _naive_task_execute(
-#    inputs: List[RefBundle], op: OneToOneOperator
-#) -> List[RefBundle]:
-#    """Naively execute a 1:1 operation using Ray tasks.
-#
-#    TODO: This should be reconciled with ComputeStrategy.
-#    """
-#
-#    input_blocks = []
-#    for bundle in inputs:
-#        for block, _ in bundle.blocks:
-#            input_blocks.append(block)
-#
-#    out_blocks, out_meta = [], []
-#    for in_b in input_blocks:
-#        out_b, out_m = _transform_one.remote(op, in_b)
-#        out_blocks.append(out_b)
-#        out_meta.append(out_m)
-#
-#    bar = ProgressBar("OneToOne", total=len(out_meta))
-#    out_meta = bar.fetch_until_complete(out_meta)
-#
-#    return [RefBundle([(b, m)]) for b, m in zip(out_blocks, out_meta)]
 
 
 class BulkExecutor(Executor):

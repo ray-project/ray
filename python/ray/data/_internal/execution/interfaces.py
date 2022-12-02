@@ -108,6 +108,9 @@ class PhysicalOperator:
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
 
+    def __reduce__(self):
+        raise ValueError("PhysicalOperator is not serializable.")
+
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator, if known.
 
@@ -135,7 +138,7 @@ class PhysicalOperator:
 
     def get_tasks(self) -> List[ray.ObjectRef]:
         """Get a list of object references the executor should wait on."""
-        raise NotImplementedError
+        raise []
 
     def notify_task_completed(self, task: ray.ObjectRef) -> None:
         """Executor calls this when the given task is completed and local."""
@@ -143,7 +146,7 @@ class PhysicalOperator:
 
     def release_unused_resources(self) -> None:
         """Release any currently unused operator resources."""
-        raise NotImplementedError
+        pass
 
 
 class Executor:
@@ -165,47 +168,6 @@ class Executor:
     def get_stats() -> DatasetStats:
         """Return stats for the execution so far."""
         raise NotImplementedError
-
-
-class OneToOneOperator(PhysicalOperator):
-    """A streaming operator that maps inputs 1:1 to outputs.
-
-    Subclasses need only define a single `execute_one` method that runs in a single
-    process, leaving the implementation of parallel and distributed execution to the
-    Executor implementation.
-
-    Subclasses:
-        Read
-        Map
-        Write
-        SortReduce
-        WholeStage
-    """
-
-    def execute_one(
-        self, block_bundle: Iterator[Block], input_metadata: Dict[str, Any]
-    ) -> Iterator[Block]:
-        """Execute a block transformation locally on a worker process.
-
-        Args:
-            block_bundle: Iterator over input blocks of a RefBundle. Typically, this
-                will yield only a single block, unless the transformation has multiple
-                inputs, e.g., in the SortReduce or ZipBlocks cases. It is an iterator
-                instead of a list for memory efficiency.
-            input_metadata: Extra metadata provided from the upstream operator.
-        """
-        raise NotImplementedError
-
-    def compute_strategy(self) -> ComputeStrategy:
-        """Return the compute strategy to use for executing these tasks.
-
-        Supported strategies: {TaskPoolStrategy, ActorPoolStrategy}.
-        """
-        return TaskPoolStrategy()
-
-    def ray_remote_args(self) -> Dict[str, Any]:
-        """Return extra ray remote args to use for execution."""
-        return {}
 
 
 class ExchangeOperator(PhysicalOperator):
