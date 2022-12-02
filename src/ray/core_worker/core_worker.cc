@@ -1947,25 +1947,25 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
 
-  BuildCommonTaskSpec(builder,
-                      actor_handle->CreationJobID(),
-                      actor_task_id,
-                      task_name,
-                      worker_context_.GetCurrentTaskID(),
-                      next_task_index,
-                      GetCallerId(),
-                      rpc_address_,
-                      function,
-                      args,
-                      num_returns,
-                      task_options.resources,
-                      required_resources,
-                      "", /* debugger_breakpoint */
-                      -1,
-                      /*The actor task should use the depth of the actor that it
-                                   is running in, which the actor core worker knows*/
-                      "{}", /* serialized_runtime_env_info */
-                      task_options.concurrency_group_name);
+  BuildCommonTaskSpec(
+      builder,
+      actor_handle->CreationJobID(),
+      actor_task_id,
+      task_name,
+      worker_context_.GetCurrentTaskID(),
+      next_task_index,
+      GetCallerId(),
+      rpc_address_,
+      function,
+      args,
+      num_returns,
+      task_options.resources,
+      required_resources,
+      "",   /* debugger_breakpoint */
+      -1,   /* The actor task should use the depth of the actor that it is
+               running in, which the actor core worker knows, hence unset here */
+      "{}", /* serialized_runtime_env_info */
+      task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
