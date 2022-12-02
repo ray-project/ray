@@ -43,7 +43,7 @@ package helloworld;
 // The greeting service definition.
 service Greeter {
   // Sends a greeting
-  rpc SayHello (SayHelloRequest) returns (SayHelloReply) {}
+  rpc SayHello(SayHelloRequest) returns (SayHelloReply) {}
 }
 
 // The actual message exchanged by the client and the server.
