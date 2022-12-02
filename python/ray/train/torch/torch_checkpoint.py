@@ -143,7 +143,7 @@ class TorchCheckpoint(Checkpoint):
             :class:`TorchCheckpoint` from a state dictionary, call
             :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`. To learn more
             about state dictionaries, read
-            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_.
+            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_. # noqa: E501
 
         Args:
             model: The Torch model to store in the checkpoint.
