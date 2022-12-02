@@ -145,7 +145,7 @@ class PPOTorchPolicyWithRLModule(
             The PPO loss tensor given the input batch.
         """
 
-        fwd_out = model.forward_train(train_batch, filter=False, cache=True)
+        fwd_out = model.forward_train(train_batch)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         state = fwd_out.get("state_out", {})
 
@@ -203,7 +203,9 @@ class PPOTorchPolicyWithRLModule(
         # Compute a value function loss.
         if self.config["use_critic"]:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = (value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]) ** 2
+            vf_loss = torch.pow(
+                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0
+            )
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.

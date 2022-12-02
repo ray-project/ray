@@ -1,4 +1,4 @@
-cartpole-ppo-v1:
+cartpole-ppo:
     env: CartPole-v1
     run: PPO
     stop:

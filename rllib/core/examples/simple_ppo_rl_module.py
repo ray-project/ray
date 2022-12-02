@@ -16,8 +16,6 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
 )
 
-import time
-
 
 torch, nn = try_import_torch()
 
@@ -324,45 +322,27 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        s = time.time()
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
-        s1 = time.time()
-        action_logits = self.pi(encoded_state)
-        e1 = time.time()
-        print("pi_fwd_pass_ms: ", (e1 - s1) * 1000)
-        s2 = time.time()
-        vf = self.vf(encoded_state)
-        e2 = time.time()
-        print("vf_fwd_pass_ms: ", (e2 - s2) * 1000)
 
-        s3 = time.time()
+        action_logits = self.pi(encoded_state)
+        vf = self.vf(encoded_state)
+
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
         else:
             mu, scale = action_logits.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
 
-        e3 = time.time()
-        print("action_dist_construction_ms: ", (e3 - s3) * 1000)
-        s4 = time.time()
         logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        e4 = time.time()
-        print("logp_ms: ", (e4 - s4) * 1000)
-        s5 = time.time()
         entropy = action_dist.entropy()
-        e5 = time.time()
-        print("entropy_ms: ", (e5 - s5) * 1000)
 
-        s6 = time.time()
         # get vf of the next obs
         encoded_next_state = batch[SampleBatch.NEXT_OBS]
         if self.encoder:
             encoded_next_state = self.encoder(encoded_next_state)
         vf_next_obs = self.vf(encoded_next_state)
-        e6 = time.time()
-        print("vf_next_obs_ms: ", (e6 - s6) * 1000)
 
         output = {
             SampleBatch.ACTION_DIST: action_dist,
@@ -371,10 +351,6 @@ class SimplePPOModule(TorchRLModule):
             "entropy": entropy,
             "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
-        bsize = batch["obs"].shape[0]
-        print(f"keys in the batch = {list(batch.keys())}")
-        e = time.time()
-        print(f"bsize: {bsize}, fwd_train_time_ms: {(e - s) * 1000:8.6f}")
         return output
 
     def __get_action_dist_type(self):

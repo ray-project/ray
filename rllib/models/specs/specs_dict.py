@@ -226,15 +226,17 @@ def check_specs(
             def validate(data, spec, exact_match, tag="data"):
                 is_mapping = isinstance(spec, ModelSpec)
                 is_tensor = isinstance(spec, TensorSpec)
+                cache_miss = should_validate()
 
                 if is_mapping:
                     if not isinstance(data, Mapping):
                         raise ValueError(
                             f"{tag} must be a Mapping, got {type(data).__name__}"
                         )
-                    data = NestedDict(data)
+                    if cache_miss or filter:
+                        data = NestedDict(data)
 
-                if should_validate():
+                if cache_miss:
                     try:
                         if is_mapping:
                             spec.validate(data, exact_match=exact_match)
@@ -281,7 +283,7 @@ def check_specs(
                     tag="output_data",
                 )
 
-            if cache:
+            if cache and func.__name__ not in self.__checked_specs_cache__:
                 self.__checked_specs_cache__[func.__name__] = True
 
             return output_data
