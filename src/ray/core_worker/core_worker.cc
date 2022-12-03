@@ -1952,7 +1952,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
 
   // The depth of the actor task is depth of the caller + 1
   // The caller is not necessarily the creator of the actor.
-  int64_t depth = worker_context_.GetTaskDepth();
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
                       actor_task_id,

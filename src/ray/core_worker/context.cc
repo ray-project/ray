@@ -243,7 +243,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
-
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
   } else if (task_spec.IsActorCreationTask()) {

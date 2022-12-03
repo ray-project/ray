@@ -76,46 +76,48 @@ def test_task_spawn_actor(shutdown_only):
 
 def test_task_spawn_detached_actor_spawn_actor(shutdown_only):
     @ray.remote
+    def spawn_detached_actor():
+        assert ray._private.worker.global_worker.task_depth == 1
+
+        nested_actor = NestedActor.options(name="detached", lifetime="detached").remote(
+            expected_depth=2
+        )
+        ray.get(
+            nested_actor.run_actor_task.remote(
+                max_depth=3, spawn_task=False, expected_depth=2
+            )
+        )
+
+    ray.get(spawn_detached_actor.remote())
+
+
+def test_actor_call_task_call_actor(shutdown_only):
+    @ray.remote
     class TestActor:
         def __init__(self, expected_depth=1):
             task_depth = ray._private.worker.global_worker.task_depth
             assert task_depth == expected_depth
 
-        def run_actor_task(self, max_depth, spawn_task, expected_depth=1):
+        def run(self, spawn_task=False, expected_depth=1):
             task_depth = ray._private.worker.global_worker.task_depth
             assert task_depth == expected_depth
 
-    ray.get(spawn_detached_actor.remote())
+            if spawn_task:
+                ray.get(
+                    call_actor.remote(
+                        self, spawn_task=False, expected_depth=expected_depth + 1
+                    )
+                )
 
+    @ray.remote
+    def call_actor(actor, spawn_task=False, expected_depth=1):
+        task_depth = ray._private.worker.global_worker.task_depth
+        assert task_depth == expected_depth
 
-# def test_circular_actor(shutdown_only):
-#     @ray.remote
-#     def spawn_detached_actor():
-#         assert ray._private.worker.global_worker.task_depth == 1
+        ray.get(actor.run.remote(spawn_task=spawn_task, expected_depth=task_depth + 1))
 
-#         nested_actor = NestedActor.options(name="detached", lifetime="detached").remote(
-#             expected_depth=2
-#         )
-#         ray.get(
-#             nested_actor.run_actor_task.remote(
-#                 max_depth=3, spawn_task=False, expected_depth=2
-#             )
-#         )
-
-#     @ray.remote
-#     def spawn_detached_actor():
-#         assert ray._private.worker.global_worker.task_depth == 1
-
-#         nested_actor = NestedActor.options(name="detached", lifetime="detached").remote(
-#             expected_depth=2
-#         )
-#         ray.get(
-#             nested_actor.run_actor_task.remote(
-#                 max_depth=3, spawn_task=False, expected_depth=2
-#             )
-#         )
-
-#     ray.get(nested_actor.run_actor_task.remote(max_depth=4, spawn_task=False))
+    actor = TestActor.remote()
+    actor.run.remote(spawn_task=True)
 
 
 if __name__ == "__main__":
