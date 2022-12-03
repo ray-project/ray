@@ -51,7 +51,7 @@ class DatasetWriter(OutputWriter):
         ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
-        parsed_path = urllib.urlparse(output_config["path"])
+        parsed_path = urllib.parse.urlparse(output_config["path"])
         self.is_filepath = self.parsed_path.scheme == ""
         if self.is_filepath:
             # In case of a true file path resolve it.
