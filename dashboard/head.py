@@ -11,6 +11,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray.dashboard.utils import DashboardHeadModule
 from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
@@ -259,6 +260,17 @@ class DashboardHead:
         self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
         self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
         self.metrics = await self._setup_metrics(self.gcs_aio_client)
+        try:
+            assert internal_kv._internal_kv_initialized()
+            # Note: We always record the usage, but it is not reported
+            # if the usage stats is disabled.
+            record_extra_usage_tag(TagKey.DASHBOARD_USED, "False")
+        except Exception as e:
+            logger.warning(
+                "Failed to record the dashboard usage. "
+                "This error message is harmless and can be ignored. "
+                f"Error: {e}"
+            )
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
