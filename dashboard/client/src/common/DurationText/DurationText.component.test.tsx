@@ -23,6 +23,34 @@ describe("DurationText", () => {
       <DurationText startTime={new Date(100000)} endTime={new Date(5000000)} />,
     );
     expect(await screen.findByText("1h 21m")).toBeInTheDocument();
+    // > 1 day
+    rerender(
+      <DurationText
+        startTime={new Date(100000)}
+        endTime={new Date(100000 + 1000 * 60 * 60 * 24 + 1000 * 60 * 60 * 13)}
+      />,
+    );
+    expect(await screen.findByText("1d 13h")).toBeInTheDocument();
+
+    // > 1 month
+    rerender(
+      <DurationText
+        startTime={new Date(100000)}
+        endTime={
+          new Date(100000 + 1000 * 60 * 60 * 24 * 30 + 1000 * 60 * 60 * 24 * 4)
+        }
+      />,
+    );
+    expect(await screen.findByText("1M 4d")).toBeInTheDocument();
+
+    // > 1 year
+    rerender(
+      <DurationText
+        startTime={new Date(100000)}
+        endTime={new Date(100000 + 1000 * 60 * 60 * 24 * 405)}
+      />,
+    );
+    expect(await screen.findByText("1y 1M 10d")).toBeInTheDocument();
   });
 
   it("automatically re-renders when endTime is null", async () => {

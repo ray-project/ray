@@ -21,6 +21,7 @@ const useStyles = makeStyles((theme) => ({
 
 type JobRowProps = {
   job: UnifiedJob;
+  newIA?: boolean;
 };
 
 export const JobRow = ({
@@ -34,6 +35,7 @@ export const JobRow = ({
     end_time,
     entrypoint,
   },
+  newIA = false,
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
   const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
@@ -57,7 +59,11 @@ export const JobRow = ({
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
+        {job_id ? (
+          <Link to={newIA ? `${job_id}` : `/job/${job_id}`}>{job_id}</Link>
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
