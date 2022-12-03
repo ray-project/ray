@@ -6,8 +6,16 @@ import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
+import JobList, { NewIAJobsPage } from "./pages/job";
+import JobDetailPage from "./pages/job/JobDetail";
+import { DEFAULT_VALUE, MainNavContext } from "./pages/layout/mainNavContext";
+import { MainNavLayout } from "./pages/layout/MainNavLayout";
+import { NewIALogsPage } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
+import Nodes, { NewIAClusterPage } from "./pages/node";
+import NodeDetailPage from "./pages/node/NodeDetail";
+import { OverviewPage } from "./pages/overview/OverviewPage";
 import { getNodeList } from "./service/node";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
@@ -122,37 +130,61 @@ const App = () => {
         <GlobalContext.Provider value={context}>
           <CssBaseline />
           <HashRouter>
-            <Routes>
-              <Route element={<Navigate replace to="/node" />} path="/" />
-              <Route
-                element={<BasicLayout setTheme={setTheme} theme={theme} />}
-              >
-                <Route element={<Index />} path="/summary" />
-                <Route element={<Job />} path="/job" />
-                <Route element={<Node />} path="/node" />
-                <Route element={<Actors />} path="/actors" />
-                <Route element={<Events />} path="/events" />
-                <Route element={<Metrics />} path="/metrics" />
-                {/* TODO(aguo): Refactor Logs component to use optional query
-                params since react-router 6 doesn't support optional path params... */}
+            {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
+            <MainNavContext.Provider value={DEFAULT_VALUE}>
+              <Routes>
+                <Route element={<Navigate replace to="/node" />} path="/" />
                 <Route
-                  element={<Logs theme={theme as "light" | "dark"} />}
-                  path="/log"
-                />
-                <Route
-                  element={<Logs theme={theme as "light" | "dark"} />}
-                  path="/log/:host"
-                />
-                <Route
-                  element={<Logs theme={theme as "light" | "dark"} />}
-                  path="/log/:host/:path"
-                />
-                <Route element={<NodeDetail />} path="/node/:id" />
-                <Route element={<JobDetail />} path="/job/:id" />
-                <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
-                <Route element={<Loading />} path="/loading" />
-              </Route>
-            </Routes>
+                  element={<BasicLayout setTheme={setTheme} theme={theme} />}
+                >
+                  <Route element={<Index />} path="/summary" />
+                  <Route element={<Job />} path="/job" />
+                  <Route element={<Node />} path="/node" />
+                  <Route element={<Actors />} path="/actors" />
+                  <Route element={<Events />} path="/events" />
+                  <Route element={<Metrics />} path="/metrics" />
+                  {/* TODO(aguo): Refactor Logs component to use optional query
+                      params since react-router 6 doesn't support optional path params... */}
+                  <Route
+                    element={<Logs theme={theme as "light" | "dark"} />}
+                    path="/log"
+                  />
+                  <Route
+                    element={<Logs theme={theme as "light" | "dark"} />}
+                    path="/log/:host"
+                  />
+                  <Route
+                    element={<Logs theme={theme as "light" | "dark"} />}
+                    path="/log/:host/:path"
+                  />
+                  <Route element={<NodeDetail />} path="/node/:id" />
+                  <Route element={<JobDetail />} path="/job/:id" />
+                  <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
+                  <Route element={<Loading />} path="/loading" />
+                </Route>
+                {/* New IA routes below! */}
+                <Route element={<MainNavLayout />} path="/new">
+                  <Route element={<Navigate replace to="overview" />} path="" />
+                  <Route element={<OverviewPage />} path="overview" />
+                  <Route element={<NewIAClusterPage />} path="cluster">
+                    <Route element={<Nodes newIA />} path="" />
+                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                  </Route>
+                  <Route element={<NewIAJobsPage />} path="jobs">
+                    <Route element={<JobList newIA />} path="" />
+                    <Route element={<JobDetailPage />} path=":id" />
+                  </Route>
+                  <Route element={<NewIALogsPage />} path="logs">
+                    {/* TODO(aguo): Refactor Logs component to use optional query
+                        params since react-router 6 doesn't support optional path params... */}
+                    <Route element={<Logs newIA />} path="" />
+                    <Route element={<Logs newIA />} path=":host">
+                      <Route element={<Logs newIA />} path=":path" />
+                    </Route>
+                  </Route>
+                </Route>
+              </Routes>
+            </MainNavContext.Provider>
           </HashRouter>
         </GlobalContext.Provider>
       </Suspense>

@@ -16,6 +16,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -50,6 +51,13 @@ const NodeDetailPage = () => {
 
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          title: `Node: ${params.id}`,
+          id: "node-detail",
+          path: `/new/cluster/nodes/${params.id}`,
+        }}
+      />
       <Loading loading={msg.startsWith("Loading")} />
       <TitleCard title={`NODE - ${params.id}`}>
         <StatusChip
