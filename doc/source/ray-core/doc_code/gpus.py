@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __get_gpu_ids_start__
 import os
 import ray
@@ -93,3 +95,23 @@ def leak_gpus():
 
 
 # __leak_gpus_end__
+
+ray.shutdown()
+import ray.util.accelerators
+import ray._private.ray_constants as ray_constants
+
+v100_resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{ray.util.accelerators.NVIDIA_TESLA_V100}"
+ray.init(num_gpus=4, resources={v100_resource_name: 1})
+
+
+# __accelerator_type_start__
+from ray.util.accelerators import NVIDIA_TESLA_V100
+
+
+@ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+def train(data):
+    return "This function was run on a node with a Tesla V100 GPU"
+
+
+ray.get(train.remote(1))
+# __accelerator_type_end__
