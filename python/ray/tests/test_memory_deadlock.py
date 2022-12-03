@@ -14,8 +14,9 @@ from ray.tests.test_memory_pressure import (
     memory_monitor_refresh_ms,
 )
 
-LIFO_POLICY = 'retriable_lifo'
-DEPTH_POLICY = 'group_by_depth'
+LIFO_POLICY = "retriable_lifo"
+DEPTH_POLICY = "group_by_depth"
+
 
 @pytest.fixture(params=[LIFO_POLICY, DEPTH_POLICY])
 def ray_with_memory_monitor(request):
@@ -222,7 +223,7 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     a nested task which also allocates a block memory.
     This test runs two instances of task_with_nested_task.
     This should fail on the old policy and pass on the new policy."""
-    
+
     _, policy = ray_with_memory_monitor
     parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         (memory_usage_threshold - 0.05) / 2
@@ -245,8 +246,8 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         with pytest.raises(ray.exceptions.GetTimeoutError) as _:
             ray.get(ref2, timeout=120)
     else:
-            ray.get(ref1, timeout=120)
-            ray.get(ref2, timeout=120)
+        ray.get(ref1, timeout=120)
+        ray.get(ref2, timeout=120)
 
 
 @pytest.mark.skipif(
