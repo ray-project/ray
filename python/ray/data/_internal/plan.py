@@ -322,7 +322,7 @@ class ExecutionPlan:
 
                 stats_summary_string = stats.summary_string(include_parent=False)
                 logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    msg=stats_summary_string,
+                    stats_summary_string,
                 )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
