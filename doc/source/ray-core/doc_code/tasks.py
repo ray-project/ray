@@ -93,7 +93,6 @@ def return_multiple_as_generator():
 # until the full task is complete and all returns have been generated.
 a, b, c = return_multiple_as_generator.remote()
 # __generator_end__
-# fmt: on
 
 # __cancel_start__
 @ray.remote
@@ -117,7 +116,10 @@ def my_function():
     return 1
 
 
+# Override the default resource requirements.
+my_function.options(num_cpus=3).remote()
 # __resource_end__
+
 
 # __fraction_resource_start__
 # Ray also supports fractional resource requirements.
