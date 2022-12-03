@@ -167,9 +167,9 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
+        default_config = get_trainable_cls(algo).get_default_config()
         config = (
-            get_trainable_cls(algo)
-            .get_default_config()
+            default_config
             .environment(MultiAgentCartPole)
             .framework(fw)
             .rollouts(num_rollout_workers=1)
@@ -178,7 +178,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 policy_mapping_fn=policy_fn,
             )
             .resources(num_gpus=0)
-            .evaluation(evaluation_config={"explore": False})
+            .evaluation(evaluation_config=default_config.overrides(explore=False))
         )
 
         stop = {"episode_reward_mean": 100.0}
