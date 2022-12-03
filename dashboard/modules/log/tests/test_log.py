@@ -201,7 +201,7 @@ def test_log_index_texts(disable_aiohttp_cache, ray_start_cluster):
             nodes = result["data"]["summary"]
             assert len(nodes) == 2
             return True
-        except:
+        except Exception:
             logger.exception("Node number check failed:")
 
     wait_for_condition(_check_two_nodes_ready)
