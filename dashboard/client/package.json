@@ -35,6 +35,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^12.1.5",
+    "@testing-library/user-event": "^14.4.3",
     "@types/react": "^17.0.50",
     "@types/react-dom": "^17.0.17",
     "@typescript-eslint/eslint-plugin": "^5.41.0",
