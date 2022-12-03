@@ -62,7 +62,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     boost::this_thread::sleep_for(boost::chrono::seconds(2));
   }
 
-  NodeID AddServer() {
+  NodeID AddServer(bool alive = true) {
     std::promise<int> port_promise;
     auto node_id = NodeID::FromRandom();
 
@@ -71,6 +71,9 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
+    if (alive) {
+      server->GetServer().GetHealthCheckService()->SetServingStatus(node_id.Hex(), true);
+    }
     servers.emplace(node_id, server);
     health_check->AddNode(node_id, channel);
     ++port;
@@ -219,6 +222,17 @@ TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
 
   ASSERT_EQ(0, dead_nodes.size());
   ASSERT_EQ(0, health_check->GetAllNodes().size());
+}
+
+TEST_F(GcsHealthCheckManagerTest, NoRegister) {
+  auto node_id = AddServer(false);
+  for (auto i = 0; i < failure_threshold; ++i) {
+    Run(2);  // One for starting RPC and one for the RPC callback.
+  }
+
+  Run(2);
+  ASSERT_EQ(1, dead_nodes.size());
+  ASSERT_TRUE(dead_nodes.count(node_id));
 }
 
 int main(int argc, char **argv) {
