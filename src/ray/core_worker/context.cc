@@ -97,10 +97,6 @@ struct WorkerThreadContext {
     put_counter_ = 0;
   }
 
-  int64_t GetTaskDepth() { return task_depth_; }
-
-  void SetTaskDepth(int64_t depth) { task_depth_ = depth; }
-
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
@@ -117,9 +113,6 @@ struct WorkerThreadContext {
 
   /// Number of tasks that have been submitted from current task.
   uint64_t task_index_;
-
-  /// The depth of the task or actor.
-  int64_t task_depth_ = 0;
 
   static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
                 "Size of task_index_ doesn't match the unique bytes of a TaskID.");
@@ -179,7 +172,13 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-int64_t WorkerContext::GetTaskDepth() const { return GetThreadContext().GetTaskDepth(); }
+int64_t WorkerContext::GetTaskDepth() const {
+  auto task_spec = GetCurrentTask();
+  if (task_spec) {
+    return task_spec->GetDepth();
+  }
+  return 0;
+}
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
@@ -245,11 +244,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
 
-  // Don't set the depth if this is an actor task. The depth is already set by the actor
-  // creation task and we should keep that.
-  if (!task_spec.IsActorTask()) {
-    GetThreadContext().SetTaskDepth(task_spec.GetDepth());
-  }
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
   } else if (task_spec.IsActorCreationTask()) {
