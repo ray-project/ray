@@ -4,8 +4,8 @@ import tree
 import torch
 import numpy as np
 
-from ray.rllib.core.examples.simple_ppo_rl_module import (
-    SimplePPOModule,
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    PPOTorchRLModule,
     get_separate_encoder_config,
     get_shared_encoder_config,
     get_ppo_loss,
@@ -99,14 +99,14 @@ class TestMARLModule(unittest.TestCase):
         config2 = get_separate_encoder_config(env)
 
         multi_agent_dict = {
-            "module1": (SimplePPOModule, config1),
-            "module2": (SimplePPOModule, config2),
+            "module1": (PPOTorchRLModule, config1),
+            "module2": (PPOTorchRLModule, config2),
         }
         marl_module = TorchMultiAgentRLModule.from_multi_agent_config(multi_agent_dict)
 
         self.assertEqual(set(marl_module.keys()), {"module1", "module2"})
-        self.assertIsInstance(marl_module["module1"], SimplePPOModule)
-        self.assertIsInstance(marl_module["module2"], SimplePPOModule)
+        self.assertIsInstance(marl_module["module1"], PPOTorchRLModule)
+        self.assertIsInstance(marl_module["module2"], PPOTorchRLModule)
 
     def test_as_multi_agent(self):
 
@@ -118,10 +118,10 @@ class TestMARLModule(unittest.TestCase):
         assert isinstance(env.observation_space, (gym.spaces.Box, gym.spaces.Discrete))
 
         config = get_shared_encoder_config(env)
-        module = SimplePPOModule(config)
+        module = PPOTorchRLModule(config)
         marl_module = module.as_multi_agent()
 
-        self.assertNotIsInstance(marl_module, SimplePPOModule)
+        self.assertNotIsInstance(marl_module, PPOTorchRLModule)
         self.assertIsInstance(marl_module, TorchMultiAgentRLModule)
 
         self.assertEqual({DEFAULT_POLICY_ID}, set(marl_module.keys()))
@@ -136,7 +136,7 @@ class TestMARLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
 
         config = get_shared_encoder_config(env)
-        module = SimplePPOModule(config).as_multi_agent()
+        module = PPOTorchRLModule(config).as_multi_agent()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -146,7 +146,7 @@ class TestMARLModule(unittest.TestCase):
             set(module[DEFAULT_POLICY_ID].get_state().keys()),
         )
 
-        module2 = SimplePPOModule(config).as_multi_agent()
+        module2 = PPOTorchRLModule(config).as_multi_agent()
         state2 = module2.get_state()
         self.assertRaises(AssertionError, lambda: check(state, state2))
 
@@ -161,9 +161,9 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         config = get_shared_encoder_config(env)
-        module = SimplePPOModule(config).as_multi_agent()
+        module = PPOTorchRLModule(config).as_multi_agent()
 
-        module.add_module("test", SimplePPOModule(config))
+        module.add_module("test", PPOTorchRLModule(config))
         self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID, "test"})
         module.remove_module("test")
         self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID})
@@ -171,10 +171,10 @@ class TestMARLModule(unittest.TestCase):
         # test if add works with a conflicting name
         self.assertRaises(
             ValueError,
-            lambda: module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config)),
+            lambda: module.add_module(DEFAULT_POLICY_ID, PPOTorchRLModule(config)),
         )
 
-        module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config), override=True)
+        module.add_module(DEFAULT_POLICY_ID, PPOTorchRLModule(config), override=True)
 
     def test_rollouts(self):
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
@@ -182,7 +182,7 @@ class TestMARLModule(unittest.TestCase):
                 env_class = make_multi_agent(env_name)
                 env = env_class({"num_agents": 2})
                 config = get_shared_encoder_config(env)
-                module = SimplePPOModule(config).as_multi_agent()
+                module = PPOTorchRLModule(config).as_multi_agent()
 
                 def policy_map(agent_id):
                     return DEFAULT_POLICY_ID
@@ -232,7 +232,7 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         config = get_shared_encoder_config(env)
-        module = SimplePPOModule(config).as_multi_agent()
+        module = PPOTorchRLModule(config).as_multi_agent()
 
         def policy_map(agent_id):
             return DEFAULT_POLICY_ID
@@ -275,7 +275,8 @@ class TestMARLModule(unittest.TestCase):
         batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *batch)
         fwd_in = get_policy_data_from_agent_data(batch, policy_map)
         fwd_in = tree.map_structure(
-            lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, fwd_in
+            lambda x: to_tensor(x).squeeze(-1) if isinstance(x, np.ndarray) else x, 
+            fwd_in
         )
         fwd_out = module.forward_train(fwd_in)
 

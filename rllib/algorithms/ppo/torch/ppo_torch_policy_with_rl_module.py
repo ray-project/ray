@@ -28,7 +28,7 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPORLModule,
+    PPOTorchRLModule,
     PPOModuleConfig,
     FCConfig,
 )

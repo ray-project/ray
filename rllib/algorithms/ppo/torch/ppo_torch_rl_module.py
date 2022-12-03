@@ -161,7 +161,7 @@ class FCNet(nn.Module):
         return self.layers(x)
 
 
-class PPORLModule(TorchRLModule):
+class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__(config)
 
