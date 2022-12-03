@@ -202,8 +202,11 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
+<<<<<<< HEAD
             "actor_num_created": "0",
             "pg_num_created": "0",
+=======
+>>>>>>> 6b9691d68 ([Telemetry] Add a dashboard usage (#30730))
         }
 
 
@@ -1482,8 +1485,11 @@ def test_usage_stats_tags(
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",
+<<<<<<< HEAD
                 "actor_num_created": "0",
                 "pg_num_created": "0",
+=======
+>>>>>>> 6b9691d68 ([Telemetry] Add a dashboard usage (#30730))
             }
             assert num_nodes == 2
             return True
