@@ -52,7 +52,7 @@ class DatasetWriter(OutputWriter):
 
         self.format = output_config["format"]
         parsed_path = urllib.parse.urlparse(output_config["path"])
-        self.is_filepath = self.parsed_path.scheme == ""
+        self.is_filepath = parsed_path.scheme == ""
         if self.is_filepath:
             # In case of a true file path resolve it.
             self.path = pathlib.Path(parsed_path.path).expanduser().resolve()
