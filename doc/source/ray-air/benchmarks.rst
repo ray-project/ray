@@ -161,17 +161,13 @@ We test out the performance across different cluster sizes and data sizes.
       - **Data Size**
       - **Performance**
       - **Command**
-    * - 1 g3.8xlarge node (1 worker)
-      - 1 GB (1623 images)
-      - 79.76 s (2 epochs, 40.7 images/sec)
-      - `python pytorch_training_e2e.py --data-size-gb=1`
-    * - 1 g3.8xlarge node (1 worker)
+    * - 1 g4dn.8xlarge node (1 worker)
       - 20 GB (32460 images)
-      - 1388.33 s (2 epochs, 46.76 images/sec)
+      - 411.24 s (2 epochs, 157.86 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=20`
-    * - 4 g3.16xlarge nodes (16 workers)
+    * - 4 g4dn.12xlarge nodes (16 workers)
       - 100 GB (162300 images)
-      - 434.95 s (2 epochs, 746.29 images/sec)
+      - 361.64 s (2 epochs, 897.58 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=100 --num-workers=16`
 
 .. _pytorch-training-parity:
@@ -261,8 +257,8 @@ overhead of a few seconds for both methods that is negligible for longer trainin
 .. _`GPU image training script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106
 .. _`GPU prediction small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_g4_8xl.yaml#L6-L15
 .. _`GPU prediction large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4_g4_12xl.yaml#L6-L15
-.. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1.yaml#L6-L24
-.. _`GPU training large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_16.yaml#L5-L25
+.. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_g4_8xl.yaml#L6-L15
+.. _`GPU training large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4_g4_12xl.yaml#L6-L15
 .. _`Pytorch comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py
 .. _`Pytorch comparison CPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4.yaml
 .. _`Pytorch comparison GPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4.yaml
