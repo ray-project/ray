@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 
 
 def _invalid_objective(config):
@@ -520,6 +521,16 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def _on_trial_callbacks(self, searcher, trial_id):
+        result = {
+            TRAINING_ITERATION: 1,
+            self.metric_name: 1,
+            "config/a": 1.0,
+            "time_total_s": 1,
+        }
+        searcher.on_trial_result(trial_id, result)
+        searcher.on_trial_complete(trial_id, result)
+
     def _save(self, searcher):
         searcher.set_search_properties(
             metric=self.metric_name, mode="max", config=self.config
@@ -527,25 +538,17 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         searcher.suggest("1")
         searcher.suggest("2")
-        searcher.on_trial_complete(
-            "1", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
-        )
+        self._on_trial_callbacks(searcher, "1")
 
         searcher.save(self.checkpoint_path)
 
     def _restore(self, searcher):
-        searcher.set_search_properties(
-            metric=self.metric_name, mode="max", config=self.config
-        )
+        # Restoration shouldn't require another call to `searcher.set_search_properties`
         searcher.restore(self.checkpoint_path)
 
-        searcher.on_trial_complete(
-            "2", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
-        )
+        self._on_trial_callbacks(searcher, "2")
         searcher.suggest("3")
-        searcher.on_trial_complete(
-            "3", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
-        )
+        self._on_trial_callbacks(searcher, "3")
 
     def testAx(self):
         from ray.tune.search.ax import AxSearch
@@ -575,9 +578,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         )
         self._save(searcher)
 
-        searcher = BayesOptSearch(
-            space=self.config, metric=self.metric_name, mode="max"
-        )
+        searcher = BayesOptSearch()
         self._restore(searcher)
 
     def testBlendSearch(self):
@@ -587,7 +588,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = BlendSearch()
         self._restore(searcher)
 
     def testBOHB(self):
@@ -597,7 +598,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = TuneBOHB(space=self.config, metric=self.metric_name, mode="max")
+        searcher = TuneBOHB()
         self._restore(searcher)
 
     def testCFO(self):
@@ -607,7 +608,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
+        searcher = CFO()
         self._restore(searcher)
 
     def testDragonfly(self):
@@ -623,13 +624,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = DragonflySearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            domain="euclidean",
-            optimizer="random",
-        )
+        searcher = DragonflySearch()
         self._restore(searcher)
 
     def testHEBO(self):
@@ -639,7 +634,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = HEBOSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = HEBOSearch()
         self._restore(searcher)
 
     def testHyperopt(self):
@@ -648,13 +643,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = HyperOptSearch(
             space=self.config, metric=self.metric_name, mode="max"
         )
-
         self._save(searcher)
 
-        searcher = HyperOptSearch(
-            space=self.config, metric=self.metric_name, mode="max"
-        )
-
+        searcher = HyperOptSearch()
         self._restore(searcher)
 
     def testNevergrad(self):
@@ -667,35 +658,28 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             mode="max",
             optimizer=ng.optimizers.RandomSearch,
         )
-
         self._save(searcher)
 
-        searcher = NevergradSearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            optimizer=ng.optimizers.RandomSearch,
-        )
+        # `optimizer` is the only required argument
+        searcher = NevergradSearch(optimizer=ng.optimizers.RandomSearch)
         self._restore(searcher)
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
-
         self._save(searcher)
 
-        searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = OptunaSearch()
         self._restore(searcher)
 
     def testSkopt(self):
         from ray.tune.search.skopt import SkOptSearch
 
         searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
-
         self._save(searcher)
 
-        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = SkOptSearch()
         self._restore(searcher)
 
     def testZOOpt(self):
@@ -711,13 +695,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = ZOOptSearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            budget=100,
-            parallel_num=4,
-        )
+        searcher = ZOOptSearch()
         self._restore(searcher)
 
 
