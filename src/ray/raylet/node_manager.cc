@@ -445,7 +445,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
-  // Set the node health status to be alive
+  // GCS will check the health of the service named with the node id.
+  // Fail to setup this will lead to the health check failure.
   node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
       self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
