@@ -337,7 +337,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
       worker_killing_policy_(
-          WorkerKillingPolicyFactory(RayConfig::instance().worker_killing_policy())),
+          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),

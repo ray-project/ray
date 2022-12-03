@@ -25,7 +25,7 @@ namespace raylet {
 
 class WorkerKillerTestByDepth : public WorkerKillerTest {
  protected:
-  GroupByDepthWorkingKillingPolicy groupby_depth_worker_killing_policy_;
+  GroupByDepthWorkerKillingPolicy groupby_depth_worker_killing_policy_;
 };
 
 TEST_F(WorkerKillerTestByDepth, TestDepthGroupingEmptyWorkerPoolSelectsNullWorker) {

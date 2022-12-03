@@ -60,9 +60,9 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
   return sorted.front();
 }
 
-GroupByDepthWorkingKillingPolicy::GroupByDepthWorkingKillingPolicy() {}
+GroupByDepthWorkerKillingPolicy::GroupByDepthWorkerKillingPolicy() {}
 const std::shared_ptr<WorkerInterface>
-GroupByDepthWorkingKillingPolicy::SelectWorkerToKill(
+GroupByDepthWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
@@ -127,12 +127,12 @@ std::string WorkerKillingPolicy::WorkersDebugString(
   return result.str();
 }
 
-std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(
+std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
     std::string killing_policy_str) {
-  if (killing_policy_str == "group_by_depth") {
+  if (killing_policy_str == GROUP_BY_DEPTH_POLICY) {
     RAY_LOG(INFO) << "Running GroupByDepth policy.";
-    return std::make_shared<GroupByDepthWorkingKillingPolicy>();
-  } else if (killing_policy_str == "retriable_lifo") {
+    return std::make_shared<GroupByDepthWorkerKillingPolicy>();
+  } else if (killing_policy_str == LIFO_POLICY) {
     RAY_LOG(INFO) << "Running RetriableLIFO policy.";
     return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
   } else {
