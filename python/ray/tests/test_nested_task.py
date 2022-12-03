@@ -120,5 +120,35 @@ def test_actor_call_task_call_actor(shutdown_only):
     actor.run.remote(spawn_task=True)
 
 
+def test_crashed_actor_restores_depth(shutdown_only):
+    @ray.remote
+    class TestActor:
+        def __init__(self, expected_depth=1):
+            task_depth = ray._private.worker.global_worker.task_depth
+            assert task_depth == expected_depth
+
+        def crash(self):
+            assert False
+
+        def create_restartable_actor(self):
+            task_depth = ray._private.worker.global_worker.task_depth
+            actor = TestActor.options(max_restarts=1, max_task_retries=0).remote(
+                expected_depth=task_depth + 1
+            )
+            return actor
+
+        def run(self):
+            pass
+
+    actor = TestActor.options(max_restarts=1, max_task_retries=0).remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
+        ray.get(actor.crash.remote())
+
+    nested_actor = ray.get(actor.create_restartable_actor.remote())
+
+    ray.get(nested_actor.run.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
