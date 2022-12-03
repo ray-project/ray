@@ -14,9 +14,11 @@ from ray.tests.test_memory_pressure import (
     memory_monitor_refresh_ms,
 )
 
+LIFO_POLICY = 'retriable_lifo'
+DEPTH_POLICY = 'group_by_depth'
 
-@pytest.fixture
-def ray_with_memory_monitor(shutdown_only):
+@pytest.fixture(params=[LIFO_POLICY, DEPTH_POLICY])
+def ray_with_memory_monitor(request):
     with ray.init(
         address="local",
         object_store_memory=100 * 1024 * 1024,
@@ -27,28 +29,10 @@ def ray_with_memory_monitor(shutdown_only):
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 15,
             "min_memory_free_bytes": -1,
-            "worker_killing_policy": "retriable_lifo",
+            "worker_killing_policy": request.param,
         },
     ) as addr:
-        yield addr
-
-
-@pytest.fixture
-def ray_with_memory_monitor_depth_grouping_policy(shutdown_only):
-    with ray.init(
-        address="local",
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold": memory_usage_threshold,
-            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
-            "metrics_report_interval_ms": 100,
-            "task_failure_entry_ttl_ms": 2 * 60 * 1000,
-            "task_oom_retries": 15,
-            "min_memory_free_bytes": -1,
-            "worker_killing_policy": "group_by_depth",
-        },
-    ) as addr:
-        yield addr
+        yield (addr, request.param)
 
 
 # Utility for allocating locally (ray not involved)
@@ -237,7 +221,9 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     """task_with_nested_task allocates a block of memory, then runs
     a nested task which also allocates a block memory.
     This test runs two instances of task_with_nested_task.
-    We expect the second one to fail."""
+    This should fail on the old policy and pass on the new policy."""
+    
+    _, policy = ray_with_memory_monitor
     parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         (memory_usage_threshold - 0.05) / 2
     )
@@ -253,40 +239,14 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         parent_bytes, nested_bytes
     )
 
-    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
-        ray.get(ref1, timeout=120)
-    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
-        ray.get(ref2, timeout=120)
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_deadlock_two_sets_of_task_with_nested_task_new_policy(
-    ray_with_memory_monitor_depth_grouping_policy,
-):
-    """task_with_nested_task allocates a block of memory, then runs
-    a nested task which also allocates a block memory.
-    This test runs two instances of task_with_nested_task.
-    We expect the second one to fail."""
-    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        (memory_usage_threshold - 0.05) / 2
-    )
-    nested_bytes = (
-        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
-        - 2 * parent_bytes
-    )
-
-    ref1 = task_with_nested_task.options(max_retries=-1).remote(
-        parent_bytes, nested_bytes
-    )
-    ref2 = task_with_nested_task.options(max_retries=-1).remote(
-        parent_bytes, nested_bytes
-    )
-
-    ray.get(ref1, timeout=120)
-    ray.get(ref2, timeout=120)
+    if policy == LIFO_POLICY:
+        with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+            ray.get(ref1, timeout=120)
+        with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+            ray.get(ref2, timeout=120)
+    else:
+            ray.get(ref1, timeout=120)
+            ray.get(ref2, timeout=120)
 
 
 @pytest.mark.skipif(
