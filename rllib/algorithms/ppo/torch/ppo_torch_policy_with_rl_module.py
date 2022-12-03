@@ -134,7 +134,7 @@ class PPOTorchPolicyWithRLModule(
             free_log_std=free_log_std,
         )
 
-        return PPORLModule(config_)
+        return PPOTorchRLModule(config_)
 
     @override(TorchPolicyV2)
     def loss(

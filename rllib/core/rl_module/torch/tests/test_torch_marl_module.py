@@ -275,8 +275,8 @@ class TestMARLModule(unittest.TestCase):
         batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *batch)
         fwd_in = get_policy_data_from_agent_data(batch, policy_map)
         fwd_in = tree.map_structure(
-            lambda x: to_tensor(x).squeeze(-1) if isinstance(x, np.ndarray) else x, 
-            fwd_in
+            lambda x: to_tensor(x).squeeze(-1) if isinstance(x, np.ndarray) else x,
+            fwd_in,
         )
         fwd_out = module.forward_train(fwd_in)
 
