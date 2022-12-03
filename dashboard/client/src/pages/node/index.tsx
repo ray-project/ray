@@ -14,7 +14,7 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
@@ -23,6 +23,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
 
@@ -65,7 +66,7 @@ export const brpcLinkChanger = (href: string) => {
   return `http://${href}`;
 };
 
-export const NodeCard = (props: { node: NodeDetail }) => {
+export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   const { node } = props;
 
   if (!node) {
@@ -82,7 +83,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={`node/${nodeId}`}>{nodeId}</Link>{" "}
+        <Link to={props.newIA ? `nodes/${nodeId}` : `/node/${nodeId}`}>
+          {nodeId}
+        </Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -145,7 +148,15 @@ export const NodeCard = (props: { node: NodeDetail }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link to={`/log/${encodeURIComponent(logUrl)}`}>log</Link>
+            <Link
+              to={
+                props.newIA
+                  ? `/new/logs/${encodeURIComponent(logUrl)}`
+                  : `/log/${encodeURIComponent(logUrl)}`
+              }
+            >
+              log
+            </Link>
           </Button>
         </Grid>
       </Grid>
@@ -153,7 +164,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   );
 };
 
-const Nodes = () => {
+const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
   const classes = useStyles();
   const {
     msg,
@@ -284,6 +295,7 @@ const Nodes = () => {
                       node={node}
                       isRefreshing={isRefreshing}
                       startExpanded={nodeList.length === 1}
+                      newIA={newIA}
                     />
                   ))}
               </TableBody>
@@ -299,13 +311,31 @@ const Nodes = () => {
               )
               .map((e) => (
                 <Grid item xs={6}>
-                  <NodeCard node={e} />
+                  <NodeCard node={e} newIA={newIA} />
                 </Grid>
               ))}
           </Grid>
         )}
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Cluster page for the new IA
+ */
+export const NewIAClusterPage = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Cluster",
+          id: "cluster",
+          path: "/new/cluster",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 
