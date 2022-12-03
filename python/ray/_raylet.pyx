@@ -434,9 +434,8 @@ cdef prepare_args_internal(
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                    c_arg, c_owner_address)
-            if not op_status.ok():
-                check_status(op_status)
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
@@ -1574,8 +1573,7 @@ cdef class CoreWorker:
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
                 c_object_ids, timeout_ms, &results)
-        if not op_status.ok():
-            check_status(op_status)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1781,8 +1779,7 @@ cdef class CoreWorker:
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
-        if not op_status.ok():
-            check_status(op_status)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2335,9 +2332,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address
         op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id, c_owner_address)
-        if not op_status.ok():
-            check_status(op_status)
+                c_object_id, &c_owner_address)
+        check_status(op_status)
         return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
@@ -2347,8 +2343,7 @@ cdef class CoreWorker:
             c_string serialized_object_status
         op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
-        if not op_status.ok():
-            check_status(op_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

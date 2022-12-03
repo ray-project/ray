@@ -186,7 +186,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CRayStatus GetOwnerAddress(const CObjectID &object_id,
-                                   CAddress &owner_address) const
+                                   CAddress *owner_address) const
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 

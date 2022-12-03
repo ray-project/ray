@@ -883,24 +883,14 @@ const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
-  auto status = GetOwnerAddress(object_id, owner_address);
-  RAY_CHECK(status.ok())
-      << "An application is trying to access a Ray object whose owner is unknown ("
-      << object_id
-      << "). "
-         "Please make sure that all Ray objects you are trying to access are part of "
-         "the current Ray session. Note that "
-         "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
-         "does not know which task created them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+  auto status = GetOwnerAddress(object_id, &owner_address);
+  RAY_CHECK(status.ok()) << status.message();
   return owner_address;
 }
 
 Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
-                                   rpc::Address &owner_address) const {
-  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+                                   rpc::Address *owner_address) const {
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
     std::ostringstream stream;
     stream << "An application is trying to access a Ray object whose owner is unknown"
@@ -1437,7 +1427,7 @@ Status CoreWorker::GetLocationFromOwner(
 
   for (const auto &object_id : object_ids) {
     rpc::Address owner_address;
-    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, owner_address));
+    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
     auto object_location_request = request.mutable_object_location_request();

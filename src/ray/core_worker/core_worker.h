@@ -391,7 +391,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// us, or the caller previously added the ownership information (via
   /// RegisterOwnershipInfoAndResolveFuture).
   /// \param[out] The RPC address of the worker that owns this object.
-  Status GetOwnerAddress(const ObjectID &object_id, rpc::Address &owner_address) const;
+  Status GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
 
   /// Get the RPC address of the worker that owns the given object. If the
   /// object has no owner, then we terminate the process.
