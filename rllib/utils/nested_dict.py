@@ -37,6 +37,7 @@ def _flatten_index(index: SeqStrType) -> Sequence[str]:
     else:
         return tuple(itertools.chain.from_iterable([_flatten_index(y) for y in index]))
 
+
 @DeveloperAPI
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
