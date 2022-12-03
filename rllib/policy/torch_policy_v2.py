@@ -1036,6 +1036,8 @@ class TorchPolicyV2(Policy):
 
         Returns:
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.
+            The input_dict is modified in-place to include a numpy copy of the computed 
+            actions under `SampleBatch.ACTIONS`.
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -1109,7 +1111,9 @@ class TorchPolicyV2(Policy):
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
 
-        input_dict[SampleBatch.ACTIONS] = actions
+        # convert to numpy so that the type of objects in the SampleBatch are 
+        # consistent.
+        input_dict[SampleBatch.ACTIONS] = convert_to_numpy(actions)
 
         # Add default and custom fetches.
         if not extra_fetches:

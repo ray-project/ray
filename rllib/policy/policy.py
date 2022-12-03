@@ -1337,11 +1337,11 @@ class Policy(metaclass=ABCMeta):
         new_batch = self._get_dummy_batch_from_view_requirements(sample_batch_size)
         # try to re-use the output of the previous run to avoid overriding things that
         # would break (e.g. scale = 0 of Normal distribution cannot be zero)
+        self._dummy_batch.set_get_interceptor(None)
         for k in new_batch:
             if k not in self._dummy_batch:
                 self._dummy_batch[k] = new_batch[k]
 
-        self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
