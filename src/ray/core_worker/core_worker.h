@@ -327,6 +327,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
+  const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
+
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {

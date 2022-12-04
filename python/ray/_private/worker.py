@@ -488,6 +488,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def task_depth(self):
+        return self.core_worker.get_task_depth()
+
+    @property
     def namespace(self):
         return self.core_worker.get_job_config().ray_namespace
 

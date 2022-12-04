@@ -109,6 +109,7 @@ py_test_module_list(
     "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
+    "test_nested_task.py",
     "test_metrics.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",

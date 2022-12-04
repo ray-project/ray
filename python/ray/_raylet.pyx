@@ -1521,6 +1521,9 @@ cdef class CoreWorker:
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
 
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
+
     def get_current_job_id(self):
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
