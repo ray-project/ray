@@ -218,12 +218,9 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
-        if storage is not None:
-            self.storage = storage
-        else:
-            self.storage = os.environ.get(
-                ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
-            )
+        self.storage = storage or os.environ.get(
+            ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
+        )
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )

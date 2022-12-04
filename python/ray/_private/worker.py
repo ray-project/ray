@@ -1437,7 +1437,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
+            driver_mode=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1497,6 +1501,7 @@ def init(
                 shutdown_at_exit=False,
                 spawn_reaper=False,
                 connect_only=True,
+                driver_mode=True,
             )
         except ConnectionError:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
