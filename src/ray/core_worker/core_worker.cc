@@ -928,17 +928,7 @@ void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
                                        rpc::Address *owner_address,
                                        std::string *serialized_object_status) {
   auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
-  RAY_CHECK(status.ok())
-      << "An application is trying to access a Ray object whose owner is unknown ("
-      << object_id
-      << "). "
-         "Please make sure that all Ray objects you are trying to access are part of "
-         "the current Ray session. Note that "
-         "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
-         "does not know which task created them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+  RAY_CHECK(status.ok()) << status.message();
 }
 
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
