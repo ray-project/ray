@@ -12,7 +12,7 @@ from ray.data.preprocessors import BatchMapper
 
 def preprocess(image_batch: np.ndarray) -> np.ndarray:
     """
-    User Pytorch code to transform user image with outer dimension of batch size.
+    User PyTorch code to transform user image with outer dimension of batch size.
     """
     preprocess = transforms.Compose(
         [
