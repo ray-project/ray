@@ -73,6 +73,7 @@ TEST(RayClusterModeTest, FullTest) {
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
+
   /// put and get object
   auto obj = ray::Put(12345);
   auto get_result = *(ray::Get(obj));
@@ -495,6 +496,7 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
 }
 
 TEST(RayClusterModeTest, NamespaceTest) {
+  ray::Init();
   // Create a named actor in namespace `isolated_ns`.
   std::string actor_name_in_isolated_ns = "named_actor_in_isolated_ns";
   std::string isolated_ns_name = "isolated_ns";
@@ -517,8 +519,8 @@ TEST(RayClusterModeTest, NamespaceTest) {
   // Create a named actor in job default namespace.
   std::string actor_name_in_default_ns = "actor_name_in_default_ns";
   actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-              .SetName(actor_name_in_default_ns)
-              .Remote();
+                    .SetName(actor_name_in_default_ns)
+                    .Remote();
   initialized_obj = actor.Task(&Counter::Initialized).Remote();
   EXPECT_TRUE(*initialized_obj.Get());
   // It is visible to job default namespace.
