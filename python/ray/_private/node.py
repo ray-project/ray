@@ -57,7 +57,7 @@ class Node:
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
         connect_only: bool = False,
-        driver_mode: bool = False,
+        default_worker: bool = False,
     ):
         """Start a node.
 
@@ -72,7 +72,7 @@ class Node:
                 other spawned processes if this process dies unexpectedly.
             connect_only: If true, connect to the node without starting
                 new processes.
-            driver_mode: Whether it's running from a driver or not.
+            default_worker: Whether it's running from a ray worker or not
         """
         if shutdown_at_exit:
             if connect_only:
@@ -80,7 +80,7 @@ class Node:
                     "'shutdown_at_exit' and 'connect_only' cannot both be true."
                 )
             self._register_shutdown_hooks()
-        self._driver_mode = driver_mode
+        self._default_worker = default_worker
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
@@ -182,7 +182,7 @@ class Node:
             self._session_name = f"session_{date_str}_{os.getpid()}"
         else:
             if ray_params.session_name is None:
-                assert driver_mode
+                assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "session_name",
@@ -201,7 +201,7 @@ class Node:
             self._webui_url = None
         else:
             if ray_params.webui is None:
-                assert driver_mode
+                assert not self._default_worker
                 self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
             else:
                 self._webui_url = (
@@ -214,7 +214,7 @@ class Node:
         if head:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
-            if driver_mode:
+            if not self._default_worker:
                 storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
             else:
                 storage_uri = ray_params.storage
@@ -401,7 +401,7 @@ class Node:
             self._temp_dir = self._ray_params.temp_dir
         else:
             if self._ray_params.temp_dir is None:
-                assert self._driver_mode
+                assert not self._default_worker
                 temp_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "temp_dir",
@@ -418,7 +418,7 @@ class Node:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
             if self._temp_dir is None or self._session_name is None:
-                assert self._driver_mode
+                assert not self._default_worker
                 session_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "session_dir",

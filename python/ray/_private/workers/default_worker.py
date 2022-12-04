@@ -189,6 +189,7 @@ if __name__ == "__main__":
         shutdown_at_exit=False,
         spawn_reaper=False,
         connect_only=True,
+        default_worker=True,
     )
 
     # NOTE(suquark): We must initialize the external storage before we
