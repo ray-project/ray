@@ -25,11 +25,21 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
       gcs_client_(std::move(gcs_client)) {}
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
+  absl::MutexLock lock(&mutex_);
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
   buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
+
+  // Reporting to GCS, set up gcs client and and events flushing.
+  auto status = gcs_client_->Connect(io_service_);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
+                   << status.ToString() << "].";
+
+    return status;
+  }
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -44,18 +54,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     io_service_.run();
     RAY_LOG(INFO) << "Task event buffer io service stopped.";
   });
-
-  // Reporting to GCS, set up gcs client and and events flushing.
-  auto status = gcs_client_->Connect(io_service_);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
-                   << status.ToString() << "].";
-
-    // Early clean up resources.
-    gcs_client_.reset();
-    Stop();
-    return status;
-  }
 
   if (!auto_flush) {
     return Status::OK();
@@ -83,12 +81,7 @@ void TaskEventBufferImpl::Stop() {
     absl::MutexLock lock(&mutex_);
     // It's now safe to disconnect the GCS client since it will not be used by any
     // callbacks.
-    if (gcs_client_) {
-      // Stop GCS client
-      gcs_client_->Disconnect();
-    }
-
-    gcs_client_.reset();
+    gcs_client_->Disconnect();
   }
 }
 
@@ -112,8 +105,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   {
     absl::MutexLock lock(&mutex_);
 
-    // TODO(rickyx): change this interval
-    RAY_LOG_EVERY_MS(INFO, 5000)
+    RAY_LOG_EVERY_MS(INFO, 15000)
         << "Pushed task state events to GCS. [total_bytes="
         << (1.0 * total_events_bytes_) / 1024 / 1024
         << "MiB][total_count=" << total_num_events_
@@ -140,7 +132,6 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     num_task_events_dropped = num_task_events_dropped_;
     num_task_events_dropped_ = 0;
   }
-  // mutex released. Below operations should be lock-free.
 
   // Merge multiple events from a single task attempt run into one task event.
   absl::flat_hash_map<std::pair<std::string, int>, rpc::TaskEvents> task_events_map;
@@ -159,32 +150,38 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     events_by_task->Swap(&itr.second);
   }
 
-  // Some debug tracking.
-  total_num_events_ += num_task_events;
-  total_events_bytes_ += data->ByteSizeLong();
+  {
+    // Sending the protobuf to GCS.
+    absl::MutexLock lock(&mutex_);
+    // Some debug tracking.
+    total_num_events_ += num_task_events;
+    total_events_bytes_ += data->ByteSizeLong();
 
-  auto on_complete = [this, num_task_events](const Status &status) {
+    auto on_complete = [this, num_task_events](const Status &status) {
+      absl::MutexLock lock(&mutex_);
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Failed to push " << num_task_events
+                         << " task state events to GCS. Data will be lost. [status="
+                         << status.ToString() << "]";
+      } else {
+        RAY_LOG(DEBUG) << "Push " << num_task_events << " task state events to GCS.";
+      }
+      grpc_in_progress_ = false;
+    };
+
+    // The flag should be unset when on_complete is invoked.
+    grpc_in_progress_ = true;
+    auto status =
+        gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to push " << num_task_events
-                       << " task state events to GCS. Data will be lost. [status="
-                       << status.ToString() << "]";
-    } else {
-      RAY_LOG(DEBUG) << "Push " << num_task_events << " task state events to GCS.";
+      // If we couldn't even send the data by invoking client side callbacks, there's
+      // something seriously wrong, and losing data in this case should not be too
+      // worse. So we will silently drop these task events.
+      RAY_LOG(WARNING)
+          << "Failed to push task state events to GCS. Data will be lost. [status="
+          << status.ToString() << "]";
+      grpc_in_progress_ = false;
     }
-    grpc_in_progress_ = false;
-  };
-
-  // The flag should be unset when on_complete is invoked.
-  grpc_in_progress_ = true;
-  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
-  if (!status.ok()) {
-    // If we couldn't even send the data by invoking client side callbacks, there's
-    // something seriously wrong, and losing data in this case should not be too
-    // worse. So we will silently drop these task events.
-    RAY_LOG(WARNING)
-        << "Failed to push task state events to GCS. Data will be lost. [status="
-        << status.ToString() << "]";
-    grpc_in_progress_ = false;
   }
 }
 

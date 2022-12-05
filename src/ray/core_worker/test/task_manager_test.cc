@@ -57,7 +57,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(void, FlushEvents, (bool forced), (override));
 
-  MOCK_METHOD(bool, Start, (bool manual_flush), (override));
+  MOCK_METHOD(Status, Start, (bool manual_flush), (override));
 
   MOCK_METHOD(void, Stop, (), (override));
 };
@@ -69,6 +69,7 @@ class TaskManagerTest : public ::testing::Test {
       : addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             addr_,
             publisher_.get(),
@@ -94,7 +95,7 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            std::make_shared<MockTaskEventBuffer>()) {}
+            task_event_buffer_mock_.get()) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -108,6 +109,7 @@ class TaskManagerTest : public ::testing::Test {
   rpc::Address addr_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;

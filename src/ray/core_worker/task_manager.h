@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_event_buffer.h"  // TaskEventBuffer
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -93,7 +93,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes,
-              std::shared_ptr<worker::TaskEventBuffer> task_event_buffer)
+              worker::TaskEventBuffer *task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
@@ -518,8 +518,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 
-  /// A task state events buffer initialized from the CoreWorker.
-  std::shared_ptr<worker::TaskEventBuffer> task_event_buffer_;
+  /// A task state events buffer initialized managed by the CoreWorker.
+  worker::TaskEventBuffer *task_event_buffer_ = nullptr;
 
   friend class TaskManagerTest;
 };
