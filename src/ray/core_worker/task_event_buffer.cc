@@ -85,7 +85,7 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
-void TaskEventBufferImpl::AddTaskEvents(rpc::TaskEvents task_events) {
+void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   absl::MutexLock lock(&mutex_);
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
@@ -135,10 +135,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
   // Merge multiple events from a single task attempt run into one task event.
   absl::flat_hash_map<std::pair<std::string, int>, rpc::TaskEvents> task_events_map;
-  for (auto events : task_events) {
+  for (auto event : task_events) {
     auto &task_events_itr =
-        task_events_map[std::make_pair(events.task_id(), events.attempt_number())];
-    task_events_itr.MergeFrom(events);
+        task_events_map[std::make_pair(event.task_id(), event.attempt_number())];
+    task_events_itr.MergeFrom(event);
   }
 
   // Convert to rpc::TaskEventsData
@@ -181,6 +181,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
           << "Failed to push task state events to GCS. Data will be lost. [status="
           << status.ToString() << "]";
       grpc_in_progress_ = false;
+
+      // Fail to send, currently dropping events.
+      num_task_events_dropped_ += num_task_events;
     }
   }
 }

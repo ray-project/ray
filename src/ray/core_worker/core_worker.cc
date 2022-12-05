@@ -2276,7 +2276,7 @@ Status CoreWorker::ExecuteTask(
       task_event.set_attempt_number(task_spec.AttemptNumber());
       auto state_updates = task_event.mutable_state_updates();
       state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-      task_event_buffer_->AddTaskEvents(std::move(task_event));
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
 
     worker_context_.SetCurrentTask(task_spec);

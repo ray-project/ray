@@ -925,7 +925,7 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
     // Do nothing
   }
   }
-  task_event_buffer_->AddTaskEvents(std::move(task_event));
+  task_event_buffer_->AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

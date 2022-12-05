@@ -53,10 +53,10 @@ class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
 
-  /// Add a task event to be reported..
+  /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvents(rpc::TaskEvents task_events) = 0;
+  virtual void AddTaskEvent(rpc::TaskEvents task_events) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -64,6 +64,9 @@ class TaskEventBuffer {
   /// `RAY_task_events_report_interval_ms`, and send task events stored in a buffer to
   /// GCS. If GCS has not responded to a previous flush, it will defer the flushing to
   /// the next interval (if not forced.)
+  ///
+  /// Before flushing to GCS, events from a single task attempt will also be coalesced
+  /// into one rpc::TaskEvents as an optimization.
   ///
   /// \param forced When set to true, buffered events will be sent to GCS even if GCS has
   ///       not responded to the previous flush. A forced flush will be called before
@@ -95,7 +98,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvents(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
+  void AddTaskEvent(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
