@@ -84,52 +84,6 @@ def test_multiple_waits_and_gets(shutdown_only):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_caching_functions_to_run(shutdown_only):
-    # Test that we export functions to run on all workers before the driver
-    # is connected.
-    def f(worker_info):
-        sys.path.append(1)
-
-    ray._private.worker.global_worker.run_function_on_all_workers(f)
-
-    def f(worker_info):
-        sys.path.append(2)
-
-    ray._private.worker.global_worker.run_function_on_all_workers(f)
-
-    def g(worker_info):
-        sys.path.append(3)
-
-    ray._private.worker.global_worker.run_function_on_all_workers(g)
-
-    def f(worker_info):
-        sys.path.append(4)
-
-    ray._private.worker.global_worker.run_function_on_all_workers(f)
-
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def get_state():
-        time.sleep(1)
-        return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
-
-    res1 = get_state.remote()
-    res2 = get_state.remote()
-    assert ray.get(res1) == (1, 2, 3, 4)
-    assert ray.get(res2) == (1, 2, 3, 4)
-
-    # Clean up the path on the workers.
-    def f(worker_info):
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-
-    ray._private.worker.global_worker.run_function_on_all_workers(f)
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
