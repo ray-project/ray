@@ -109,7 +109,7 @@ class ARSConfig(AlgorithmConfig):
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
         self.evaluation(
-            evaluation_config=ARSConfig.overrides(
+            evaluation_config=AlgorithmConfig.overrides(
                 num_envs_per_worker=1,
                 observation_filter="NoFilter",
             )

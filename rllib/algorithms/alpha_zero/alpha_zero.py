@@ -137,7 +137,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"
         # Extra configuration that disables exploration.
-        self.evaluation(evaluation_config=AlphaZeroConfig.overrides(
+        self.evaluation(evaluation_config=AlgorithmConfig.overrides(
             mcts_config={
                 "argmax_tree_policy": True,
                 "add_dirichlet_noise": False,

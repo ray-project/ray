@@ -472,7 +472,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         def gen_policy():
             config = PGConfig.overrides(
                 gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                n_step=random.choice([1, 2, 3, 4, 5]),
+                lr=random.choice([0.001, 0.002, 0.003]),
             )
             return PolicySpec(config=config)
 
