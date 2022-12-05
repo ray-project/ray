@@ -150,7 +150,7 @@ class RayClusterOnSpark:
                     f"{repr(e)}"
                 )
             try:
-                self.head_proc.kill()
+                self.head_proc.terminate()
             except Exception as e:
                 # swallow exception.
                 _logger.warning(
@@ -171,7 +171,7 @@ def _convert_ray_node_options(options):
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 40
-_BACKGROUND_JOB_STARTUP_TIMEOUT = 30
+_BACKGROUND_JOB_STARTUP_WAIT = 30
 _RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL = 3
 
 
@@ -198,7 +198,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 011.")
+    _logger.warning("Test version 012.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -303,17 +303,13 @@ def _init_ray_cluster(
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
-    ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
-
-    temp_dir_unique_suffix = uuid.uuid4().hex[:4]
+    temp_dir_unique_suffix = uuid.uuid4().hex[:8]
 
     # TODO: Set individual temp dir for ray worker nodes, and auto GC temp data when ray node exits
     #  See https://github.com/ray-project/ray/issues/28876#issuecomment-1322016494
     if ray_temp_root_dir is None:
         if is_in_databricks_runtime():
-            # TODO: Change `ray_temp_root_dir` to use "/local_disk0/tmp" once
-            #  https://github.com/ray-project/ray/issues/30677 is fixed.
-            ray_temp_root_dir = "/tmp"
+            ray_temp_root_dir = "/local_disk0/tmp"
         else:
             ray_temp_root_dir = "/tmp"
     ray_temp_dir = os.path.join(
@@ -322,8 +318,9 @@ def _init_ray_cluster(
     os.makedirs(ray_temp_dir, exist_ok=True)
 
     ray_head_node_cmd = [
-        ray_exec_path,
-        "start",
+        sys.executable,
+        "-m",
+        "ray.util.spark.start_ray_node",
         f"--temp-dir={ray_temp_dir}",
         "--block",
         "--head",
@@ -363,7 +360,7 @@ def _init_ray_cluster(
     if not check_port_open(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
-            ray_head_proc.kill()
+            ray_head_proc.terminate()
             # wait killing complete.
             time.sleep(0.5)
 
@@ -422,8 +419,9 @@ def _init_ray_cluster(
             ray_head_ip, min_port=10000, max_port=20000
         )
         ray_worker_node_cmd = [
-            ray_exec_path,
-            "start",
+            sys.executable,
+            "-m",
+            "ray.util.spark.start_ray_node",
             f"--temp-dir={ray_temp_dir}",
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
@@ -503,7 +501,7 @@ def _init_ray_cluster(
         #  submitted task.
         #  Currently all workers uses the same ray_temp_dir as head side,
         #  and one machine might run mulitple ray workers concurrently,
-        #  so we cannot directly delele the temp dir here.
+        #  so we cannot directly delete the temp dir here.
 
         # NB: Not reachable.
         yield 0
@@ -560,15 +558,15 @@ def _init_ray_cluster(
             #  For case 1 and 3, only ray workers are killed, but driver side ray head might still
             #  be running and the ray context might be in connected status. In order to disconnect
             #  and kill the ray head node, a call to `ray_cluster_handler.shutdown()` is performed.
-            ray_cluster_handler.background_job_exception = e
             ray_cluster_handler.shutdown()
+            ray_cluster_handler.background_job_exception = e
 
     try:
         threading.Thread(
             target=inheritable_thread_target(background_job_thread_fn), args=()
         ).start()
 
-        time.sleep(_BACKGROUND_JOB_STARTUP_TIMEOUT)  # wait background spark task starting.
+        time.sleep(_BACKGROUND_JOB_STARTUP_WAIT)  # wait background spark task starting.
 
         if is_in_databricks_runtime():
             try:
