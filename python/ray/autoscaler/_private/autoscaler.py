@@ -3,6 +3,7 @@ import logging
 import math
 import operator
 import os
+import queue
 import subprocess
 import threading
 import time
@@ -13,7 +14,6 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 
 import grpc
 import yaml
-from six.moves import queue
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
@@ -107,6 +107,7 @@ class AutoscalerSummary:
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
+    pending_resources: Dict[str, int] = field(default_factory=lambda: {})
 
 
 class NonTerminatedNodes:
@@ -138,6 +139,10 @@ class NonTerminatedNodes:
         # time because on some clients, there may be pagination and the
         # underlying api calls may be done lazily.
         self.non_terminated_nodes_time = time.time() - start_time
+        logger.info(
+            f"The autoscaler took {round(self.non_terminated_nodes_time, 3)}"
+            " seconds to fetch the list of non-terminated nodes."
+        )
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
         """Remove nodes we're in the process of terminating from internal
@@ -357,13 +362,7 @@ class StandardAutoscaler:
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
-            # Don't abort the autoscaler if the K8s API server is down.
-            # https://github.com/ray-project/ray/issues/12255
-            is_k8s_connection_error = self.config["provider"][
-                "type"
-            ] == "kubernetes" and isinstance(e, MaxRetryError)
-            if not is_k8s_connection_error:
-                self.num_failures += 1
+            self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
@@ -383,6 +382,14 @@ class StandardAutoscaler:
 
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
+
+        # Back off the update if the provider says it's not safe to proceed.
+        if not self.provider.safe_to_scale():
+            logger.info(
+                "Backing off of autoscaler update."
+                f" Will try again in {self.update_interval_s} seconds."
+            )
+            return
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
@@ -436,9 +443,17 @@ class StandardAutoscaler:
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
 
+        # Execute optional end-of-update logic.
+        # Keep this method call at the end of autoscaler._update().
+        self.provider.post_process()
+
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
         update_time = time.time() - self.last_update_time
+        logger.info(
+            f"The autoscaler took {round(update_time, 3)}"
+            " seconds to complete the update iteration."
+        )
         self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
@@ -1419,7 +1434,7 @@ class StandardAutoscaler:
                 completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
                 is_pending = status not in completed_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type, status))
+                    pending_nodes.append((node_id, ip, node_type, status))
                     non_failed.add(node_id)
 
         failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
@@ -1431,13 +1446,28 @@ class StandardAutoscaler:
             if count:
                 pending_launches[node_type] = count
 
+        pending_resources = {}
+        for node_resources in self.resource_demand_scheduler.calculate_node_resources(
+            nodes=[node_id for node_id, _, _, _ in pending_nodes],
+            pending_nodes=pending_launches,
+            # We don't fill this field out because we're intentionally only
+            # passing pending nodes (which aren't tracked by load metrics
+            # anyways).
+            unused_resources_by_ip={},
+        )[0]:
+            for key, value in node_resources.items():
+                pending_resources[key] = value + pending_resources.get(key, 0)
+
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
-            pending_nodes=pending_nodes,
+            pending_nodes=[
+                (ip, node_type, status) for _, ip, node_type, status in pending_nodes
+            ],
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
             node_availability_summary=self.node_provider_availability_tracker.summary(),
+            pending_resources=pending_resources,
         )
 
     def info_string(self):

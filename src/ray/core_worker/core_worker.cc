@@ -66,18 +66,21 @@ class ScopedTaskMetricSetter {
     auto task_spec = ctx.GetCurrentTask();
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
+      is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
+      is_retry_ = false;
     }
-    ctr_.SetMetricStatus(task_name_, status);
+    ctr_.SetMetricStatus(task_name_, status, is_retry_);
   }
 
-  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_); }
+  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_, is_retry_); }
 
  private:
   rpc::TaskStatus status_;
   TaskCounter &ctr_;
   std::string task_name_;
+  bool is_retry_;
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
@@ -171,7 +174,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              &local_raylet_id,
                                              &assigned_port,
                                              &serialized_job_config,
-                                             options_.startup_token);
+                                             options_.startup_token,
+                                             options_.entrypoint);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -317,19 +321,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-        if (delay) {
+        if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
-          uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-          RAY_LOG(INFO) << "Will resubmit task after a " << delay
+          RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
+          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+          to_resubmit_.push(std::move(task_to_retry));
         } else {
-          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                        << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -800,9 +802,10 @@ void CoreWorker::InternalHeartbeat() {
   std::vector<TaskSpecification> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
-    while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
-      tasks_to_resubmit.push_back(std::move(to_resubmit_.front().second));
-      to_resubmit_.pop_front();
+    while (!to_resubmit_.empty() &&
+           current_time_ms() > to_resubmit_.top().execution_time_ms) {
+      tasks_to_resubmit.push_back(std::move(to_resubmit_.top().task_spec));
+      to_resubmit_.pop();
     }
   }
 
@@ -1259,20 +1262,11 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto ready_iter = ready.find(mem_id);
-    if (ready_iter != ready.end()) {
-      std::vector<std::shared_ptr<RayObject>> found;
-      RAY_CHECK_OK(memory_store->Get({mem_id},
-                                     /*num_objects=*/1,
-                                     /*timeout=*/0,
-                                     worker_context,
-                                     /*remote_after_get=*/false,
-                                     &found));
-      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        plasma_object_ids.insert(mem_id);
-        ready.erase(ready_iter);
-        memory_object_ids.erase(current);
-      }
+    auto found = memory_store->GetIfExists(mem_id);
+    if (found != nullptr && found->IsInPlasmaError()) {
+      plasma_object_ids.insert(mem_id);
+      ready.erase(mem_id);
+      memory_object_ids.erase(current);
     }
   }
 }
@@ -1956,9 +1950,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
 
-  // Depth shouldn't matter for an actor task, but for consistency it should be
-  // the same as the actor creation task's depth.
-  int64_t depth = worker_context_.GetTaskDepth();
+  // The depth of the actor task is depth of the caller + 1
+  // The caller is not necessarily the creator of the actor.
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
                       actor_task_id,
@@ -2255,7 +2249,7 @@ Status CoreWorker::ExecuteTask(
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name);
+    task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
   }
 
   if (!options_.is_local_mode) {
@@ -2398,7 +2392,7 @@ Status CoreWorker::ExecuteTask(
   }
 
   if (!options_.is_local_mode) {
-    task_counter_.MoveRunningToFinished(func_name);
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
@@ -2658,7 +2652,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  task_counter_.IncPending(func_name);
+  task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.

@@ -8,6 +8,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
+    check_off_policyness,
     check_train_results,
     framework_iterator,
 )
@@ -28,15 +29,15 @@ class TestIMPALA(unittest.TestCase):
         """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
+            .environment("CartPole-v1")
             .resources(num_gpus=0)
             .training(
                 model={
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
             )
         )
-        env = "CartPole-v1"
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -50,11 +51,13 @@ class TestIMPALA(unittest.TestCase):
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                algo = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
-                    check_train_results(results)
                     print(results)
+                    check_train_results(results)
+                    off_policy_ness = check_off_policyness(results, upper_limit=2.0)
+                    print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
                     algo,

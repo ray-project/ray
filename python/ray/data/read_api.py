@@ -37,6 +37,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    MongoDatasource,
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import pymongoarrow.api
     import tensorflow as tf
     import torch
 
@@ -250,6 +252,29 @@ def read_datasource(
         Dataset holding the data read from the datasource.
     """
     ctx = DatasetContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    local_uri = False
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+        local_uri = True
+
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
+
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     cur_pg = ray.util.get_current_placement_group()
@@ -265,7 +290,7 @@ def read_datasource(
 
     if force_local:
         requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, read_args
+            datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
@@ -280,6 +305,7 @@ def read_datasource(
                 ctx,
                 cur_pg,
                 parallelism,
+                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -306,25 +332,6 @@ def read_datasource(
             "dataset blocks."
         )
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
-
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
@@ -335,6 +342,86 @@ def read_datasource(
         ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         0,
         False,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_mongo(
+    uri: str,
+    database: str,
+    collection: str,
+    *,
+    pipeline: Optional[List[Dict]] = None,
+    schema: Optional["pymongoarrow.api.Schema"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **mongo_args,
+) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from MongoDB.
+
+    The data to read from is specified via the ``uri``, ``database`` and ``collection``
+    of the MongoDB. The dataset is created from the results of executing ``pipeline``
+    against the ``collection``. If ``pipeline`` is None, the entire ``collection`` will
+    be read.
+
+    You can check out more details here about these MongoDB concepts:
+    - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
+    - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
+    - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
+
+    To read the MongoDB in parallel, the execution of the pipeline is run on partitions
+    of the collection, with a Ray read task to handle a partition. Partitions are
+    created in an attempt to evenly distribute the documents into the specified number
+    of partitions. The number of partitions is determined by ``parallelism`` which can
+    be requested from this interface or automatically chosen if unspecified (see the
+    ``parallelism`` arg below).
+
+    Examples:
+        >>> import ray
+        >>> from pymongoarrow.api import Schema # doctest: +SKIP
+        >>> ds = ray.data.read_mongo( # doctest: +SKIP
+        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+        ...     database="my_db",
+        ...     collection="my_collection",
+        ...     pipeline=[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}, {"$sort": "sort_field"}], # noqa: E501
+        ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
+        ...     parallelism=10,
+        ... )
+
+    Args:
+        uri: The URI of the source MongoDB where the dataset will be
+            read from. For the URI format, see details in
+            https://www.mongodb.com/docs/manual/reference/connection-string/.
+        database: The name of the database hosted in the MongoDB. This database
+            must exist otherwise ValueError will be raised.
+        collection: The name of the collection in the database. This collection
+            must exist otherwise ValueError will be raised.
+        pipeline: A MongoDB pipeline, which will be executed on the given collection
+            with results used to create Dataset. If None, the entire collection will
+            be read.
+        schema: The schema used to read the collection. If None, it'll be inferred from
+            the results of pipeline.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        mong_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
+            Arrow-formatted results.
+
+    Returns:
+        Dataset holding Arrow records from the results of executing the pipeline on the
+        specified MongoDB collection.
+    """
+    return read_datasource(
+        MongoDatasource(),
+        parallelism=parallelism,
+        uri=uri,
+        database=database,
+        collection=collection,
+        pipeline=pipeline,
+        schema=schema,
+        ray_remote_args=ray_remote_args,
+        **mongo_args,
     )
 
 
@@ -1476,6 +1563,7 @@ def _get_read_tasks(
     ctx: DatasetContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
+    local_uri: bool,
     kwargs: dict,
 ) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
@@ -1492,6 +1580,8 @@ def _get_read_tasks(
         OOM, and the list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
+    if local_uri:
+        kwargs["local_uri"] = local_uri
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
