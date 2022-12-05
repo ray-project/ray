@@ -36,7 +36,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
-                canonicalize(logger_kwargs["msg"])
+                canonicalize(logger_args[0])
                 == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -51,7 +51,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
-                canonicalize(logger_kwargs["msg"])
+                canonicalize(logger_args[0])
                 == """Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -244,7 +244,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
-                canonicalize(logger_kwargs["msg"])
+                canonicalize(logger_args[0])
                 == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -261,7 +261,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
             # Stats only include first stage, and not for pipelined map
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
-                canonicalize(logger_kwargs["msg"])
+                canonicalize(logger_args[0])
                 == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -281,7 +281,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
             # Now stats include the pipelined map stage
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
-                canonicalize(logger_kwargs["msg"])
+                canonicalize(logger_args[0])
                 == """Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
