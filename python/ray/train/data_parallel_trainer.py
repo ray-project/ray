@@ -282,23 +282,6 @@ class DataParallelTrainer(BaseTrainer):
     def _validate_attributes(self):
         super()._validate_attributes()
 
-        if not self.scaling_config.use_gpu and "GPU" in ray.available_resources():
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for this trainer. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "in your scaling config."
-            )
-
-        if self.scaling_config.num_workers is None:
-            raise ValueError("You must specify the 'num_workers' in scaling_config.")
-
-        if self.scaling_config.num_workers <= 0:
-            raise ValueError(
-                "'num_workers' in `scaling_config` must be a positive "
-                f"integer. Received {self.scaling_config.num_workers}"
-            )
-
         self._validate_train_loop_per_worker(
             self._train_loop_per_worker, "train_loop_per_worker"
         )
@@ -319,6 +302,37 @@ class DataParallelTrainer(BaseTrainer):
                 f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
+
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        scaling_config = super(DataParallelTrainer, cls)._validate_scaling_config(
+            scaling_config
+        )
+
+        # This validation happens after the scaling config is updated from
+        # its specification in the Tuner `param_space`
+        if not scaling_config.use_gpu and "GPU" in ray.available_resources():
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
+
+        if scaling_config.num_workers is None:
+            raise ValueError(
+                "You must specify the 'num_workers' in `scaling_config` as either an "
+                f"argument of `{cls.__name__}` or through the `param_space` of a "
+                "`Tuner` (if performing hyperparameter tuning)."
+            )
+
+        if scaling_config.num_workers <= 0:
+            raise ValueError(
+                "'num_workers' in `scaling_config` must be a positive "
+                f"integer. Received {scaling_config.num_workers}"
+            )
+
+        return scaling_config
 
     def _report(self, training_iterator: TrainingIterator) -> None:
         for results in training_iterator:
