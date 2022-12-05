@@ -217,9 +217,9 @@ def configure_log_file(out_file, err_file):
     # dup2 will automatically close the old file descriptor before overriding
     # it.
     #
-    # pytest will try to dup and recover the current stdout/err, which will
-    # fail if the stdout_fd closed due to log_reconfigure.
-    # disable it for pytest.
+    # pytest captures stdout by duping and recovering the current stdout.
+    # The pytest recovery will fail if the fds are closed due to
+    # reconfigure_worker_logs call. Disable it for pytest.
     if "PYTEST_CURRENT_TEST" not in os.environ:
         os.dup2(out_file.fileno(), stdout_fileno)
         os.dup2(err_file.fileno(), stderr_fileno)
