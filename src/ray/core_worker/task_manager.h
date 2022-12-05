@@ -526,7 +526,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 
-  /// A task state events buffer initialized managed by the CoreWorker.
+  /// A task state events buffer initialized managed by the CoreWorker. It will be nullptr
+  /// if TaskEventBuffer is not initialized when recording is turned off (either due to
+  /// config or set-up error.)
   worker::TaskEventBuffer *task_event_buffer_ = nullptr;
 
   friend class TaskManagerTest;
