@@ -1,3 +1,5 @@
+from typing import Dict
+
 import numpy as np
 
 import torch
@@ -10,9 +12,9 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
-def preprocess(image_batch: np.ndarray) -> np.ndarray:
+def preprocess(image_batch: Dict[str, np.ndarray]) -> np.ndarray:
     """
-    User Pytorch code to transform user image with outer dimension of batch size.
+    User PyTorch code to transform user image with outer dimension of batch size.
     """
     preprocess = transforms.Compose(
         [
@@ -22,7 +24,7 @@ def preprocess(image_batch: np.ndarray) -> np.ndarray:
         ]
     )
     # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
-    transposed_torch_tensor = torch.Tensor(image_batch.transpose(0, 3, 1, 2))
+    transposed_torch_tensor = torch.Tensor(image_batch["image"].transpose(0, 3, 1, 2))
     return preprocess(transposed_torch_tensor).numpy()
 
 
