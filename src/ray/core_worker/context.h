@@ -103,7 +103,7 @@ class WorkerContext {
   int64_t GetTaskDepth() const;
 
  private:
-  void InitJobID(JobID job_id);
+  void InitJobID(JobID job_id) LOCKS_EXCLUDED(mutex_);
 
  protected:
   // allow unit test to set.

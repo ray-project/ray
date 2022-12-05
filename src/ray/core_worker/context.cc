@@ -351,6 +351,15 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
+void WorkerContext::InitJobID(JobID job_id) {
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(!job_id.IsNil());
+  if (current_job_id_.IsNil()) {
+    current_job_id_ = job_id;
+  }
+  RAY_CHECK(current_job_id_ == job_id);
+}
+
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);

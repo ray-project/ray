@@ -1202,8 +1202,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
     if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        it->first->GetAssignedJobId() != task_spec.JobId() ||
         state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+      continue;
+    }
+
+    // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
+    if (!it->first->GetAssignedJobId().IsNil() && it->first->GetAssignedJobId() != task_spec.JobId()) {
       continue;
     }
 
