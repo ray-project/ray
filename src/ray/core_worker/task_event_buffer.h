@@ -53,10 +53,10 @@ class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
 
-  /// Add a task event to be reported..
+  /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvents(rpc::TaskEvents task_events) = 0;
+  virtual void AddTaskEvent(rpc::TaskEvents task_events) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -64,6 +64,9 @@ class TaskEventBuffer {
   /// `RAY_task_events_report_interval_ms`, and send task events stored in a buffer to
   /// GCS. If GCS has not responded to a previous flush, it will defer the flushing to
   /// the next interval (if not forced.)
+  ///
+  /// Before flushing to GCS, events from a single task attempt will also be coalesced
+  /// into one rpc::TaskEvents as an optimization.
   ///
   /// \param forced When set to true, buffered events will be sent to GCS even if GCS has
   ///       not responded to the previous flush. A forced flush will be called before
@@ -74,8 +77,10 @@ class TaskEventBuffer {
   ///
   /// Connects the GCS client, starts its io_thread, and sets up periodical runner for
   /// flushing events to GCS.
+  ///
   /// \param auto_flush Test only flag to disable periodical flushing events if false.
-  /// \return If setup succeeds. When failure, events will not be reported.
+  /// \return Status code. When the status is not ok, events will not be recorded nor
+  /// reported.
   virtual Status Start(bool auto_flush = true) = 0;
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
@@ -95,22 +100,23 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvents(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
+  void AddTaskEvent(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
   Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
 
-  /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   void Stop() LOCKS_EXCLUDED(mutex_) override;
 
  private:
+  /// Test only functions.
   std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     std::vector<rpc::TaskEvents> copy(buffer_);
     return copy;
   }
 
+  /// Test only functions.
   size_t GetNumTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     return num_task_events_dropped_;

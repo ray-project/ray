@@ -462,7 +462,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
 
-  /// Update task status change.
+  /// Set the TaskStatus
+  ///
+  /// Sets the task status on the TaskEntry, and record the task status change events in
+  /// the TaskEventBuffer if enabled.
+  ///
+  /// \param task_entry corresponding TaskEntry of a task to record the event.
+  /// \param status the changed status.
+  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
+
+  /// Update task status change in TaskEventBuffer
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status the changed status.

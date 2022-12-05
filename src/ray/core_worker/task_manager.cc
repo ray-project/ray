@@ -125,9 +125,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      SetTaskStatus(it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
       it->second.MarkRetryOnResubmit();
-      RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -382,11 +381,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     if (is_application_error) {
-      it->second.SetStatus(rpc::TaskStatus::FAILED);
-      RecordTaskStatusEvent(it->second, rpc::TaskStatus::FAILED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     } else {
-      it->second.SetStatus(rpc::TaskStatus::FINISHED);
-      RecordTaskStatusEvent(it->second, rpc::TaskStatus::FINISHED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
     num_pending_tasks_--;
 
@@ -454,8 +451,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-      RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
       it->second.MarkRetryOnFailed();
     }
   }
@@ -506,8 +502,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    it->second.SetStatus(rpc::TaskStatus::FAILED);
-    RecordTaskStatusEvent(it->second, rpc::TaskStatus::FAILED);
+    SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -778,8 +773,7 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
     return;
   }
   if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-    RecordTaskStatusEvent(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -791,9 +785,13 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
     return;
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   it->second.SetNodeId(node_id);
-  RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  SetTaskStatus(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
+}
+
+void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
+  task_entry.SetStatus(status);
+  RecordTaskStatusEvent(task_entry, status);
 }
 
 rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
@@ -923,9 +921,10 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
   }
   default: {
     // Do nothing
+    UNREACHABLE;
   }
   }
-  task_event_buffer_->AddTaskEvents(std::move(task_event));
+  task_event_buffer_->AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

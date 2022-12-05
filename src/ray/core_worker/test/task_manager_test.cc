@@ -53,7 +53,7 @@ rpc::Address GetRandomWorkerAddr() {
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
-  MOCK_METHOD(void, AddTaskEvents, (rpc::TaskEvents task_events), (override));
+  MOCK_METHOD(void, AddTaskEvent, (rpc::TaskEvents task_events), (override));
 
   MOCK_METHOD(void, FlushEvents, (bool forced), (override));
 
