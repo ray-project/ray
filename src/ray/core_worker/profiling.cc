@@ -28,7 +28,7 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
   rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
-ProfileEvent::ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
+ProfileEvent::ProfileEvent(TaskEventBuffer *task_event_buffer,
                            const std::string &event_name,
                            TaskID task_id,
                            uint64_t attempt_number,

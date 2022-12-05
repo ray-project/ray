@@ -66,7 +66,7 @@ class ProfileEvent {
  public:
   ProfileEvent(const std::shared_ptr<Profiler> &profiler, const std::string &event_type);
 
-  ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
+  ProfileEvent(TaskEventBuffer* task_event_buffer,
                const std::string &event_name,
                TaskID task_id,
                uint64_t attempt_number,
@@ -119,7 +119,7 @@ class ProfileEvent {
   bool use_task_event_ = false;
 
   // Shared pointer to the event buffer.
-  std::shared_ptr<TaskEventBuffer> task_event_buffer_;
+  TaskEventBuffer* task_event_buffer_;
 
   // Underlying proto data structure that holds the event data.
   rpc::ProfileEventEntry event_;

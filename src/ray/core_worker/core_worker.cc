@@ -2198,7 +2198,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     RAY_CHECK(task_event_buffer_) << "Task event buffer should not be nullptr.";
     auto spec = worker_context_.GetCurrentTask();
     return std::make_unique<worker::ProfileEvent>(
-        task_event_buffer_,
+        task_event_buffer_.get(),
         event_type,
         worker_context_.GetCurrentTaskID(),
         spec == nullptr ? 0 : spec->AttemptNumber(),

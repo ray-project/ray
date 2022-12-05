@@ -595,8 +595,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
 
-  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
-
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;
   absl::Time gcs_last_alive_time_ = absl::Now();
