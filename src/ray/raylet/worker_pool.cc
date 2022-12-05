@@ -1207,7 +1207,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
 
     // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
-    if (!it->first->GetAssignedJobId().IsNil() && it->first->GetAssignedJobId() != task_spec.JobId()) {
+    if (!it->first->GetAssignedJobId().IsNil() &&
+        it->first->GetAssignedJobId() != task_spec.JobId()) {
       continue;
     }
 
@@ -1279,7 +1280,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 
   if (worker) {
-    RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
+    RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+              worker->GetAssignedJobId() == task_spec.JobId());
     PopWorkerCallbackAsync(callback, worker);
   }
 }
