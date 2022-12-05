@@ -329,8 +329,7 @@ class GroupedDataset(Generic[T]):
 
             boundaries = []
             # Get the keys of the batch in numpy array format
-            keys_block = block_accessor.select([self._key])
-            keys = BlockAccessor.for_block(keys_block).to_numpy()
+            keys = block_accessor.to_numpy(self._key)
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")

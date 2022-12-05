@@ -2,6 +2,8 @@ import click
 import time
 import json
 import os
+from typing import Dict
+
 import numpy as np
 import pandas as pd
 
@@ -19,7 +21,7 @@ from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
+def preprocess_image_with_label(batch: Dict[str, np.ndarray]) -> pd.DataFrame:
     """
     User Pytorch code to transform user image.
     """
@@ -31,6 +33,7 @@ def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
+    batch = batch["image"]
     df = pd.DataFrame(
         {"image": [preprocess(image) for image in batch], "label": [1] * len(batch)}
     )
