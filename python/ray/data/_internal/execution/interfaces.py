@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Iterator, Tuple, Callable
+from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
 from ray.data._internal.stats import DatasetStats
@@ -166,57 +166,4 @@ class Executor:
 
     def get_stats() -> DatasetStats:
         """Return stats for the execution so far."""
-        raise NotImplementedError
-
-
-class ExchangeOperator(PhysicalOperator):
-    """A streaming operator for more complex parallel transformations.
-
-    Subclasses have full control over how to buffer and transform input blocks, which
-    enables them to implement metadata-only stream transformations (e.g., union),
-    as well as all-to-all transformations (e.g., shuffle, zip).
-
-    Subclasses:
-        AllToAllOperator
-    """
-
-    pass
-
-
-class AllToAllOperator(ExchangeOperator):
-    """An ExchangeOperator that doesn't execute until all inputs are available.
-
-    Used to implement all:all transformations such as sort / shuffle.
-
-    Subclasses:
-         SortMap
-    """
-
-    def __init__(self, preprocessor: Optional[Callable] = None):
-        self._preprocessor = preprocessor
-        self._buffer = []
-        self._outbox = None
-
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
-        assert input_index == 0, "AllToAll only supports one input."
-        self._buffer.append(refs)
-
-    def inputs_done(self, input_index: int) -> None:
-        # Note: blocking synchronous execution for now.
-        self._outbox = self.execute_all(self._buffer)
-
-    def has_next(self) -> bool:
-        return bool(self._outbox)
-
-    def get_next(self) -> RefBundle:
-        return self._outbox.pop(0)
-
-    def execute_all(self, inputs: List[RefBundle]) -> List[RefBundle]:
-        """Execute distributedly from a driver process.
-
-        This is a synchronous call that blocks until the computation is completed.
-
-        Args:
-             inputs: List of ref bundles.
-        """
         raise NotImplementedError
