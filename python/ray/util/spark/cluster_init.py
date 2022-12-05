@@ -23,7 +23,6 @@ from .utils import (
     get_dbutils,
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
-    _HEAP_TO_SHARED_RATIO,
     _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_startup,
     _display_databricks_driver_proxy_url,
     gen_cmd_exec_failure_msg,
@@ -181,7 +180,7 @@ def _init_ray_cluster(
     total_gpus=None,
     total_heap_memory_bytes=None,
     total_object_store_memory_bytes=None,
-    heap_to_object_store_memory_ratio=None,
+    object_store_memory_per_node=None,
     head_options=None,
     worker_options=None,
     ray_temp_root_dir=None,
@@ -228,13 +227,10 @@ def _init_ray_cluster(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
 
-    if heap_to_object_store_memory_ratio is None:
-        heap_to_object_store_memory_ratio = _HEAP_TO_SHARED_RATIO
-
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_mem_bytes,
-    ) = get_avail_mem_per_ray_worker_node(spark, heap_to_object_store_memory_ratio)
+    ) = get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node)
 
     if total_gpus is not None and num_spark_task_gpus == 0:
         raise ValueError(
@@ -497,12 +493,6 @@ def _init_ray_cluster(
             preexec_fn=setup_sigterm_on_parent_death,
         )
 
-        # TODO: Delete the worker temp and log directories at the conclusion of running the
-        #  submitted task.
-        #  Currently all workers uses the same ray_temp_dir as head side,
-        #  and one machine might run mulitple ray workers concurrently,
-        #  so we cannot directly delete the temp dir here.
-
         # NB: Not reachable.
         yield 0
 
@@ -598,7 +588,7 @@ def init_ray_cluster(
     total_gpus=None,
     total_heap_memory_bytes=None,
     total_object_store_memory_bytes=None,
-    heap_to_object_store_memory_ratio=None,
+    object_store_memory_per_node=None,
     head_options=None,
     worker_options=None,
     ray_temp_root_dir=None,
@@ -631,9 +621,9 @@ def init_ray_cluster(
             to utilize.
         total_object_store_memory_bytes: The total amount of object store memory (in bytes) for
             the ray cluster to utilize.
-        heap_to_object_store_memory_ratio: The ratio of per-ray worker node available memory to the
-            size of the `/dev/shm` capacity per worker on the spark worker. Without modification,
-            this ratio is 0.4.
+        object_store_memory_per_node: Object store memory available to per-ray worker node, but
+                                      it cannot exceed
+                                      "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker"
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster
@@ -657,7 +647,7 @@ def init_ray_cluster(
         total_gpus=total_gpus,
         total_heap_memory_bytes=total_heap_memory_bytes,
         total_object_store_memory_bytes=total_object_store_memory_bytes,
-        heap_to_object_store_memory_ratio=heap_to_object_store_memory_ratio,
+        object_store_memory_per_node=object_store_memory_per_node,
         head_options=head_options,
         worker_options=worker_options,
         ray_temp_root_dir=ray_temp_root_dir,

@@ -10,7 +10,6 @@ import collections
 
 
 _MEMORY_BUFFER_OFFSET = 0.8
-_HEAP_TO_SHARED_RATIO = 0.4
 
 
 def is_in_databricks_runtime():
@@ -168,7 +167,7 @@ def _get_cpu_cores():
 
 
 def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes, heap_to_object_store_ratio
+    num_task_slots, physical_mem_bytes, shared_mem_bytes, object_store_memory_per_node
 ):
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
@@ -177,12 +176,15 @@ def _calc_mem_per_ray_worker_node(
         shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
 
-    object_store_bytes = int(
-        min(
-            available_physical_mem_per_node * heap_to_object_store_ratio,
-            available_shared_mem_per_node,
+    if object_store_memory_per_node is None:
+        object_store_bytes = available_shared_mem_per_node
+    else:
+        object_store_bytes = int(
+            min(
+                object_store_memory_per_node,
+                available_shared_mem_per_node,
+            )
         )
-    )
     heap_mem_bytes = (
         available_physical_mem_per_node - object_store_bytes
     )
@@ -273,7 +275,7 @@ def get_target_spark_tasks(
     return num_spark_tasks
 
 
-def get_avail_mem_per_ray_worker_node(spark, heap_to_object_store_ratio):
+def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
     """
     Return the available heap memory and object store memory for each ray worker.
     NB: We have one ray node per spark task.
@@ -297,7 +299,7 @@ def get_avail_mem_per_ray_worker_node(spark, heap_to_object_store_ratio):
                 num_task_slots,
                 physical_mem_bytes,
                 shared_mem_bytes,
-                heap_to_object_store_ratio,
+                object_store_memory_per_node,
             )
             return ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes, None
         except Exception as e:
