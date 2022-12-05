@@ -75,6 +75,7 @@ def exec_cmd(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        **kwargs
     )
 
     tail_output_deque = collections.deque(maxlen=100)
