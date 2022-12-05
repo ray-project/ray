@@ -186,12 +186,9 @@ def get_worker_log_file_name(worker_type, job_id=None):
     if job_id is None:
         job_id = os.environ.get("RAY_JOB_ID")
     if worker_type == "WORKER":
-        assert job_id is not None, (
-            "RAY_JOB_ID should be set as an env "
-            "variable within default_worker.py. If you see this error, "
-            "please report it to Ray's Github issue."
-        )
-        worker_name = "worker"
+        if job_id is None:
+            job_id = ""
+        worker_name = "unbinded_worker"
     else:
         job_id = ""
         worker_name = "io_worker"
