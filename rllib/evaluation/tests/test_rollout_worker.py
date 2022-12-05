@@ -245,7 +245,7 @@ class TestRolloutWorker(unittest.TestCase):
                 policies={
                     "default_policy": PolicySpec(
                         policy_class=RandomPolicy,
-                        config=AlgorithmConfig.overrides(ignore_action_bounds=True),
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -286,7 +286,7 @@ class TestRolloutWorker(unittest.TestCase):
                 policies={
                     "default_policy": PolicySpec(
                         policy_class=RandomPolicy,
-                        config=AlgorithmConfig.overrides(ignore_action_bounds=True),
+                        config={"ignore_action_bounds": True},
                     )
                 }
             ),
@@ -339,7 +339,7 @@ class TestRolloutWorker(unittest.TestCase):
                 policies={
                     "default_policy": PolicySpec(
                         policy_class=RandomPolicy,
-                        config=AlgorithmConfig.overrides(ignore_action_bounds=True),
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -477,7 +477,7 @@ class TestRolloutWorker(unittest.TestCase):
                 policies={
                     "default_policy": PolicySpec(
                         policy_class=RandomPolicy,
-                        config=AlgorithmConfig.overrides(ignore_action_bounds=True),
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )

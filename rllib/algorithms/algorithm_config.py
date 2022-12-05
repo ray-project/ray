@@ -2081,17 +2081,15 @@ class AlgorithmConfig:
             assert self.evaluation_config is None
             return None
 
-        # Convert AlgorithmConfig into dict (for later updating from dict).
         evaluation_config = self.evaluation_config
+        # Already an AlgorithmConfig -> copy and use as-is.
         if isinstance(evaluation_config, AlgorithmConfig):
-            assert False  # TODO
-            evaluation_config_obj = evaluation_config
-            # evaluation_config = evaluation_config.to_dict()
+            eval_config_obj = evaluation_config.copy(copy_frozen=False)
+        # Create unfrozen copy of self to be used as the to-be-returned eval
+        # AlgorithmConfig.
         else:
-            # Create unfrozen copy of self to be used as the to-be-returned eval
-            # AlgorithmConfig.
             eval_config_obj = self.copy(copy_frozen=False)
-            # Update with evaluation settings:
+            # Update with evaluation override settings:
             eval_config_obj.update_from_dict(evaluation_config or {})
 
         # Switch on the `in_evaluation` flag and remove `evaluation_config`
