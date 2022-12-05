@@ -337,6 +337,11 @@ def test_syncer_still_running_no_sync(temp_data_dirs):
         def is_running(self):
             return True
 
+        @property
+        def start_time(self):
+            # Don't consider the sync process timeout
+            return float("inf")
+
     syncer = _DefaultSyncer(sync_period=60)
     syncer._sync_process = FakeSyncProcess()
     assert not syncer.sync_up_if_needed(
