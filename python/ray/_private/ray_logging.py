@@ -216,8 +216,13 @@ def configure_log_file(out_file, err_file):
     # C++ logging requires redirecting the stdout file descriptor. Note that
     # dup2 will automatically close the old file descriptor before overriding
     # it.
-    os.dup2(out_file.fileno(), stdout_fileno)
-    os.dup2(err_file.fileno(), stderr_fileno)
+    #
+    # pytest will try to dup and recover the current stdout/err, which will
+    # fail if the stdout_fd closed due to log_reconfigure.
+    # disable it for pytest.
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        os.dup2(out_file.fileno(), stdout_fileno)
+        os.dup2(err_file.fileno(), stderr_fileno)
     # We also manually set sys.stdout and sys.stderr because that seems to
     # have an effect on the output buffering. Without doing this, stdout
     # and stderr are heavily buffered resulting in seemingly lost logging
@@ -242,13 +247,13 @@ def init_worker_logs(worker_type: str):
 def reconfigure_worker_logs(worker_type: str, job_id: str):
     original_log_file_name = get_worker_log_file_name(worker_type)
     new_log_file_name = get_worker_log_file_name(worker_type, job_id)
-    # if new_log_file_name == original_log_file_name:
-    #     return
-    # assert ray._private.worker._global_node is not None
-    # out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
-    #     new_log_file_name
-    # )
-    # configure_log_file(out_file, err_file)
+    if new_log_file_name == original_log_file_name:
+        return
+    assert ray._private.worker._global_node is not None
+    out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
+        new_log_file_name
+    )
+    configure_log_file(out_file, err_file)
 
 
 class WorkerStandardStreamDispatcher:
