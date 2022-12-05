@@ -197,18 +197,27 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
-        if not isinstance(columns, list):
+            should_be_single_ndarray = self.is_tensor_wrapper()
+        elif isinstance(columns, list):
+            should_be_single_ndarray = (
+                columns == self._table.columns.tolist() and self.is_tensor_wrapper()
+            )
+        else:
             columns = [columns]
+            should_be_single_ndarray = True
+
         for column in columns:
             if column not in self._table.columns:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
                 )
+
         arrays = []
         for column in columns:
             arrays.append(self._table[column].to_numpy())
-        if len(arrays) == 1:
+
+        if should_be_single_ndarray:
             arrays = arrays[0]
         else:
             arrays = dict(zip(columns, arrays))

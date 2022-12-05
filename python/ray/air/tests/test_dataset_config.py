@@ -162,12 +162,12 @@ def test_use_stream_api_config(ray_start_4_cpus):
 def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range_table(10)
 
-    def drop_odd_pandas(rows):
-        key = list(rows)[0]
-        return rows[(rows[key] % 2 == 0)]
+    def drop_odd_pandas(batch):
+        return batch[batch["value"] % 2 == 0]
 
-    def drop_odd_numpy(rows):
-        return [x for x in rows if x % 2 == 0]
+    def drop_odd_numpy(batch):
+        arr = batch["value"]
+        return arr[arr % 2 == 0]
 
     prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
     prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
