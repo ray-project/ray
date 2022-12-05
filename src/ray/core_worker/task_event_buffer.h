@@ -77,8 +77,10 @@ class TaskEventBuffer {
   ///
   /// Connects the GCS client, starts its io_thread, and sets up periodical runner for
   /// flushing events to GCS.
+  ///
   /// \param auto_flush Test only flag to disable periodical flushing events if false.
-  /// \return If setup succeeds. When failure, events will not be reported.
+  /// \return Status code. When the status is not ok, events will not be recorded nor
+  /// reported.
   virtual Status Start(bool auto_flush = true) = 0;
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
@@ -104,16 +106,17 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
 
-  /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   void Stop() LOCKS_EXCLUDED(mutex_) override;
 
  private:
+  /// Test only functions.
   std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     std::vector<rpc::TaskEvents> copy(buffer_);
     return copy;
   }
 
+  /// Test only functions.
   size_t GetNumTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     return num_task_events_dropped_;
