@@ -201,7 +201,8 @@ class DatasetStats:
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
-        self.summary_stats_dict: Dict[str, Dict[str, Any]]
+        # Dict of summary statistics aggregated by stage
+        self.stage_stats: Dict[str, Dict[str, Any]] = {}
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -270,7 +271,8 @@ class DatasetStats:
                 out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
-                blocks_stats_str, blocks_stats_dict = self._summarize_blocks(metadata, is_substage=False)
+                self.stage_stats[stage_name] = self._calculate_blocks_stats(metadata, is_substage=False)
+                blocks_stats_str = self._summarize_blocks(stage_name, is_substage=False)
                 out += blocks_stats_str
         elif len(self.stages) > 1:
             rounded_total = round(self.time_total_s, 2)
@@ -288,10 +290,9 @@ class DatasetStats:
                     out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
-                    blocks_stats_str, blocks_stats_dict = self._summarize_blocks(metadata, is_substage=True)
+                    self.stage_stats[stage_name] = self._calculate_blocks_stats(metadata, is_substage=True)
+                    blocks_stats_str = self._summarize_blocks(stage_name, is_substage=True)
                     out += blocks_stats_str
-                # Q(Scott): do we need to collect stats at this level instead?
-                self.summary_stats_dict[self.number] = blocks_stats_dict
         out += self._summarize_iter()
         return out
 
@@ -315,42 +316,15 @@ class DatasetStats:
             out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out
 
-    def _summarize_blocks(self, blocks: List[BlockMetadata], is_substage: bool, return_stats_dict: bool = False) -> Tuple[str, Dict]:
-        exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
+    # def _summarize_blocks(self, blocks: List[BlockMetadata], is_substage: bool) -> Tuple[str, Dict]:
+    def _summarize_blocks(self, stage_name: str, is_substage: bool) -> Tuple[str, Dict]:
+        # exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
         indent = "\t" if is_substage else ""
-        if is_substage:
-            out = "{}/{} blocks executed\n".format(len(exec_stats), len(blocks))
-        else:
-            rounded_total = round(self.time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
-            if exec_stats:
-                out = "{}/{} blocks executed in {}s".format(
-                    len(exec_stats), len(blocks), rounded_total
-                )
-            else:
-                out = ""
-            if len(exec_stats) < len(blocks):
-                if exec_stats:
-                    out += ", "
-                num_inherited = len(blocks) - len(exec_stats)
-                out += "{}/{} blocks split from parent".format(
-                    num_inherited, len(blocks)
-                )
-                if not exec_stats:
-                    out += " in {}s".format(rounded_total)
-            out += "\n"
+        stage_stats = self.stage_stats.get(stage_name, {})
+        out = stage_stats.get("block_execution_summary_str", "")
 
-        stats_dict = {}
-        if exec_stats:
-            wall_time_stats = {
-                "min": min([e.wall_time_s for e in exec_stats]),
-                "max": max([e.wall_time_s for e in exec_stats]),
-                "mean": np.mean([e.wall_time_s for e in exec_stats]),
-                "sum": sum([e.wall_time_s for e in exec_stats]),
-            }
-            stats_dict["wall_time"] = wall_time_stats
+        wall_time_stats = stage_stats.get("wall_time", {})
+        if wall_time_stats:
             out += indent
             out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
                 fmt(wall_time_stats["min"]),
@@ -358,14 +332,8 @@ class DatasetStats:
                 fmt(wall_time_stats["mean"]),
                 fmt(wall_time_stats["sum"]),
             )
-
-            cpu_stats = {
-                "min": min([e.cpu_time_s for e in exec_stats]),
-                "max": max([e.cpu_time_s for e in exec_stats]),
-                "mean": np.mean([e.cpu_time_s for e in exec_stats]),
-                "sum": sum([e.cpu_time_s for e in exec_stats]),
-            }
-            stats_dict["cpu"] = cpu_stats
+        cpu_stats = stage_stats.get("cpu", {})
+        if cpu_stats:
             out += indent
             out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
                 fmt(cpu_stats["min"]),
@@ -373,32 +341,16 @@ class DatasetStats:
                 fmt(cpu_stats["mean"]),
                 fmt(cpu_stats["sum"]),
             )
-
-            memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
-            ]
-            memory_stats = {
-                "min": min(memory_stats_mb),
-                "max": max(memory_stats_mb),
-                "mean": int(np.mean(memory_stats))
-            }
-            stats_dict["memory"] = memory_stats
+        memory_stats = stage_stats.get("memory", {})
+        if memory_stats:
             out += indent
             out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
                 memory_stats["min"],
                 memory_stats["max"],
                 memory_stats["mean"],
             )
-
-        output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
-        output_num_rows_stats = {
-            "min": min(output_num_rows),
-            "max": max(output_num_rows),
-            "mean": int(np.mean(output_num_rows)),
-            "sum": sum(output_num_rows),
-        }
-        stats_dict["output_num_rows"] = output_num_rows_stats
-        if output_num_rows:
+        output_num_rows_stats = stage_stats.get("output_num_rows", {})
+        if output_num_rows_stats:
             out += indent
             out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
                 output_num_rows_stats["min"],
@@ -406,16 +358,9 @@ class DatasetStats:
                 output_num_rows_stats["mean"],
                 output_num_rows_stats["sum"],
             )
-
-        output_size_bytes = [m.size_bytes for m in blocks if m.size_bytes is not None]
-        output_size_bytes_stats = {
-            "min": min(output_size_bytes),
-            "max": max(output_size_bytes),
-            "mean": int(np.mean(output_size_bytes)),
-            "sum": sum(output_size_bytes),
-        }
-        stats_dict["output_size_bytes"] = output_size_bytes_stats
-        if output_size_bytes:
+        
+        output_size_bytes_stats = stage_stats.get("output_size_bytes", {})
+        if output_size_bytes_stats:
             out += indent
             out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
                 output_size_bytes_stats["min"],
@@ -423,6 +368,131 @@ class DatasetStats:
                 output_size_bytes_stats["mean"],
                 output_size_bytes_stats["sum"],
             )
+        
+        node_count_stats = stage_stats.get("node_count", {})
+        if node_count_stats:
+            out += indent
+            out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
+                node_count_stats["min"],
+                node_count_stats["max"],
+                node_count_stats["mean"],
+                node_count_stats["count"],
+            )
+        return out
+
+    def _calculate_blocks_stats(self, blocks: List[BlockMetadata], is_substage: bool) -> Tuple[str, Dict]:
+        exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
+        stage_summary_stats = {}
+
+        if is_substage:
+            exec_summary_str = "{}/{} blocks executed\n".format(len(exec_stats), len(blocks))
+        else:
+            rounded_total = round(self.time_total_s, 2)
+            if rounded_total <= 0:
+                # Handle -0.0 case.
+                rounded_total = 0
+            if exec_stats:
+                exec_summary_str = "{}/{} blocks executed in {}s".format(
+                    len(exec_stats), len(blocks), rounded_total
+                )
+            else:
+                exec_summary_str = ""
+            if len(exec_stats) < len(blocks):
+                if exec_stats:
+                    exec_summary_str += ", "
+                num_inherited = len(blocks) - len(exec_stats)
+                exec_summary_str += "{}/{} blocks split from parent".format(
+                    num_inherited, len(blocks)
+                )
+                if not exec_stats:
+                    exec_summary_str += " in {}s".format(rounded_total)
+            exec_summary_str += "\n"
+        stage_summary_stats["block_execution_summary_str"] = exec_summary_str
+
+        if exec_stats:
+            wall_time_stats = {
+                "min": min([e.wall_time_s for e in exec_stats]),
+                "max": max([e.wall_time_s for e in exec_stats]),
+                "mean": np.mean([e.wall_time_s for e in exec_stats]),
+                "sum": sum([e.wall_time_s for e in exec_stats]),
+            }
+            stage_summary_stats["wall_time"] = wall_time_stats
+            # out += indent
+            # out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
+            #     fmt(wall_time_stats["min"]),
+            #     fmt(wall_time_stats["max"]),
+            #     fmt(wall_time_stats["mean"]),
+            #     fmt(wall_time_stats["sum"]),
+            # )
+
+            cpu_stats = {
+                "min": min([e.cpu_time_s for e in exec_stats]),
+                "max": max([e.cpu_time_s for e in exec_stats]),
+                "mean": np.mean([e.cpu_time_s for e in exec_stats]),
+                "sum": sum([e.cpu_time_s for e in exec_stats]),
+            }
+            stage_summary_stats["cpu"] = cpu_stats
+            # out += indent
+            # out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
+            #     fmt(cpu_stats["min"]),
+            #     fmt(cpu_stats["max"]),
+            #     fmt(cpu_stats["mean"]),
+            #     fmt(cpu_stats["sum"]),
+            # )
+
+            memory_stats_mb = [
+                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+            ]
+            memory_stats = {
+                "min": min(memory_stats_mb),
+                "max": max(memory_stats_mb),
+                "mean": int(np.mean(memory_stats_mb))
+            }
+            stage_summary_stats["memory"] = memory_stats
+            # out += indent
+            # out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
+            #     memory_stats["min"],
+            #     memory_stats["max"],
+            #     memory_stats["mean"],
+            # )
+
+        output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
+        output_num_rows_stats = {}
+        if output_num_rows:
+            output_num_rows_stats = {
+                "min": min(output_num_rows),
+                "max": max(output_num_rows),
+                "mean": int(np.mean(output_num_rows)),
+                "sum": sum(output_num_rows),
+            }
+        stage_summary_stats["output_num_rows"] = output_num_rows_stats
+        # if output_num_rows:
+            # out += indent
+            # out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
+            #     output_num_rows_stats["min"],
+            #     output_num_rows_stats["max"],
+            #     output_num_rows_stats["mean"],
+            #     output_num_rows_stats["sum"],
+            # )
+
+        output_size_bytes = [m.size_bytes for m in blocks if m.size_bytes is not None]
+        output_size_bytes_stats = {}
+        if output_size_bytes:
+            output_size_bytes_stats = {
+                "min": min(output_size_bytes),
+                "max": max(output_size_bytes),
+                "mean": int(np.mean(output_size_bytes)),
+                "sum": sum(output_size_bytes),
+            }
+        stage_summary_stats["output_size_bytes"] = output_size_bytes_stats
+        # if output_size_bytes:
+        #     out += indent
+        #     out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
+        #         output_size_bytes_stats["min"],
+        #         output_size_bytes_stats["max"],
+        #         output_size_bytes_stats["mean"],
+        #         output_size_bytes_stats["sum"],
+        #     )
 
         if exec_stats:
             node_counts = collections.defaultdict(int)
@@ -434,18 +504,16 @@ class DatasetStats:
                 "mean": int(np.mean(list(node_counts.values()))),
                 "count": len(node_counts),
             }
-            stats_dict["node_count"] = node_counts_stats
-            out += indent
-            out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
-                node_counts_stats["min"],
-                node_counts_stats["max"],
-                node_counts_stats["mean"],
-                node_counts_stats["count"],
-            )
+            stage_summary_stats["node_count"] = node_counts_stats
+            # out += indent
+            # out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
+            #     node_counts_stats["min"],
+            #     node_counts_stats["max"],
+            #     node_counts_stats["mean"],
+            #     node_counts_stats["count"],
+            # )
 
-        if return_stats_dict:
-            return out, stats_dict
-        return out, {}
+        return stage_summary_stats
 
         def get_total_wall_time() -> float:
             pass
