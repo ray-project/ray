@@ -188,7 +188,7 @@ def get_worker_log_file_name(worker_type, job_id=None):
     if worker_type == "WORKER":
         if job_id is None:
             job_id = ""
-        worker_name = "unbinded_worker"
+        worker_name = "worker"
     else:
         job_id = ""
         worker_name = "io_worker"
@@ -242,13 +242,13 @@ def init_worker_logs(worker_type: str):
 def reconfigure_worker_logs(worker_type: str, job_id: str):
     original_log_file_name = get_worker_log_file_name(worker_type)
     new_log_file_name = get_worker_log_file_name(worker_type, job_id)
-    if new_log_file_name == original_log_file_name:
-        return
-    assert ray._private.worker._global_node is not None
-    out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
-        new_log_file_name
-    )
-    configure_log_file(out_file, err_file)
+    # if new_log_file_name == original_log_file_name:
+    #     return
+    # assert ray._private.worker._global_node is not None
+    # out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
+    #     new_log_file_name
+    # )
+    # configure_log_file(out_file, err_file)
 
 
 class WorkerStandardStreamDispatcher:
