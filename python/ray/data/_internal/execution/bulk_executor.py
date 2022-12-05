@@ -3,6 +3,7 @@ from typing import Dict, List, Iterator
 import ray
 from ray.data._internal.execution.interfaces import (
     Executor,
+    ExecutionOptions,
     RefBundle,
     PhysicalOperator,
 )
@@ -11,6 +12,9 @@ from ray.data._internal.stats import DatasetStats
 
 
 class BulkExecutor(Executor):
+    def __init__(self, options: ExecutionOptions):
+        super().__init__(options)
+
     def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal.
 
@@ -43,7 +47,7 @@ class BulkExecutor(Executor):
         return execute_recursive(dag)
 
     def get_stats(self) -> DatasetStats:
-        raise NotImplementedError
+        return DatasetStats(stages={}, parent=None)  # TODO
 
 
 def _naive_run_until_complete(node: PhysicalOperator) -> List[RefBundle]:

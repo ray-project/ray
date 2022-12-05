@@ -221,6 +221,9 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
+        # New executor backend.
+        self._new_executor = None
+
         if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
@@ -2548,7 +2551,7 @@ class Dataset(Generic[T]):
             )
 
         if ctx.new_execution_backend:
-            executor = BulkExecutor(ExecutionOptions())
+            executor = self._get_new_executor()
             legacy_list = executor.execute_to_legacy_block_list(
                 self._plan.to_operator_dag()
             )
@@ -2681,7 +2684,7 @@ class Dataset(Generic[T]):
 
         ctx = DatasetContext.get_current()
         if ctx.new_execution_backend:
-            executor = BulkExecutor(ExecutionOptions())
+            executor = self._get_new_executor()
             blocks = executor.execute_to_legacy_block_list(self._plan.to_operator_dag())
             stats = executor.get_stats()
         else:
@@ -3806,6 +3809,8 @@ class Dataset(Generic[T]):
 
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
+        if self._new_executor:
+            return self._new_executor.get_stats().summary_string()
         return self._plan.stats().summary_string()
 
     @DeveloperAPI
@@ -4252,6 +4257,11 @@ class Dataset(Generic[T]):
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
             )
+
+    def _get_new_executor(self):
+        executor = BulkExecutor(ExecutionOptions())
+        self._new_executor = executor
+        return executor
 
 
 def _get_size_bytes(block: Block) -> int:
