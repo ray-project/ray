@@ -308,6 +308,14 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     :img-top: /rllib/images/rllib-logo.png
 
     +++
+    .. link-button:: https://applied-rl-course.netlify.app/
+        :type: url
+        :text: [Course] Applied Reinforcement Learning with RLlib
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
     .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
         :type: url
         :text: [Blog] Intro to RLlib: Example Environments
