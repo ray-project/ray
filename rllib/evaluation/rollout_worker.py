@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import os
 import platform
+import threading
 import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
@@ -492,6 +493,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # and pick our shard by our worker-index.
         self._ds_shards = dataset_shards
         self.worker_index: int = worker_index
+
+        # Lock to be able to lock this entire worker
+        # (via `self.lock()` and `self.unlock()`).
+        # This might be crucial to prevent a race condition in case
+        # `config.policy_states_are_swappable=True` and you are using an Algorithm
+        # with a learner thread. In this case, the thread might update a policy
+        # that is being swapped (during the update) by the Algorithm's
+        # training_step's `RolloutWorker.get_weights()` call (to sync back the
+        # new weights to all remote workers).
+        self._lock = threading.Lock()
 
         if (
             tf1
@@ -998,6 +1009,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
+
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
@@ -1005,6 +1017,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     to_fetch[pid] = policy._build_learn_on_batch(builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
+
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train is None or self.is_policy_to_train(
@@ -1829,6 +1842,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
+
+    def lock(self) -> None:
+        """Locks this RolloutWorker via its own threading.Lock."""
+        self._lock.acquire()
+
+    def unlock(self) -> None:
+        """Unlocks this RolloutWorker via its own threading.Lock."""
+        self._lock.release()
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
