@@ -329,7 +329,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :text: [Guide] Getting Started with RLlib
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/riot-games.png
+    :img-top: /images/riot.png
 
     +++
     .. link-button:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
