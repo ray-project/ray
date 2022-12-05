@@ -22,6 +22,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 
+using ::testing::_;
 using ::testing::Return;
 
 namespace ray {
@@ -76,14 +77,14 @@ TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
 
   // Mock GCS connect fail.
   auto gcs_client =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get());
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient());
   EXPECT_CALL(*gcs_client, Connect)
       .Times(1)
       .WillOnce(Return(Status::UnknownError("error")));
 
   // Expect no flushing even if auto flush is on since start fails.
   auto task_gcs_accessor =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get())
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(0);
 
@@ -115,7 +116,7 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
 
   // Manually call flush should call GCS client's flushing grpc.
   auto task_gcs_accessor =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get())
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
   // Expect data flushed match
@@ -152,7 +153,7 @@ TEST_F(TaskEventBufferTest, TestBackPressure) {
   }
 
   auto task_gcs_accessor =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get())
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
   // Multiple flush calls should only result in 1 grpc call if not forced flush.
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(1);
@@ -177,7 +178,7 @@ TEST_F(TaskEventBufferTest, TestForcedFlush) {
   }
 
   auto task_gcs_accessor =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get())
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
   // Multiple flush calls with forced should result in same number of grpc call.
@@ -222,7 +223,7 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
 
   // Expect the reported data to contain number of dropped events.
   auto task_gcs_accessor =
-      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->gcs_client_.get())
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
   rpc::TaskEventData expected_data;

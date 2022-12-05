@@ -122,6 +122,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return num_task_events_dropped_;
   }
 
+  /// Test only functions.
+  gcs::GcsClient *GetGcsClient() {
+    absl::MutexLock lock(&mutex_);
+    return gcs_client_.get();
+  }
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 

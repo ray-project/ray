@@ -920,7 +920,8 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
     break;
   }
   default: {
-    // Do nothing
+    // NOTE: Other task status (e.g. TaskStatus::RUNNING_IN_XXX), should not be set by the
+    // TaskManager.
     UNREACHABLE;
   }
   }
