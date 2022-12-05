@@ -229,9 +229,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
   // Initialize the task state event buffer.
-  auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_shared<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+    auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
+    task_event_buffer_ =
+        std::make_shared<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+    if (!task_event_buffer_->Start().ok()) {
+      task_event_buffer_.reset();
+    }
+  }
 
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
@@ -602,8 +607,9 @@ void CoreWorker::Shutdown() {
     // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
-
-  task_event_buffer_->Stop();
+  if (task_event_buffer_) {
+    task_event_buffer_->Stop();
+  }
 
   if (gcs_client_) {
     // We should disconnect gcs client first otherwise because it contains
@@ -642,7 +648,9 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Force task state events push before exiting the worker.
-  task_event_buffer_->FlushEvents(/* forced */ true);
+  if (task_event_buffer_) {
+    task_event_buffer_->FlushEvents(/* forced */ true);
+  }
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
@@ -2274,12 +2282,14 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
     // Make task event
-    rpc::TaskEvents task_event;
-    task_event.set_task_id(task_spec.TaskId().Binary());
-    task_event.set_attempt_number(task_spec.AttemptNumber());
-    auto state_updates = task_event.mutable_state_updates();
-    state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-    task_event_buffer_->AddTaskEvents(std::move(task_event));
+    if (task_event_buffer_) {
+      rpc::TaskEvents task_event;
+      task_event.set_task_id(task_spec.TaskId().Binary());
+      task_event.set_attempt_number(task_spec.AttemptNumber());
+      auto state_updates = task_event.mutable_state_updates();
+      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
+      task_event_buffer_->AddTaskEvents(std::move(task_event));
+    }
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());

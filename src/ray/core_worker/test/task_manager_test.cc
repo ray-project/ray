@@ -53,28 +53,13 @@ rpc::Address GetRandomWorkerAddr() {
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
-  MOCK_METHOD(void,
-              AddTaskStatusEvent,
-              (TaskID task_id,
-               rpc::TaskStatus task_status,
-               std::unique_ptr<rpc::TaskInfoEntry> task_info,
-               std::unique_ptr<rpc::TaskStateEntry> task_state_update),
-              (override));
-
-  MOCK_METHOD(void,
-              AddProfileEvent,
-              (TaskID task_id,
-               rpc::ProfileEventEntry event,
-               const std::string &component_type,
-               const std::string &component_id,
-               const std::string &node_ip_address),
-              (override));
+  MOCK_METHOD(void, AddTaskEvents, (rpc::TaskEvents task_events), (override));
 
   MOCK_METHOD(void, FlushEvents, (bool forced), (override));
 
-  MOCK_METHOD(void, Stop, (), (override));
+  MOCK_METHOD(bool, Start, (bool manual_flush), (override));
 
-  MOCK_METHOD(rpc::TaskEventData, GetAllTaskEvents, (), (override));
+  MOCK_METHOD(void, Stop, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {

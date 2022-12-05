@@ -883,6 +883,9 @@ void TaskManager::RecordMetrics() {
 
 void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
                                         rpc::TaskStatus status) {
+  if (!task_event_buffer_) {
+    return;
+  }
   // Make task event
   rpc::TaskEvents task_event;
   task_event.set_task_id(task_entry.spec.TaskId().Binary());

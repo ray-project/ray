@@ -246,7 +246,6 @@ void GcsServer::Stop() {
     pubsub_handler_->Stop();
     kv_manager_.reset();
 
-
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
