@@ -988,7 +988,7 @@ def _get_progress_table_data(
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: unflattened_lookup(metric, t.last_result, default=None)
+            key=lambda t: unflattened_lookup(metric, t.last_result, default=None),
         )
 
     state_tbl_order = [
