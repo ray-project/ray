@@ -84,7 +84,6 @@ def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
 
-    print(f'get_fs_and_path 0 {time.time()} uri:{uri}')
     if not pyarrow:
         return None, None
 
@@ -97,18 +96,18 @@ def get_fs_and_path(
         print(f'get_fs_and_path 1 {time.time()}  uri:{uri} parsed:{parsed} path:{path} cache_key:{cache_key} _cached_fs:{_cached_fs} fs:{fs}')
         return fs, path
 
+    # In case of hdfs filesystem, if uri does not have the netloc part below will
+    # failed with hdfs access error.  For example 'hdfs:///user_folder/...' will
+    # fail, while only 'hdfs://namenode_server/user_foler/...' will work
+    if parsed.scheme == "hdfs" and parsed.netloc == "" and not fsspec:
+        return None, None
     try:
-        # in case of hdfs filesystem, if uri don't have the netloc part below will
-        # failed with hdfs access error.  For example 'hdfs:///user_folder/...' will
-        # fail, while only 'hdfs://namenode_server/user_foler/...' will work
-        if parsed.scheme=='hdfs' and parsed.netloc=='':
-            raise Exception('pyarrow.fs.FileSystem.from_uri(uri) require uri to specify netloc')
-        fs, path = pyarrow.fs.FileSystem.from_uri(uri)
-        _cached_fs[cache_key] = fs
-        print(f'get_fs_and_path 2 {time.time()} uri:{uri} parsed:{parsed} path:{path} cache_key:{cache_key} _cached_fs:{_cached_fs} fs:{fs}')
-        return fs, path
-    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError, Exception) as e:
-        print(f'get_fs_and_path pyarrow.fs.FileSystem.from_uri throw e:{e} of type_e:{type(e)} for uri:{uri} ')
+        if not (parsed.scheme == "hdfs" and parsed.netloc == ""):
+            fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+            _cached_fs[cache_key] = fs
+            print(f'get_fs_and_path 2 {time.time()} uri:{uri} parsed:{parsed} path:{path} cache_key:{cache_key} _cached_fs:{_cached_fs} fs:{fs}')
+            return fs, path
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
             # Only return if fsspec is not installed
@@ -256,7 +255,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             f"Hint: {fs_hint(uri)}"
         )
     file_infos = fs.get_file_info(pyarrow.fs.FileSelector(bucket_path, allow_not_found=True, recursive=True))
-    print(f'download_from_uri get_file_info remote location  {time.time()} file_infos:{file_infos}')
+    print(f'download_from_uri get_file_info remote location  {time.time()} file_infos:{file_infos} bucket_path:{bucket_path}')
     if filelock:
         with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
             # pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
@@ -270,50 +269,30 @@ def upload_to_uri(
     local_path: str, uri: str, exclude: Optional[List[str]] = None
 ) -> None:
     import os
-    print(f'upload_to_uri 0 {time.time()} uri:{uri} local_path:{local_path} pyarrow.__version__:{pyarrow.__version__} pyarrow.__file__:{pyarrow.__file__}')
     _assert_pyarrow_installed()
 
-    # from remote_pdb import RemotePdb
-    # RemotePdb('localhost', 4445).set_trace()
-
     fs, bucket_path = get_fs_and_path(uri)
-    #time.sleep(10)
     if not fs:
         raise ValueError(
             f"Could not upload to URI: "
             f"URI `{uri}` is not a valid or supported cloud target. "
             f"Hint: {fs_hint(uri)}"
         )
-    # path2 = 'hdfs:///user/yud/canvas/workspaces/platforms.maps.postprocessing.deepeta.pipelines.v6.prod/variables/72445241/value/value.parquet'
-    # path2 = '/user/yud/canvas/workspaces/platforms.uberai.michelangelo.ma_integration_test.pipelines.boston_housing.raytune_xgboost_base/operators/96ca6a8f/tmp/trainable_2022-11-21_02-11-23'
-    # print(f'upload_to_uri 1 {time.time()} bucket_path:{bucket_path} path2:{path2} fs:{fs}')
 
-    # time.sleep(15)
-    # file_infos = fs.get_file_info(pyarrow.fs.FileSelector(path2, allow_not_found=True, recursive=True))
-    # time.sleep(1)
-    # print(f'upload_to_uri 2 {time.time()} file_infos:{file_infos} now check fileinfo2')
-
-    time.sleep(15)
     file_infos2 = fs.get_file_info(pyarrow.fs.FileSelector(bucket_path, allow_not_found=True, recursive=True))
-    time.sleep(1)
-    print(f'upload_to_uri 3 {time.time()} file_infos2:{file_infos2}')
+    print(f'upload_to_uri before copy file_infos2:{file_infos2} uri:{uri} local_path:{local_path} exclude:{exclude} fs:{fs} bucket_path:{bucket_path}')
 
     if not exclude:
-        print(f'upload_to_uri 10 {time.time()} fs:{fs} bucket_path:{bucket_path} uri:{uri} local_path:{local_path}')
-        time.sleep(15)
         # pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
         _copy_files_with_retry(local_path, bucket_path, destination_filesystem=fs)
-        print(f'upload_to_uri 20 after pyarrow.fs.copy_files {time.time()} fs:{fs} bucket_path:{bucket_path} uri:{uri} local_path:{local_path}')
-        return
-
-    # Else, walk and upload
-    print(f'upload_to_uri 30 {time.time()} fs:{fs} bucket_path:{bucket_path} uri:{uri} local_path:{local_path} exclude:{exclude}')
-    time.sleep(15)
-    _upload_to_uri_with_exclude(
-        local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
-    )
-    print(f'upload_to_uri 40 after _upload_to_uri_with_exclude {time.time()} fs:{fs} bucket_path:{bucket_path} uri:{uri} local_path:{local_path} exclude:{exclude}')
-
+    else:
+        # Else, walk and upload
+        _upload_to_uri_with_exclude(
+            local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+        )
+    file_infos3 = fs.get_file_info(pyarrow.fs.FileSelector(bucket_path, allow_not_found=True, recursive=True))
+    print(f'upload_to_uri after copy file_infos3:{file_infos3} uri:{uri} local_path:{local_path} exclude:{exclude} fs:{fs} bucket_path:{bucket_path}')
+    return
 
 
 def _upload_to_uri_with_exclude(
@@ -345,8 +324,6 @@ def _upload_to_uri_with_exclude(
                 _copy_files_with_retry(full_source_path, full_target_path, destination_filesystem=fs)
             except Exception as e:
                 print(f'candidate:{candidate} failed with e:{e}')
-
-    print(f'_upload_to_uri_with_exclude 2 after copy {time.time()} fs:{fs} full_source_path:{full_source_path} full_target_path:{full_target_path} exclude:{exclude}')
 
 
 def list_at_uri(uri: str) -> List[str]:
