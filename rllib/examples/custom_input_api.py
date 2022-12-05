@@ -81,8 +81,7 @@ if __name__ == "__main__":
     # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     default_config = get_trainable_cls(args.run).get_default_config()
     config = (
-        default_config
-        .environment("Pendulum-v1", clip_actions=True)
+        default_config.environment("Pendulum-v1", clip_actions=True)
         .framework(args.framework)
         .offline_data(
             # we can either use the tune registry, class path, or direct function

@@ -135,7 +135,7 @@ class QMixConfig(SimpleQConfig):
         # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
         # The evaluation stats will be reported under the "evaluation" metric key.
         self.evaluation(
-            evaluation_config=QMixConfig.overrides(explore=False)
+            evaluation_config=AlgorithmConfig.overrides(explore=False)
         )
         # __sphinx_doc_end__
         # fmt: on

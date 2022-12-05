@@ -39,16 +39,24 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             KeyError,
             "Invalid property name invdli for config class PGConfig",
-            lambda: (PGConfig().multi_agent(policies={
-                "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
-            })),
+            lambda: (
+                PGConfig().multi_agent(
+                    policies={
+                        "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
+                    }
+                )
+            ),
         )
         self.assertRaisesRegex(
             KeyError,
             "Invalid property name invdli for config class PGConfig",
-            lambda: (PGConfig().multi_agent(policies={
-                "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
-            })),
+            lambda: (
+                PGConfig().multi_agent(
+                    policies={
+                        "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
+                    }
+                )
+            ),
         )
 
     def test_setting_multi_agent_should_fail(self):

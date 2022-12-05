@@ -200,13 +200,14 @@ class AlgorithmConfig:
             ...     )
             ... )
 
+            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
             >>> from ray.rllib.algorithms.pg import PGConfig
             >>> config = (
             ...     PGConfig()
             ...     .evaluation(
             ...         evaluation_num_workers=1,
             ...         evaluation_interval=1,
-            ...         evaluation_config=PGConfig.overrides(explore=False),
+            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
             ...     )
             ... )
 
@@ -2083,9 +2084,9 @@ class AlgorithmConfig:
         # Convert AlgorithmConfig into dict (for later updating from dict).
         evaluation_config = self.evaluation_config
         if isinstance(evaluation_config, AlgorithmConfig):
-            assert False#TODO
+            assert False  # TODO
             evaluation_config_obj = evaluation_config
-            #evaluation_config = evaluation_config.to_dict()
+            # evaluation_config = evaluation_config.to_dict()
         else:
             # Create unfrozen copy of self to be used as the to-be-returned eval
             # AlgorithmConfig.
