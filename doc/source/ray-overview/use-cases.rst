@@ -197,7 +197,7 @@ Learn more about the Tune library with the following talks and user guides.
 
     +++
     .. link-button:: https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune
-        :type: ref
+        :type: url
         :text: [Blog] How to distribute hyperparameter tuning with Ray Tune
         :classes: btn-link btn-block stretched-link
     ---
