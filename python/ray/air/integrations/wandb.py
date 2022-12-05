@@ -113,13 +113,20 @@ def setup_wandb(
         _session = session._get_session(warn=False)
         if _session and rank_zero_only and session.get_world_rank() != 0:
             return RunDisabled()
+
+        default_trial_id = session.get_trial_id()
+        default_trial_name = session.get_trial_name()
+        default_experiment_name = session.get_experiment_name()
+
     except RuntimeError:
-        pass
+        default_trial_id = None
+        default_trial_name = None
+        default_experiment_name = None
 
     default_kwargs = {
-        "trial_id": kwargs.get("trial_id") or session.get_trial_id(),
-        "trial_name": kwargs.get("trial_name") or session.get_trial_name(),
-        "group": kwargs.get("group") or session.get_experiment_name(),
+        "trial_id": kwargs.get("trial_id") or default_trial_id,
+        "trial_name": kwargs.get("trial_name") or default_trial_name,
+        "group": kwargs.get("group") or default_experiment_name,
     }
     default_kwargs.update(kwargs)
 

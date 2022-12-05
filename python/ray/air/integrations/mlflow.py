@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 
 import ray
@@ -26,57 +26,58 @@ class _NoopClient(MlflowClient):
 
 @PublicAPI(stability="alpha")
 def setup_mlflow(
-    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+    tracking_uri: Optional[str] = None,
+    registry_uri: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    experiment_name: Optional[str] = None,
+    tags: Optional[Dict] = None,
+    rank_zero_only: bool = True,
 ) -> MlflowClient:
     """Set up a MLflow session.
 
     This function can be used to initialize an Mlflow session in a
     (distributed) training or tuning run.
 
-    By default, the run ID is the trial ID, the run name is the trial name, and
-    the run group is the experiment name. These settings can be overwritten by
-    passing the respective arguments as ``kwargs``, which will be passed to
-    ``wandb.init()``.
+    By default, the Mlflow experiment ID is the Ray trial ID and the
+    MLlflow experiment name is the Ray trial name. These settings can be overwritten by
+    passing the respective arguments to this function.
 
     In distributed training with Ray Train, only the zero-rank worker will initialize
-    wandb. All other workers will return a disabled run object, so that logging is not
+    mlflow. All other workers will return a noop client, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
-    ``rank_zero_only=False``, which will then initialize wandb in every training
+    ``rank_zero_only=False``, which will then initialize mlflow in every training
     worker.
 
-    The ``config`` argument will be passed to Weights and Biases and will be logged
-    as the run configuration. If wandb-specific settings are found, they will
-    be used to initialize the session. These settings can be
-
-    - api_key_file: Path to locally available file containing a W&B API key
-    - api_key: API key to authenticate with W&B
-
-    If no API information is found in the config, wandb will try to authenticate
-    using locally stored credentials, created for instance by running ``wandb login``.
-
-    All other keys found in the ``wandb`` config parameter will be passed to
-    ``wandb.init()``. If the same keys are present in multiple locations, the
-    ``kwargs`` passed to ``setup_wandb()`` will take precedence over those passed
-    as config keys.
-
     Args:
-        config: Configuration dict to be logged to weights and biases. Can contain
-            arguments for ``wandb.init()`` as well as authentication information.
+        tracking_uri: The tracking URI for the MLflow tracking
+                server.
+        registry_uri: The registry URI for the MLflow model registry.
+        experiment_id: The id of an already existing MLflow
+            experiment to use for logging. If None is passed in
+            here and the MFLOW_EXPERIMENT_ID is not set, or the
+            experiment with this id does not exist,
+            ``experiment_name`` will be used instead. This argument takes
+            precedence over ``experiment_name`` if both are passed in.
+        experiment_name: The experiment name to use for logging.
+            If None is passed in here, th  MLFLOW_EXPERIMENT_NAME environment variable
+            is used to determine the experiment name.
+            If the experiment with the name already exists with MLflow,
+            it will be reused.
+        tags (Optional[Dict]): Tags to set for the new run.~
         rank_zero_only: If True, will return an initialized session only for the
             rank 0 worker in distributed training. If False, will initialize a
             session for all workers.
-        kwargs: Passed to ``wandb.init()``.
 
     Example:
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.mlflow import mlflow_setup
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                mlflow_client = mlflow_setup()
                 # ...
-                wandb.log({"loss": 0.123})
+                mlflow_client.log_metric(key="loss", val=0.123, step=0)
 
     """
     if MlflowClient == object:
@@ -89,22 +90,26 @@ def setup_mlflow(
         _session = session._get_session(warn=False)
         if _session and rank_zero_only and session.get_world_rank() != 0:
             return _NoopClient()
-    except RuntimeError:
-        pass
 
-    default_kwargs = {
-        "trial_id": kwargs.get("trial_id") or session.get_trial_id(),
-        "trial_name": kwargs.get("trial_name") or session.get_trial_name(),
-        "group": kwargs.get("group") or session.get_experiment_name(),
-    }
-    default_kwargs.update(kwargs)
+        default_trial_id = session.get_trial_id()
+        default_trial_name = session.get_trial_name()
+
+    except RuntimeError:
+        default_trial_id = None
+        default_trial_name = None
 
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
-        experiment_id=None,  # Todo: continue
-        experiment_name=None,
+        tracking_uri=tracking_uri,
+        registry_uri=registry_uri,
+        experiment_id=experiment_id or default_trial_id,
+        experiment_name=experiment_name or default_trial_name,
+        create_experiment_if_not_exists=True,
     )
-    return mlflow_util._get_client()
+    return mlflow_util.start_run(
+        run_name=experiment_name or default_trial_name, tags=tags, set_active=True
+    )
+
 
 class MLflowLoggerCallback(LoggerCallback):
     """MLflow Logger to automatically log Tune results and config to MLflow.

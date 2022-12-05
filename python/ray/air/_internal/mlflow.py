@@ -41,7 +41,7 @@ class _MLflowLoggerUtil:
         registry_uri: Optional[str] = None,
         experiment_id: Optional[str] = None,
         experiment_name: Optional[str] = None,
-        tracking_token=None,
+        tracking_token: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
     ):
         """
@@ -62,9 +62,8 @@ class _MLflowLoggerUtil:
                 ``experiment_name`` will be used instead. This argument takes
                 precedence over ``experiment_name`` if both are passed in.
             experiment_name: The experiment name to use for logging.
-                If None is passed in here, the
-                the MLFLOW_EXPERIMENT_NAME environment variables is used to
-                determine the experiment name.
+                If None is passed in here, the MLFLOW_EXPERIMENT_NAME environment
+                variable is used to determine the experiment name.
                 If the experiment with the name already exists with MLflow,
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
