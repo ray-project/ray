@@ -21,7 +21,7 @@ from ray.air.config import ScalingConfig
 from ray.air.util.data_batch_conversion import BatchFormat
 
 
-def preprocess_image_with_label(batch: np.ndarray) -> Dict[str, np.ndarray]:
+def preprocess_image_with_label(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     """
     User Pytorch code to transform user image.
     """
@@ -33,10 +33,10 @@ def preprocess_image_with_label(batch: np.ndarray) -> Dict[str, np.ndarray]:
         ]
     )
     # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
-    transposed_torch_tensor = torch.Tensor(batch.transpose(0, 3, 1, 2))
+    batch["image"] = torch.Tensor(batch["image"].transpose(0, 3, 1, 2))
     return {
-        "image": preprocess(transposed_torch_tensor).numpy(),
-        "label": np.array([1] * len(batch)),
+        "image": preprocess(batch["image"]).numpy(),
+        "label": np.array([1] * len(batch["image"])),
     }
 
 
