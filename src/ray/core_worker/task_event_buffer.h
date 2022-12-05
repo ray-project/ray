@@ -140,20 +140,19 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// A iterator into buffer_ that determines which element to be overwritten.
   size_t next_idx_to_overwrite_ GUARDED_BY(mutex_) = 0;
 
+  /// Number of task events dropped since the last report flush.
   size_t num_task_events_dropped_ GUARDED_BY(mutex_) = 0;
-
-  /// Thread local fields accessed only in io_thread_.
 
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  bool grpc_in_progress_ = false;
+  bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
 
-  /// Stats tracking for debugging and monitoring.
-  uint64_t total_events_bytes_ = 0;
-  uint64_t total_num_events_ = 0;
+  /// Debug stats: total number of bytes of task events sent so far to GCS.
+  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
 
-  /// Thread local fields accessed in io_thread_ ENDS.
+  /// Debug stats: total number of task events sent so far to GCS.
+  uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);

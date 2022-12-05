@@ -86,8 +86,6 @@ TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(0);
 
   ASSERT_TRUE(task_event_buffer_->Start(/*auto_flush*/ true).IsUnknownError());
-  // Resources cleared.
-  EXPECT_EQ(task_event_buffer_->gcs_client_, nullptr);
 }
 
 TEST_F(TaskEventBufferTest, TestAddEvent) {

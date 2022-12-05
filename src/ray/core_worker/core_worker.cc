@@ -232,7 +232,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
     task_event_buffer_ =
-        std::make_shared<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+        std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
     if (!task_event_buffer_->Start().ok()) {
       task_event_buffer_.reset();
     }
@@ -353,7 +353,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      task_event_buffer_));
+      task_event_buffer_.get()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
