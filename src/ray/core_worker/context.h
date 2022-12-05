@@ -36,6 +36,7 @@ class WorkerContext {
   const WorkerID &GetWorkerID() const;
 
   const JobID &GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
+
   const rpc::JobConfig &GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentTaskID() const;
@@ -55,7 +56,8 @@ class WorkerContext {
       LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number)
+      LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentInternalTaskId() const;
 
@@ -99,6 +101,9 @@ class WorkerContext {
   ObjectIDIndexType GetNextPutIndex();
 
   int64_t GetTaskDepth() const;
+
+ private:
+  void InitJobID(JobID job_id);
 
  protected:
   // allow unit test to set.

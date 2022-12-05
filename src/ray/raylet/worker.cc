@@ -129,7 +129,10 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
+void Worker::AssignTaskId(const TaskID &task_id) {
+  assigned_task_id_ = task_id;
+  SetJobId(task_id.JobId());
+}
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
@@ -156,6 +159,7 @@ void Worker::AssignActorId(const ActorID &actor_id) {
       << "A worker that is already an actor cannot be assigned an actor ID again.";
   RAY_CHECK(!actor_id.IsNil());
   actor_id_ = actor_id;
+  SetJobId(actor_id.JobId());
 }
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
@@ -195,6 +199,14 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
 const BundleID &Worker::GetBundleId() const { return bundle_id_; }
 
 void Worker::SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
+
+void Worker::SetJobId(const JobID &job_id) {
+  if (assigned_job_id_.IsNil()) {
+    assigned_job_id_ = job_id;
+  }
+
+  RAY_CHECK(assigned_job_id_ == job_id);
+}
 
 }  // namespace raylet
 

@@ -412,8 +412,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
   rpc::JobConfig *job_config = nullptr;
-  if (!IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!job_id.IsNil());
+  if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
@@ -1306,11 +1305,24 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    for (int i = 0; i < num_needed; i++) {
-      PopWorkerStatus status;
-      StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
-    }
+    PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+  }
+}
+
+void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
+  RAY_LOG(INFO) << "Prestarting " << num_needed << " workers!";
+  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
+                                                        {{"CPU", 1}},
+                                                        /*is_actor*/ false,
+                                                        /*is_gpu*/ false};
+  for (int i = 0; i < num_needed; i++) {
+    PopWorkerStatus status;
+    StartWorkerProcess(language,
+                       rpc::WorkerType::WORKER,
+                       JobID::Nil(),
+                       &status,
+                       /*dynamic_options*/ {},
+                       kDefaultCpuWorkerCacheKey.IntHash());
   }
 }
 

@@ -187,16 +187,10 @@ bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  absl::flat_hash_map<std::string, double> required_resource;
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
-    required_resource = GetRequiredResources().GetResourceMap();
-  }
-  WorkerCacheKey env = {
-      SerializedRuntimeEnv(),
-      required_resource,
-      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
-      GetRequiredResources().GetResource("GPU") > 0 &&
-          RayConfig::instance().isolate_workers_across_resource_types()};
+  WorkerCacheKey env = {SerializedRuntimeEnv(),
+                        GetRequiredResources().GetResourceMap(),
+                        IsActorCreationTask(),
+                        GetRequiredResources().GetResource("GPU") > 0};
   return env.IntHash();
 }
 
@@ -555,9 +549,11 @@ WorkerCacheKey::WorkerCacheKey(
     bool is_actor,
     bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)),
-      is_actor(is_actor),
-      is_gpu(is_gpu) {}
+      required_resources(RayConfig::instance().worker_resource_limits_enabled()
+                             ? required_resources
+                             : absl::flat_hash_map<std::string, double>{}),
+      is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
+      is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
