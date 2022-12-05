@@ -64,6 +64,7 @@ def convert_pandas_to_torch_tensor(
             # Torch tensor.
             # See https://github.com/pytorch/pytorch/issues/51156.
             vals = vals.to_numpy()
+
         if vals.dtype.type is np.object_:
             # Column has an object dtype which Torch can't handle, so we try to
             # tensorize each column element and then stack the resulting tensors.
