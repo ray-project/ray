@@ -228,6 +228,14 @@ Learn more about the Tune library with the following talks and user guides.
     :img-top: /images/grid.png
 
     +++
+    .. link-button:: /ray-air/examples/automl_with_ray_air
+        :type: ref
+        :text: [Example] Simple AutoML for time series with Ray AIR
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
     .. link-button:: /tune/examples/index
         :type: ref
         :text: [Gallery] Ray Tune Examples Gallery
@@ -335,6 +343,22 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     .. link-button:: /rllib/rllib-training
         :type: ref
         :text: [Guide] Getting Started with RLlib
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/riot.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
+        :type: url
+        :text: [Talk] Deep reinforcement learning at Riot Games
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://deumbra.com/2022/08/rllib-for-deep-hierarchical-multiagent-reinforcement-learning/
+        :type: url
+        :text: [Blog] RLlib for Deep Hierarchical Multiagent Reinforcement Learning
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/riot.png
