@@ -234,6 +234,26 @@ def configure_log_file(out_file, err_file):
     )
 
 
+def init_worker_logs(worker_type: str):
+    assert ray._private.worker._global_node is not None
+    out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
+        get_worker_log_file_name(worker_type)
+    )
+    configure_log_file(out_file, err_file)
+
+
+def reconfigure_worker_logs(worker_type: str, job_id: str):
+    original_log_file_name = get_worker_log_file_name(worker_type)
+    new_log_file_name = get_worker_log_file_name(worker_type, job_id)
+    if new_log_file_name == original_log_file_name:
+        return
+    assert ray._private.worker._global_node is not None
+    out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
+        new_log_file_name
+    )
+    configure_log_file(out_file, err_file)
+
+
 class WorkerStandardStreamDispatcher:
     def __init__(self):
         self.handlers = []

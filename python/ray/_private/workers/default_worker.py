@@ -11,7 +11,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+from ray._private.ray_logging import init_worker_logs
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -231,10 +231,7 @@ if __name__ == "__main__":
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
-    )
-    configure_log_file(out_file, err_file)
+    init_worker_logs(args.worker_type)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()
