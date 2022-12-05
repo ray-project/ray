@@ -130,7 +130,7 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
 }
 
 void Worker::AssignTaskId(const TaskID &task_id) {
-  if (!task_id.IsNil()) {
+  if (!task_id.IsNil() && !task_id.ActorId().IsNil()) {
     SetJobId(task_id.JobId());
   }
   assigned_task_id_ = task_id;
