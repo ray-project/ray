@@ -808,8 +808,8 @@ while True:
         await async_wait_for_condition_async_predicate(
             check_job_stopped, job_manager=job_manager, job_id=job_id
         )
-        assert 'SIGTERM signal handled!' in job_manager.get_job_logs(job_id)
-    
+        assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+
 
 @pytest.mark.asyncio
 async def test_logs_streaming(job_manager):
