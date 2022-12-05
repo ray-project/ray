@@ -27,6 +27,9 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
+from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators import InputDataBuffer, MapOperator
+from ray.data._internal.execution.util import _make_ref_bundles
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -310,6 +313,7 @@ class ExecutionPlan:
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
             context = DatasetContext.get_current()
+
             for stage_idx, stage in enumerate(stages):
                 if allow_clear_input_blocks:
                     clear_input_blocks = self._should_clear_input_blocks(
@@ -328,6 +332,7 @@ class ExecutionPlan:
                 stats.dataset_uuid = uuid.uuid4().hex
                 if context.enable_auto_log_stats:
                     logger.info(stats.summary_string(include_parent=False))
+
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
@@ -471,6 +476,32 @@ class ExecutionPlan:
             and not self._stages_after_snapshot
             and not self._snapshot_blocks.is_cleared()
         )
+
+    def to_operator_dag(self) -> PhysicalOperator:
+        """Translate this into an operator DAG for the new execution backend."""
+
+        blocks, _, stages = self._optimize()
+        operator = _blocks_to_input_buffer(blocks)
+        for stage in stages:
+            operator = _stage_to_operator(stage, operator)
+        return operator
+
+
+def _blocks_to_input_buffer(blocks: BlockList) -> PhysicalOperator:
+    # TODO: handle non read blocklist
+    read_tasks = blocks._tasks
+    inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
+
+    def do_read(block):
+        for read_task in block:
+            for output_block in read_task():
+                return output_block  # TODO handle remaining blocks
+
+    return MapOperator(do_read, inputs, name="DoRead")
+
+
+def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOperator:
+    raise NotImplementedError
 
 
 def _pack_args(

@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
+from ray.data._internal.block_list import BlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -81,12 +82,10 @@ class PhysicalOperator:
     """Abstract class for physical operators.
 
     An operator transforms one or more input streams of RefBundles into a single
-    output stream of RefBundles. There are three types of operators that Executors
-    must be aware of in operator DAGs.
+    output stream of RefBundles.
 
-    Subclasses:
-        OneToOneOperator: handles one-to-one operations (e.g., map, filter)
-        ExchangeOperator: handles other types of operations (e.g., shuffle, union)
+    Operators are stateful and non-serializable; they live on the driver side of the
+    Dataset execution only.
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
@@ -164,6 +163,15 @@ class Executor:
         """Start execution."""
         raise NotImplementedError
 
-    def get_stats() -> DatasetStats:
+    def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far."""
         raise NotImplementedError
+
+    def execute_to_legacy_block_list(self, dag: PhysicalOperator) -> BlockList:
+        """Temporary: for compatibility with the legacy backend."""
+        blocks, metadata = [], []
+        for ref_bundle in self.execute(dag):
+            for block, meta in ref_bundle.blocks:
+                blocks.append(block)
+                metadata.append(meta)
+        return BlockList(blocks, metadata, owned_by_consumer=True)

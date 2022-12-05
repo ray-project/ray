@@ -42,7 +42,7 @@ class BulkExecutor(Executor):
 
         return execute_recursive(dag)
 
-    def get_stats() -> DatasetStats:
+    def get_stats(self) -> DatasetStats:
         raise NotImplementedError
 
 

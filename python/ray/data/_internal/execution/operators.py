@@ -5,7 +5,6 @@ from ray.data.block import Block
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
-    ExchangeOperator,
     PhysicalOperator,
 )
 from ray.data._internal.compute import BlockTransform
@@ -13,7 +12,7 @@ from ray.data._internal.execution.util import _make_ref_bundles
 from ray.data._internal.execution.one_to_one_state import OneToOneOperatorState
 
 
-class InputDataBuffer(ExchangeOperator):
+class InputDataBuffer(PhysicalOperator):
     """Defines the input data for the operator DAG."""
 
     def __init__(self, input_data: List[RefBundle]):

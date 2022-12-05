@@ -39,6 +39,8 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
@@ -2545,7 +2547,14 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+        if ctx.new_execution_backend:
+            executor = BulkExecutor(ExecutionOptions())
+            legacy_list = executor.execute_to_legacy_block_list(
+                self._plan.to_operator_dag()
+            )
+            blocks, metadata = zip(*legacy_list.get_blocks_with_metadata())
+        else:
+            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.
         if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
@@ -2670,8 +2679,14 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
-        stats = self._plan.stats()
+        ctx = DatasetContext.get_current()
+        if ctx.new_execution_backend:
+            executor = BulkExecutor(ExecutionOptions())
+            blocks = executor.execute_to_legacy_block_list(self._plan.to_operator_dag())
+            stats = executor.get_stats()
+        else:
+            blocks = self._plan.execute()
+            stats = self._plan.stats()
 
         time_start = time.perf_counter()
 
