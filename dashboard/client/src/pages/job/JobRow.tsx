@@ -21,6 +21,7 @@ const useStyles = makeStyles((theme) => ({
 
 type JobRowProps = {
   job: UnifiedJob;
+  newIA?: boolean;
 };
 
 export const JobRow = ({
@@ -34,19 +35,18 @@ export const JobRow = ({
     end_time,
     entrypoint,
   },
+  newIA = false,
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
-  const { progress, error } = useJobProgress(job_id ?? undefined);
+  const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
   const classes = useStyles();
 
   const progressBar = (() => {
+    if (!driverExists) {
+      return <MiniTaskProgressBar />;
+    }
     if (!progress || error) {
-      if (status === "SUCCEEDED" || status === "FAILED") {
-        // Show a fake all-green progress bar.
-        return <MiniTaskProgressBar numFinished={1} showTooltip={false} />;
-      } else {
-        return "unavailable";
-      }
+      return "unavailable";
     }
     if (status === "SUCCEEDED" || status === "FAILED") {
       // TODO(aguo): Show failed tasks in progress bar once supported.
@@ -59,7 +59,11 @@ export const JobRow = ({
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
+        {job_id ? (
+          <Link to={newIA ? `${job_id}` : `/job/${job_id}`}>{job_id}</Link>
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">

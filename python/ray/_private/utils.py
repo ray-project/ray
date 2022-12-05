@@ -1,4 +1,6 @@
+import asyncio
 import binascii
+import contextlib
 import errno
 import functools
 import hashlib
@@ -22,6 +24,7 @@ from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+
 import grpc
 import numpy as np
 
@@ -1641,6 +1644,42 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
+def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    import sys
+
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
+
+
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1738,3 +1777,77 @@ def _get_pyarrow_version() -> Optional[str]:
             if hasattr(pyarrow, "__version__"):
                 _PYARROW_VERSION = pyarrow.__version__
     return _PYARROW_VERSION
+
+
+class DeferSigint(contextlib.AbstractContextManager):
+    """Context manager that defers SIGINT signals until the the context is left."""
+
+    # This is used by Ray's task cancellation to defer cancellation interrupts during
+    # problematic areas, e.g. task argument deserialization.
+    def __init__(self):
+        # Whether the task has been cancelled while in the context.
+        self.task_cancelled = False
+        # The original SIGINT handler.
+        self.orig_sigint_handler = None
+        # The original signal method.
+        self.orig_signal = None
+
+    @classmethod
+    def create_if_main_thread(cls) -> contextlib.AbstractContextManager:
+        """Creates a DeferSigint context manager if running on the main thread,
+        returns a no-op context manager otherwise.
+        """
+        if threading.current_thread() == threading.main_thread():
+            return cls()
+        else:
+            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
+            # dropped.
+            return contextlib.suppress()
+
+    def _set_task_cancelled(self, signum, frame):
+        """SIGINT handler that defers the signal."""
+        self.task_cancelled = True
+
+    def _signal_monkey_patch(self, signum, handler):
+        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
+        registered within the DeferSigint context.
+        """
+        # Only raise an error if setting a SIGINT handler in the main thread; if setting
+        # a handler in a non-main thread, signal.signal will raise an error anyway
+        # indicating that Python does not allow that.
+        if (
+            threading.current_thread() == threading.main_thread()
+            and signum == signal.SIGINT
+        ):
+            raise ValueError(
+                "Can't set signal handler for SIGINT while SIGINT is being deferred "
+                "within a DeferSigint context."
+            )
+        return self.orig_signal(signum, handler)
+
+    def __enter__(self):
+        # Save original SIGINT handler for later restoration.
+        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        # Set SIGINT signal handler that defers the signal.
+        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
+        # within the context.
+        self.orig_signal = signal.signal
+        signal.signal = self._signal_monkey_patch
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        assert self.orig_sigint_handler is not None
+        assert self.orig_signal is not None
+        # Restore original signal.signal function.
+        signal.signal = self.orig_signal
+        # Restore original SIGINT handler.
+        signal.signal(signal.SIGINT, self.orig_sigint_handler)
+        if exc_type is None and self.task_cancelled:
+            # No exception raised in context but task has been cancelled, so we raise
+            # KeyboardInterrupt to go through the task cancellation path.
+            raise KeyboardInterrupt
+        else:
+            # If exception was raised in context, returning False will cause it to be
+            # reraised.
+            return False

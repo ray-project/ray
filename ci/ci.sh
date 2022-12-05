@@ -574,17 +574,6 @@ lint_web() {
   )
 }
 
-check_python_test_directories_contain_init_file() {
-  cd "${WORKSPACE_DIR}"
-  while IFS= read -r -d '' test_directory
-  do
-    if [ ! -e "$test_directory"/__init__.py ]; then
-      echo "Add '__init__.py' to '$test_directory'"
-      exit 1
-    fi
-  done <   <(find python -name "tests" -type d -print0)
-}
-
 lint_copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
@@ -621,9 +610,6 @@ _lint() {
 
   # Run annotations check.
   lint_annotations
-
-  # Check Python test directories contain `__init__.py` file.
-  check_python_test_directories_contain_init_file
 
   # Make sure that the README is formatted properly.
   lint_readme
@@ -803,6 +789,8 @@ run_minimal_test() {
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
   # Todo: Make compatible with python 3.9/3.10
   if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then

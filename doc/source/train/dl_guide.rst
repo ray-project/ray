@@ -196,6 +196,15 @@ with one of the following:
 
 .. tabbed:: TensorFlow
 
+    .. warning::
+        Ray will not automatically set any environment variables or configuration
+        related to local parallelism / threading
+        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
+        If you desire greater control over TensorFlow threading, use
+        the ``tf.config.threading`` module (eg.
+        ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
+        at the beginning of your ``train_loop_per_worker`` function.
+
     .. code-block:: python
 
         from ray.air import ScalingConfig
