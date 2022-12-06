@@ -91,7 +91,7 @@ class ProfileEvent {
       event->Swap(&event_);
 
       // Add task event to the task event buffer
-      task_event_buffer_->AddTaskEvents(std::move(task_events));
+      task_event_buffer_->AddTaskEvent(std::move(task_events));
       return;
     }
     rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
