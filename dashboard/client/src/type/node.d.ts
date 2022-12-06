@@ -66,7 +66,7 @@ export type GPUStats = {
   enforcedPowerLimit: number;
   memoryUsed: number;
   memoryTotal: number;
-  processes: GPUProcessStats[];
+  processes?: GPUProcessStats[];
 };
 
 export type NodeDetailExtend = {
