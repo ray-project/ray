@@ -90,8 +90,6 @@ class SyncConfig:
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
         sync_timeout: Timeout after which running sync processes are aborted.
-            Currently only affects trial-to-cloud syncing.
-
     """
 
     upload_dir: Optional[str] = None
@@ -173,6 +171,9 @@ class _BackgroundProcess:
         self._start_time = time.time()
 
     def wait(self, timeout: Optional[float] = None) -> Any:
+        """Waits for the backgrond process to finish running. Waits until the
+        background process has run for at least `timeout` seconds, counting from
+        the time when the process was started."""
         if not self._process:
             return None
 
@@ -305,7 +306,8 @@ class Syncer(abc.ABC):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
-        processes.
+        processes. This method should timeout after `sync_timeout` and
+        raise a `TimeoutError`.
         """
         pass
 
@@ -474,6 +476,8 @@ class _BackgroundSyncer(Syncer):
             try:
                 self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
+                # Let `TimeoutError` pass through, to be handled separately
+                # from errors thrown by the sync operation
                 if isinstance(e, TimeoutError):
                     raise e
                 raise TuneError(f"Sync process failed: {e}") from e

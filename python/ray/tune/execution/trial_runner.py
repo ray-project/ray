@@ -268,7 +268,10 @@ class _ExperimentCheckpointManager:
                 except TimeoutError as e:
                     logger.warning(
                         "The previous sync of the experiment checkpoint to the cloud "
-                        f"timed out: {str(e)}"
+                        f"timed out: {str(e)}. Tune will continue to retry syncing. "
+                        "If this warning keeps showing up, consider diagnosing the "
+                        "reason behind the hanging sync operation, or increase the "
+                        "`sync_timeout` in `SyncConfig`."
                     )
                 synced = self._syncer.sync_up(
                     local_dir=self._local_dir,
