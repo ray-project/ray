@@ -24,7 +24,7 @@ apex-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         num_gpus: 1
-        num_workers: 15
+        num_workers: 16
         num_envs_per_worker: 8
         rollout_fragment_length: 20
         train_batch_size: 512
