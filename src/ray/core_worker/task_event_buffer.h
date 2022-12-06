@@ -181,6 +181,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
   FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
   FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBufferSizeLimit);
