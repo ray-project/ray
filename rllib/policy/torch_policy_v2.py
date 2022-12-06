@@ -1111,9 +1111,9 @@ class TorchPolicyV2(Policy):
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
 
-        # convert to numpy so that the type of objects in the SampleBatch are
-        # consistent.
-        input_dict[SampleBatch.ACTIONS] = convert_to_numpy(actions)
+        # # convert to numpy so that the type of objects in the SampleBatch are
+        # # consistent.
+        # input_dict[SampleBatch.ACTIONS] = convert_to_numpy(actions)
 
         # Add default and custom fetches.
         if not extra_fetches:
