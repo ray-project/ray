@@ -85,13 +85,13 @@ class OneToOneOperator(PhysicalOperator):
         pass
 
     def has_next(self) -> bool:
-        return len(self._execution_state.outputs) > 0
+        return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
-        return self._execution_state.outputs.pop(0)
+        return self._execution_state.get_next()
 
     def get_tasks(self) -> List[ray.ObjectRef]:
-        return list(self._execution_state.tasks)
+        return self._execution_state.get_tasks()
 
     def notify_task_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.task_completed(task)
@@ -105,26 +105,25 @@ class MapOperator(OneToOneOperator):
 
     def __init__(
         self,
-        block_transform: BlockTransform,
+        block_map,
         input_op: PhysicalOperator,
         name: str = "Map",
         compute_strategy: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        self._block_transform = block_transform
+        self._block_map = block_map
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
         super().__init__(name, [input_op])
 
     def get_transform_fn(self):
-        transform = self._block_transform
+        block_map = self._block_map
 
         def execute_one(block_bundle: Iterator[Block], _) -> Iterator[Block]:
-            def apply_transform(fn, block_bundle):
-                for b in block_bundle:
-                    yield fn(b)
-
-            return apply_transform(transform, block_bundle)
+            print("CALL FN->", block_bundle)
+            for b in block_bundle:
+                print("CALL BLOCK_MAP->", b)
+                yield block_map(b)
 
         return execute_one
 

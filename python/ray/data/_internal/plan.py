@@ -27,7 +27,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators import InputDataBuffer, MapOperator
 from ray.data._internal.execution.util import _make_ref_bundles
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -488,20 +488,60 @@ class ExecutionPlan:
 
 
 def _blocks_to_input_buffer(blocks: BlockList) -> PhysicalOperator:
-    # TODO: handle non read blocklist
-    read_tasks = blocks._tasks
-    inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
+    if hasattr(blocks, "_tasks"):
+        read_tasks = blocks._tasks
+        inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
 
-    def do_read(block):
-        for read_task in block:
-            for output_block in read_task():
-                return output_block  # TODO handle remaining blocks
+        def do_read(block):
+            print("DO READ", block)
+            for read_task in block:
+                for output_block in read_task():
+                    return output_block  # TODO handle remaining blocks
 
-    return MapOperator(do_read, inputs, name="DoRead")
+        return MapOperator(do_read, inputs, name="DoRead")
+    else:
+        output = []
+        for block, meta in blocks.iter_blocks_with_metadata():
+            print("BLOCK", ray.get(block))
+            output.append(
+                RefBundle(
+                    [
+                        (
+                            block,
+                            meta,
+                        )
+                    ]
+                )
+            )
+        return InputDataBuffer(output)
 
 
 def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOperator:
-    raise NotImplementedError
+    if isinstance(stage, OneToOneStage):
+        assert not stage.fn_args, stage.fn_args
+        assert not stage.fn_kwargs, stage.fn_kwargs
+        assert not stage.fn_constructor_args
+        assert not stage.fn_constructor_kwargs
+
+        block_fn = stage.block_fn
+        fn = stage.fn
+
+        def block_map(block):
+            print("MAPPING SINGLE BLOCK->", block)
+            [output] = list(block_fn([block], fn))
+            print("OUTPUT SINGLE BLOCK->", output)
+            return output
+
+        return MapOperator(
+            block_map,
+            input_op,
+            name=stage.name,
+            compute_strategy=stage.compute,
+            ray_remote_args=stage.ray_remote_args,
+        )
+        # TODO the rest of the args
+    else:
+        raise NotImplementedError
 
 
 def _pack_args(
