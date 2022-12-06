@@ -1,31 +1,47 @@
-from typing import Callable, Optional, List, TYPE_CHECKING
-from types import GeneratorType
+from typing import Callable, Optional, List, Dict, Any, TYPE_CHECKING
 
 import ray
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
-from ray.data.block import Block, BlockMetadata, BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.types import ObjectRef
+from ray._raylet import ObjectRefGenerator
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators import OneToOneOperator
 
 
-@ray.remote(num_returns=2)
-def _transform_one(fn: Callable, block: Block) -> (Block, BlockMetadata):
-    print("CALL FN", [block])
-    [out] = list(fn([block], {}))
-    if isinstance(out, GeneratorType):
-        out = list(out)
-    print("OUTPUT", out)
-    return out, BlockAccessor.for_block(out).get_metadata([], None)
+@ray.remote(num_returns="dynamic")
+def _run_one_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]):
+    """Remote function for a single operator task.
+
+    Args:
+        fn: The callable that takes (Iterator[Block], input_metadata) as input and
+            returns Iterator[Block] as output.
+        input_metadata: The input metadata from the task ref bundle.
+        blocks: The concrete block values from the task ref bundle.
+
+    Returns:
+        A generator of blocks, followed by the list of BlockMetadata for the blocks
+        as the last generator return.
+    """
+    output_metadata = []
+    for b_out in fn(blocks, input_metadata):
+        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        output_metadata.append(m_out)
+        yield b_out
+    yield output_metadata
 
 
-# TODO: handle block splitting?
-class _Task:
-    def __init__(self, block_ref: ObjectRef):
-        self.block_ref = block_ref
+class _TaskState:
+    """Tracks the driver-side state for an OneToOneOperator task.
+
+    Attributes:
+        output: The output ref bundle that is set when the task completes.
+    """
+
+    def __init__(self):
         self.output: Optional[RefBundle] = None
 
 
@@ -34,8 +50,8 @@ class OneToOneOperatorState:
         self._transform_fn = op.get_transform_fn()
         self._compute_strategy = op.compute_strategy()
         self._ray_remote_args = op.ray_remote_args()
-        self._tasks: Dict[ObjectRef, _Task] = {}
-        self._tasks_by_output_order: Dict[int, _Task] = {}
+        self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
+        self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._next_task_index = 0
         self._next_output_index = 0
 
@@ -43,17 +59,21 @@ class OneToOneOperatorState:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
-        for in_b in input_blocks:
-            out_b, out_m = _transform_one.remote(self._transform_fn, in_b)
-            task = _Task(out_b)
-            self._tasks[out_m] = task
-            self._tasks_by_output_order[self._next_task_index] = task
-            self._next_task_index += 1
+        generator_ref = _run_one_task.remote(
+            self._transform_fn, bundle.input_metadata, *input_blocks
+        )
+        task = _TaskState()
+        self._tasks[generator_ref] = task
+        self._tasks_by_output_order[self._next_task_index] = task
+        self._next_task_index += 1
 
-    def task_completed(self, ref: ObjectRef) -> None:
+    def task_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         task = self._tasks.pop(ref)
-        block_meta = ray.get(ref)
-        task.output = RefBundle([(task.block_ref, block_meta)])
+        all_refs = list(ray.get(ref))
+        block_refs = all_refs[:-1]
+        block_metas = ray.get(all_refs[-1])
+        assert len(block_metas) == len(block_refs), (block_refs, block_metas)
+        task.output = RefBundle(list(zip(block_refs, block_metas)))
 
     def has_next(self) -> bool:
         i = self._next_output_index

@@ -29,10 +29,9 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators import InputDataBuffer, MapOperator
-from ray.data._internal.execution.util import _make_ref_bundles
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
@@ -490,19 +489,37 @@ class ExecutionPlan:
 def _blocks_to_input_buffer(blocks: BlockList) -> PhysicalOperator:
     if hasattr(blocks, "_tasks"):
         read_tasks = blocks._tasks
-        inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
+        inputs = InputDataBuffer(
+            [
+                RefBundle(
+                    [
+                        (
+                            ray.put(block),
+                            # TODO(ekl) Remove this once we get rid of using read_task
+                            # as a block type (this is a legacy hack).
+                            BlockMetadata(
+                                num_rows=1,
+                                size_bytes=0,
+                                schema=None,
+                                input_files=[],
+                                exec_stats=None,
+                            ),
+                        )
+                    ]
+                )
+                for block in read_tasks
+            ]
+        )
 
-        def do_read(block):
-            print("DO READ", block)
-            for read_task in block:
+        def do_read(blocks: Iterator[Block], _) -> Iterator[Block]:
+            for read_task in blocks:
                 for output_block in read_task():
-                    return output_block  # TODO handle remaining blocks
+                    yield output_block
 
         return MapOperator(do_read, inputs, name="DoRead")
     else:
         output = []
         for block, meta in blocks.iter_blocks_with_metadata():
-            print("BLOCK", ray.get(block))
             output.append(
                 RefBundle(
                     [
@@ -526,14 +543,12 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         block_fn = stage.block_fn
         fn = stage.fn
 
-        def block_map(block):
-            print("MAPPING SINGLE BLOCK->", block)
-            [output] = list(block_fn([block], fn))
-            print("OUTPUT SINGLE BLOCK->", output)
-            return output
+        def do_map(blocks: Iterator[Block], _) -> Iterator[Block]:
+            for output_block in block_fn(blocks, fn):
+                yield output_block
 
         return MapOperator(
-            block_map,
+            do_map,
             input_op,
             name=stage.name,
             compute_strategy=stage.compute,
