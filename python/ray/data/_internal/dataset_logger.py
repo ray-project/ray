@@ -6,8 +6,19 @@ from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 
 
 class DatasetLogger:
-    """Logger for Ray Datasets which, in addition to logging to stdout,
-    also writes to a separate log file at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`.
+    """Logger for Ray Datasets which writes logs to a separate log file
+    at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`. Can optionally turn off
+    logging to stdout to reduce clutter (but always logs to the aformentioned
+    Datasets-specific log file).
+
+    After initialization, always use the `get_logger()` method to correctly
+    set whether to log to stdout. Example usage:
+    ```
+    logger = DatasetLogger(__name__)
+    logger.get_logger().info("This logs to file and stdout")
+    logger.get_logger(log_to_stdout=False).info("This logs to file only)
+    logger.get_logger().warning("Can call the usual Logger methods")
+    ```
     """
 
     DEFAULT_DATASET_LOG_PATH = "logs/ray-data.log"
@@ -19,15 +30,14 @@ class DatasetLogger:
             log_name: Name of logger (usually passed into `logging.getLogger(...)`)
         """
         # Logger used to logging to log file (in addition to the root logger,
-        # which logs to stdout as normal). We set `logger.propagate` to False
-        # to ensure the file logger only logs to the file, and not stdout, by default.
-        # For logging calls made with the parameter `log_to_stdout = False`,
-        # `logger.propagate` will be set to `False` in order to prevent the
-        # root logger from writing the log to stdout.
-        self.logger = logging.getLogger(f"{log_name}.logfile")
+        # which logs to stdout as normal). For logging calls made with the
+        # parameter `log_to_stdout = False`, `_logger.propagate` will be set
+        # to `False` in order to prevent the root logger from writing the log
+        # to stdout.
+        self._logger = logging.getLogger(f"{log_name}.logfile")
         # We need to set the log level again when explicitly
         # initializing a new logger (otherwise can have undesirable level).
-        self.logger.setLevel(LOGGER_LEVEL.upper())
+        self._logger.setLevel(LOGGER_LEVEL.upper())
 
         # Add log handler which writes to a separate Datasets log file
         # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
@@ -45,7 +55,7 @@ class DatasetLogger:
             file_log_handler = logging.FileHandler(self.datasets_log_path)
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
             file_log_handler.setFormatter(file_log_formatter)
-            self.logger.addHandler(file_log_handler)
+            self._logger.addHandler(file_log_handler)
 
     def get_logger(self, log_to_stdout: bool = True):
         """
@@ -57,8 +67,9 @@ class DatasetLogger:
         This is a workaround needed due to the DatasetLogger wrapper object
         not having access to the log caller's scope in Python <3.8.
         In the future, with Python 3.8 support, we can use the `stacklevel` arg,
-        which allows the logger to fetch the correct calling file/line:
+        which allows the logger to fetch the correct calling file/line and
+        also removes the need for this getter method:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
-        self.logger.propagate = log_to_stdout
-        return self.logger
+        self._logger.propagate = log_to_stdout
+        return self._logger
