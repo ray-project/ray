@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import asyncio
 import os
-import importlib
 import pathlib
 import shutil
 import signal
@@ -21,7 +20,7 @@ from ray._private.utils import import_attr, get_module_and_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.job_submission import JobSubmissionClient, JobStatus
+from ray.job_submission import JobSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import (
@@ -380,21 +379,21 @@ def run(
                 cli_logger.print(
                     f'Deploying from config file: "{config_or_import_path}".'
                 )
-                config_or_import_path = f"{unique_file_name}.yaml"
-                is_config = True
-
                 copy_target = os.path.join(working_dir, f"{unique_file_name}.yaml")
                 shutil.copyfile(config_or_import_path, copy_target)
+
+                config_or_import_path = f"{unique_file_name}.yaml"
+                is_config = True
             else:
                 cli_logger.print(
                     f'Deploying from import path: "{config_or_import_path}".'
                 )
                 module, attr_name = get_module_and_attr(config_or_import_path)
-                config_or_import_path = f"{unique_file_name}:{attr_name}"
-                is_config = False
-
                 copy_target = os.path.join(working_dir, f"{unique_file_name}.py")
                 shutil.copyfile(module.__file__, copy_target)
+
+                config_or_import_path = f"{unique_file_name}:{attr_name}"
+                is_config = False
 
             final_runtime_env = parse_runtime_env_args(
                 runtime_env=runtime_env,
@@ -416,11 +415,13 @@ import importlib
 import signal
 import sys
 import time
+import yaml
 
 from ray import serve
 from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve._private import api as _private_api
+from ray.serve.schema import ServeApplicationSchema
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config-or-import-path')
@@ -435,7 +436,7 @@ args = parser.parse_args()
 if args.is_config:
     config_path = args.config_or_import_path
 
-    with open(config_path, "r") as config_file:
+    with open(config_path, 'r') as config_file:
         config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
 else:
     import_path = args.config_or_import_path
@@ -489,7 +490,7 @@ except KeyboardInterrupt:
                     f"--config-or-import-path={config_or_import_path} "
                     f"--host={host} "
                     f"--port={port} "
-                    + ("--is_config " if is_config else "")
+                    + ("--is-config " if is_config else "")
                     + ("--blocking " if blocking else "")
                     + ("--gradio " if gradio else "")
                 ),
