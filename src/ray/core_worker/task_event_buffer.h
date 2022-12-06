@@ -91,7 +91,7 @@ class TaskEventBuffer {
   /// Return true if recording and reporting of task events is enabled.
   ///
   /// The TaskEventBuffer will be disabled if Start() returns not ok.
-  virtual bool Enabled() = 0;
+  virtual bool Enabled() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -115,7 +115,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   void Stop() LOCKS_EXCLUDED(mutex_) override;
 
-  bool Enabled() LOCKS_EXCLUDED(mutex_) override;
+  bool Enabled() const override;
 
  private:
   /// Test only functions.
@@ -156,7 +156,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
-  bool enabled_ GUARDED_BY(mutex_) = false;
+  std::atomic<bool> enabled_ = false;
 
   /// Buffered task events.
   std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
