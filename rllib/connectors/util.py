@@ -138,13 +138,17 @@ def maybe_get_filters_for_syncing(rollout_worker, policy_id):
     # As long as the historic filter synchronization mechanism is in
     # place, we need to put filters into self.filters so that they get
     # synchronized
-    filter_connectors = rollout_worker.policy_map[policy_id].agent_connectors[
-        SyncedFilterAgentConnector
-    ]
+    policy = rollout_worker.policy_map[policy_id]
+    if not policy.agent_connectors:
+        return
+
+    filter_connectors = policy.agent_connectors[SyncedFilterAgentConnector]
     # There can only be one filter at a time
-    if filter_connectors:
-        assert len(filter_connectors) == 1, (
-            "ConnectorPipeline has multiple connectors of type "
-            "SyncedFilterAgentConnector but can only have one."
-        )
-        rollout_worker.filters[policy_id] = filter_connectors[0].filter
+    if not filter_connectors:
+        return
+
+    assert len(filter_connectors) == 1, (
+        "ConnectorPipeline has multiple connectors of type "
+        "SyncedFilterAgentConnector but can only have one."
+    )
+    rollout_worker.filters[policy_id] = filter_connectors[0].filter
