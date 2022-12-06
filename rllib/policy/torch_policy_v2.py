@@ -795,7 +795,7 @@ class TorchPolicyV2(Policy):
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {}
-                    if self.config._enable_rl_module_api
+                    if self.config["_enable_rl_module_api"]
                     else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
