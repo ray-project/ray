@@ -7,6 +7,7 @@ This section helps you debug and monitor your Serve applications by:
 * viewing the Ray dashboard
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
+* exporting metrics into Arize platform
 
 ## Ray dashboard
 
@@ -326,3 +327,10 @@ ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
 See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Exporting metrics into Arize
+Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
+
+[Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
+
+To integrate with Arize, you can directly add Arize client code into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))
