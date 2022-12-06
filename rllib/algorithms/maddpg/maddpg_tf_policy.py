@@ -48,7 +48,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         self.global_step = tf1.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
-        # supported now.
+        #  supported now.
         self.get_done_from_info = np.vectorize(lambda info: info.get("done", False))
 
         agent_id = config["agent_id"]

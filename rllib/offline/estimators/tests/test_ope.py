@@ -281,6 +281,7 @@ class TestFQE(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
+
         env = CliffWalkingWallEnv()
         cls.policy = CliffWalkingWallPolicy(
             observation_space=env.observation_space,
@@ -288,6 +289,7 @@ class TestFQE(unittest.TestCase):
             config={},
         )
         cls.gamma = 0.99
+
         # Collect single episode under optimal policy
         obs_batch = []
         new_obs = []
@@ -296,9 +298,11 @@ class TestFQE(unittest.TestCase):
         rewards = []
         terminateds = []
         truncateds = []
+
         obs, info = env.reset()
-        done = False
-        while not done:
+
+        terminated = truncated = False
+        while not terminated and not truncated:
             obs_batch.append(obs)
             act, _, extra = cls.policy.compute_single_action(obs)
             actions.append(act)
@@ -308,6 +312,7 @@ class TestFQE(unittest.TestCase):
             rewards.append(rew)
             terminateds.append(terminated)
             truncateds.append(truncated)
+
         cls.batch = SampleBatch(
             obs=obs_batch,
             actions=actions,
