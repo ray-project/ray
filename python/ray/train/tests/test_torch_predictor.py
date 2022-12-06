@@ -281,6 +281,19 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
+def test_batch_prediction_with_large_model():
+    # This model is 763MB large
+    model = torch.nn.Linear(1, int(1e8))
+    checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+    predictor = BatchPredictor(
+        checkpoint,
+        TorchPredictor,
+        model=model,
+    )
+    dataset = ray.data.range(1)
+    predictor.predict(dataset, dtype=torch.float)
+
+
 if __name__ == "__main__":
     import sys
 
