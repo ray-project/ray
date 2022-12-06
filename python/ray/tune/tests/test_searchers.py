@@ -695,8 +695,10 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         self._save(searcher)
 
-        searcher = ZOOptSearch()
+        # `budget` is the only required argument - will get replaced on restore
+        searcher = ZOOptSearch(budget=0)
         self._restore(searcher)
+        assert searcher._budget == 100
 
 
 class MultiObjectiveTest(unittest.TestCase):
