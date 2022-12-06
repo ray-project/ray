@@ -293,6 +293,9 @@ def run(
 ):
     sys.path.insert(0, app_dir)
 
+    # If address is specified through either the command or through the RAY_ADDRESS
+    # environment variable, use Ray Job Submission to run serve. Otherwise, connect
+    # to local ray clusters.
     if address is None:
         final_runtime_env = parse_runtime_env_args(
             runtime_env=runtime_env,
@@ -342,7 +345,9 @@ def run(
                 cli_logger.success("Deployed Serve app successfully.")
 
             if gradio:
-                from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+                from ray.serve.experimental.gradio_visualize_graph import (
+                    GraphVisualizer,
+                )
 
                 visualizer = GraphVisualizer()
                 visualizer.visualize_with_gradio(handle)
@@ -359,18 +364,31 @@ def run(
 
     else:
         with tempfile.TemporaryDirectory() as tmp_dir:
+            # The submitted job needs to access the target file (either the config file
+            # or module containing the Serve app). Thus, we need to use working
+            # directory in Ray Job Submission to copy over the target file to the
+            # remote Ray Cluster.
+            #   If user specifies a working directory, use it as is except copy in the
+            #   target file, taking a unique name so it doesn't overwrite anything.
+            #   If user doesn't specify a working directory, make a temporary directory
+            #   that contains only the target file, and pass this temporary directory as
+            #   working_dir to the JobSubmissionClient.
             working_dir = working_dir or tmp_dir
-            print('working_dir is', working_dir)
+
             unique_file_name = str(uuid4())
             if pathlib.Path(config_or_import_path).is_file():
-                cli_logger.print(f'Deploying from config file: "{config_or_import_path}".')
+                cli_logger.print(
+                    f'Deploying from config file: "{config_or_import_path}".'
+                )
                 config_or_import_path = f"{unique_file_name}.yaml"
                 is_config = True
 
                 copy_target = os.path.join(working_dir, f"{unique_file_name}.yaml")
                 shutil.copyfile(config_or_import_path, copy_target)
             else:
-                cli_logger.print(f'Deploying from import path: "{config_or_import_path}".')
+                cli_logger.print(
+                    f'Deploying from import path: "{config_or_import_path}".'
+                )
                 module, attr_name = get_module_and_attr(config_or_import_path)
                 config_or_import_path = f"{unique_file_name}:{attr_name}"
                 is_config = False
@@ -394,10 +412,10 @@ import signal
 signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
 
 import argparse
-import sys
-import time
 import importlib
 import signal
+import sys
+import time
 
 from ray import serve
 from ray._private.utils import import_attr
@@ -467,14 +485,15 @@ except KeyboardInterrupt:
             client = JobSubmissionClient(address)
             submission_id = client.submit_job(
                 entrypoint=(
-                    f"python -c \"{script}\" "
+                    f'python -c "{script}" '
                     f"--config-or-import-path={config_or_import_path} "
                     f"--host={host} "
                     f"--port={port} "
                     + ("--is_config " if is_config else "")
                     + ("--blocking " if blocking else "")
-                    + ("--gradio " if gradio else "")),
-                runtime_env=final_runtime_env
+                    + ("--gradio " if gradio else "")
+                ),
+                runtime_env=final_runtime_env,
             )
 
             async def print_logs():
@@ -484,6 +503,8 @@ except KeyboardInterrupt:
             def interrupt_handler():
                 cli_logger.info("Got KeyboardInterrupt, shutting down...")
                 client.stop_job(submission_id)
+                # Remove file that was copied into working_dir for the purpose of
+                # copying it into the remote Ray Cluster.
                 os.remove(copy_target)
 
             loop = asyncio.get_event_loop()

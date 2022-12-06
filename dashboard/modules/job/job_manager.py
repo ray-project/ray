@@ -389,7 +389,9 @@ class JobSupervisor:
                     else:
                         stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL")
                         if stop_signal not in ["SIGINT", "SIGTERM"]:
-                            logger.warning(f"{stop_signal} not a valid stop signal. Terminating job.")
+                            logger.warning(
+                                f"{stop_signal} not a valid stop signal. Terminating job."
+                            )
                             child_process.terminate()
                         else:
                             child_process.send_signal(eval(f"signal.{stop_signal}"))

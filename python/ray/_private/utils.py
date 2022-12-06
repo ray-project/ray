@@ -1213,6 +1213,7 @@ def deprecated(
 
     return deprecated_wrapper
 
+
 def get_module_and_attr(full_path: str):
     if full_path is None:
         raise TypeError("import path cannot be None")
@@ -1231,6 +1232,7 @@ def get_module_and_attr(full_path: str):
 
     module = importlib.import_module(module_name)
     return (module, attr_name)
+
 
 def import_attr(full_path: str):
     """Given a full import path to a module attr, return the imported attr.
