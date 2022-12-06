@@ -1,5 +1,5 @@
-marwil-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
+marwil-halfcheetah-v4:
+    env: HalfCheetah-v4
     run: MARWIL
     pass_criteria:
         # Can not check throughput for offline methods.

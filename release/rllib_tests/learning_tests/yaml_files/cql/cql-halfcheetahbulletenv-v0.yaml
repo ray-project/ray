@@ -1,5 +1,5 @@
-cql-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
+cql-halfcheetah-v4:
+    env: HalfCheetah-v4
     run: CQL
     pass_criteria:
         evaluation/episode_reward_mean: 400.0
