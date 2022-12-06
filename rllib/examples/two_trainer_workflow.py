@@ -86,7 +86,7 @@ class MyAlgo(Algorithm):
             ma_batches = synchronous_parallel_sample(
                 worker_set=self.workers, concat=False
             )
-            # Loop through (parallely collected) ma-batches.
+            # Loop through ma-batches (which were collected in parallel).
             for ma_batch in ma_batches:
                 # Update sampled counters.
                 self._counters[NUM_ENV_STEPS_SAMPLED] += ma_batch.count
@@ -100,22 +100,27 @@ class MyAlgo(Algorithm):
 
         # DQN sub-flow.
         dqn_train_results = {}
-
+        # Start updating DQN policy once we have some samples in the buffer.
         if self._counters[NUM_ENV_STEPS_SAMPLED] > 1000:
-            for _ in range(5):
+            # Update DQN policy n times while updating PPO policy once.
+            for _ in range(10):
                 dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
-                dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
-                self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
+                dqn_train_results = train_one_step(
+                    self, dqn_train_batch, ["dqn_policy"]
+                )
+                self._counters[
+                    "agent_steps_trained_DQN"
+                ] += dqn_train_batch.agent_steps()
                 print(
                     "DQN policy learning on samples from",
                     "agent steps trained",
                     dqn_train_batch.agent_steps(),
                 )
-        # Update DQN's target net every 500 train steps.
+        # Update DQN's target net every n train steps (determined by the DQN config).
         if (
             self._counters["agent_steps_trained_DQN"]
             - self._counters[LAST_TARGET_UPDATE_TS]
-            >= 500
+            >= self.get_policy("dqn_policy").config["target_network_update_freq"]
         ):
             self.workers.local_worker().get_policy("dqn_policy").update_target()
             self._counters[NUM_TARGET_UPDATES] += 1
@@ -171,7 +176,7 @@ if __name__ == "__main__":
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
-            DQNConfig(),
+            DQNConfig().training(target_network_update_freq=1000),
         ),
     }
 

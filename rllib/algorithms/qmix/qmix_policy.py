@@ -416,9 +416,11 @@ class QMixTorchPolicy(TorchPolicy):
             next_env_global_state = to_batches(next_env_global_state, torch.float)
 
         # TODO(ekl) this treats group termination as individual termination
-        terminated = to_batches(
-            terminateds, torch.float
-        ).unsqueeze(2).expand(B, T, self.n_agents)
+        terminated = (
+            to_batches(terminateds, torch.float)
+            .unsqueeze(2)
+            .expand(B, T, self.n_agents)
+        )
 
         # Create mask for where index is < unpadded sequence length
         filled = np.reshape(
