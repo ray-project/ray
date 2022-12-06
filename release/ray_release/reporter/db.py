@@ -44,7 +44,10 @@ class DBReporter(Reporter):
                 DeliveryStreamName="ray-ci-results",
                 Record={"Data": json.dumps(result_json)},
             )
-        except Exception:
-            logger.exception("Failed to persist result to the databricks delta lake")
+        except Exception as e:
+            logger.exception(
+                f"Failed to persist result to the databricks delta lake: {json.dumps(result_json)}"
+            )
+            raise e
         else:
             logger.info("Result has been persisted to the databricks delta lake")
