@@ -182,7 +182,7 @@ class TorchCheckpoint(Checkpoint):
                 # Assert the output from the original and checkoint model are the same
                 assert torch.equal(output, pred)
                 print("worked")
-            
+
             .. testoutput::
                 :hide:
                 :options: +ELLIPSIS
