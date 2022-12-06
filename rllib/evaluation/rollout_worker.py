@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import os
 import platform
+import threading
 import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
@@ -493,6 +494,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self._ds_shards = dataset_shards
         self.worker_index: int = worker_index
 
+        # Lock to be able to lock this entire worker
+        # (via `self.lock()` and `self.unlock()`).
+        # This might be crucial to prevent a race condition in case
+        # `config.policy_states_are_swappable=True` and you are using an Algorithm
+        # with a learner thread. In this case, the thread might update a policy
+        # that is being swapped (during the update) by the Algorithm's
+        # training_step's `RolloutWorker.get_weights()` call (to sync back the
+        # new weights to all remote workers).
+        self._lock = threading.Lock()
+
         if (
             tf1
             and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
@@ -712,11 +723,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
-        self._build_policy_map(
-            policy_dict=self.policy_dict,
-            config=self.config,
-            seed=self.seed,
-        )
+        self._build_policy_map(policy_dict=self.policy_dict)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -1002,6 +1009,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
+
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
@@ -1009,6 +1017,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     to_fetch[pid] = policy._build_learn_on_batch(builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
+
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train is None or self.is_policy_to_train(
@@ -1363,9 +1372,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
             policy_dict=policy_dict_to_add,
-            config=self.config,
             policy=policy,
-            seed=self.seed,
             policy_states={policy_id: policy_state},
         )
 
@@ -1836,6 +1843,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if sess is not None:
                 sess.close()
 
+    def lock(self) -> None:
+        """Locks this RolloutWorker via its own threading.Lock."""
+        self._lock.acquire()
+
+    def unlock(self) -> None:
+        """Unlocks this RolloutWorker via its own threading.Lock."""
+        self._lock.release()
+
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
     ) -> None:
@@ -1889,9 +1904,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self,
         *,
         policy_dict: MultiAgentPolicyConfigDict,
-        config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
-        seed: Optional[int] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
@@ -1899,12 +1912,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         Args:
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
-            config: The general AlgorithmConfig to use. May be updated
-                by individual policy config overrides in the given
-                multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
-            seed: An optional random seed to pass to PolicyMap's
-                constructor.
             policy_states: Optional dict from PolicyIDs to PolicyStates to
                 restore the states of the policies being built.
         """
@@ -1912,8 +1920,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            capacity=config.policy_map_capacity,
-            policy_states_are_swappable=config.policy_states_are_swappable,
+            capacity=self.config.policy_map_capacity,
+            policy_states_are_swappable=self.config.policy_states_are_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1928,7 +1936,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             else:
                 # Update the general config with the specific config
                 # for this particular policy.
-                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf: "AlgorithmConfig" = self.config.copy(copy_frozen=False)
                 merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
@@ -1965,7 +1973,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     observation_space=obs_space,
                     action_space=policy_spec.action_space,
                     worker_index=self.worker_index,
-                    seed=seed,
+                    seed=self.seed,
                 )
             else:
                 new_policy = policy
@@ -1987,6 +1995,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
                 if not policy and not restore_states:
+                    # TODO(jungong) : revisit this. It will be nicer to create
+                    # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
