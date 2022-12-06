@@ -46,7 +46,8 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/ci.sh init && source ~/.zshrc
+    - . ./ci/ci.sh init 
+    - source ~/.zshrc
     - ./ci/ci.sh build
     # Test wheels
     - ./ci/ci.sh test_wheels
