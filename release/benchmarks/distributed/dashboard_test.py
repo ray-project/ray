@@ -144,8 +144,8 @@ class DashboardTestAtScale:
         pprint(calc_endpoints_p(test_result.result, 99))
 
         latencies = []
-        for l in test_result.result.values():
-            latencies.extend(l)
+        for per_endpoint_latencies in test_result.result.values():
+            latencies.extend(per_endpoint_latencies)
         aggregated_metrics = {
             "p50": calc_p(latencies, 50),
             "p95": calc_p(latencies, 95),
