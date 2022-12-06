@@ -362,49 +362,7 @@ def run(
             sys.exit()
 
     else:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # The submitted job needs to access the target file (either the config file
-            # or module containing the Serve app). Thus, we need to use working
-            # directory in Ray Job Submission to copy over the target file to the
-            # remote Ray Cluster.
-            #   If user specifies a working directory, use it as is except copy in the
-            #   target file, taking a unique name so it doesn't overwrite anything.
-            #   If user doesn't specify a working directory, make a temporary directory
-            #   that contains only the target file, and pass this temporary directory as
-            #   working_dir to the JobSubmissionClient.
-            working_dir = working_dir or tmp_dir
-
-            unique_file_name = str(uuid4())
-            if pathlib.Path(config_or_import_path).is_file():
-                cli_logger.print(
-                    f'Deploying from config file: "{config_or_import_path}".'
-                )
-                copy_target = os.path.join(working_dir, f"{unique_file_name}.yaml")
-                shutil.copyfile(config_or_import_path, copy_target)
-
-                config_or_import_path = f"{unique_file_name}.yaml"
-                is_config = True
-            else:
-                cli_logger.print(
-                    f'Deploying from import path: "{config_or_import_path}".'
-                )
-                module, attr_name = get_module_and_attr(config_or_import_path)
-                copy_target = os.path.join(working_dir, f"{unique_file_name}.py")
-                shutil.copyfile(module.__file__, copy_target)
-
-                config_or_import_path = f"{unique_file_name}:{attr_name}"
-                is_config = False
-
-            final_runtime_env = parse_runtime_env_args(
-                runtime_env=runtime_env,
-                runtime_env_json=runtime_env_json,
-                working_dir=working_dir,
-            )
-            if "env_vars" not in final_runtime_env:
-                final_runtime_env["env_vars"] = {}
-            final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
-
-            script = """
+        script = """
 # Ray blocks SIGINT signals, so to properly shutdown serve upon keyboard interrupt,
 # need to unblock SIGINT.
 import signal
@@ -412,6 +370,7 @@ signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
 
 import argparse
 import importlib
+import pathlib
 import signal
 import sys
 import time
@@ -427,22 +386,24 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config-or-import-path')
 parser.add_argument('--host')
 parser.add_argument('--port')
-parser.add_argument('--is-config', action='store_true')
 parser.add_argument('--blocking', action='store_true')
 parser.add_argument('--gradio', action='store_true')
 args = parser.parse_args()
 
-
-if args.is_config:
+if pathlib.Path(args.config_or_import_path).is_file():
     config_path = args.config_or_import_path
+    cli_logger.print(f'Deploying from config file: "{config_path}".')
 
     with open(config_path, 'r') as config_file:
         config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+    is_config = True
 else:
     import_path = args.config_or_import_path
+    cli_logger.print(f'Deploying from import path: "{import_path}".')
     node = import_attr(import_path)
+    is_config = False
 
-if args.is_config:
+if is_config:
     client = _private_api.serve_start(
         detached=True,
         http_options={
@@ -458,7 +419,7 @@ else:
     )
 
 try:
-    if args.is_config:
+    if is_config:
         client.deploy_app(config, _blocking=args.gradio)
         cli_logger.success('Submitted deploy config successfully.')
         if args.gradio:
@@ -482,35 +443,40 @@ except KeyboardInterrupt:
     serve.shutdown()
     sys.exit()
 """
+        final_runtime_env = parse_runtime_env_args(
+            runtime_env=runtime_env,
+            runtime_env_json=runtime_env_json,
+            working_dir=working_dir,
+        )
+        if "env_vars" not in final_runtime_env:
+            final_runtime_env["env_vars"] = {}
+        final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
 
-            client = JobSubmissionClient(address)
-            submission_id = client.submit_job(
-                entrypoint=(
-                    f'python -c "{script}" '
-                    f"--config-or-import-path={config_or_import_path} "
-                    f"--host={host} "
-                    f"--port={port} "
-                    + ("--is-config " if is_config else "")
-                    + ("--blocking " if blocking else "")
-                    + ("--gradio " if gradio else "")
-                ),
-                runtime_env=final_runtime_env,
-            )
+        client = JobSubmissionClient(address)
+        submission_id = client.submit_job(
+            entrypoint=(
+                f'python -c "{script}" '
+                f"--config-or-import-path={config_or_import_path} "
+                f"--host={host} "
+                f"--port={port} "
+                + ("--blocking " if blocking else "")
+                + ("--gradio " if gradio else "")
+            ),
+            runtime_env=final_runtime_env,
+        )
 
-            async def print_logs():
-                async for lines in client.tail_job_logs(submission_id):
-                    print(lines, end="")
+        async def print_logs():
+            async for lines in client.tail_job_logs(submission_id):
+                print(lines, end="")
 
-            def interrupt_handler():
-                cli_logger.info("Got KeyboardInterrupt, shutting down...")
-                client.stop_job(submission_id)
-                # Remove file that was copied into working_dir for the purpose of
-                # copying it into the remote Ray Cluster.
-                os.remove(copy_target)
+        def interrupt_handler():
+            cli_logger.info("Got KeyboardInterrupt, shutting down...")
+            client.stop_job(submission_id)
 
-            loop = asyncio.get_event_loop()
-            loop.add_signal_handler(signal.SIGINT, interrupt_handler)
-            loop.run_until_complete(print_logs())
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGINT, interrupt_handler)
+        loop.run_until_complete(print_logs())
+        loop.close()
 
 
 @cli.command(help="Get the current config of the running Serve app.")
