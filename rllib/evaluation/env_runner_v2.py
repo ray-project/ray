@@ -1059,7 +1059,9 @@ class EnvRunnerV2:
                 agent_id: AgentID = eval_data[i].agent_id
                 input_dict: TensorStructType = eval_data[i].data.raw_dict
 
-                rnn_states: List[StateBatches] = [c[i] for c in rnn_out]
+                rnn_states: List[StateBatches] = tree.map_structure(
+                    lambda x: x[i], rnn_out
+                )
 
                 # extra_action_out could be a nested dict
                 fetches: Dict = tree.map_structure(lambda x: x[i], extra_action_out)
