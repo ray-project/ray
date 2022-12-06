@@ -102,14 +102,15 @@ class MyAlgo(Algorithm):
         dqn_train_results = {}
 
         if self._counters[NUM_ENV_STEPS_SAMPLED] > 1000:
-            dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
-            dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
-            self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
-            print(
-                "DQN policy learning on samples from",
-                "agent steps trained",
-                dqn_train_batch.agent_steps(),
-            )
+            for _ in range(5):
+                dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
+                dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
+                self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
+                print(
+                    "DQN policy learning on samples from",
+                    "agent steps trained",
+                    dqn_train_batch.agent_steps(),
+                )
         # Update DQN's target net every 500 train steps.
         if (
             self._counters["agent_steps_trained_DQN"]
