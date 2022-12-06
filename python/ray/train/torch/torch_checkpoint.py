@@ -91,17 +91,40 @@ class TorchCheckpoint(Checkpoint):
             A :class:`TorchCheckpoint` containing the specified state dictionary.
 
         Examples:
-            >>> from ray.train.torch import TorchCheckpoint
-            >>> import torch
-            >>>
-            >>> model = torch.nn.Linear(1, 1)
-            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
 
-            To load the state dictionary, call
-            :meth:`~ray.train.torch.TorchCheckpoint.get_model`.
+            .. testcode::
 
-            >>> checkpoint.get_model(torch.nn.Linear(1, 1))
-            Linear(in_features=1, out_features=1, bias=True)
+                import torch
+                import torch.nn as nn
+                from ray.train.torch import TorchCheckpoint
+
+                # Set manual seed
+                torch.manual_seed(42)
+
+                # Function to create a NN model
+                def create_model() -> nn.Module:
+                    model = nn.Sequential(nn.Linear(1, 10),
+                            nn.ReLU(),
+                            nn.Linear(10,1))
+                    return model
+
+                # Create a TorchCheckpoint from our model's state_dict
+                model = create_model()
+                checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+
+                # Now load the model from the TorchCheckpoint by providing the
+                # model architecture
+                model_from_chkpt = checkpoint.get_model(create_model())
+
+                # Assert they have the same state dict
+                assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
+                print("worked")
+
+            .. testoutput::
+                :hide:
+                :options: +ELLIPSIS
+
+                ...
         """
         return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: state_dict})
 
@@ -120,7 +143,7 @@ class TorchCheckpoint(Checkpoint):
             :class:`TorchCheckpoint` from a state dictionary, call
             :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`. To learn more
             about state dictionaries, read
-            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_.
+            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_. # noqa: E501
 
         Args:
             model: The Torch model to store in the checkpoint.
@@ -130,19 +153,42 @@ class TorchCheckpoint(Checkpoint):
             A :class:`TorchCheckpoint` containing the specified model.
 
         Examples:
-            >>> from ray.train.torch import TorchCheckpoint
-            >>> import torch
-            >>>
-            >>> model = torch.nn.Identity()
-            >>> checkpoint = TorchCheckpoint.from_model(model)
 
-            You can use a :class:`TorchCheckpoint` to create an
-            :class:`~ray.train.torch.TorchPredictor` and perform inference.
+            .. testcode::
 
-            >>> from ray.train.torch import TorchPredictor
-            >>>
-            >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
-        """  # noqa: E501
+                from ray.train.torch import TorchCheckpoint
+                from ray.train.torch import TorchPredictor
+                import torch
+
+                # Set manual seed
+                torch.manual_seed(42)
+
+                # Create model identity and send a random tensor to it
+                model = torch.nn.Identity()
+                input = torch.randn(2, 2)
+                output = model(input)
+
+                # Create a checkpoint
+                checkpoint = TorchCheckpoint.from_model(model)
+
+                # You can use a class TorchCheckpoint to create an
+                # a class ray.train.torch.TorchPredictor and perform inference.
+                predictor = TorchPredictor.from_checkpoint(checkpoint)
+                pred = predictor.predict(input.numpy())
+
+                # Convert prediction dictionary value into a tensor
+                pred = torch.tensor(pred['predictions'])
+
+                # Assert the output from the original and checkoint model are the same
+                assert torch.equal(output, pred)
+                print("worked")
+
+            .. testoutput::
+                :hide:
+                :options: +ELLIPSIS
+
+                ...
+        """
         return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
