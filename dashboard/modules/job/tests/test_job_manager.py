@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import tempfile
+import time
 import urllib.request
 from uuid import uuid4
 
@@ -807,6 +808,9 @@ while True:
     await async_wait_for_condition_async_predicate(
         check_job_stopped, job_manager=job_manager, job_id=job_id
     )
+
+    # Give time for job to finish printing logs.
+    time.sleep(2)
     assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
 
 
