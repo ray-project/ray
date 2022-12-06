@@ -276,7 +276,7 @@ def check_specs(
                     tag="input_data",
                 )
 
-                if filter and isinstance(input_spec_, ModelSpec):
+                if filter and isinstance(input_spec_, (ModelSpec, TensorSpec)):
                     # filtering should happen regardless of cache
                     input_data_ = input_data_.filter(input_spec_)
 
