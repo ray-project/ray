@@ -221,6 +221,12 @@ class Syncer(abc.ABC):
     The base class also exposes an API to only kick off syncs every ``sync_period``
     seconds.
 
+    Args:
+        sync_period: The minimum time in seconds between sync operations, as
+            used by ``sync_up/down_if_needed``.
+        sync_timeout: The maximum time to wait for a sync process to finish before
+            issuing a new sync operation. Ex: should be used by ``wait`` if launching
+            asynchronous sync tasks.
     """
 
     def __init__(
@@ -462,6 +468,11 @@ class _BackgroundSyncer(Syncer):
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
+        elif self._sync_process:
+            try:
+                self.wait()
+            except Exception as e:
+                logger.warning(f"Last sync command failed: {e}")
 
         self._current_cmd = self._delete_command(uri=remote_dir)
         self.retry()
