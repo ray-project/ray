@@ -6,6 +6,8 @@ import shutil
 import fcntl
 import signal
 
+from .cluster_init import _RAY_HEAD_NODE_TAG_FILE
+
 
 _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
@@ -23,7 +25,10 @@ if __name__ == '__main__':
     if temp_dir is None:
         raise ValueError("Please explicitly set --temp-dir option.")
 
+    is_head_node = True if "--head" in arg_list else False
+
     temp_dir = os.path.normpath(temp_dir)
+    head_node_is_on_local = os.path.exists(os.path.join(temp_dir, _RAY_HEAD_NODE_TAG_FILE))
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
@@ -32,22 +37,29 @@ if __name__ == '__main__':
     def sigterm_handler(*args):
         process.terminate()
 
-        time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
-        lock_file = temp_dir + ".lock"
         try:
-            mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
-            lock_fd = os.open(lock_file, mode)
-            # because one spark job might start multiple ray worker node on one spark worker
-            # machine, and they use the same temp dir, so acquire an exclusive file lock when
-            # deleting the temp dir.
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            # if a worker node and head node runs on the same machine,
+            # when the worker node exits, we cannot delete the temp dir immediately
+            # because head node is still using it.
+            if is_head_node or not head_node_is_on_local:
+                time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
+                lock_file = temp_dir + ".lock"
+                try:
+                    mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
+                    lock_fd = os.open(lock_file, mode)
+                    # because one spark job might start multiple ray worker node on one spark worker
+                    # machine, and they use the same temp dir, so acquire an exclusive file lock when
+                    # deleting the temp dir.
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                finally:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    os.close(lock_fd)
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            os.close(lock_fd)
+            os._exit(143)
 
     signal.signal(signal.SIGTERM, sigterm_handler)
 
-    sys.exit(process.wait())
+    process.wait()
