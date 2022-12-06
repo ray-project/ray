@@ -1,16 +1,11 @@
 """Registry of connector names for global access."""
-
-import importlib
-import sys
-
 from typing import Any
-from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.connectors.connector import Connector, ConnectorContext
 
 
-ALL_CONNECTORS = set()
+ALL_CONNECTORS = dict()
 
 
 @PublicAPI(stability="alpha")
@@ -21,7 +16,7 @@ def register_connector(name: str, cls: Connector):
         name: Name to register.
         cls: Callable that creates an env.
     """
-    if _global_registry.contains(RLLIB_CONNECTOR, name):
+    if name in ALL_CONNECTORS:
         return
 
     if not issubclass(cls, Connector):
@@ -30,10 +25,7 @@ def register_connector(name: str, cls: Connector):
     # Record it in local registry in case we need to register everything
     # again in the global registry, for example in the event of cluster
     # restarts.
-    ALL_CONNECTORS.add(cls.__module__)
-
-    # Register in global registry.
-    _global_registry.register(RLLIB_CONNECTOR, name, cls)
+    ALL_CONNECTORS[name] = cls
 
 
 @PublicAPI(stability="alpha")
@@ -49,19 +41,6 @@ def get_connector(name: str, ctx: ConnectorContext, params: Any = None) -> Conne
     Returns:
         Constructed connector.
     """
-    if not _global_registry.contains(RLLIB_CONNECTOR, name):
+    if name not in ALL_CONNECTORS:
         raise NameError("connector not found.", name)
-    return _global_registry.get(RLLIB_CONNECTOR, name).from_state(ctx, params)
-
-
-def _register_all_connectors():
-    """Force register all connectors again.
-
-    In case the cluster has been restarted, and the global registry
-    has to be rebuilt.
-    """
-    for module in ALL_CONNECTORS:
-        if module in sys.modules:
-            importlib.reload(sys.modules[module])
-        else:
-            importlib.import_module(module)
+    return ALL_CONNECTORS[name].from_state(ctx, params)

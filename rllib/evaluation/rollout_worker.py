@@ -1995,6 +1995,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
                 if not policy and not restore_states:
+                    # TODO(jungong) : revisit this. It will be nicer to create
+                    # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
