@@ -19,6 +19,7 @@ Simple Machine Learning
 -----------------------
 - :doc:`/ray-air/examples/automl_with_ray_air`: Build an AutoML system for time-series forecasting with Ray AIR
 - :doc:`/ray-air/examples/batch_tuning`: Perform batch tuning on NYC Taxi Dataset with Ray AIR
+- :doc:`/ray-air/examples/batch_forecasting`: Perform batch forecasting on NYC Taxi Dataset with Prophet, ARIMA and Ray AIR
 
 Text/NLP
 --------

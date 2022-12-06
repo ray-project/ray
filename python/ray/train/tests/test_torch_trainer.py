@@ -11,7 +11,6 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.tune import TuneError
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchConfig
 import ray.train as train
@@ -164,7 +163,7 @@ def test_checkpoint_freq(ray_start_4_cpus):
             ),
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         trainer.fit()
 
 
@@ -367,6 +366,16 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     )
     results = trainer.fit()
     assert results.checkpoint
+
+
+def test_torch_prepare_model_deprecated():
+    model = torch.nn.Linear(1, 1)
+
+    with pytest.raises(DeprecationWarning):
+        train.torch.prepare_model(model, wrap_ddp=True)
+
+    with pytest.raises(DeprecationWarning):
+        train.torch.prepare_model(model, ddp_kwargs={"x": "y"})
 
 
 if __name__ == "__main__":

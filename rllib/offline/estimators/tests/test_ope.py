@@ -177,7 +177,7 @@ class TestOPE(unittest.TestCase):
             .debugging(seed=seed)
         )
 
-        # Read n_episodes of data, assuming that one line is one episode
+        # Read n episodes of data, assuming that one line is one episode.
         reader = DatasetReader(read_json(train_data))
         batches = [reader.next() for _ in range(n_episodes)]
         cls.batch = concat_samples(batches)
@@ -253,7 +253,7 @@ class TestOPE(unittest.TestCase):
         num_actions = config.action_space.n
         algo = config.build()
 
-        evaluated_results = algo.evaluate()
+        evaluated_results = algo._run_one_evaluation()
         ope_results = evaluated_results["evaluation"]["off_policy_estimator"]
         policy = algo.get_policy()
 

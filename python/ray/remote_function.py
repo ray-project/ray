@@ -49,7 +49,8 @@ class RemoteFunction:
             remote function.
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
-        _memory: The heap memory request for this task.
+        _memory: The heap memory request in bytes for this task/actor,
+            rounded down to the nearest integer.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -89,8 +90,8 @@ class RemoteFunction:
         if inspect.iscoroutinefunction(function):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
-                "async function with `asyncio.get_event_loop.run_until(f())`. "
-                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
+                "async function with `asyncio.run(f())`. See more at:"
+                "https://docs.ray.io/en/latest/ray-core/actors/async_api.html "
             )
         self._default_options = task_options
 
@@ -154,8 +155,9 @@ class RemoteFunction:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+                See `ray.util.accelerators` for accelerator types.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_calls: This specifies the
                 maximum number of times that a given worker can execute
@@ -172,8 +174,7 @@ class RemoteFunction:
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             retry_exceptions: This specifies whether application-level errors
                 should be retried up to max_retries times.
             scheduling_strategy: Strategy about how to
@@ -186,7 +187,9 @@ class RemoteFunction:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
