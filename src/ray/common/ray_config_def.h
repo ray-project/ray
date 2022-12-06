@@ -198,7 +198,7 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+RAY_CONFIG(float, scheduler_spread_threshold, 0.5)
 
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
@@ -289,7 +289,7 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
-RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
+RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
 /// A value to add to workers' OOM score adjustment, so that the OS prioritizes
 /// killing these over the raylet. 0 or positive values only (negative values
@@ -347,9 +347,13 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+RAY_CONFIG(uint32_t,
+           gcs_server_rpc_server_thread_num,
+           std::max(1U, std::thread::hardware_concurrency() / 4U))
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
+RAY_CONFIG(uint32_t,
+           gcs_server_rpc_client_thread_num,
+           std::max(1U, std::thread::hardware_concurrency() / 4U))
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -365,7 +369,7 @@ RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Exponential backoff params for gcs to retry creating a placement group
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
-RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
+RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
@@ -495,7 +499,7 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
-RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
+RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
 
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
@@ -571,10 +575,10 @@ RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
 /// Control the capacity threshold for ray local file system (for object store).
 /// Once we are over the capacity, all subsequent object creation will fail.
-RAY_CONFIG(float, local_fs_capacity_threshold, 0.95);
+RAY_CONFIG(float, local_fs_capacity_threshold, 0.95)
 
 /// Control the frequency of checking the disk usage.
-RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100);
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100)
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
@@ -597,7 +601,7 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 
 /// The core worker heartbeat interval. During heartbeat, it'll
 /// report the loads to raylet.
-RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000);
+RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -624,7 +628,7 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -652,10 +656,10 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
 // Maximum size of the batches when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 
 // Maximum ray sync message batch size in bytes (1MB by default) between nodes.
-RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024);
+RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
 
 // If enabled and worker stated in container, the container will add
 // resource limit.
@@ -678,10 +682,10 @@ RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 /// they have a failure model that considers network failures as component failures
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
-RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 
 /// grpc keepalive timeout
-RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
@@ -743,6 +747,11 @@ RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 /// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
+
+/// The pool size for grpc server call.
+RAY_CONFIG(int64_t,
+           num_server_call_thread,
+           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.

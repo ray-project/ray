@@ -466,6 +466,8 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
 
     # Wait until all nodes are registered and started.
     wait_for_condition(lambda: len(list_nodes()) == 2)
+    # sleep to ensure raylet is ready.
+    time.sleep(1)
 
     stop_result = runner.invoke(scripts.stop)
     _die_on_error(stop_result)
