@@ -788,12 +788,13 @@ import sys
 import signal
 import time
 def handler(*args):
-print('SIGTERM signal handled!');
-sys.exit()
+    print('SIGTERM signal handled!');
+    sys.exit()
 signal.signal(signal.SIGTERM, handler)
+
 while True:
-print('Waiting...')
-time.sleep(1)\"
+    print('Waiting...')
+    time.sleep(1)\"
 """
     job_id = await job_manager.submit_job(entrypoint=entrypoint)
 

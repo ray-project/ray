@@ -318,13 +318,9 @@ class JobSupervisor:
         except Exception:
             if child_process:
                 child_process.terminate()
-
-                start = time.time()
-                while time.time() - start < self.WAIT_FOR_JOB_TERMINATION_S:
-                    if child_process.poll() is not None:
-                        break
-                    time.sleep(self.JOB_TERMINATION_POLL_PERIOD_S)
-                else:
+                try:
+                    child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
+                except subprocess.TimeoutExpired:
                     child_process.kill()
             return 1
 
@@ -389,13 +385,9 @@ class JobSupervisor:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
                     child_process.terminate()
-
-                    start = time.time()
-                    while time.time() - start < self.WAIT_FOR_JOB_TERMINATION_S:
-                        if child_process.poll() is not None:
-                            break
-                        time.sleep(self.JOB_TERMINATION_POLL_PERIOD_S)
-                    else:
+                    try:
+                        child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
+                    except subprocess.TimeoutExpired:
                         child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
