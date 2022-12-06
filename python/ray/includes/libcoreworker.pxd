@@ -159,6 +159,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
+        int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId()
         CWorkerID GetWorkerID()
@@ -330,6 +331,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int runtime_env_hash
         int startup_token
         c_string session_name
+        c_string entrypoint
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

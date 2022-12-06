@@ -1,5 +1,5 @@
 import logging
-from six.moves import queue
+import queue
 import threading
 
 from ray.util.timer import _Timer
@@ -163,7 +163,7 @@ class MultiGPULearnerThread(LearnerThread):
                     offset=0, buffer_index=buffer_idx
                 )
                 learner_info_builder.add_learn_on_batch_results(default_policy_results)
-                self.weights_updated = True
+                self.policy_ids_updated.append(pid)
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )

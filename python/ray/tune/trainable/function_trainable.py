@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.tune.resources import Resources
-from six.moves import queue
+import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
@@ -129,6 +129,7 @@ class _StatusReporter:
         result_queue,
         continue_semaphore,
         end_event,
+        experiment_name=None,
         trial_name=None,
         trial_id=None,
         logdir=None,
@@ -138,6 +139,7 @@ class _StatusReporter:
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._end_event = end_event
+        self._experiment_name = experiment_name
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
@@ -258,6 +260,11 @@ class _StatusReporter:
         return self._logdir
 
     @property
+    def experiment_name(self):
+        """Trial name for the corresponding trial of this Trainable."""
+        return self._experiment_name
+
+    @property
     def trial_name(self):
         """Trial name for the corresponding trial of this Trainable."""
         return self._trial_name
@@ -302,6 +309,9 @@ class FunctionTrainable(Trainable):
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
+            experiment_name=(
+                self._trial_info.experiment_name if self._trial_info else None
+            ),
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir,
