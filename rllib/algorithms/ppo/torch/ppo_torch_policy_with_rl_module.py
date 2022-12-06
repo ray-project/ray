@@ -91,6 +91,14 @@ class PPOTorchPolicyWithRLModule(
 
     @override(Policy)
     def make_rl_module(self):
+        """Returns the RLModule to use for this policy.
+
+        This implementation will be replaced with model catalog calls in the future.
+        For now we basically create the barebones of a fully connected network to match
+        the behavior of what is used to be in the old policy. This is a temporary
+        solution to get RLModules working with PPO.
+
+        """
 
         activation = self.config["model"]["fcnet_activation"]
         if activation == "tanh":
