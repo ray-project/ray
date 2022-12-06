@@ -135,6 +135,13 @@ class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
 
 
 @pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
 def trial():
     trial_config = {"par1": 4, "par2": 9.12345678}
     trial = Trial(
@@ -306,6 +313,26 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, rllib_result)
         logged = logger.trial_processes[trial]._wandb.logs.get(timeout=10)
         assert logged != "serialization error"
+
+    def test_wandb_logging_actor_api_key(self, ray_start_2_cpus, trial, monkeypatch):
+        """Tests that the wandb API key get propagated as an environment variable to
+        the remote logging actors."""
+
+        def mock_run(actor_cls):
+            return os.environ.get(WANDB_ENV_VAR)
+
+        monkeypatch.setattr(
+            WandbLoggerCallback, "_logger_actor_cls", _MockWandbLoggingActor
+        )
+        monkeypatch.setattr(_MockWandbLoggingActor, "run", mock_run)
+
+        logger = WandbLoggerCallback(
+            project="test_project", api_key="1234", excludes=["metric2"]
+        )
+        logger.setup()
+        logger.log_trial_start(trial)
+        actor_env_var = ray.get(logger._trial_logging_futures[trial])
+        assert actor_env_var == "1234"
 
 
 class TestWandbClassMixin:
