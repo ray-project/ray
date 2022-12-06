@@ -12,7 +12,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 class LogHead(dashboard_utils.DashboardHeadModule):
     LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
-    LOG_INDEX_TEXT_TEMPLATE = "{node_id} ({node_ip})"
+    LOG_INDEX_TEXT_TEMPLATE = "Node ID: {node_id} (IP: {node_ip})"
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)

@@ -219,7 +219,7 @@ def test_log_index_texts(disable_aiohttp_cache, ray_start_cluster):
     node_id_ip_pairs = _get_node_id_ip_pairs()
     expected_texts = set()
     for node_id, node_ip in node_id_ip_pairs:
-        expected_texts.add("{} ({})".format(node_id, node_ip))
+        expected_texts.add("Node ID: {} (IP: {})".format(node_id, node_ip))
 
     # Check log index format
     def check_log_index_format():
