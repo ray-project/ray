@@ -7,6 +7,7 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
+import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
@@ -85,6 +86,11 @@ class HuggingFacePredictor(Predictor):
     def _predict(
         self, data: Union[list, pd.DataFrame], **pipeline_call_kwargs
     ) -> pd.DataFrame:
+        # If we are in a Ray task and have access to a GPU, default to
+        # using the GPU with the first index
+        gpu_ids = ray.get_gpu_ids()
+        if gpu_ids:
+            pipeline_call_kwargs.setdefault("device", int(gpu_ids[0]))
         ret = self.pipeline(data, **pipeline_call_kwargs)
         # Remove unnecessary lists
         try:
