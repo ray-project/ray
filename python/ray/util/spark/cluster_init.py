@@ -66,10 +66,12 @@ class RayClusterOnSpark:
         self.spark_job_group_id = spark_job_group_id
         self.ray_context = None
         self.is_shutdown = False
+        self.spark_job_is_canceled = False
         self.num_worker_nodes = num_workers_node
         self.background_job_exception = None
 
     def _cancel_background_spark_job(self):
+        self.spark_job_is_canceled = True
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
 
     def connect(self):
@@ -133,21 +135,22 @@ class RayClusterOnSpark:
         else:
             _logger.warning("Already disconnected from this ray cluster.")
 
-    def shutdown(self):
+    def shutdown(self, cancel_background_job=True):
         """
         Shutdown the ray cluster created by the `init_ray_cluster` API.
         """
         if not self.is_shutdown:
             if self.ray_context is not None:
                 self.disconnect()
-            try:
-                self._cancel_background_spark_job()
-            except Exception as e:
-                # swallow exception.
-                _logger.warning(
-                    f"An error occurred while cancelling the ray cluster background spark job: "
-                    f"{repr(e)}"
-                )
+            if cancel_background_job:
+                try:
+                    self._cancel_background_spark_job()
+                except Exception as e:
+                    # swallow exception.
+                    _logger.warning(
+                        f"An error occurred while cancelling the ray cluster background spark job: "
+                        f"{repr(e)}"
+                    )
             try:
                 self.head_proc.terminate()
             except Exception as e:
@@ -553,8 +556,9 @@ def _init_ray_cluster(
             #  For case 1 and 3, only ray workers are killed, but driver side ray head might still
             #  be running and the ray context might be in connected status. In order to disconnect
             #  and kill the ray head node, a call to `ray_cluster_handler.shutdown()` is performed.
-            ray_cluster_handler.shutdown()
-            ray_cluster_handler.background_job_exception = e
+            if not ray_cluster_handler.spark_job_is_canceled:
+                ray_cluster_handler.shutdown(cancel_background_job=False)
+                ray_cluster_handler.background_job_exception = e
 
     try:
         threading.Thread(

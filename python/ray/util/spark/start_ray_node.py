@@ -62,4 +62,4 @@ if __name__ == '__main__':
 
     signal.signal(signal.SIGTERM, sigterm_handler)
 
-    process.wait()
+    sys.exit(process.wait())
