@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from pprint import pprint
 
 import requests
@@ -8,20 +8,26 @@ import ray
 import logging
 
 from collections import defaultdict
-from ray._private.test_utils import format_web_url, fetch_prometheus_metrics
+from ray._private.test_utils import fetch_prometheus_metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.utils import get_address_for_submission_client
 
 logger = logging.getLogger(__name__)
 
 
+def calc_p(latencies, percent):
+    if len(latencies) == 0:
+        return 0
+
+    return round(sorted(latencies)[int(len(latencies) / 100 * percent)] * 1000, 3)
+
+
 class Result(BaseModel):
     success: bool
-    # endpoints -> P95 latency
-    p95_ms: Optional[Dict[str, float]]
-    # endpoints -> P95 latency
-    p50_ms: Optional[Dict[str, float]]
+    # endpoints -> list of latencies
+    result: Dict[str, List[float]]
     # Dashboard memory usage in MB.
     memory_mb: Optional[float]
 
@@ -41,8 +47,8 @@ endpoints = [
 
 @ray.remote(num_cpus=0)
 class DashboardTester:
-    def __init__(self, addr: ray._private.worker.RayContext, interval_s: int = 1):
-        self.dashboard_url = format_web_url(addr.dashboard_url)
+    def __init__(self, interval_s: int = 1):
+        self.dashboard_url = get_address_for_submission_client(None)
         # Ping interval for all endpoints.
         self.interval_s = interval_s
         # endpoint -> a list of latencies
@@ -55,7 +61,7 @@ class DashboardTester:
         """Synchronously call an endpoint."""
         while True:
             start = time.monotonic()
-            resp = requests.get(self.dashboard_url + endpoint)
+            resp = requests.get(self.dashboard_url + endpoint, timeout=30)
             elapsed = time.monotonic() - start
 
             if resp.status_code == 200:
@@ -86,7 +92,7 @@ class DashboardTestAtScale:
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 node_id=node["node_id"], soft=False
             )
-        ).remote(addr)
+        ).remote()
 
         self.tester.run.remote()
 
@@ -101,15 +107,6 @@ class DashboardTestAtScale:
         except ray.exceptions.GetTimeoutError:
             return Result(success=False)
 
-        def calc_p(percent):
-            return {
-                # sort -> get PX -> convert second to ms -> round up.
-                endpoint: round(
-                    sorted(latencies)[int(len(latencies) / 100 * percent)] * 1000, 3
-                )  # noqa
-                for endpoint, latencies in result.items()
-            }
-
         # Get the memory usage.
         dashboard_export_addr = "{}:{}".format(
             self.addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
@@ -122,23 +119,55 @@ class DashboardTestAtScale:
                     if sample.labels["Component"] == "dashboard":
                         memories.append(sample.value)
 
-        return Result(success=True, p95_ms=calc_p(95), memory_mb=max(memories))
+        return Result(
+            success=True,
+            result=result,
+            memory_mb=max(memories),
+        )
 
     def update_release_test_result(self, release_result: dict):
         test_result = self.get_result()
-        pprint(test_result)
 
-        if "perf_metrics" not in release_result:
-            release_result["perf_metrics"] = []
+        def calc_endpoints_p(result, percent):
+            return {
+                # sort -> get PX -> convert second to ms -> round up.
+                endpoint: calc_p(latencies, percent)
+                for endpoint, latencies in result.items()
+            }
 
-        release_result["perf_metrics"].extend(
-            [
-                {
-                    "perf_metric_name": f"dashboard_{endpoint}_p95_latency",
-                    "perf_metric_value": p95,
-                    "perf_metric_type": "LATENCY",
-                }
-                for endpoint, p95 in test_result.p95_ms.items()
-            ]
-        )
-        release_result["_dashboard_memory_usage_mb"] = test_result.memory_mb
+        print("======Print per dashboard endpoint latencies======")
+        print("=====================P50==========================")
+        pprint(calc_endpoints_p(test_result.result, 50))
+        print("=====================P95==========================")
+        pprint(calc_endpoints_p(test_result.result, 95))
+        print("=====================P99==========================")
+        pprint(calc_endpoints_p(test_result.result, 99))
+
+        latencies = []
+        for l in test_result.result.values():
+            latencies.extend(l)
+        aggregated_metrics = {
+            "p50": calc_p(latencies, 50),
+            "p95": calc_p(latencies, 95),
+            "p99": calc_p(latencies, 99),
+        }
+
+        print("=====================Aggregated====================")
+        pprint(aggregated_metrics)
+
+        release_result["_dashboard_test_success"] = test_result.success
+        if test_result.success:
+            if "perf_metrics" not in release_result:
+                release_result["perf_metrics"] = []
+
+            release_result["perf_metrics"].extend(
+                [
+                    {
+                        "perf_metric_name": f"dashboard_{p}_latency_ms",
+                        "perf_metric_value": value,
+                        "perf_metric_type": "LATENCY",
+                    }
+                    for p, value in aggregated_metrics.items()
+                ]
+            )
+            release_result["_dashboard_memory_usage_mb"] = test_result.memory_mb
