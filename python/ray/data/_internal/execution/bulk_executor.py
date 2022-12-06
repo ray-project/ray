@@ -16,11 +16,7 @@ class BulkExecutor(Executor):
         super().__init__(options)
 
     def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
-        """Synchronously executes the DAG via bottom-up recursive traversal.
-
-        TODO: optimize memory usage by deleting intermediate results and marking
-        the `owned` field in the ref bundles correctly.
-        """
+        """Synchronously executes the DAG via bottom-up recursive traversal."""
 
         saved_outputs: Dict[PhysicalOperator, List[RefBundle]] = {}
 

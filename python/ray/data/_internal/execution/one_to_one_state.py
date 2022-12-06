@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data.block import Block, BlockAccessor
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.compute import TaskPoolStrategy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators import OneToOneOperator
@@ -38,10 +39,12 @@ class _TaskState:
     """Tracks the driver-side state for an OneToOneOperator task.
 
     Attributes:
+        inputs: The input ref bundle.
         output: The output ref bundle that is set when the task completes.
     """
 
-    def __init__(self):
+    def __init__(self, inputs: RefBundle):
+        self.inputs: RefBundle = inputs
         self.output: Optional[RefBundle] = None
 
 
@@ -54,6 +57,8 @@ class OneToOneOperatorState:
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._next_task_index = 0
         self._next_output_index = 0
+        if not isinstance(self._compute_strategy, TaskPoolStrategy):
+            raise NotImplementedError(str(self._compute_strategy))
 
     def add_input(self, bundle: RefBundle) -> None:
         input_blocks = []
@@ -62,7 +67,7 @@ class OneToOneOperatorState:
         generator_ref = _run_one_task.remote(
             self._transform_fn, bundle.input_metadata, *input_blocks
         )
-        task = _TaskState()
+        task = _TaskState(bundle)
         self._tasks[generator_ref] = task
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
@@ -73,7 +78,10 @@ class OneToOneOperatorState:
         block_refs = all_refs[:-1]
         block_metas = ray.get(all_refs[-1])
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
-        task.output = RefBundle(list(zip(block_refs, block_metas)))
+        task.output = RefBundle(list(zip(block_refs, block_metas)), owns_blocks=True)
+        # TODO(ekl) this isn't strictly correct if multiple operators depend on this
+        # bundle, but it doesn't happen in linear dags for now.
+        task.inputs.destroy_if_owned()
 
     def has_next(self) -> bool:
         i = self._next_output_index

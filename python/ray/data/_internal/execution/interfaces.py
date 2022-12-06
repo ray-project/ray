@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -27,13 +26,13 @@ class RefBundle:
     # The num_rows / size_bytes must be known in the metadata.
     blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
 
+    # Whether we own the blocks (can safely destroy them).
+    owns_blocks: bool
+
     # Serializable extra data passed from upstream operator. This can be
     # used to implement per-block behavior, for example, the last task
     # for a Limit() operation truncates the block at a certain row.
     input_metadata: Dict[str, Any] = field(default_factory=lambda: {})
-
-    # Whether we own the blocks (can safely destroy them).
-    owns_blocks: bool = False
 
     def __post_init__(self):
         for b in self.blocks:
@@ -52,10 +51,12 @@ class RefBundle:
         """Size of the blocks of this bundle in bytes."""
         return sum(b[1].size_bytes for b in self.blocks)
 
-    def destroy(self) -> None:
-        """Clears the object store memory for these blocks."""
-        assert self.owns_blocks, "Should not destroy unowned blocks."
-        raise NotImplementedError
+    def destroy_if_owned(self) -> None:
+        """Clears the object store memory for these blocks if owned."""
+        if self.owns_blocks:
+            ray._private.internal_api.free(
+                [b[0] for b in self.blocks], local_only=False
+            )
 
 
 @dataclass
@@ -166,12 +167,3 @@ class Executor:
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far."""
         raise NotImplementedError
-
-    def execute_to_legacy_block_list(self, dag: PhysicalOperator) -> BlockList:
-        """Temporary: for compatibility with the legacy backend."""
-        blocks, metadata = [], []
-        for ref_bundle in self.execute(dag):
-            for block, meta in ref_bundle.blocks:
-                blocks.append(block)
-                metadata.append(meta)
-        return BlockList(blocks, metadata, owned_by_consumer=True)

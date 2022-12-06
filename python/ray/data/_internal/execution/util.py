@@ -15,7 +15,8 @@ def _make_ref_bundles(simple_data: List[Block]) -> List[RefBundle]:
                         ray.put(block),
                         BlockAccessor.for_block(block).get_metadata([], None),
                     )
-                ]
+                ],
+                owns_blocks=True,
             )
         )
     return output
