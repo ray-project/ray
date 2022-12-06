@@ -305,6 +305,6 @@ See the [Ray Metrics documentation](ray-metrics) for more details, including ins
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
 
-[Arize](https://docs.arize.com/arize/) is the machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
+[Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
 To integrate with Arize, you can directly add Arize client code into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))
