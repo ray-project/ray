@@ -303,7 +303,7 @@ ray_my_counter{..., deployment="MyDeployment"} 5.0
 See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
 
 ## Exporting metrics into Arize
-Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platform.
+Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
 
 [Arize](https://docs.arize.com/arize/) is the machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
