@@ -2074,6 +2074,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     return;
   }
   auto shutdown_after_reply = []() {
+    rpc::DrainAndResetServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
