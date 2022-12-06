@@ -500,7 +500,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
     *,

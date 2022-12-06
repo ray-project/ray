@@ -48,8 +48,8 @@ Text
 
 .. autofunction:: ray.data.read_text
 
-Images (experimental)
----------------------
+Images
+------
 
 .. autofunction:: ray.data.read_images
 
