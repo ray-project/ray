@@ -76,7 +76,7 @@ class _TrackedCheckpoint:
         # If True, and the checkpoint is an AIR Checkpoint backed by
         # a local directory, will move files instead of copying them
         # when commiting to disk.
-        self.move_instead_of_copy = not bool(
+        self._move_instead_of_copy = not bool(
             env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
         )
 
@@ -105,7 +105,7 @@ class _TrackedCheckpoint:
             return
 
         if isinstance(self.dir_or_data, Checkpoint):
-            if self.dir_or_data._local_path and self.move_instead_of_copy:
+            if self.dir_or_data._local_path and self._move_instead_of_copy:
                 self.dir_or_data = self.dir_or_data._move_directory(str(path))
             else:
                 self.dir_or_data = self.dir_or_data.to_directory(str(path))
