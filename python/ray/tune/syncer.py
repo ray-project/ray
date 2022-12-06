@@ -129,7 +129,7 @@ class SyncConfig:
         Args:
             upload_dir: Path to validate.
         """
-        if hasattr(self.syncer, "validate_upload_dir"):
+        if isinstance(self.syncer, Syncer):
             return self.syncer.validate_upload_dir(self.upload_dir)
         else:
             return Syncer.validate_upload_dir(self.upload_dir)
