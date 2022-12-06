@@ -1335,12 +1335,20 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key].used_for_compute_actions = False
             # TODO (kourosh) Why did we use to make used_for_compute_actions True here?
         new_batch = self._get_dummy_batch_from_view_requirements(sample_batch_size)
+        # Make sure the dummy_batch will return numpy arrays when accessed
+        self._dummy_batch.set_get_interceptor(None)
+
         # try to re-use the output of the previous run to avoid overriding things that
         # would break (e.g. scale = 0 of Normal distribution cannot be zero)
-        self._dummy_batch.set_get_interceptor(None)
         for k in new_batch:
             if k not in self._dummy_batch:
                 self._dummy_batch[k] = new_batch[k]
+
+        # Make sure the book-keeping of dummy_batch keys are reset to correcly track 
+        # what is accessed, what is added and what's deleted from now on.
+        self._dummy_batch.accessed_keys.clear()
+        self._dummy_batch.deleted_keys.clear()
+        self._dummy_batch.added_keys.clear()
 
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
