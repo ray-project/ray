@@ -98,7 +98,7 @@ class TorchCheckpoint(Checkpoint):
                 import torch.nn as nn
                 from ray.train.torch import TorchCheckpoint
 
-                # Set manual seed 
+                # Set manual seed
                 torch.manual_seed(42)
 
                 # Function to create a NN model
@@ -112,7 +112,7 @@ class TorchCheckpoint(Checkpoint):
                 model = create_model()
                 checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
 
-                # Now load the model from the TorchCheckpoint by providing the 
+                # Now load the model from the TorchCheckpoint by providing the
                 # model architecture
                 model_from_chkpt = checkpoint.get_model(create_model())
 
@@ -160,7 +160,7 @@ class TorchCheckpoint(Checkpoint):
                 from ray.train.torch import TorchPredictor
                 import torch
 
-                # Set manual seed 
+                # Set manual seed
                 torch.manual_seed(42)
 
                 # Create model identity and send a random tensor to it
@@ -180,7 +180,7 @@ class TorchCheckpoint(Checkpoint):
                 pred = torch.tensor(pred['predictions'])
 
                 # Assert the output from the original and checkoint model are the same
-                assert torch.equal(output, pred) 
+                assert torch.equal(output, pred)
                 print("worked")
             
             .. testoutput::
@@ -188,7 +188,7 @@ class TorchCheckpoint(Checkpoint):
                 :options: +ELLIPSIS
 
                 ...
-        """  
+        """
         return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
