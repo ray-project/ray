@@ -24,7 +24,7 @@ Function API
 The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
 one for each Tune trial.
 
-The ``config`` argument in the function is a dictionary populated automatically by Tune and corresponding to
+The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
 the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
