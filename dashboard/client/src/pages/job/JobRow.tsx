@@ -58,18 +58,19 @@ export const JobRow = ({
   })();
 
   const logsLink = (() => {
-    let link: string | undefined = undefined;
+    let link: string | undefined;
     if (driver_agent_http_address) {
-      link = `/log/${encodeURIComponent(
-        `${driver_agent_http_address}/logs`,
-      )}?fileName=${type === "DRIVER" ? job_id : `driver-${submission_id}`}`;
+      link = `/log/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
     } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
       link = `/log/${encodeURIComponent(
         ipLogMap[driver_info.node_ip_address],
-      )}?fileName=${type === "DRIVER" ? job_id : `driver-${submission_id}`}`;
+      )}`;
     }
 
     if (link) {
+      link += `?fileName=${
+        type === "DRIVER" ? job_id : `driver-${submission_id}`
+      }`;
       return (
         <Link to={link} target="_blank">
           Log
