@@ -71,8 +71,12 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 
 void TaskEventBufferImpl::Stop() {
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
-  if (!enabled_) {
-    return;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    if (!enabled_) {
+      return;
+    }
   }
 
   // Shutting down the io service to exit the io_thread. This should prevent
@@ -132,7 +136,8 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-          << "GCS hasn't replied to the previous flush events call (likely overloaded). "
+          << "GCS hasn't replied to the previous flush events call (likely "
+             "overloaded). "
              "Skipping reporting task state events and retry later."
           << "[cur_buffer_size=" << buffer_.size() << "].";
       return;
