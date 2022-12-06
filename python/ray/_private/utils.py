@@ -1214,7 +1214,17 @@ def deprecated(
     return deprecated_wrapper
 
 
-def get_module_and_attr(full_path: str):
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
+
+    For example, the following are equivalent:
+        MyClass = import_attr("module.submodule:MyClass")
+        MyClass = import_attr("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported attr
+    """
     if full_path is None:
         raise TypeError("import path cannot be None")
 
@@ -1231,21 +1241,6 @@ def get_module_and_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
-    return (module, attr_name)
-
-
-def import_attr(full_path: str):
-    """Given a full import path to a module attr, return the imported attr.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    module, attr_name = get_module_and_attr(full_path)
     return getattr(module, attr_name)
 
 

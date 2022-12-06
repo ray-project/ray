@@ -2,13 +2,10 @@
 import asyncio
 import os
 import pathlib
-import shutil
 import signal
 import sys
-import tempfile
 import time
 from typing import Optional, Union
-from uuid import uuid4
 
 import click
 import yaml
@@ -16,7 +13,7 @@ import re
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr, get_module_and_attr
+from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
