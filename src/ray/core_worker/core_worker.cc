@@ -234,7 +234,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     task_event_buffer_ =
         std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
     if (!task_event_buffer_->Start().ok()) {
-      task_event_buffer_.reset();
+      RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
 
@@ -353,7 +353,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      task_event_buffer_.get()));
+      *task_event_buffer_.get()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -607,9 +607,8 @@ void CoreWorker::Shutdown() {
     // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
-  if (task_event_buffer_) {
-    task_event_buffer_->Stop();
-  }
+
+  task_event_buffer_->Stop();
 
   if (gcs_client_) {
     // We should disconnect gcs client first otherwise because it contains
@@ -648,9 +647,7 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Force task state events push before exiting the worker.
-  if (task_event_buffer_) {
-    task_event_buffer_->FlushEvents(/* forced */ true);
-  }
+  task_event_buffer_->FlushEvents(/* forced */ true);
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
@@ -2270,7 +2267,7 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
     // Make task event
-    if (task_event_buffer_) {
+    if (task_event_buffer_->Enabled()) {
       rpc::TaskEvents task_event;
       task_event.set_task_id(task_spec.TaskId().Binary());
       task_event.set_attempt_number(task_spec.AttemptNumber());

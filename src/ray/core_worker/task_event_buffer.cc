@@ -38,8 +38,11 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
                    << status.ToString() << "].";
 
+    enabled_ = false;
     return status;
   }
+
+  enabled_ = true;
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -68,6 +71,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 
 void TaskEventBufferImpl::Stop() {
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
+  if (!enabled_) {
+    return;
+  }
 
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.
@@ -85,8 +91,16 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
+bool TaskEventBufferImpl::Enabled() {
+  absl::MutexLock lock(&mutex_);
+  return enabled_;
+}
+
 void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   absl::MutexLock lock(&mutex_);
+  if (!enabled_) {
+    return;
+  }
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
   if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
@@ -104,6 +118,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_task_events_dropped = 0;
   {
     absl::MutexLock lock(&mutex_);
+    if (!enabled_) {
+      return;
+    }
 
     RAY_LOG_EVERY_MS(INFO, 15000)
         << "Pushed task state events to GCS. [total_bytes="
