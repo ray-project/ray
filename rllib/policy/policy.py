@@ -1344,7 +1344,7 @@ class Policy(metaclass=ABCMeta):
             if k not in self._dummy_batch:
                 self._dummy_batch[k] = new_batch[k]
 
-        # Make sure the book-keeping of dummy_batch keys are reset to correcly track 
+        # Make sure the book-keeping of dummy_batch keys are reset to correcly track
         # what is accessed, what is added and what's deleted from now on.
         self._dummy_batch.accessed_keys.clear()
         self._dummy_batch.deleted_keys.clear()
