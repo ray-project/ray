@@ -57,7 +57,7 @@ class WorkerContext {
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
 
-  void SetTaskDepth(int64_t depth);
+  void SetTaskDepth(int64_t depth) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
 
