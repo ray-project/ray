@@ -85,22 +85,20 @@ class TensorflowTrainer(DataParallelTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import tensorflow as tf
 
         import ray
         from ray.air import session, Checkpoint
-        from ray.train.tensorflow import TensorflowTrainer
         from ray.air.config import ScalingConfig
-
-        input_size = 1
+        from ray.train.tensorflow import TensorflowTrainer
 
         def build_model():
             # toy neural network : 1-layer
             return tf.keras.Sequential(
                 [tf.keras.layers.Dense(
-                    1, activation="linear", input_shape=(input_size,))]
+                    1, activation="linear", input_shape=(1,))]
             )
 
         def train_loop_per_worker(config):
@@ -111,12 +109,12 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.compile(
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
+            tf_dataset = dataset_shard.to_tf(
+                feature_columns="x",
+                label_columns="y",
+                batch_size=1
+            )
             for epoch in range(config["num_epochs"]):
-                tf_dataset = dataset_shard.to_tf(
-                    feature_columns="x",
-                    label_columns="y",
-                    batch_size=1
-                )
                 model.fit(tf_dataset)
                 # You can also use ray.air.integrations.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
@@ -126,7 +124,6 @@ class TensorflowTrainer(DataParallelTrainer):
                         dict(epoch=epoch, model=model.get_weights())
                     ),
                 )
-
 
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
