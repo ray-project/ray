@@ -212,6 +212,7 @@ class _ExperimentCheckpointManager:
         trial_runner: "TrialRunner",
         trial_executor: RayTrialExecutor,
         search_alg: SearchAlgorithm,
+        scheduler: TrialScheduler,
         force: bool = False,
     ):
         """Saves execution state to `self._local_checkpoint_dir`.
@@ -249,6 +250,7 @@ class _ExperimentCheckpointManager:
 
             os.replace(tmp_file_name, checkpoint_file)
             search_alg.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
+            scheduler.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
         with out_of_band_serialize_dataset():
@@ -797,6 +799,7 @@ class TrialRunner:
                 trial_runner=self,
                 trial_executor=self.trial_executor,
                 search_alg=self._search_alg,
+                scheduler=self._scheduler_alg,
                 force=force,
             )
 
@@ -845,8 +848,11 @@ class TrialRunner:
         trial_runner_data.pop("_local_checkpoint_dir", None)
 
         self.__setstate__(trial_runner_data)
+
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
+        if self._scheduler_alg.has_checkpoint(self._local_checkpoint_dir):
+            self._scheduler_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = _load_trials_from_experiment_checkpoint(
             runner_state, new_local_dir=self._local_checkpoint_dir
