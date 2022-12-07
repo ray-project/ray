@@ -1491,24 +1491,6 @@
 # Tune scalability tests
 ########################
 
-
-- name: tune_failing_due_to_timeout
-  group: Tune scalability tests
-  working_dir: tune_tests/scalability_tests
-
-  frequency: nightly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_1x16.yaml
-
-  run:
-    timeout: 30
-    script: python workloads/test_bookkeeping_overhead.py
-
-
 - name: tune_scalability_bookkeeping_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
