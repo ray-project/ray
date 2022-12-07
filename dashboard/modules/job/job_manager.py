@@ -384,20 +384,16 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    if "RAY_JOB_STOP_SIGNAL" not in os.environ:
-                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
-                    else:
-                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
-                        if stop_signal not in ["SIGINT", "SIGTERM"]:
-                            logger.warning(
-                                f"{stop_signal} not a valid stop signal. Terminating "
-                                "job."
-                            )
-                            stop_signal = "SIGTERM"
-                        os.killpg(
-                            os.getpgid(child_process.pid),
-                            eval(f"signal.{stop_signal}"),
+                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                    if stop_signal not in ["SIGINT", "SIGTERM"]:
+                        logger.warning(
+                            f"{stop_signal} not a valid stop signal. Terminating job."
                         )
+                        stop_signal = "SIGTERM"
+                    os.killpg(
+                        os.getpgid(child_process.pid),
+                        getattr(signal, stop_signal),
+                    )
 
                     try:
                         child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
