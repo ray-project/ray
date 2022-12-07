@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List, Union
+from typing import Dict, List, Optional, Type, Union
 
 from dataclasses import dataclass
 
@@ -9,12 +9,11 @@ from ray.air.execution.resources.request import (
     AllocatedResource,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
+from ray.util.annotations import DeveloperAPI
 
 
 # Avoid numerical errors by multiplying and subtracting with this number.
 # Compare: 0.99 - 0.33 vs (0.99 * 1000 - 0.33 * 1000) / 1000
-from ray.util.annotations import DeveloperAPI
-
 _DIGITS = 100000
 
 
@@ -33,7 +32,7 @@ class FixedAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
 
     def annotate_remote_objects(
-        self, objects
+        self, objects: List[Type]
     ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
         if len(objects) == 1:
             all_resources = _sum_bundle_resources(self.bundles)

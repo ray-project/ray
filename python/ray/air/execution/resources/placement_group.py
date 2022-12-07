@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Dict, Optional, List, Set, Union
+from typing import Dict, List, Optional, Set, Type, Union
 
 from dataclasses import dataclass
 
@@ -21,7 +21,7 @@ class PlacementGroupAllocatedResource(AllocatedResource):
     placement_group: PlacementGroup
 
     def annotate_remote_objects(
-        self, objects
+        self, objects: List[Type]
     ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
         # With an empty head, the second bundle should live in the
         # actual PG's first bundle, so we start counting from -1
