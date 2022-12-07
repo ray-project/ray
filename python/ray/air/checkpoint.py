@@ -156,7 +156,7 @@ class Checkpoint:
     @DeveloperAPI
     def __init__(
         self,
-        local_path: Optional[str] = None,
+        local_path: Optional[Union[str, Path]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
@@ -210,7 +210,9 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path: Optional[str] = local_path
+        self._local_path: Optional[str] = (
+            str(Path(local_path).resolve()) if local_path else local_path
+        )
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
@@ -258,8 +260,8 @@ class Checkpoint:
         if self._uri:
             return self._uri
 
-        if self._local_path and Path(self._local_path).exists():
-            return "file://" + self._local_path
+        if self._local_path and self._local_path.exists():
+            return "file://" + str(self._local_path)
 
         return None
 
@@ -290,7 +292,7 @@ class Checkpoint:
         data_dict = self.to_dict()
         if "bytes_data" in data_dict:
             return data_dict["bytes_data"]
-        return pickle.dumps(self.to_dict())
+        return pickle.dumps(data_dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Checkpoint":
@@ -421,7 +423,7 @@ class Checkpoint:
         )
 
     @classmethod
-    def from_directory(cls, path: str) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, Path]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -532,7 +534,7 @@ class Checkpoint:
             local_path = self._local_path
             external_path = _get_external_path(self._uri)
             if local_path:
-                if local_path != path:
+                if Path(local_path).resolve() != Path(path).resolve():
                     # If this exists on the local path, just copy over
                     if path and os.path.exists(path):
                         shutil.rmtree(path)
