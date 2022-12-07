@@ -383,6 +383,25 @@ class HTTPProxy:
             )
 
 
+import grpc
+from google.protobuf.any_pb2 import Any
+
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
+
+class PredictAPIsServicer(serve_pb2_grpc.PredictAPIsServiceServicer):
+    async def Predict(self, request: serve_pb2.PredictRequest, context):
+        handle = serve.context.get_global_client().get_handle(
+            request.target,
+            sync=False,
+            missing_ok=True,
+        )
+
+        output_ref = await handle.remote(request.input)
+        output_any = await output_ref
+        return serve_pb2.PredictResponse(output=output_any)
+
+
 @ray.remote(num_cpus=0)
 class HTTPProxyActor:
     def __init__(
@@ -405,13 +424,8 @@ class HTTPProxyActor:
         self.port = port
         self.root_path = root_path
 
+        self.server = grpc.aio.server()
         self.setup_complete = asyncio.Event()
-
-        self.app = HTTPProxy(controller_name)
-
-        self.wrapped_app = self.app
-        for middleware in http_middlewares:
-            self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
@@ -441,34 +455,14 @@ class HTTPProxyActor:
         await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
-        sock = socket.socket()
-        if SOCKET_REUSE_PORT_ENABLED:
-            set_socket_reuse_port(sock)
-        try:
-            sock.bind((self.host, self.port))
-        except OSError:
-            # The OS failed to bind a socket to the given host and port.
-            raise ValueError(
-                f"""Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'.
-Please make sure your http-host and http-port are specified correctly."""
-            )
-
-        # Note(simon): we have to use lower level uvicorn Config and Server
-        # class because we want to run the server as a coroutine. The only
-        # alternative is to call uvicorn.run which is blocking.
-        config = uvicorn.Config(
-            self.wrapped_app,
-            host=self.host,
-            port=self.port,
-            root_path=self.root_path,
-            lifespan="off",
-            access_log=False,
+        logger.info(
+            "Starting gRPC server with on node:{} "
+            "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
         )
-        server = uvicorn.Server(config=config)
-        # TODO(edoakes): we need to override install_signal_handlers here
-        # because the existing implementation fails if it isn't running in
-        # the main thread and uvicorn doesn't expose a way to configure it.
-        server.install_signal_handlers = lambda: None
 
+        self.server.add_insecure_port("[::]:{}".format(self.port))
+        serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
+            PredictAPIsServicer(), self.server)
+        await self.server.start()
         self.setup_complete.set()
-        await server.serve(sockets=[sock])
+        await self.server.wait_for_termination()
