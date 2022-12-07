@@ -1,8 +1,6 @@
-import abc
 from typing import Any, List, Mapping, Union
 
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, ModuleID
 from ray.rllib.core.loss_and_optim.rl_optimizer import RLOptimizer
 from ray.rllib.utils.nested_dict import NestedDict
 
@@ -14,36 +12,63 @@ class MultiAgentRLOptimizer(RLOptimizer):
         rl_optimizer_classes: Union[RLOptimizer, List[RLOptimizer]],
         optim_configs: Union[NestedDict, Mapping[str, Any]],
     ):
-        self._module = module
+        # self._module = module
         self._rl_optimizer_classes = rl_optimizer_classes
-        self._optim_configs = optim_configs
-
-    @abc.abstractproperty
-    def trainable_modules(self) -> Mapping[RLModule, RLOptimizer]:
-        """The map of trainable `RLModule`s to `RLOptimizer` instances"""
+        # self._optim_configs = optim_configs
+        # self._trainable_modules = {}
+        super().__init__(module, optim_configs)
 
 
-class DefaultMARLLossAndOptim(MultiAgentRLOptimizer):
-    def __init__(
-        self,
-        module: MultiAgentRLModule,
-        rl_optimizer_classes: Union[RLOptimizer, List[RLOptimizer]],
-        optim_configs: Union[NestedDict, Mapping[str, Any]],
-    ):
-        super().__init__(module, rl_optimizer_classes, optim_configs)
-        self._trainable_modules = {}
-        for submodule_id in module.get_trainable_module_ids():
-            submodule = module[submodule_id]
-            if isinstance(rl_optimizer_classes, RLOptimizer) and isinstance(
-                optim_configs, NestedDict
-            ):
-                self._trainable_modules[submodule] = rl_optimizer_classes(optim_configs)
+class DefaultMARLOptimizer(MultiAgentRLOptimizer):
+    def _configure_optimizers(self) -> Mapping[ModuleID, RLOptimizer]:
+        optimizers = {}
+        rl_optimizer_classes = self._rl_optimizer_classes
+        for submodule_id in self.module.keys():
+            if isinstance(rl_optimizer_classes, RLOptimizer):
+                assert len(self.module.keys()) == 1
+                optimizers[submodule_id] = rl_optimizer_classes(self._config)
             elif isinstance(rl_optimizer_classes, dict) and isinstance(
-                optim_configs, dict
+                self._config, dict
             ):
                 cls = rl_optimizer_classes[submodule_id]
-                cfg = optim_configs[submodule_id]
-                self._trainable_modules[submodule] = cls(cfg)
+                cfg = self._config[submodule_id]
+                optimizers[submodule_id] = cls(cfg)
             else:
                 # TODO: avnishn fill in the value error.
                 raise ValueError
+        return optimizers
+
+    def compute_loss(
+        self,
+        fwd_out: Mapping[ModuleID, Mapping[str, Any]],
+        batch: Mapping[ModuleID, Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        loss_dict = {}
+        total_loss = None
+        for submodule_id in batch.keys():
+            assert submodule_id in self._trainable_modules
+            assert submodule_id in fwd_out, "fwd_out must contain all keys in batch"
+            submodule_loss = self._trainable_modules[submodule_id].compute_loss(
+                fwd_out[submodule_id], batch[submodule_id]
+            )
+            if isinstance(submodule_loss, dict):
+                to_add_to_total_loss = submodule_loss["total_loss"]
+                loss_dict[submodule_id] = submodule_loss
+            else:
+                to_add_to_total_loss = submodule_loss
+                loss_dict[submodule_id] = {"total_loss": to_add_to_total_loss}
+            if total_loss is None:
+                total_loss = to_add_to_total_loss
+            else:
+                total_loss += to_add_to_total_loss
+        return loss_dict
+
+    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
+        state = {}
+        for submodule_id, rl_optim in self._optimizer.items():
+            state[submodule_id] = rl_optim.get_state()
+        return state
+
+    def set_state(self, state: Mapping[ModuleID, Mapping[str, Any]]):
+        for submodule_id, state in state.items():
+            self._optimizer[submodule_id].set_state(state)
