@@ -1802,7 +1802,7 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_rl_optimizer",
+    name = "test_rl_optimizer",
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/optim/tests/test_rl_optimizer.py"]
