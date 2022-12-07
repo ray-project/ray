@@ -2942,7 +2942,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         auto worker_to_kill =
-            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";

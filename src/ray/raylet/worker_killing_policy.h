@@ -26,8 +26,8 @@ namespace ray {
 
 namespace raylet {
 
-constexpr char GROUP_BY_DEPTH_POLICY[] = "group_by_depth";
-constexpr char LIFO_POLICY[] = "retriable_lifo";
+constexpr char kGroupByDepthPolicy[] = "group_by_depth";
+constexpr char kLifoPolicy[] = "retriable_lifo";
 
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
