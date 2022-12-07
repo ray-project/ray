@@ -1,5 +1,6 @@
 import collections
 import os
+import regex as re
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
@@ -242,19 +243,27 @@ VERBOSE_TRIAL_NORM_1 = (
     "with parameters={'do': 'complete'}. This trial completed.\n"
 )
 
-VERBOSE_TRIAL_NORM_2 = """
-Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
-Trial train_xxxxx_00001 completed. Last result: _metric=6
-"""
+# NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic.
+# `"Trial train_xxxxx_00001 reported..."` and `"Trial train_xxxxx_00001 completed..."`
+# are printed in separate calls. Sometimes, a status update is printed between the
+# calls. For more information, see #29693.
+VERBOSE_TRIAL_NORM_2_PATTERN = (
+    r"Trial train_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\.\n"
+    r"(?s).*"
+    r"Trial train_xxxxx_00001 completed\. Last result: _metric=6\n"
+)
 
-VERBOSE_TRIAL_NORM_3 = """
-Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
-"""
+VERBOSE_TRIAL_NORM_3 = (
+    "Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
+)
 
 VERBOSE_TRIAL_NORM_4 = (
     "Trial train_xxxxx_00002 reported acc=8 "
     "with parameters={'do': 'twice'}. This trial completed.\n"
 )
+
+VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_xxxxx_00001"
+VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_xxxxx_00001 completed."
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
 | Trial name        | status   | loc               | do       |
@@ -639,7 +648,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertNotIn(VERBOSE_EXP_OUT_1, output)
                 self.assertNotIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -655,7 +664,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -671,7 +680,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNotNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -687,10 +696,13 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
+                # Check that we don't print duplicate results at the end
+                self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)
+                self.assertIn(VERBOSE_TRIAL_WITH_ONCE_COMPLETED, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)

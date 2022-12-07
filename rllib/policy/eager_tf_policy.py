@@ -20,7 +20,11 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -142,7 +146,7 @@ def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
-    framework=[tf2|tfe].
+    framework=tf2.
     """
 
     class TracedEagerPolicy(eager_policy_cls):
@@ -296,8 +300,8 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
-    it automatically be converted to an eager policy.
+    graph policy and use set `.framework("tf2", eager_tracing=False) in your
+    AlgorithmConfig to have it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
 
@@ -322,7 +326,7 @@ def _build_eager_tf_policy(
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            self.framework = config.get("framework", "tfe")
+            self.framework = config.get("framework", "tf2")
             EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
@@ -622,10 +626,20 @@ def _build_eager_tf_policy(
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
             postprocessed_batch.set_training(True)
             stats = self._learn_on_batch_helper(postprocessed_batch)
+            self.num_grad_updates += 1
+
             stats.update(
                 {
                     "custom_metrics": learn_stats,
                     NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates
+                        - 1
+                        - (postprocessed_batch.num_grad_updates or 0)
+                    ),
                 }
             )
             return convert_to_numpy(stats)
@@ -714,12 +728,15 @@ def _build_eager_tf_policy(
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
-                logger.warning(
-                    "Cannot restore an optimizer's state for tf eager! Keras "
-                    "is not able to save the v1.x optimizers (from "
-                    "tf.compat.v1.train) since they aren't compatible with "
-                    "checkpoints."
-                )
+                if not type(self).__name__.endswith("_traced") and log_once(
+                    "set_state_optimizer_vars_tf_eager_policy_v2"
+                ):
+                    logger.warning(
+                        "Cannot restore an optimizer's state for tf eager! Keras "
+                        "is not able to save the v1.x optimizers (from "
+                        "tf.compat.v1.train) since they aren't compatible with "
+                        "checkpoints."
+                    )
                 for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                     opt_var.assign(value)
             # Set exploration's state.

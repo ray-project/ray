@@ -6,8 +6,10 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class StandardScaler(Preprocessor):
     r"""Translate and scale each column by its mean and standard deviation, respectively.
 
@@ -91,6 +93,7 @@ class StandardScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
+@PublicAPI(stability="alpha")
 class MinMaxScaler(Preprocessor):
     r"""Scale each column by its range.
 
@@ -174,6 +177,7 @@ class MinMaxScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
+@PublicAPI(stability="alpha")
 class MaxAbsScaler(Preprocessor):
     r"""Scale each column by its absolute max value.
 
@@ -251,6 +255,7 @@ class MaxAbsScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
+@PublicAPI(stability="alpha")
 class RobustScaler(Preprocessor):
     r"""Scale and translate each column using quantiles.
 

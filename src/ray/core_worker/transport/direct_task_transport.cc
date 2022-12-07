@@ -372,6 +372,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
+  const std::string task_name = resource_spec.GetName();
   RAY_LOG(DEBUG) << "Requesting lease from raylet "
                  << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
                  << task_id;
@@ -379,8 +380,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   lease_client->RequestWorkerLease(
       resource_spec.GetMessage(),
       /*grant_or_reject=*/is_spillback,
-      [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
-          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+      [this,
+       scheduling_key,
+       task_id,
+       task_name,
+       is_spillback,
+       raylet_address = *raylet_address](const Status &status,
+                                         const rpc::RequestWorkerLeaseReply &reply) {
         std::deque<TaskSpecification> tasks_to_fail;
         rpc::RayErrorInfo error_info;
         ray::Status error_status;
@@ -476,8 +482,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
-            RAY_LOG(INFO)
-                << "Retrying attempt to schedule task at remote node. Try again "
+            RAY_LOG_EVERY_MS(INFO, 30 * 1000)
+                << "Retrying attempt to schedule task (id: " << task_id
+                << " name: " << task_name
+                << ") at remote node (id: " << raylet_address.raylet_id()
+                << " ip: " << raylet_address.ip_address()
+                << "). Try again "
                    "on a local node. Error: "
                 << status.ToString();
 
@@ -555,7 +565,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  task_finisher_->MarkTaskWaitingForExecution(task_id);
+  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id);
   client.PushNormalTask(
       std::move(request),
       [this,
@@ -612,9 +622,16 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id,
-                                                   /*task_failed_due_to_oom*/ false)) {
+          if (reply.was_cancelled_before_running()) {
+            RAY_LOG(DEBUG) << "Task " << task_id
+                           << " was cancelled before it started running.";
+            RAY_UNUSED(
+                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+          } else if (!task_spec.GetMessage().retry_exceptions() ||
+                     !reply.is_retryable_error() ||
+                     !task_finisher_->RetryTaskIfPossible(
+                         task_id,
+                         /*task_failed_due_to_oom*/ false)) {
             task_finisher_->CompletePendingTask(
                 task_id, reply, addr.ToProto(), reply.is_application_error());
           }
@@ -632,7 +649,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   if (get_task_failure_cause_reply_status.ok()) {
-    RAY_LOG(DEBUG) << "Task failure cause "
+    RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
                    << ray::gcs::RayErrorInfoToString(
                           get_task_failure_cause_reply.failure_cause());
     if (get_task_failure_cause_reply.has_failure_cause()) {
@@ -695,8 +712,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-              task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+          RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                                     rpc::ErrorType::TASK_CANCELLED));
           return Status::OK();
         }
       }

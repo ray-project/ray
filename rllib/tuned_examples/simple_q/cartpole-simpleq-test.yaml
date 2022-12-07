@@ -1,10 +1,8 @@
-# config for quick cli testing. does not give meaningful results.
 cartpole-simpleq-test:
     env: CartPole-v1
     run: SimpleQ
-    checkpoint_freq: 1
     stop:
-        episode_reward_mean: 15
-        timesteps_total: 500
+        episode_reward_mean: 50.0
+        timesteps_total: 10000
     config:
         framework: tf

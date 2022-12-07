@@ -24,7 +24,11 @@ from ray.core.generated.metrics_pb2 import (
 )
 from ray._raylet import WorkerID
 
-from ray._private.test_utils import fetch_prometheus_metrics, wait_for_condition
+from ray._private.test_utils import (
+    fetch_prometheus_metrics,
+    fetch_raw_prometheus,
+    wait_for_condition,
+)
 
 
 def raw_metrics(export_port):
@@ -96,8 +100,10 @@ def get_agent(request, monkeypatch):
             )
         )
         agent = MetricsAgent(view_manager, stats_recorder, stats_exporter)
+        REGISTRY.register(agent.proxy_exporter_collector)
         yield agent, agent_port
         REGISTRY.unregister(agent.stats_exporter.collector)
+        REGISTRY.unregister(agent.proxy_exporter_collector)
         execution_context.set_measure_to_view_map({})
 
 
@@ -139,15 +145,34 @@ def test_metrics_agent_record_and_export(get_agent):
     assert samples[0].value == 4
     assert samples[0].labels == {"tag": "a"}
 
+    # Record the same gauge with different ag.
+    record_d = Record(
+        gauge=test_gauge,
+        value=6,
+        tags={"tag": "aa"},
+    )
+    agent.record_and_export(
+        [
+            record_d,
+        ]
+    )
+    name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
+    assert name == get_prom_metric_name(namespace, metric_name)
+    assert len(samples) == 2
+    assert samples[0].value == 4
+    assert samples[0].labels == {"tag": "a"}
+    assert samples[1].value == 6
+    assert samples[1].labels == {"tag": "aa"}
+
     # Record more than 1 gauge.
     metric_name_2 = "test2"
     test_gauge_2 = Gauge(metric_name_2, "desc", "unit", ["tag"])
-    record_c = Record(
+    record_e = Record(
         gauge=test_gauge_2,
         value=1,
         tags={"tag": "b"},
     )
-    agent.record_and_export([record_c])
+    agent.record_and_export([record_e])
     name, samples = get_metric(
         get_prom_metric_name(namespace, metric_name_2), agent_port
     )
@@ -159,9 +184,11 @@ def test_metrics_agent_record_and_export(get_agent):
     # Make sure the previous record is still there.
     name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
     assert name == get_prom_metric_name(namespace, metric_name)
-    assert len(samples) == 1
+    assert len(samples) == 2
     assert samples[0].value == 4
     assert samples[0].labels == {"tag": "a"}
+    assert samples[1].value == 6
+    assert samples[1].labels == {"tag": "aa"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -327,6 +354,73 @@ def test_metrics_agent_proxy_record_and_export_from_workers_delay(get_agent):  #
 
     wait_for_condition(verify)
     assert time.time() - start > DELAY
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_export_format_correct(get_agent):
+    """
+    Verifies that there is one metric per metric name and not one
+    per metric name + tag combination.
+    Also verifies that the prometheus output is in the right format.
+    """
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    # Record a new gauge.
+    metric_name = "test"
+    test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
+    record_a = Record(
+        gauge=test_gauge,
+        value=3,
+        tags={"tag": "a"},
+    )
+    agent.record_and_export([record_a])
+
+    # Record a different tag.
+    record_b = Record(
+        gauge=test_gauge,
+        value=4,
+        tags={"tag": "b"},
+    )
+    agent.record_and_export([record_b])
+
+    # Record more than 1 gauge.
+    metric_name_2 = "test2"
+    test_gauge_2 = Gauge(metric_name_2, "desc", "unit", ["tag"])
+    record_c = Record(
+        gauge=test_gauge_2,
+        value=1,
+        tags={"tag": "c"},
+    )
+    agent.record_and_export([record_c])
+
+    # Basic assertions
+    name, samples = get_metric(
+        get_prom_metric_name(namespace, metric_name_2), agent_port
+    )
+    assert name == get_prom_metric_name(namespace, metric_name_2)
+    assert len(samples) == 1
+    assert samples[0].value == 1
+    assert samples[0].labels == {"tag": "c"}
+
+    name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
+    assert name == get_prom_metric_name(namespace, metric_name)
+    assert len(samples) == 2
+    assert samples[0].value == 3
+    assert samples[0].labels == {"tag": "a"}
+    assert samples[1].value == 4
+    assert samples[1].labels == {"tag": "b"}
+
+    # Assert there is not multiple HELP text per metric
+    # Need to manually parse the prometheus output because the official
+    # `prometheus_client.parser` is more lenient than the actual
+    # specification and ignores the multiple HELP / TYPE comments.
+    metrics_page = "localhost:{}".format(agent_port)
+    _, response = list(fetch_raw_prometheus([metrics_page]))[0]
+    assert response.count("# HELP test_test desc") == 1
+    assert response.count("# TYPE test_test gauge") == 1
+    assert response.count("# HELP test_test2 desc") == 1
+    assert response.count("# TYPE test_test2 gauge") == 1
 
 
 if __name__ == "__main__":
