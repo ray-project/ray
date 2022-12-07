@@ -48,7 +48,7 @@ def get_tf_data():
     pass
 
 
-class TorchNatureCNN(nn.Module):
+class TorchCNN(nn.Module):
     tower_stats = {}
 
     def __init__(self, obs_space, action_space, num_outputs, *args, **kwargs):
@@ -109,7 +109,7 @@ class TorchNatureCNN(nn.Module):
         return self.value
 
 
-class TorchV2NatureCNN(TorchModelV2, TorchNatureCNN):
+class TorchV2NatureCNN(TorchModelV2, TorchCNN):
     def __init__(
         self,
         obs_space: gym.spaces.Space,
@@ -121,14 +121,14 @@ class TorchV2NatureCNN(TorchModelV2, TorchNatureCNN):
         TorchModelV2.__init__(
             self, obs_space, action_space, num_outputs, model_config, name
         )
-        TorchNatureCNN.__init__(self, obs_space, action_space, num_outputs)
+        TorchCNN.__init__(self, obs_space, action_space, num_outputs)
 
     def forward(self, input_dict, state=[], seq_lens=None):
-        logits, _ = TorchNatureCNN.forward(self, input_dict)
+        logits, _ = TorchCNN.forward(self, input_dict)
         return logits, []
 
     def value_function(self):
-        return TorchNatureCNN.value_function(self)
+        return TorchCNN.value_function(self)
 
 
 class TF2V2NatureCNN(TFModelV2):
@@ -143,7 +143,7 @@ class TF2V2NatureCNN(TFModelV2):
         TorchModelV2.__init__(
             self, obs_space, action_space, num_outputs, model_config, name
         )
-        TorchNatureCNN.__init__(self)
+        TorchCNN.__init__(self)
         self.cnn = keras.models.Sequential()
         self.cnn.add(
             keras.layers.Conv2d(
@@ -175,7 +175,7 @@ class TF2V2NatureCNN(TFModelV2):
 
 torch_policy = PPOTorchPolicy(env.observation_space, env.action_space, PPOConfig())
 
-torch_basemodel = TorchNatureCNN(env.observation_space, env.action_space, 6).to(device)
+torch_basemodel = TorchCNN(env.observation_space, env.action_space, 6).to(device)
 torchv2_model = TorchV2NatureCNN(
     env.observation_space, env.action_space, 6, ModelConfigDict(), "bork"
 ).to(device)
@@ -195,7 +195,7 @@ tf_visionnet = KerasVisionNetwork(
 )
 
 torch_models = [torch_basemodel, torchv2_model, torch_visionnet]
-#torch_models = []
+# torch_models = []
 
 for model in torch_models:
     print("Model:", model.__class__.__name__)
