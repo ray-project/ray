@@ -276,7 +276,7 @@ class Checkpoint:
         if self._uri:
             return self._uri
 
-        if self._local_path and self._local_path.exists():
+        if self._local_path and Path(self._local_path).exists():
             return "file://" + str(self._local_path)
 
         return None
