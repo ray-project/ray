@@ -38,6 +38,21 @@ void GcsTaskManager::Stop() {
   }
 }
 
+void GcsTaskManager::HandleGetTaskStatus(rpc::GetTaskStatusRequest request,
+                                         rpc::GetTaskStatusReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
+
+  io_service_.post([this, reply, send_reply_callback, request = std::move(request)]() {});
+  return;
+}
+
+void GcsTaskManager::HandleGetProfileEvents(rpc::GetProfileEventsRequest request,
+                                            rpc::GetProfileEventsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  return;
+}
+
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {

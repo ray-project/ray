@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -125,6 +127,18 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
   for (auto &task_event : task_manager->task_events_) {
     EXPECT_EQ(task_ids2_set.count(TaskID::FromBinary(task_event.task_id())), 1);
   }
+}
+
+TEST_F(GcsTaskManagerTest, TestGetAllTaskEvents) {
+  size_t num_task_events = 100;
+  int32_t num_dropped = 10;
+  auto task_ids = GenTaskIDs(num_task_events);
+  auto expected_data = Mocker::GenTaskEventsData(task_ids, 0, num_dropped);
+
+  SyncAddTaskEventData(expected_data);
+
+  // Assert on the results get
+  auto actual_data = SyncGetAllTaskEvents();
 }
 
 }  // namespace gcs

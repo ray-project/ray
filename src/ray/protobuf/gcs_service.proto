@@ -631,10 +631,35 @@ message AddTaskEventDataReply {
   GcsStatus status = 1;
 }
 
+message GetTaskStatusRequest {
+  optional string job_id = 1;
+  optional string task_id = 2;
+}
+
+message GetTaskStatusReply {
+  GcsStatus status = 1;
+  repeated TaskEvents task_status_events = 2;
+}
+
+message GetProfileEventsRequest {
+  GcsStatus status = 1;
+  optional string job_id = 2;
+}
+
+message GetProfileEventsReply {
+  repeated TaskEvents profile_events = 1;
+}
+
 // Service for task info access.
 service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+
+  // Get task status events.
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusReply);
+
+  // Get task profile events.
+  rpc GetProfileEvents(GetProfileEventsRequest) returns (GetProfileEventsReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -41,6 +41,14 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetTaskStatus(rpc::GetTaskStatusRequest request,
+                           rpc::GetTaskStatusReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetProfileEvents(rpc::GetProfileEventsRequest request,
+                              rpc::GetProfileEventsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   // Stops the event loop and the thread of the task event handler.
   void Stop();
 
