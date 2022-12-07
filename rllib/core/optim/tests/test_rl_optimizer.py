@@ -49,7 +49,7 @@ def model_norm(model: torch.nn.Module) -> float:
     for p in model.parameters():
         param_norm = p.detach().data.norm(2)
         total_norm += param_norm.item() ** 2
-    total_norm = total_norm ** 0.5
+    total_norm = total_norm**0.5
     return total_norm
 
 
