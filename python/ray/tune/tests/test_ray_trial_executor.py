@@ -493,7 +493,19 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testResourcesAvailableWithPlacementGroup(self):
+        class ChildActor:
+            def noop(self):
+                return None
+
         def train(config):
+            # Start two actors in child bundles
+            actors = [
+                ray.remote(num_cpus=2, num_gpus=1, resources={"custom": 3})(
+                    ChildActor
+                ).remote()
+                for i in range(2)
+            ]
+            ray.get([actor.noop.remote() for actor in actors])
             tune.report(metric=0, resources=ray.available_resources())
 
         head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
