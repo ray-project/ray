@@ -16,9 +16,10 @@ if TYPE_CHECKING:
 
 
 class TorchVectorEncoder(TorchModel):
-    """An MLP encoder. This encoder concatenates inputs along the last dimension,
-    then pushes them through an MLP.
+    """A torch implementation of an MLP encoder.
 
+    This encoder concatenates inputs along the last dimension,
+    then pushes them through a series of linear layers and nonlinear activations.
     """
 
     @property
