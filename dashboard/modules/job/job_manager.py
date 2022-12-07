@@ -387,18 +387,17 @@ class JobSupervisor:
                     if "RAY_JOB_STOP_SIGNAL" not in os.environ:
                         os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     else:
-                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL")
+                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
                         if stop_signal not in ["SIGINT", "SIGTERM"]:
                             logger.warning(
                                 f"{stop_signal} not a valid stop signal. Terminating "
                                 "job."
                             )
-                            child_process.terminate()
-                        else:
-                            os.killpg(
-                                os.getpgid(child_process.pid),
-                                eval(f"signal.{stop_signal}"),
-                            )
+                            stop_signal = "SIGTERM"
+                        os.killpg(
+                            os.getpgid(child_process.pid),
+                            eval(f"signal.{stop_signal}"),
+                        )
 
                     try:
                         child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
