@@ -4,6 +4,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -502,7 +503,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
+            assert Path(checkpoint_dir).stem == checkpoint._uuid.hex
 
         assert not os.path.exists(checkpoint_dir)
 
