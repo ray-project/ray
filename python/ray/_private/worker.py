@@ -488,6 +488,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def task_depth(self):
+        return self.core_worker.get_task_depth()
+
+    @property
     def namespace(self):
         return self.core_worker.get_job_config().ray_namespace
 
@@ -2932,7 +2936,7 @@ def remote(
             This is a dictionary mapping strings (resource names) to floats.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.accelerators` for accelerator types.
+            See `ray.util.accelerators` for accelerator types.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
@@ -2980,7 +2984,9 @@ def remote(
             "DEFAULT": default hybrid scheduling;
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling.
+            placement group based scheduling;
+            `NodeAffinitySchedulingStrategy`:
+            node id based affinity scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 

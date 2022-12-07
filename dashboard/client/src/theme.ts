@@ -5,10 +5,10 @@ const basicTheme: ThemeOptions = {
   typography: {
     fontSize: 12,
     fontFamily: [
+      "Roboto",
       "-apple-system",
       "BlinkMacSystemFont",
       '"Segoe UI"',
-      "Roboto",
       '"Helvetica Neue"',
       "Arial",
       "sans-serif",
@@ -16,6 +16,9 @@ const basicTheme: ThemeOptions = {
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
     ].join(","),
+    h1: {
+      fontSize: "2rem",
+    },
     body1: {
       fontSize: "0.75rem",
     },
