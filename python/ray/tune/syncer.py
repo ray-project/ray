@@ -52,21 +52,6 @@ _EXCLUDE_FROM_SYNC = [
 ]
 
 
-def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
-    if not sync_config.upload_dir:
-        return True
-
-    if sync_config.upload_dir.startswith("file://"):
-        return True
-
-    if not is_non_local_path_uri(sync_config.upload_dir):
-        raise ValueError(
-            f"Could not identify external storage filesystem for "
-            f"upload dir `{sync_config.upload_dir}`. "
-            f"Hint: {fs_hint(sync_config.upload_dir)}"
-        )
-
-
 @PublicAPI
 @dataclass
 class SyncConfig:
@@ -133,6 +118,20 @@ class SyncConfig:
             ),
             max_height="none",
         )
+
+    def validate_upload_dir(self) -> bool:
+        """Checks if ``upload_dir`` is supported by ``syncer``.
+
+        Returns True if ``upload_dir`` is valid, otherwise raises
+        ``ValueError``.
+
+        Args:
+            upload_dir: Path to validate.
+        """
+        if isinstance(self.syncer, Syncer):
+            return self.syncer.validate_upload_dir(self.upload_dir)
+        else:
+            return Syncer.validate_upload_dir(self.upload_dir)
 
 
 class _BackgroundProcess:
@@ -386,6 +385,29 @@ class Syncer(abc.ABC):
 
     def _repr_html_(self) -> str:
         return
+
+    @classmethod
+    def validate_upload_dir(cls, upload_dir: str) -> bool:
+        """Checks if ``upload_dir`` is supported by the Syncer.
+
+        Returns True if ``upload_dir`` is valid, otherwise raises
+        ``ValueError``.
+
+        Args:
+            upload_dir: Path to validate.
+        """
+        if not upload_dir:
+            return True
+
+        if upload_dir.startswith("file://"):
+            return True
+
+        if not is_non_local_path_uri(upload_dir):
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{upload_dir}`. "
+                f"Hint: {fs_hint(upload_dir)}"
+            )
 
 
 class _BackgroundSyncer(Syncer):
