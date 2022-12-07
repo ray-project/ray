@@ -12,7 +12,7 @@ import urllib.parse
 import warnings
 import shutil
 from datetime import datetime
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
 
 import click
 import psutil
@@ -945,8 +945,7 @@ def start(
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
-                # os._exit(1)
-                raise ValueError("Failed")
+                os._exit(1)
         # not-reachable
 
     assert ray_params.gcs_address is not None
@@ -965,18 +964,37 @@ def start(
     "--grace-period",
     default=10,
     help=(
-        "The time ray waits for processes to be properly terminated. "
+        "The time in seconds ray waits for processes to be properly terminated. "
         "If processes are not terminated within the grace period, "
         "they are forcefully terminated after the grace period."
     ),
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period):
+def stop(force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
+    total_procs_found = 0
+    total_procs_stopped = 0
+    procs_not_gracefully_killed = []
 
-    def kill_procs(force, grace_period, processes_to_kill):
+    def kill_procs(
+        force: bool, grace_period: int, processes_to_kill: List[str]
+    ) -> Tuple[int, int, List[psutil.Process]]:
+        """Find all processes from `processes_to_kill` and terminate them.
+
+        Unless `force` is specified, it gracefully kills processes. If
+        processes are not cleaned within `grace_period`, it force kill all
+        remaining processes.
+
+        Returns:
+            total_procs_found: Total number of processes found from
+                `processes_to_kill` is added.
+            total_procs_stopped: Total number of processes gracefully
+                stopped from `processes_to_kill` is added.
+            procs_not_gracefully_killed: If processes are not killed
+                gracefully, they are added here.
+        """
         process_infos = []
         for proc in psutil.process_iter(["name", "cmdline"]):
             try:
@@ -1057,31 +1075,13 @@ def stop(force, grace_period):
         )
         total_stopped = len(stopped)
 
-        # Print the termination result.
-        if total_found == 0:
-            cli_logger.print("Did not find any active Ray processes.")
-        else:
-            if total_stopped == total_found:
-                cli_logger.success("Stopped all {} Ray processes.", total_stopped)
-            else:
-                cli_logger.warning(
-                    f"Stopped only {total_stopped} out of {total_found} Ray processes "
-                    f"within the grace period {grace_period} seconds. "
-                    f"Set `{cf.bold('-v')}` to see more details. "
-                    f"Remaining processes {alive} will be forcefully terminated.",
-                )
-                cli_logger.warning(
-                    f"You can also use `{cf.bold('--force')}` to forcefully terminate "
-                    "processes or set higher `--grace-period` to wait longer time for "
-                    "proper termination."
-                )
-
         # For processes that are not killed within the grace period,
         # we send force termination signals.
         for proc in alive:
             proc.kill()
         # Wait a little bit to make sure processes are killed forcefully.
         psutil.wait_procs(alive, timeout=2)
+        return total_found, total_stopped, alive
 
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected
@@ -1090,9 +1090,37 @@ def stop(force, grace_period):
     gcs = processes_to_kill[0]
     assert gcs[0] == "gcs_server"
     # Kill evertyhing except GCS.
-    kill_procs(force, grace_period, processes_to_kill[1:])
+    found, stopped, alive = kill_procs(force, grace_period, processes_to_kill[1:])
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
+
     # Kill GCS.
-    kill_procs(force, grace_period, [gcs])
+    found, stopped, alive = kill_procs(force, grace_period, [gcs])
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
+
+    # Print the termination result.
+    if total_procs_found == 0:
+        cli_logger.print("Did not find any active Ray processes.")
+    else:
+        if total_procs_stopped == total_procs_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_procs_stopped)
+        else:
+            cli_logger.warning(
+                f"Stopped only {total_procs_stopped} out of {total_procs_found} "
+                f"Ray processes within the grace period {grace_period} seconds. "
+                f"Set `{cf.bold('-v')}` to see more details. "
+                f"Remaining processes {procs_not_gracefully_killed} "
+                "will be forcefully terminated.",
+            )
+            cli_logger.warning(
+                f"You can also use `{cf.bold('--force')}` to forcefully terminate "
+                "processes or set higher `--grace-period` to wait longer time for "
+                "proper termination."
+            )
+
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
