@@ -663,7 +663,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     // `HandleJobFinished` will also decrement the ref count multiple times.
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                   << ".";
-    RAY_LOG(DEBUG) << "Runtime env: " << runtime_env;
+    RAY_LOG(DEBUG) << "Runtime env for job " << job_id << ": " << runtime_env;
     GetOrCreateRuntimeEnv(
         runtime_env,
         runtime_env_config,
@@ -1607,7 +1607,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
                            << ".";
-          RAY_LOG(DEBUG) << "Runtime env: " << serialized_runtime_env;
+          RAY_LOG(DEBUG) << "Runtime env for job " << job_id << ": "
+                         << serialized_runtime_env;
           callback(false, "", setup_error_message);
         }
       });

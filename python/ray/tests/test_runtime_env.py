@@ -863,7 +863,7 @@ class TestNoUserInfoInLogs:
             "working_dir": str(working_dir),
             "pip": [USER_SECRET],
             # Append address to ensure different runtime envs for client and non-client
-            # code paths to force reinstallating the runtime env instead of reusing it.
+            # code paths to force reinstalling the runtime env instead of reusing it.
             "env_vars": {USER_SECRET: USER_SECRET + str(address)},
         }
         ray.init(runtime_env=runtime_env)
@@ -893,6 +893,9 @@ class TestNoUserInfoInLogs:
         }
         with pytest.raises(Exception):
             ray.get(f.options(runtime_env=bad_runtime_env).remote())
+        with pytest.raises(Exception):
+            foo2 = Foo.options(runtime_env=bad_runtime_env).remote()
+            ray.get(foo2.get_x.remote())
 
         using_ray_client = address.startswith("ray://")
 

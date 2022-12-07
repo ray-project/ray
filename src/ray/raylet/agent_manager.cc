@@ -189,6 +189,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
              "[port]` and make sure the port is not used by other processes.";
       const auto &error_message = str_stream.str();
       RAY_LOG(ERROR) << error_message;
+      RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
+                     << serialized_runtime_env;
       delay_executor_(
           [callback = std::move(callback), error_message] {
             callback(/*successful=*/false,
@@ -204,7 +206,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
            "GetOrCreateRuntimeEnv for job_id "
         << job_id << " later";
     RAY_LOG_EVERY_MS(DEBUG, 3 * 10 * 1000)
-        << "Serialized runtime env: " << serialized_runtime_env;
+        << "Serialized runtime env for job " << job_id << ": " << serialized_runtime_env;
     delay_executor_(
         [this,
          job_id,
@@ -243,7 +245,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
           } else {
             RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
                           << ", error message: " << reply.error_message();
-            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
+            RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
+                           << serialized_runtime_env;
             callback(false,
                      reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
@@ -254,7 +257,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
               << "Failed to create runtime env for job " << job_id
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
-          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
+          RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
+                         << serialized_runtime_env;
           callback(false, "", "Failed to request agent.");
         }
       });
@@ -270,6 +274,8 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
            "details. To solve the problem, start Ray with a hard-coded agent port. `ray "
            "start --dashboard-agent-grpc-port [port]` and make sure the port is not used "
            "by other processes.";
+    RAY_LOG(DEBUG) << "Serialized runtime env for failed URI deletion: "
+                   << serialized_runtime_env;
     delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
     return;
   }
