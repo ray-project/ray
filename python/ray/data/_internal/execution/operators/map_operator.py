@@ -11,8 +11,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.execution.operators.map_operator_task_impl import (
-    MapOperatorTaskImpl,
+from ray.data._internal.execution.operators.map_operator_tasks_impl import (
+    MapOperatorTasksImpl,
 )
 from ray.data._internal.execution.operators.map_operator_actors_impl import (
     MapOperatorActorsImpl,
@@ -47,7 +47,7 @@ class MapOperator(PhysicalOperator):
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
         if isinstance(self._strategy, TaskPoolStrategy):
-            self._execution_state = MapOperatorTaskImpl(self)
+            self._execution_state = MapOperatorTasksImpl(self)
         elif isinstance(self._strategy, ActorPoolStrategy):
             self._execution_state = MapOperatorActorsImpl(self)
         else:

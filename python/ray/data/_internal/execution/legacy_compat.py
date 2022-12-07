@@ -70,9 +70,9 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                 RefBundle(
                     [
                         (
+                            # This isn't a proper block, but it's what we are doing
+                            # in the legacy code.
                             ray.put(read_task),
-                            # TODO(ekl) Use BlockAccessor.get_metadata in the future
-                            # once we get rid of the read task as block legacy hack.
                             BlockMetadata(
                                 num_rows=1,
                                 size_bytes=len(cloudpickle.dumps(read_task)),

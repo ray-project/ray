@@ -47,7 +47,7 @@ class _TaskState:
         self.output: Optional[RefBundle] = None
 
 
-class MapOperatorTaskImpl:
+class MapOperatorTasksImpl:
     def __init__(self, op: "MapOperator"):
         self._transform_fn = op.get_transform_fn()
         self._ray_remote_args = op.ray_remote_args()
