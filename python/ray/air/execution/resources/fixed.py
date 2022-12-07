@@ -34,31 +34,33 @@ class FixedAllocatedResource(AllocatedResource):
     def annotate_remote_objects(
         self, objects: List[Type]
     ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
-        if len(objects) == 1:
-            all_resources = _sum_bundle_resources(self.bundles)
-            num_cpus = all_resources.pop("CPU", 0)
-            num_gpus = all_resources.pop("GPU", 0)
+        # If we have an empty head, we schedule the first object (the "head") with
+        # empty resources.
+        if self.resource_request.head_bundle_is_empty:
+            bundles = [{}] + self.resource_request.bundles
+        else:
+            bundles = self.resource_request.bundles
 
-            return [
-                objects[0].options(
-                    num_cpus=num_cpus, num_gpus=num_gpus, resources=all_resources
-                )
-            ]
-
-        if len(objects) != len(self.bundles):
+        if len(objects) > len(bundles):
             raise RuntimeError(
-                f"Cannot annotate {len(objects)} remote objects with "
-                f"{len(self.bundles)} bundles (lengths must be the same)."
+                f"The number of objects to annotate ({len(objects)}) cannot "
+                f"exceed the number of available bundles ({len(bundles)})."
             )
 
         annotated = []
-        for obj, bundle in zip(objects, self.bundles):
+        for i, (obj, bundle) in enumerate(zip(objects, bundles)):
             bundle = bundle.copy()
             num_cpus = bundle.pop("CPU", 0)
             num_gpus = bundle.pop("GPU", 0)
+            memory = bundle.pop("memory", 0.0)
 
             annotated.append(
-                obj.options(num_cpus=num_cpus, num_gpus=num_gpus, resources=bundle)
+                obj.options(
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    resources=bundle,
+                )
             )
         return annotated
 
