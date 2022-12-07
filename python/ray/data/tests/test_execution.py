@@ -7,10 +7,8 @@ import ray
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
-from ray.data._internal.execution.operators import (
-    InputDataBuffer,
-    MapOperator,
-)
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import _make_ref_bundles
 
 
@@ -20,6 +18,14 @@ def s(s, f):
         return f(x)
 
     return func
+
+
+def make_transform(block_fn):
+    def map_fn(block_iter, _):
+        for block in block_iter:
+            yield block_fn(block)
+
+    return map_fn
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -34,8 +40,8 @@ def test_basic_bulk():
     executor = BulkExecutor(ExecutionOptions())
     inputs = _make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
-    o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
     it = executor.execute(o3)
     output = sorted(ref_bundles_to_list(it))  # TODO: preserve order option
     expected = sorted([[x * -2] for x in range(20)])

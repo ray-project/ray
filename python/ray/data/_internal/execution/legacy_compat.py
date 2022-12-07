@@ -11,7 +11,8 @@ from ray.data.block import Block, BlockMetadata
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import get_compute
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, Stage
-from ray.data._internal.execution.operators import MapOperator, InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,

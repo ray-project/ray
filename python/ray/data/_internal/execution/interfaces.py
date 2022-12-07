@@ -125,7 +125,7 @@ class PhysicalOperator:
 
     def inputs_done(self, input_index: int) -> None:
         """Called when an upstream operator finishes."""
-        raise NotImplementedError
+        pass
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available."""

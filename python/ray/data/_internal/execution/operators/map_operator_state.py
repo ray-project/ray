@@ -10,7 +10,7 @@ from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import TaskPoolStrategy
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.operators import OneToOneOperator
+    from ray.data._internal.execution.operators.map_operator import MapOperator
 
 
 @ray.remote(num_returns="dynamic")
@@ -36,7 +36,7 @@ def _run_one_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Bl
 
 
 class _TaskState:
-    """Tracks the driver-side state for an OneToOneOperator task.
+    """Tracks the driver-side state for an MapOperator task.
 
     Attributes:
         inputs: The input ref bundle.
@@ -48,8 +48,8 @@ class _TaskState:
         self.output: Optional[RefBundle] = None
 
 
-class OneToOneOperatorState:
-    def __init__(self, op: "OneToOneOperator"):
+class MapOperatorState:
+    def __init__(self, op: "MapOperator"):
         self._transform_fn = op.get_transform_fn()
         self._compute_strategy = op.compute_strategy()
         self._ray_remote_args = op.ray_remote_args()
@@ -97,6 +97,3 @@ class OneToOneOperatorState:
 
     def get_tasks(self) -> List[ray.ObjectRef]:
         return list(self._tasks)
-
-    def release_unused_resources(self) -> None:
-        pass
