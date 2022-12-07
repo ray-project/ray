@@ -369,6 +369,43 @@ class TrialRunnerTest3(unittest.TestCase):
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
 
+    def testSchedulerSaveRestore(self):
+        """Tests that scheduler is saved/loaded on trial runner checkpoint/resume.
+        See `test_trial_scheduler.py` for tests that actually check restored
+        behavior is as expected for each scheduler."""
+
+        class TestScheduler(TrialScheduler):
+            def __init__(self):
+                self._trial_info = {}
+
+            def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+                self._trial_info[trial.trial_id] = trial.trainable_name
+
+            def save(self, checkpoint_path: str):
+                save_object = self.__dict__
+                with open(checkpoint_path, "wb") as outputFile:
+                    pickle.dump(save_object, outputFile)
+
+            def restore(self, checkpoint_path: str):
+                with open(checkpoint_path, "rb") as inputFile:
+                    save_object = pickle.load(inputFile)
+                self.__dict__.update(save_object)
+
+        ray.init(num_cpus=2)
+        scheduler = TestScheduler()
+        runner = TrialRunner(
+            scheduler=scheduler, local_checkpoint_dir=self.tmpdir, checkpoint_period=0
+        )
+        for i in range(3):
+            runner.add_trial(Trial("__fake", local_dir=self.tmpdir))
+        runner.checkpoint()
+
+        scheduler2 = TestScheduler()
+        runner = TrialRunner(
+            scheduler=scheduler2, local_checkpoint_dir=self.tmpdir, resume="LOCAL"
+        )
+        assert scheduler._trial_info == scheduler2._trial_info
+
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
