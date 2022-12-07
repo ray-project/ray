@@ -2,7 +2,8 @@ import gym
 import pytest
 import numpy as np
 import torch
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Union
+import unittest
 
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.offline import IOContext
@@ -12,7 +13,7 @@ from ray.rllib.offline.dataset_reader import (
 )
 
 import ray
-from ray.rllib.core.examples.simple_ppo_rl_module import FCNet, FCConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import FCNet, FCConfig
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -32,6 +33,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType
 
 
 def model_norm(model: torch.nn.Module) -> float:
@@ -47,7 +49,7 @@ def model_norm(model: torch.nn.Module) -> float:
     for p in model.parameters():
         param_norm = p.detach().data.norm(2)
         total_norm += param_norm.item() ** 2
-    total_norm = total_norm**0.5
+    total_norm = total_norm ** 0.5
     return total_norm
 
 
@@ -191,7 +193,7 @@ class BCTorchOptimizer(RLOptimizer):
         return {key: optim.state_dict() for key, optim in self.get_optimizers().items()}
 
     def set_state(self, state: Mapping[Any, Any]) -> None:
-        assert set(state.keys()) == set(self.get_state().keys())
+        assert set(state.keys()) == set(self.get_state().keys()) or not state
         for key, optim_dict in state.items():
             self.get_optimizers()[key].load_state_dict(optim_dict)
 
@@ -251,7 +253,7 @@ class BCTorchTrainer:
         results["module_norm"] = model_norm(self._module)
         return results
 
-    def update(self, batch: NestedDict) -> Mapping[str, Any]:
+    def update(self, batch: SampleBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
 
         Args:
@@ -270,7 +272,7 @@ class BCTorchTrainer:
         return results
 
     def compute_gradients(
-        self, optimization_vars: Mapping[str, Any]
+        self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> Mapping[str, Any]:
         """Perform an update on self._module
 
@@ -278,13 +280,15 @@ class BCTorchTrainer:
                 necessary.
 
         Args:
-            optimization_vars: named variables used for optimizing self._module
+            loss: variable(s) used for optimizing self._module.
 
         Returns:
             A dictionary of extra information and statistics.
         """
         # for torch
-        optimization_vars["total_loss"].backward()
+        if isinstance(loss, dict):
+            loss = loss["total_loss"]
+        loss.backward()
         grads = {n: p.grad for n, p in self._module.named_parameters()}
         return grads
 
@@ -296,6 +300,7 @@ class BCTorchTrainer:
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer."""
+        self._rl_optimizer.set_state(state.get("optimizer_state", {}))
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
@@ -306,70 +311,73 @@ class BCTorchTrainer:
         }
 
 
-def test_rl_optimizer_example_torch():
-    ray.init()
-    torch.manual_seed(1)
-    env = gym.make("CartPole-v1")
-    module_config = FCConfig(
-        input_dim=sum(env.observation_space.shape),
-        output_dim=sum(env.action_space.shape or [env.action_space.n]),
-        hidden_layers=[32],
-    )
-    module_for_inference = BCTorchModule(module_config)
+class TestRLOptimizer(unittest.TestCase):
+    def test_rl_optimizer_example_torch(self):
+        ray.init()
+        torch.manual_seed(1)
+        env = gym.make("CartPole-v1")
+        module_config = FCConfig(
+            input_dim=sum(env.observation_space.shape),
+            output_dim=sum(env.action_space.shape or [env.action_space.n]),
+            hidden_layers=[32],
+        )
+        module_for_inference = BCTorchModule(module_config)
 
-    trainer = BCTorchTrainer({"module_config": module_config})
-    trainer.set_state({"module_state": module_for_inference.get_state()})
+        trainer = BCTorchTrainer({"module_config": module_config})
+        trainer.set_state({"module_state": module_for_inference.get_state()})
 
-    # path = "s3://air-example-data/rllib/cartpole/large.json"
-    path = "tests/data/cartpole/large.json"
-    input_config = {"format": "json", "paths": path}
-    dataset, _ = get_dataset_and_shards(
-        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-    )
-    batch_size = 500
-    ioctx = IOContext(
-        config=(
-            AlgorithmConfig()
-            .training(train_batch_size=batch_size)
-            .offline_data(actions_in_input_normalized=True)
-        ),
-        worker_index=0,
-    )
-    reader = DatasetReader(dataset, ioctx)
-    num_epochs = 100
-    total_timesteps_of_training = 1000000
-    inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-    for _ in range(num_epochs):
-        for _ in range(inter_steps):
-            batch = reader.next()
-            trainer.update(batch)
+        # path = "s3://air-example-data/rllib/cartpole/large.json"
+        path = "tests/data/cartpole/large.json"
+        input_config = {"format": "json", "paths": path}
+        dataset, _ = get_dataset_and_shards(
+            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+        )
+        batch_size = 500
+        ioctx = IOContext(
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=batch_size)
+                .offline_data(actions_in_input_normalized=True)
+            ),
+            worker_index=0,
+        )
+        reader = DatasetReader(dataset, ioctx)
+        num_epochs = 100
+        total_timesteps_of_training = 1000000
+        inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
+        for _ in range(num_epochs):
+            for _ in range(inter_steps):
+                batch = reader.next()
+                trainer.update(batch)
             module_for_inference.set_state(trainer.get_state()["module_state"])
-        avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
-        if avg_return > 50:
-            break
-    assert (
-        avg_return > 50
-    ), f"Return for training behavior cloning is too low: avg_return={avg_return}!"
+            avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
+            if avg_return > 50:
+                break
+        assert (
+            avg_return > 50
+        ), f"Return for training behavior cloning is too low: avg_return={avg_return}!"
 
+    def test_rl_optimizer_set_state_get_state_torch(self):
+        env = gym.make("CartPole-v1")
+        module_config = FCConfig(
+            input_dim=sum(env.observation_space.shape),
+            output_dim=sum(env.action_space.shape or [env.action_space.n]),
+            hidden_layers=[32],
+        )
+        module = BCTorchModule(module_config)
+        optim1 = BCTorchOptimizer(module, {"lr": 0.1})
+        optim2 = BCTorchOptimizer(module, {"lr": 0.2})
 
-def test_rl_optimizer_set_state_get_state_torch():
-    env = gym.make("CartPole-v1")
-    module_config = FCConfig(
-        input_dim=sum(env.observation_space.shape),
-        output_dim=sum(env.action_space.shape or [env.action_space.n]),
-        hidden_layers=[32],
-    )
-    module = BCTorchModule(module_config)
-    optim1 = BCTorchOptimizer(module, {"lr": 0.1})
-    optim2 = BCTorchOptimizer(module, {"lr": 0.2})
-
-    assert isinstance(
-        optim1.get_state(), dict
-    ), "rl_optimizer.get_state() should return a dict"
-    with pytest.raises(AssertionError):
+        assert isinstance(
+            optim1.get_state(), dict
+        ), "rl_optimizer.get_state() should return a dict"
+        check(
+            optim1.get_state()["module"]["param_groups"][0]["lr"],
+            optim2.get_state()["module"]["param_groups"][0]["lr"],
+            false=True,
+        )
+        optim1.set_state(optim2.get_state())
         check(optim1.get_state(), optim2.get_state())
-    optim1.set_state(optim2.get_state())
-    check(optim1.get_state(), optim2.get_state())
 
 
 if __name__ == "__main__":
