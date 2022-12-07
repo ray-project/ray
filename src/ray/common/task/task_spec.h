@@ -159,7 +159,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
-  TaskSpecification() {}
+  TaskSpecification() { ComputeResources(); }
 
   /// Construct from a protobuf message object.
   /// The input message will be copied/moved into this object.
