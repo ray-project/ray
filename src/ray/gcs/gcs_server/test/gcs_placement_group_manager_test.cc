@@ -168,7 +168,6 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   void WaitUntilIoServiceDone() {
     // In this test, io service is running in a different thread.
-    // In reality, IO service runs in the separate thread.
     // That means it can have a thread safety issue, if the test thread
     // touches private attributes while io service is accessing it.
     // This method returns when there's no more task in the io service,
