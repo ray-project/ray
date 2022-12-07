@@ -123,16 +123,3 @@ class MapOperator(OneToOneOperator):
 
     def ray_remote_args(self):
         return self._remote_args
-
-
-# For testing only.
-def _from_dataset_read_tasks(ds) -> PhysicalOperator:
-    read_tasks = ds._plan._snapshot_blocks._tasks
-    inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
-
-    def do_read(block):
-        for read_task in block:
-            for output_block in read_task():
-                return output_block  # TODO handle remaining blocks
-
-    return MapOperator(do_read, inputs, name="DoRead")
