@@ -232,6 +232,8 @@ class JobSubmissionClient(SubmissionClient):
     ) -> bool:
         """Request a job to exit asynchronously.
 
+        Attempts to terminate process first, then kills process after timeout.
+
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
