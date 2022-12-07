@@ -66,7 +66,7 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
-    JobFileManager: JobFileManager,
+    JobRunner: JobFileManager,
 }
 
 
