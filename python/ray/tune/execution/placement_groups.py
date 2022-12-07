@@ -70,9 +70,86 @@ def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
 
 @PublicAPI(stability="beta")
 class PlacementGroupFactory(ResourceRequest):
-    """Request for bundles of resources.
+    """Wrapper class that creates placement groups for trials.
 
-    This class is used to request resources, e.g. to trigger autoscaling.
+    This function should be used to define resource requests for Ray Tune
+    trials. It holds the parameters to create placement groups.
+    At a minimum, this will hold at least one bundle specifying the
+    resource requirements for each trial:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
+                ])
+            )
+        )
+        tuner.fit()
+
+    If the trial itself schedules further remote workers, the resource
+    requirements should be specified in additional bundles. You can also
+    pass the placement strategy for these bundles, e.g. to enforce
+    co-located placement:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
+                    {"CPU": 2},
+                    {"CPU": 2},
+                ], strategy="PACK")
+            )
+        )
+        tuner.fit()
+
+    The example above will reserve 1 CPU, 0.5 GPUs and 2 custom_resources
+    for the trainable itself, and reserve another 2 bundles of 2 CPUs each.
+    The trial will only start when all these resources are available. This
+    could be used e.g. if you had one learner running in the main trainable
+    that schedules two remote workers that need access to 2 CPUs each.
+
+    If the trainable itself doesn't require resources.
+    You can specify it as:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {},
+                    {"CPU": 2},
+                    {"CPU": 2},
+                ], strategy="PACK")
+            )
+        )
+        tuner.fit()
+
+    Args:
+        bundles: A list of bundles which
+            represent the resources requirements.
+        strategy: The strategy to create the placement group.
+
+         - "PACK": Packs Bundles into as few nodes as possible.
+         - "SPREAD": Places Bundles across distinct nodes as even as possible.
+         - "STRICT_PACK": Packs Bundles into one node. The group is
+           not allowed to span multiple nodes.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+        *args: Passed to the call of ``placement_group()``
+        **kwargs: Passed to the call of ``placement_group()``
+
     """
 
     def __call__(self, *args, **kwargs):
