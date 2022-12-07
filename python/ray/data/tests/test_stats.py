@@ -6,7 +6,6 @@ import pytest
 
 import ray
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
 
