@@ -106,7 +106,6 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             df = pandas.concat(tables, ignore_index=True)
         else:
             df = tables[0]
-        df.reset_index(drop=True, inplace=True)
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
