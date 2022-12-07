@@ -559,6 +559,7 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=resume,
+                scheduler=self._tune_config.scheduler,
             ),
             **self._tuner_kwargs,
         }
