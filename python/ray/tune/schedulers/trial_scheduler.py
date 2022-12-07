@@ -1,9 +1,15 @@
+import glob
+import logging
+import os
 from typing import Dict, Optional
 
 from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.experiment import Trial
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -18,6 +24,8 @@ class TrialScheduler:
     # TODO(xwjiang): Deprecate this after we control the interaction
     #  between schedulers and executor.
     NOOP = "NOOP"
+
+    CKPT_FILE_TMPL = "scheduler-state-{}.json"
 
     _metric = None
 
@@ -121,6 +129,60 @@ class TrialScheduler:
     def restore(self, checkpoint_path: str):
         """Restore trial scheduler from checkpoint."""
         raise NotImplementedError
+
+    def has_checkpoint(self, checkpoint_dir: str) -> bool:
+        """Should return False if saving/restoring is not implemented."""
+        return bool(
+            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        )
+
+    def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
+        """Saves the scheduler state to the checkpoint_dir.
+
+        This is automatically used by Tuner().fit() during a Tune job.
+
+        Args:
+            checkpoint_dir: Filepath to experiment dir.
+            session_str: Unique identifier of the current run
+                session.
+        """
+        tmp_scheduler_ckpt_path = os.path.join(checkpoint_dir, ".tmp_scheduler_ckpt")
+        success = True
+        try:
+            self.save(tmp_scheduler_ckpt_path)
+        except NotImplementedError:
+            if log_once("schedulers:save_not_implemented"):
+                logger.warning(
+                    f"Save is not implemented for {self.__class__.__name__}. "
+                    "Skipping scheduler save."
+                )
+            success = False
+
+        if success and os.path.exists(tmp_scheduler_ckpt_path):
+            os.replace(
+                tmp_scheduler_ckpt_path,
+                os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format(session_str)),
+            )
+
+    def restore_from_dir(self, checkpoint_dir: str):
+        """Restores the state of a scheduler from a given checkpoint_dir.
+
+        Typically, you should use this function to restore from an
+        experiment directory such as `~/ray_results/trainable`.
+        If there are multiple scheduler checkpoints within the directory,
+        this will restore from the most recent one.
+
+        Args:
+            checkpoint_dir: Filepath to experiment dir.
+        """
+        pattern = self.CKPT_FILE_TMPL.format("*")
+        full_paths = glob.glob(os.path.join(checkpoint_dir, pattern))
+        if not full_paths:
+            raise RuntimeError(
+                f"Scheduler unable to find checkpoint in {checkpoint_dir}. "
+            )
+        most_recent_checkpoint = max(full_paths)
+        self.restore(most_recent_checkpoint)
 
 
 @PublicAPI
