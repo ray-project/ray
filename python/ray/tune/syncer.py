@@ -2,6 +2,7 @@ import abc
 from functools import partial
 import threading
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
@@ -89,8 +90,6 @@ class SyncConfig:
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
         sync_timeout: Timeout after which running sync processes are aborted.
-            Currently only affects trial-to-cloud syncing.
-
     """
 
     upload_dir: Optional[str] = None
@@ -141,10 +140,15 @@ class _BackgroundProcess:
         self._fn = fn
         self._process = None
         self._result = {}
+        self._start_time = float("-inf")
 
     @property
     def is_running(self):
         return self._process and self._process.is_alive()
+
+    @property
+    def start_time(self):
+        return self._start_time
 
     def start(self, *args, **kwargs):
         if self.is_running:
@@ -162,13 +166,31 @@ class _BackgroundProcess:
             self._result["result"] = result
 
         self._process = threading.Thread(target=entrypoint)
+        self._process.daemon = True
         self._process.start()
+        self._start_time = time.time()
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None) -> Any:
+        """Waits for the backgrond process to finish running. Waits until the
+        background process has run for at least `timeout` seconds, counting from
+        the time when the process was started."""
         if not self._process:
-            return
+            return None
 
-        self._process.join()
+        time_remaining = None
+        if timeout:
+            elapsed = time.time() - self.start_time
+            time_remaining = max(timeout - elapsed, 0)
+
+        self._process.join(timeout=time_remaining)
+
+        if self._process.is_alive():
+            self._process = None
+            raise TimeoutError(
+                f"{getattr(self._fn, '__name__', str(self._fn))} did not finish "
+                f"running within the timeout of {timeout} seconds."
+            )
+
         self._process = None
 
         exception = self._result.get("exception")
@@ -199,10 +221,21 @@ class Syncer(abc.ABC):
     The base class also exposes an API to only kick off syncs every ``sync_period``
     seconds.
 
+    Args:
+        sync_period: The minimum time in seconds between sync operations, as
+            used by ``sync_up/down_if_needed``.
+        sync_timeout: The maximum time to wait for a sync process to finish before
+            issuing a new sync operation. Ex: should be used by ``wait`` if launching
+            asynchronous sync tasks.
     """
 
-    def __init__(self, sync_period: float = 300.0):
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
         self.sync_period = sync_period
+        self.sync_timeout = sync_timeout
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
 
@@ -279,7 +312,8 @@ class Syncer(abc.ABC):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
-        processes.
+        processes. This method should timeout after `sync_timeout` and
+        raise a `TimeoutError`.
         """
         pass
 
@@ -357,15 +391,29 @@ class Syncer(abc.ABC):
 class _BackgroundSyncer(Syncer):
     """Syncer using a background process for asynchronous file transfer."""
 
-    def __init__(self, sync_period: float = 300.0):
-        super(_BackgroundSyncer, self).__init__(sync_period=sync_period)
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
+        super(_BackgroundSyncer, self).__init__(
+            sync_period=sync_period, sync_timeout=sync_timeout
+        )
         self._sync_process = None
         self._current_cmd = None
+
+    def _should_continue_existing_sync(self):
+        """Returns whether a previous sync is still running within the timeout."""
+        return (
+            self._sync_process
+            and self._sync_process.is_running
+            and time.time() - self._sync_process.start_time < self.sync_timeout
+        )
 
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
@@ -373,7 +421,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
@@ -392,7 +440,7 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync down of {remote_dir} to {local_dir}"
@@ -400,7 +448,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
@@ -415,11 +463,16 @@ class _BackgroundSyncer(Syncer):
         raise NotImplementedError
 
     def delete(self, remote_dir: str) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
+        elif self._sync_process:
+            try:
+                self.wait()
+            except Exception as e:
+                logger.warning(f"Last sync command failed: {e}")
 
         self._current_cmd = self._delete_command(uri=remote_dir)
         self.retry()
@@ -432,8 +485,12 @@ class _BackgroundSyncer(Syncer):
     def wait(self):
         if self._sync_process:
             try:
-                self._sync_process.wait()
+                self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
+                # Let `TimeoutError` pass through, to be handled separately
+                # from errors thrown by the sync operation
+                if isinstance(e, TimeoutError):
+                    raise e
                 raise TuneError(f"Sync process failed: {e}") from e
             finally:
                 self._sync_process = None
@@ -482,7 +539,9 @@ def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
         return None
 
     if sync_config.syncer == "auto":
-        return _DefaultSyncer(sync_period=sync_config.sync_period)
+        return _DefaultSyncer(
+            sync_period=sync_config.sync_period, sync_timeout=sync_config.sync_timeout
+        )
 
     if isinstance(sync_config.syncer, Syncer):
         return sync_config.syncer
