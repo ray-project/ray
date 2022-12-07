@@ -60,9 +60,6 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
     ]:
         obs, rewards, terminateds, infos = self.env.step(action)
 
-        if self.render_mode == "human":
-            self.render()
-
         # Truncated should always be False by default.
         truncateds = {k: False for k in terminateds.keys()}
 

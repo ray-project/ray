@@ -5,12 +5,12 @@ debian_packages:
   - zip
 
 python:
-  pip_packages:
-      # These dependencies should be handled by requirements_rllib.txt and
-      # requirements_ml_docker.txt and removed here
-      - gym>=0.21.0,<0.24.1
-      - ale-py==0.7.5
-      - autorom[accept-rom-license]
+  pip_packages: []
+      ## These dependencies should be handled by requirements_rllib.txt and
+      ## requirements_ml_docker.txt and removed here
+      #- gym>=0.21.0,<0.24.1
+      #- ale-py==0.7.5
+      #- autorom[accept-rom-license]
   conda_packages: []
 
 post_build_cmds:
@@ -23,4 +23,4 @@ post_build_cmds:
   # TODO(sven): remove once nightly image gets upgraded.
   - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102
   # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.
-  - pip3 install gymnasium[atari]==0.26.3 ale-py==0.8.0 gym==0.26.2
+  - pip3 install gymnasium[atari]==0.26.3 ale-py==0.8.0 gym==0.26.2 mujoco-py<2.2,>=2.1
