@@ -608,6 +608,7 @@ class RayTrialExecutor:
 
         # Track caching of this actor to prevent it from being cleaned up right away.
         # This is to enable actor re-use when there are no other pending trials, yet.
+        # See docstring of `_cleanup_cached_actors()`
         self._newly_cached_actors.add(trial.runner)
 
         trial.set_runner(None)
@@ -857,6 +858,37 @@ class RayTrialExecutor:
         return counter
 
     def _cleanup_cached_actors(self, force_all: bool = False):
+        """Clean up unneeded cached actors.
+
+        Ray Tune caches actors for re-use to avoid initialization overhead. This is
+        useful in two situations: a) to avoid scheduling overhead of actors when
+        trials run for a short time (e.g. < 1 second), and b) to avoid setup overhead
+        when trials initialize a heavy environment/dependencies (e.g. rllib).
+
+        Actors are cached when a trial is stopped. However, at that point in time
+        we don't always know if we will need the actor later or not. E.g. if all
+        subsequent trials have different resource requirements, we wouldn't need to
+        cache the actor.
+
+        Tune will generate a new trial in the next iteration of step(). Only once
+        this new trial is generated can we know if we will actually use the cached
+        actor soon. This is especially the case when we only run one trial at the time
+        and don't allow more pending trials: At the point of caching there would be
+        _no_ pending trial, so we would never cache the actor.
+
+        To circumvent this problem, we always cache an actor once the trial is
+        gracefully stopped (and when `reuse_actors=True`). We add this trial to
+        `self._newly_cached_actors` to prevent cleanup in the same iteration.
+
+        In the next iteration, we may have created a new trial. Then, when the step
+        ends, we know if the actor we cached in the previous iteration is needed soon.
+        This is checked in this very method. If it is not needed, it will be cleaned
+        up (as it will have been removed from `self._newly_cached_actors` by now).
+
+        This method fetches the required resources for all pending trials and the
+        resources for all cached actors. If we cached more actors than we need, we
+        terminate the excess actors and free the resources.
+        """
         if not force_all and time.time() - self._last_cached_actor_cleanup < 0.5:
             return
 
@@ -906,7 +938,6 @@ class RayTrialExecutor:
                     self._resource_manager.free_resources(
                         allocated_resources=allocated_resources
                     )
-
 
                 else:
                     # This just means that before the deadline reaches,
