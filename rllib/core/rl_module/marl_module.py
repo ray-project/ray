@@ -86,6 +86,7 @@ class MultiAgentRLModule(RLModule):
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
+
         self._rl_modules[module_id] = module
 
     def remove_module(
