@@ -318,7 +318,7 @@ class JobSupervisor:
                     await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
         except Exception:
             if child_process:
-                child_process.terminate()
+                os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                 try:
                     child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
                 except subprocess.TimeoutExpired:
