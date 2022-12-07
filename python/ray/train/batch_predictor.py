@@ -36,7 +36,6 @@ class BatchPredictor:
         self._checkpoint_ref = ray.put(checkpoint)
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
-        self._predictor_kwargs_ref = ray.put(predictor_kwargs)
         self._override_preprocessor: Optional[Preprocessor] = None
 
     def __repr__(self):
@@ -173,7 +172,6 @@ class BatchPredictor:
 
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
-        predictor_kwargs_ref = self._predictor_kwargs_ref
         override_prep = self._override_preprocessor
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
@@ -187,7 +185,9 @@ class BatchPredictor:
                 "Automatically enabling GPU prediction for this predictor. To "
                 "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
             )
-        self._predictor_kwargs["use_gpu"] = True
+            self._predictor_kwargs["use_gpu"] = True
+
+        predictor_kwargs_ref = ray.put(self._predictor_kwargs)
 
         # In case of [arrow block] -> [X] -> [Pandas UDF] -> [Y] -> [TorchPredictor]
         # We have two places where we can chose data format with less conversion cost.
