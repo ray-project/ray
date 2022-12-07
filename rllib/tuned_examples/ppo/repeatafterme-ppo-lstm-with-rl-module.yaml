@@ -24,4 +24,5 @@ repeat-after-me-ppo-w-lstm:
             max_seq_len: 20
             fcnet_hiddens: [64]
             vf_share_layers: true
+        _enable_rl_module_api: true
         enable_connectors: true

@@ -163,6 +163,7 @@ class FCNet(nn.Module):
 
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
+
         super().__init__(config)
 
     def setup(self) -> None:
@@ -359,3 +360,51 @@ class PPOTorchRLModule(TorchRLModule):
 
     def __get_action_dist_type(self):
         return TorchCategorical if self._is_discrete else TorchDiagGaussian
+
+    @classmethod
+    def from_model_config_dict(cls, observation_space, action_space, model_config):
+        # use catalog to construct the class
+
+        activation = model_config["fcnet_activation"]
+        if activation == "tanh":
+            activation = "Tanh"
+        elif activation == "relu":
+            activation = "ReLU"
+        elif activation == "linear":
+            activation = "linear"
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
+
+        fcnet_hiddens = model_config["fcnet_hiddens"]
+        vf_share_layers = model_config["vf_share_layers"]
+        free_log_std = model_config["free_log_std"]
+
+        if vf_share_layers:
+            encoder_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            # TODO
+            pi_config = FCConfig()
+            vf_config = FCConfig()
+        else:
+            pi_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            vf_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            encoder_config = None
+
+        config_ = PPOModuleConfig(
+            observation_space=observation_space,
+            action_space=action_space,
+            encoder_config=encoder_config,
+            pi_config=pi_config,
+            vf_config=vf_config,
+            free_log_std=free_log_std,
+        )
+
+        return PPOTorchRLModule(config_)
