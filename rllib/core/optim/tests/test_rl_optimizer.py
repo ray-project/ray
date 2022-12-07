@@ -13,7 +13,7 @@ from ray.rllib.offline.dataset_reader import (
 )
 
 import ray
-from ray.rllib.core.examples.simple_ppo_rl_module import FCNet, FCConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import FCNet, FCConfig
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
