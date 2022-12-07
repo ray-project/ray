@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import signal
 import string
 import subprocess
 import sys
@@ -384,7 +385,7 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    child_process.terminate()
+                    os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     try:
                         child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
                     except subprocess.TimeoutExpired:

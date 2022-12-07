@@ -809,8 +809,6 @@ while True:
         check_job_stopped, job_manager=job_manager, job_id=job_id
     )
 
-    # Give time for job to finish printing logs.
-    time.sleep(2)
     assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
 
 
