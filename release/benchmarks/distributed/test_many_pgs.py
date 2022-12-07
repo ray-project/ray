@@ -4,6 +4,7 @@ import ray
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from dashboard_test import DashboardTestAtScale
 import time
 import tqdm
 
@@ -77,10 +78,12 @@ def no_resource_leaks():
     return test_utils.no_resource_leaks_excluding_node_resources()
 
 
-ray.init(address="auto")
+addr = ray.init(address="auto")
 
 test_utils.wait_for_condition(no_resource_leaks)
 monitor_actor = test_utils.monitor_memory_usage()
+dashboard_test = DashboardTestAtScale(addr)
+
 start_time = time.time()
 test_many_placement_groups()
 end_time = time.time()
@@ -115,4 +118,5 @@ if "TEST_OUTPUT_JSON" in os.environ:
                 "perf_metric_type": "THROUGHPUT",
             }
         ]
+    dashboard_test.update_release_test_result(results)
     json.dump(results, out_file)
