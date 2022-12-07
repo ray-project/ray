@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 
 import torch
 from torch import nn
@@ -8,48 +9,10 @@ from ray.rllib.models.torch.model import TorchModel
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.nested_dict import NestedDict
 
+from ray.rllib.models.utils import input_to_output_spec
+
 if TYPE_CHECKING:
     from ray.rllib.models.configs.encoder import VectorEncoderConfig
-
-
-def input_to_output_spec(
-    input_spec: ModelSpec, output_key: str, feature_dims: List[int]
-) -> ModelSpec:
-    """Convert an input spec to an output spec by replacing the input dims and
-    key with the output dims and output key.
-
-    E.g.
-    input_to_output_spec(
-        input_spec=ModelSpec({
-            "bork": "a, b, c, d",
-            "dork": "e, f, g, h"
-            }, h=2, d=3
-        ),
-        output_key="foo",
-        feature_dims=(2,)
-    )
-
-    should return:
-    ModelSpec({"foo": "a, b, c, d"}, d=2)
-
-    Args:
-        input_spec: The input spec for the model
-        output_key: The key that the model will place the outputs under in
-            the nested dict
-        feature_dims: A list denoting the features dimensions, e.g. [-1] or [3, 4]
-    """
-    num_feat_dims = len(feature_dims)
-    assert num_feat_dims >= 1, "Must specify at least one feature dim"
-    num_dims = [len(v.shape) != len for v in input_spec.values()]
-    assert all(
-        [nd == num_dims[0] for nd in num_dims]
-    ), "Inputs must all have the same number of dimensions"
-
-    # All keys in input should have the same numbers of dims
-    # so it doesn't matter which key we use
-    key = list(input_spec.keys())[0]
-    tspec = input_spec[key].rdrop(len(feature_dims)).append(feature_dims)
-    return ModelSpec({output_key: tspec})
 
 
 class TorchVectorEncoder(TorchModel):
@@ -75,21 +38,24 @@ class TorchVectorEncoder(TorchModel):
         # Setup input and output specs
         self._input_spec = input_spec
         self._output_spec = input_to_output_spec(
-            input_spec, config.output_key, config.hidden_layer_sizes[-1:]
+            input_spec=input_spec,
+            num_input_feature_dims=1,
+            output_key=config.output_key,
+            output_feature_spec=TorchTensorSpec("f", f=config.hidden_layer_sizes[-1]),
         )
         # Returns the size of the feature dimension for the input tensors
         prev_size = sum([v.shape[-1] for v in input_spec.values()])
 
         # Construct layers
         layers = []
-        act = (
+        activation = (
             None
             if config.activation == "linear"
             else get_activation_fn(config.activation, framework=config.framework_str)()
         )
         for size in config.hidden_layer_sizes[:-1]:
             layers += [nn.Linear(prev_size, size)]
-            layers += [act] if act is not None else []
+            layers += [activation] if activation is not None else []
             prev_size = size
 
         # Final layer
@@ -110,6 +76,7 @@ class TorchVectorEncoder(TorchModel):
 
         Args:
             inputs: The nested dictionary of inputs
+
         Returns:
             The nested dictionary of outputs
         """

@@ -84,29 +84,39 @@ class TensorSpec(SpecsAbstract):
         return self._full_shape
 
     def rdrop(self, n: int) -> "TensorSpec":
-        """Returns of copy of TensorSpec with the rightmost
+        """Drops the last n dimensions.
+
+        Returns of copy of TensorSpec with the rightmost
         n dimensions removed.
 
         Args:
-            n: The number of dimensions to remove from the right
+            n: A positive number of dimensions to remove from the right
+
+        Returns:
+            A copy of the tensor spec with the last n dims removed
 
         Raises:
             IndexError: If n is greater than the number of indices in self
+            AssertionError: If n is negative or not an int
         """
+        assert isinstance(n, int) and n >= 0, "n must be a positive integer or zero"
         self = deepcopy(self)
         self._expected_shape = self.shape[:-n]
         self._full_shape = self._get_full_shape()
         return self
 
-    def append(self, shape: Tuple[int]) -> "TensorSpec":
-        """Returns a copy of the TensorSpec with the shape
-        appended to the end of the current shape.
+    def append(self, spec: "TensorSpec") -> "TensorSpec":
+        """Appends the given TensorSpec to the self TensorSpec.
 
         Args:
-            shape: The shape to append to the current TensorSpec.shape
+            spec: The TensorSpec to append to the current TensorSpec
+
+        Returns:
+            A new tensor spec resulting from the concatenation of self and spec
+
         """
         self = deepcopy(self)
-        self._expected_shape = (*self.shape, *shape)
+        self._expected_shape = (*self.shape, *spec.shape)
         self._full_shape = self._get_full_shape()
         return self
 

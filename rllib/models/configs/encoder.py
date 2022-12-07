@@ -19,7 +19,7 @@ class EncoderConfig:
     (e.g. framework, activation, num layers, etc.) should be defined as attributes.
 
     Parameters unknown before runtime (e.g. the output size of the module providing
-    input for this model) should be passed as arguments to `build`. This should be
+    input for this module) should be passed as arguments to `build`. This should be
     as few params as possible.
 
     `build` should return an instance of the encoder associated with the config.
