@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import dayjs from "dayjs";
 import React from "react";
-import { Link, RouteComponentProps } from "react-router-dom";
+import { Link } from "react-router-dom";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
@@ -16,6 +16,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -35,7 +36,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const NodeDetailPage = () => {
   const classes = useStyle();
   const {
     params,
@@ -46,10 +47,17 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     onRefreshChange,
     raylet,
     handleChange,
-  } = useNodeDetail(props);
+  } = useNodeDetail();
 
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          title: `Node: ${params.id}`,
+          id: "node-detail",
+          path: `/new/cluster/nodes/${params.id}`,
+        }}
+      />
       <Loading loading={msg.startsWith("Loading")} />
       <TitleCard title={`NODE - ${params.id}`}>
         <StatusChip

@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -47,11 +50,22 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<WorkerTableData>)> listener);
 
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
+  }
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
+  UsageStatsClient *usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
+
+  /// Tracks the number of occurences of worker crash due to system error
+  int32_t worker_crash_system_error_count_ = 0;
+
+  /// Tracks the number of occurences of worker crash due to OOM
+  int32_t worker_crash_oom_count_ = 0;
 };
 
 }  // namespace gcs

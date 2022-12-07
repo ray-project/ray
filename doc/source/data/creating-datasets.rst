@@ -162,7 +162,7 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
-.. tabbed:: Images (experimental)
+.. tabbed:: Images
 
   Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
 
@@ -504,7 +504,7 @@ From Torch and TensorFlow
     :class:`~ray.data.from_torch`.
 
     .. warning::
-        :py:class:`~ray.data.datasource.from_torch` doesn't support parallel
+        :class:`~ray.data.from_torch` doesn't support parallel
         reads. You should only use this datasource for small datasets like MNIST or
         CIFAR.
 
@@ -563,6 +563,53 @@ converts it into a Ray Dataset directly.
     ray_datasets = ray.data.from_huggingface(hf_datasets)
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
+
+.. _dataset_mongo_db:
+
+------------
+From MongoDB
+------------
+
+A Dataset can also be created from `MongoDB <https://www.mongodb.com/>`__ with
+:py:class:`~ray.data.read_mongo`.
+This interacts with MongoDB similar to external filesystems, except here you will
+need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
+`database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
+and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
+the collection. The execution results are then used to create a Dataset.
+
+.. note::
+
+  This example is not runnable as-is; you'll need to point it at your MongoDB
+  instance.
+
+.. code-block:: python
+
+    import ray
+
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
 
 .. _datasets_custom_datasource:
 

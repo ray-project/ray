@@ -48,8 +48,8 @@ Text
 
 .. autofunction:: ray.data.read_text
 
-Images (experimental)
----------------------
+Images
+------
 
 .. autofunction:: ray.data.read_images
 
@@ -103,6 +103,14 @@ Arrow
 .. autofunction:: ray.data.from_arrow_refs
 
 .. automethod:: ray.data.Dataset.to_arrow_refs
+    :noindex:
+
+MongoDB
+-------
+
+.. autofunction:: ray.data.read_mongo
+
+.. autofunction:: ray.data.Dataset.write_mongo
     :noindex:
 
 Dask
@@ -201,6 +209,9 @@ Built-in Datasources
     :members:
 
 .. autoclass:: ray.data.datasource.TFRecordDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.MongoDatasource
     :members:
 
 Partitioning API

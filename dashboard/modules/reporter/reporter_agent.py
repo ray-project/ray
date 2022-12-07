@@ -10,7 +10,7 @@ import warnings
 
 import psutil
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import ray
 import ray._private.services
@@ -25,6 +25,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
+from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -284,7 +285,8 @@ class ReporterAgent(
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
-        self._workers = set()
+        # (pid, created_time) -> psutil.Process
+        self._workers = {}
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -316,22 +318,30 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            if self._metrics_agent.proxy_exporter_collector:
+                # proxy_exporter_collector is None
+                # if Prometheus server is not started.
+                REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid)
+        success, output = await p.trace_dump(pid, native=native)
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):
         pid = request.pid
         duration = request.duration
         format = request.format
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.cpu_profile(pid, format=format, duration=duration)
+        success, output = await p.cpu_profile(
+            pid, format=format, duration=duration, native=native
+        )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):
@@ -431,23 +441,55 @@ class ReporterAgent(
     @staticmethod
     def _get_disk_io_stats():
         stats = psutil.disk_io_counters()
-        return (
-            stats.read_bytes,
-            stats.write_bytes,
-            stats.read_count,
-            stats.write_count,
-        )
+        # stats can be None or {} if the machine is diskless.
+        # https://psutil.readthedocs.io/en/latest/#psutil.disk_io_counters
+        if not stats:
+            return (0, 0, 0, 0)
+        else:
+            return (
+                stats.read_bytes,
+                stats.write_bytes,
+                stats.read_count,
+                stats.write_count,
+            )
+
+    def _get_agent_proc(self) -> psutil.Process:
+        # Agent is the current process.
+        # This method is not necessary, but we have it for mock testing.
+        return psutil.Process()
+
+    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+        return (proc.pid, proc.create_time())
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
+
         if raylet_proc is None:
             return []
         else:
-            workers = set(raylet_proc.children())
+            workers = {
+                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
+            }
+
+            # We should keep `raylet_proc.children()` in `self` because
+            # when `cpu_percent` is first called, it returns the meaningless 0.
+            # See more: https://github.com/ray-project/ray/issues/29848
+            keys_to_pop = []
+            # Add all new workers.
+            for key, worker in workers.items():
+                if key not in self._workers:
+                    self._workers[key] = worker
+
+            # Pop out stale workers.
+            for key in self._workers:
+                if key not in workers:
+                    keys_to_pop.append(key)
+            for k in keys_to_pop:
+                self._workers.pop(k)
+
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
-            workers.discard(psutil.Process())
-            self._workers = workers
+            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             return [
                 w.as_dict(
                     attrs=[
@@ -460,7 +502,7 @@ class ReporterAgent(
                         "memory_full_info",
                     ]
                 )
-                for w in self._workers
+                for w in self._workers.values()
                 if w.status() != psutil.STATUS_ZOMBIE
             ]
 

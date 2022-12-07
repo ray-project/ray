@@ -42,7 +42,6 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
     SampleBatchType,
 )
@@ -312,7 +311,7 @@ class ApexDQNConfig(DQNConfig):
 
 class ApexDQN(DQN):
     @override(Trainable)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         num_replay_buffer_shards = self.config.optimizer["num_replay_buffer_shards"]
@@ -542,7 +541,10 @@ class ApexDQN(DQN):
         """
 
         def wait_on_replay_actors() -> List[Tuple[int, SampleBatchType]]:
-            """Wait for the replay actors to finish sampling for timeout seconds."""
+            """Wait for the replay actors to finish sampling for timeout seconds.
+
+            If the timeout is None, then block on the actors indefinitely.
+            """
             results = self._replay_actor_manager.fetch_ready_async_reqs(
                 timeout_seconds=self._replay_req_timeout_s
             )
@@ -561,7 +563,7 @@ class ApexDQN(DQN):
             # There are at least 1 healthy replay actor.
             self._replay_actor_manager.num_healthy_actors() > 0
         ):
-            training_intensity = int(self.config["training_intensity"] or 1)
+            training_intensity = int(self.config.training_intensity or 1)
             num_requests_to_launch = (
                 self.curr_num_samples_collected / self.config.train_batch_size
             ) * training_intensity
