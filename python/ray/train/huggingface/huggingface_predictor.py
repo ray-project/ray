@@ -8,13 +8,34 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+try:
+    import torch
+
+    torch_get_gpus = torch.cuda.device_count
+except ImportError:
+
+    def torch_get_gpus():
+        return 0
+
+
+try:
+    import tensorflow
+
+    def tf_get_gpus():
+        return len(tensorflow.config.list_physical_devices("GPU"))
+
+except ImportError:
+
+    def tf_get_gpus():
+        return 0
+
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -45,7 +66,7 @@ class HuggingFacePredictor(Predictor):
         self.pipeline = pipeline
         self.use_gpu = use_gpu
 
-        num_gpus = len(ray.get_gpu_ids())
+        num_gpus = max(torch_get_gpus(), tf_get_gpus())
         if not use_gpu and num_gpus > 0 and log_once("hf_predictor_not_using_gpu"):
             logger.warning(
                 "You have `use_gpu` as False but there are "
