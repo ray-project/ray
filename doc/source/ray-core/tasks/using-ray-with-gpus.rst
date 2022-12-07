@@ -97,7 +97,7 @@ through TensorFlow), the task may allocate memory on the GPU and may not release
 it when the task finishes executing. This can lead to problems the next time a
 task tries to use the same GPU. To address the problem, Ray disables the worker
 process reuse between GPU tasks by default, where the GPU resources is released after
-the task process exists. Since this adds overhead to GPU task scheduling,
+the task process exits. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
 in the :ref:`ray.remote <ray-remote-ref>` decorator.
 
@@ -105,3 +105,20 @@ in the :ref:`ray.remote <ray-remote-ref>` decorator.
     :language: python
     :start-after: __leak_gpus_start__
     :end-before: __leak_gpus_end__
+
+.. _accelerator-types:
+
+Accelerator Types
+-----------------
+
+Ray supports resource specific accelerator types. The `accelerator_type` option can be used to force to a task or actor to run on a node with a specific type of accelerator.
+Under the hood, the accelerator type option is implemented as a :ref:`custom resource requirement <custom-resources>` of ``"accelerator_type:<type>": 0.001``.
+This forces the task or actor to be placed on a node with that particular accelerator type available.
+This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
+
+.. literalinclude:: ../doc_code/gpus.py
+    :language: python
+    :start-after: __accelerator_type_start__
+    :end-before: __accelerator_type_end__
+
+See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.

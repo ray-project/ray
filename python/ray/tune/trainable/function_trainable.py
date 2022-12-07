@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.tune.resources import Resources
-from six.moves import queue
+import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
