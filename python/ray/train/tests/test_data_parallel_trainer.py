@@ -258,6 +258,30 @@ def test_tune(ray_start_4_cpus):
     assert trainer._train_loop_config["x"] == 100
 
 
+def test_scaling_config_validation(ray_start_4_cpus):
+    def train_func(config):
+        session.report({"loss": config["x"]})
+
+    # Should be able to create a DataParallelTrainer w/o scaling_config,
+    # but it should fail on fit
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config={"x": 100},
+    )
+    with pytest.raises(ValueError):
+        trainer.fit()
+
+    # Scaling config must be passed in through Tuner param space if not
+    # included in the initial trainer
+    tuner = Tuner(trainer)
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    tuner = Tuner(trainer, param_space={"scaling_config": ScalingConfig(num_workers=1)})
+    results = tuner.fit()
+    assert not results.errors
+
+
 def test_fast_slow(ray_start_4_cpus):
     def train_func():
         for i in range(2):
