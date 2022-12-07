@@ -1,4 +1,5 @@
 import sys
+import time
 
 import pytest
 
@@ -180,6 +181,20 @@ def test_function_table_gc_actor(call_ray_start):
     ray.shutdown()
     ray.init(address="auto", namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
+
+
+def test_node_liveness_after_restart(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(cluster.address)
+    worker = cluster.add_node(node_manager_port=9037)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+
+    cluster.remove_node(worker)
+    worker = cluster.add_node(node_manager_port=9037)
+    for _ in range(10):
+        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+        time.sleep(1)
 
 
 @pytest.mark.skipif(
