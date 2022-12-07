@@ -1,8 +1,12 @@
+from collections import Counter
 import re
+import numpy as np
 
 import pytest
 
 import ray
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
 
@@ -411,6 +415,111 @@ DatasetPipeline iterator time breakdown:
 * In user code: T
 * Total time: T
 """
+    )
+
+
+def test__calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+    calculated_stats = stats._calculate_blocks_stats(
+        blocks=block_meta_list, is_substage=False
+    )
+
+    assert calculated_stats["output_num_rows"] == {
+        "min": min(block_params["num_rows"]),
+        "max": max(block_params["num_rows"]),
+        "mean": np.mean(block_params["num_rows"]),
+        "sum": sum(block_params["num_rows"]),
+    }
+    assert calculated_stats["output_size_bytes"] == {
+        "min": min(block_params["size_bytes"]),
+        "max": max(block_params["size_bytes"]),
+        "mean": np.mean(block_params["size_bytes"]),
+        "sum": sum(block_params["size_bytes"]),
+    }
+    assert calculated_stats["wall_time"] == {
+        "min": min(block_params["wall_time"]),
+        "max": max(block_params["wall_time"]),
+        "mean": np.mean(block_params["wall_time"]),
+        "sum": sum(block_params["wall_time"]),
+    }
+    assert calculated_stats["cpu"] == {
+        "min": min(block_params["cpu_time"]),
+        "max": max(block_params["cpu_time"]),
+        "mean": np.mean(block_params["cpu_time"]),
+        "sum": sum(block_params["cpu_time"]),
+    }
+
+    node_counts = Counter(block_params["node_id"])
+    assert calculated_stats["node_count"] == {
+        "min": min(node_counts.values()),
+        "max": max(node_counts.values()),
+        "mean": np.mean(list(node_counts.values())),
+        "count": len(node_counts),
+    }
+
+
+def test__summarize_blocks(ray_start_regular_shared, stage_two_block):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+    calculated_stats = stats._calculate_blocks_stats(
+        blocks=block_meta_list, is_substage=False
+    )
+    stats.stage_stats["read"] = calculated_stats
+    summarized_str = stats._summarize_blocks("read", False)
+    summarized_lines = summarized_str.split("\n")
+
+    assert summarized_lines[0] == "2/2 blocks executed in {}s".format(
+        max(round(stats.time_total_s, 2), 0)
+    )
+    assert summarized_lines[1] == "* Remote wall time: {}s min, {}s max, {}s mean, {}s total".format(
+        min(block_params["wall_time"]),
+        max(block_params["wall_time"]),
+        np.mean(block_params["wall_time"]),
+        sum(block_params["wall_time"]),
+    )
+    assert summarized_lines[2] == "* Remote cpu time: {}s min, {}s max, {}s mean, {}s total".format(
+        min(block_params["cpu_time"]),
+        max(block_params["cpu_time"]),
+        np.mean(block_params["cpu_time"]),
+        sum(block_params["cpu_time"]),
+    )
+    assert summarized_lines[3] == "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
+        min(block_params["max_rss_bytes"]) / (1024 * 1024),
+        max(block_params["max_rss_bytes"]) / (1024 * 1024),
+        int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+    )
+    assert summarized_lines[4] == "* Output num rows: {} min, {} max, {} mean, {} total".format(
+        min(block_params["num_rows"]),
+        max(block_params["num_rows"]),
+        int(np.mean(block_params["num_rows"])),
+        sum(block_params["num_rows"]),
+    )
+    assert summarized_lines[5] == "* Output size bytes: {} min, {} max, {} mean, {} total".format(
+        min(block_params["size_bytes"]),
+        max(block_params["size_bytes"]),
+        int(np.mean(block_params["size_bytes"])),
+        sum(block_params["size_bytes"]),
+    )
+
+    node_counts = Counter(block_params["node_id"])
+    assert summarized_lines[6] == "* Tasks per node: {} min, {} max, {} mean; {} nodes used".format(
+        min(node_counts.values()),
+        max(node_counts.values()),
+        int(np.mean(list(node_counts.values()))),
+        len(node_counts),
     )
 
 
