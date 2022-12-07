@@ -142,7 +142,6 @@ class JobSupervisor:
     """
 
     WAIT_FOR_JOB_TERMINATION_S = 3
-    JOB_TERMINATION_POLL_PERIOD_S = 0.1
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
     def __init__(
