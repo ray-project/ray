@@ -17,6 +17,7 @@ class BulkExecutor(Executor):
 
     def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal."""
+        print(dag)
 
         saved_outputs: Dict[PhysicalOperator, List[RefBundle]] = {}
 

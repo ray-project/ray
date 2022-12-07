@@ -110,6 +110,15 @@ class PhysicalOperator:
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")
 
+    def __str__(self):
+        if self.input_dependencies:
+            out_str = ", ".join([str(x) for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator, if known.
 
