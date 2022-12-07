@@ -23,14 +23,22 @@ class PlacementGroupAllocatedResource(AllocatedResource):
     def annotate_remote_objects(
         self, objects: List[Type]
     ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
-        # With an empty head, the second bundle should live in the
-        # actual PG's first bundle, so we start counting from -1
+        # If we have an empty head, we schedule the first object (the "head") in the
+        # first PG bundle with num_cpus=0. The second object will also be scheduled in
+        # the first bundle, but will occupy the respective resources. Thus, we start
+        # counting from i = -1, and bundle = max(i, 0) which will be [0, 0, 1, 2, ...]
         if self.resource_request.head_bundle_is_empty:
             start = -1
             bundles = [{}] + self.resource_request.bundles
         else:
             start = 0
             bundles = self.resource_request.bundles
+
+        if len(objects) > len(bundles):
+            raise RuntimeError(
+                f"The number of objects to annotate ({len(objects)}) cannot "
+                f"exceed the number of available bundles ({len(bundles)})."
+            )
 
         annotated = []
         for i, (obj, bundle) in enumerate(zip(objects, bundles), start=start):

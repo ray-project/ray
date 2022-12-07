@@ -188,7 +188,10 @@ class AllocatedResource:
     resource_request: ResourceRequest
 
     def annotate_remote_objects(self, objects: List[Type]) -> List[Type]:
-        """Return actor class with options set to use the allocated resources.
+        """Return remote ray objects with options set to use the allocated resources.
+
+        The first object will be associated with the first bundle, the second
+        object will be associated with the second bundle, etc.
 
         Args:
             object: Remote Ray objects to allocate resources to.
