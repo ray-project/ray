@@ -48,7 +48,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         # Convert lists of int|float into numpy arrays make sure all data
         # has same length.
         if isinstance(v, (Number, list)):
-            tensor_dict[k] = np.array(v)
+            copy_[k] = np.array(v)
 
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
