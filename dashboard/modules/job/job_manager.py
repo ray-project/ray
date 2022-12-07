@@ -395,7 +395,10 @@ class JobSupervisor:
                             )
                             child_process.terminate()
                         else:
-                            os.killpg(os.getpgid(child_process.pid), eval(f"signal.{stop_signal}"))
+                            os.killpg(
+                                os.getpgid(child_process.pid),
+                                eval(f"signal.{stop_signal}"),
+                            )
 
                     try:
                         child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)

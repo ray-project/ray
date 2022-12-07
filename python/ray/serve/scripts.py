@@ -292,7 +292,7 @@ def run(
     # If address is specified through either the command or through the RAY_ADDRESS
     # environment variable, use Ray Job Submission to run serve. Otherwise, connect
     # to local ray clusters.
-    if address is None:
+    if address is None or address == "auto":
         final_runtime_env = parse_runtime_env_args(
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
