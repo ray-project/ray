@@ -12,7 +12,7 @@ from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import (
     load_torch_model,
-    consume_prefix_in_state_dict_if_present,
+    consume_prefix_in_state_dict_if_present_not_in_place,
 )
 from ray.util.annotations import PublicAPI
 
@@ -43,16 +43,9 @@ class TorchCheckpoint(Checkpoint):
                 # We could limit this only to the MODEL_KEY, but we'd
                 # miss any extra user-specified keys. This should be a
                 # noop with anything but DDP/FSDP module state dicts.
-
-                # This modifies in-place the first level of the dict
-                # and the _metadata nested dict.
-                # We are doing shallow copies here, so the performance
-                # impact should be negligible.
-                state_dict = v.copy()
-                if "_metadata" in state_dict:
-                    state_dict["_metadata"] = state_dict["_metadata"].copy()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
-                data_dict[k] = state_dict
+                data_dict[k] = consume_prefix_in_state_dict_if_present_not_in_place(
+                    v, "module."
+                )
 
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the

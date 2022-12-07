@@ -310,25 +310,49 @@ def contains_tensor(obj):
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-try:
-    from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present  # noqa
-except ImportError:
-    # Not present in torch<=1.7.0
-    # Copied from https://github.com/pytorch/pytorch/blob/\
-    # c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
-    def consume_prefix_in_state_dict_if_present(
-        state_dict: Dict[str, Any], prefix: str
-    ) -> None:
-        keys = sorted(state_dict.keys())
-        for key in keys:
-            if key.startswith(prefix):
-                newkey = key[len(prefix) :]
-                state_dict[newkey] = state_dict.pop(key)
+# Not present in torch<=1.7.0
+# Adapted from https://github.com/pytorch/pytorch/blob/\
+# c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
+def consume_prefix_in_state_dict_if_present_not_in_place(
+    state_dict: Dict[str, Any], prefix: str
+) -> Dict[str, Any]:
+    """Strip the prefix in state_dict, if any and return a new dict.
 
-        if "_metadata" in state_dict:
-            metadata = state_dict["_metadata"]
-            for key in list(metadata.keys()):
-                if len(key) == 0:
-                    continue
-                newkey = key[len(prefix) :]
-                metadata[newkey] = metadata.pop(key)
+    Adapted from https://github.com/pytorch/pytorch/blob/\
+c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
+    The original method modified the dict in-place.
+
+    ..note::
+        Given a `state_dict` from a DP/DDP model, a local model can load it by applying
+        `consume_prefix_in_state_dict_if_present(state_dict, "module.")` before calling
+        :meth:`torch.nn.Module.load_state_dict`.
+
+    Args:
+        state_dict: a state-dict to be loaded to the model.
+        prefix: prefix.
+
+    """
+    copied = False
+
+    keys = sorted(state_dict.keys())
+    for key in keys:
+        if key.startswith(prefix):
+            newkey = key[len(prefix) :]
+            if not copied:
+                # We are doing shallow copies here, so the performance
+                # impact should be negligible anyway, but this is
+                # a simple optimization.
+                state_dict = state_dict.copy()
+                copied = True
+            state_dict[newkey] = state_dict.pop(key)
+
+    if "_metadata" in state_dict:
+        state_dict["_metadata"] = state_dict["_metadata"].copy()
+        metadata = state_dict["_metadata"]
+        for key in list(metadata.keys()):
+            if len(key) == 0:
+                continue
+            newkey = key[len(prefix) :]
+            metadata[newkey] = metadata.pop(key)
+
+    return state_dict
