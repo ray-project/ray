@@ -4205,8 +4205,9 @@ class Dataset(Generic[T]):
 
     def __iter__(self):
         raise TypeError(
-            "`Dataset` objects aren't iterable. If you want to inspect records, call "
-            "`ds.take()`. If you want to transform records, call `ds.map_batches()`."
+            "`Dataset` objects aren't iterable. To iterate records, call "
+            "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
+            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
         )
 
     def _block_num_rows(self) -> List[int]:
