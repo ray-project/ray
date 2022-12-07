@@ -16,10 +16,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
@@ -49,6 +51,19 @@ rpc::Address GetRandomWorkerAddr() {
   return addr;
 }
 
+class MockTaskEventBuffer : public worker::TaskEventBuffer {
+ public:
+  MOCK_METHOD(void, AddTaskEvent, (rpc::TaskEvents task_events), (override));
+
+  MOCK_METHOD(void, FlushEvents, (bool forced), (override));
+
+  MOCK_METHOD(Status, Start, (bool manual_flush), (override));
+
+  MOCK_METHOD(void, Stop, (), (override));
+
+  MOCK_METHOD(bool, Enabled, (), (const, override));
+};
+
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false,
@@ -56,6 +71,7 @@ class TaskManagerTest : public ::testing::Test {
       : addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             addr_,
             publisher_.get(),
@@ -80,7 +96,8 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &type,
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
-            max_lineage_bytes) {}
+            max_lineage_bytes,
+            *task_event_buffer_mock_.get()) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -94,6 +111,7 @@ class TaskManagerTest : public ::testing::Test {
   rpc::Address addr_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;

@@ -123,6 +123,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
+  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected.";
   return Status::OK();

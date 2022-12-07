@@ -817,6 +817,22 @@ Status StatsInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status TaskInfoAccessor::AsyncAddTaskEventData(
+    std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
+  RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
+  rpc::AddTaskEventDataRequest request;
+  // Prevent copy here
+  request.mutable_data()->Swap(data_ptr.get());
+  client_impl_->GetGcsRpcClient().AddTaskEventData(
+      request, [callback](const Status &status, const rpc::AddTaskEventDataReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
+      });
+  return Status::OK();
+}
+
 ErrorInfoAccessor::ErrorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
