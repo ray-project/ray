@@ -7,7 +7,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data.block import Block, BlockAccessor
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.compute import TaskPoolStrategy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -48,23 +47,20 @@ class _TaskState:
         self.output: Optional[RefBundle] = None
 
 
-class MapOperatorState:
+class MapOperatorTaskImpl:
     def __init__(self, op: "MapOperator"):
         self._transform_fn = op.get_transform_fn()
-        self._compute_strategy = op.compute_strategy()
         self._ray_remote_args = op.ray_remote_args()
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._next_task_index = 0
         self._next_output_index = 0
-        if not isinstance(self._compute_strategy, TaskPoolStrategy):
-            raise NotImplementedError(str(self._compute_strategy))
 
     def add_input(self, bundle: RefBundle) -> None:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
-        generator_ref = _run_one_task.remote(
+        generator_ref = _run_one_task.options(**self._ray_remote_args).remote(
             self._transform_fn, bundle.input_metadata, *input_blocks
         )
         task = _TaskState(bundle)

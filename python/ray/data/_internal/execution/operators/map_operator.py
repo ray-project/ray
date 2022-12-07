@@ -2,12 +2,21 @@ from typing import List, Iterator, Any, Dict, Callable, Optional
 
 import ray
 from ray.data.block import Block
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.compute import (
+    ComputeStrategy,
+    TaskPoolStrategy,
+    ActorPoolStrategy,
+)
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.execution.operators.map_operator_state import MapOperatorState
+from ray.data._internal.execution.operators.map_operator_task_impl import (
+    MapOperatorTaskImpl,
+)
+from ray.data._internal.execution.operators.map_operator_actors_impl import (
+    MapOperatorActorsImpl,
+)
 
 
 class MapOperator(PhysicalOperator):
@@ -37,7 +46,12 @@ class MapOperator(PhysicalOperator):
         self._transform_fn = transform_fn
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
-        self._execution_state = MapOperatorState(self)
+        if isinstance(self._strategy, TaskPoolStrategy):
+            self._execution_state = MapOperatorTaskImpl(self)
+        elif isinstance(self._strategy, ActorPoolStrategy):
+            self._execution_state = MapOperatorActorsImpl(self)
+        else:
+            raise NotImplementedError
         super().__init__(name, [input_op])
 
     def get_transform_fn(

@@ -125,6 +125,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             raise NotImplementedError
 
         block_fn = stage.block_fn
+        # TODO: pass the following via object store instead of closure capture
         fn = stage.fn
         fn_args = stage.fn_args
         fn_kwargs = stage.fn_kwargs
