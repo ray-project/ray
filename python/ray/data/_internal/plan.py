@@ -319,7 +319,9 @@ class ExecutionPlan:
                 )
 
                 executor = BulkExecutor(ExecutionOptions())
-                blocks = execute_to_legacy_block_list(executor, self)
+                blocks = execute_to_legacy_block_list(
+                    executor, self, owns_blocks=allow_clear_input_blocks
+                )
                 stats = executor.get_stats()
 
             else:

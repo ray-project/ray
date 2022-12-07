@@ -20,17 +20,20 @@ from ray.data._internal.execution.interfaces import (
 )
 
 
-def execute_to_legacy_block_list(executor: Executor, plan: ExecutionPlan) -> BlockList:
+def execute_to_legacy_block_list(
+    executor: Executor, plan: ExecutionPlan, owns_blocks: bool
+) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
+        owns_blocks: Whether the executor owns the input blocks and can destroy them.
 
     Returns:
         The output as a legacy block list.
     """
-    dag = _to_operator_dag(plan)
+    dag = _to_operator_dag(plan, owns_blocks)
     blocks, metadata = [], []
     for ref_bundle in executor.execute(dag):
         for block, meta in ref_bundle.blocks:
@@ -39,21 +42,22 @@ def execute_to_legacy_block_list(executor: Executor, plan: ExecutionPlan) -> Blo
     return BlockList(blocks, metadata, owned_by_consumer=True)
 
 
-def _to_operator_dag(plan: ExecutionPlan) -> PhysicalOperator:
+def _to_operator_dag(plan: ExecutionPlan, owns_blocks: bool) -> PhysicalOperator:
     """Translate a plan into an operator DAG for the new execution backend."""
 
     blocks, _, stages = plan._optimize()
-    operator = _blocks_to_input_buffer(blocks)
+    operator = _blocks_to_input_buffer(blocks, owns_blocks)
     for stage in stages:
         operator = _stage_to_operator(stage, operator)
     return operator
 
 
-def _blocks_to_input_buffer(blocks: BlockList) -> PhysicalOperator:
+def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:
     """Translate a block list into an InputBuffer operator.
 
     Args:
-        blocks: The block list to translate
+        blocks: The block list to translate.
+        owns_blocks: Whether we can take ownership of the input blocks.
 
     Returns:
         The physical operator representing the input block list.
@@ -101,7 +105,7 @@ def _blocks_to_input_buffer(blocks: BlockList) -> PhysicalOperator:
                             meta,
                         )
                     ],
-                    owns_blocks=False,  # TODO
+                    owns_blocks=owns_blocks,
                 )
             )
         return InputDataBuffer(output)
