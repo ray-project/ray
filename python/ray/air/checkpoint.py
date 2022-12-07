@@ -232,6 +232,22 @@ class Checkpoint:
             },
         )
 
+    def _copy_metadata_attrs_to(self, target: "Checkpoint") -> None:
+        """Copy in-place metadata attributes from self to ``target``."""
+        for attr, value in self._metadata.checkpoint_state.items():
+            if attr in target._SERIALIZED_ATTRS:
+                setattr(target, attr, value)
+
+    @_metadata.setter
+    def _metadata(self, metadata: _CheckpointMetadata):
+        if metadata.checkpoint_type is not self.__class__:
+            raise ValueError(
+                f"Checkpoint type in metadata must match {self.__class__}, "
+                f"got {metadata.checkpoint_type}"
+            )
+        for attr, value in metadata.checkpoint_state.items():
+            setattr(self, attr, value)
+
     @property
     def uri(self) -> Optional[str]:
         """Return checkpoint URI, if available.
@@ -465,12 +481,14 @@ class Checkpoint:
         if type(other) is cls:
             return other
 
-        return cls(
+        new_checkpoint = cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
+        other._copy_metadata_attrs_to(new_checkpoint)
+        return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
