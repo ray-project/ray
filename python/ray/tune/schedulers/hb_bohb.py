@@ -163,3 +163,11 @@ class HyperBandForBOHB(HyperBandScheduler):
                             )
         # MAIN CHANGE HERE!
         return None
+
+    def save(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError

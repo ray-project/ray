@@ -1104,3 +1104,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         return "PopulationBasedTraining replay: Step {}, perturb {}".format(
             self._current_step, self._num_perturbations
         )
+
+    def save(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError

@@ -359,6 +359,14 @@ class HyperBandScheduler(FIFOScheduler):
             "num_stopped": self._num_stopped,
         }
 
+    def save(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError
+
 
 class _Bracket:
     """Logical object for tracking Hyperband bracket progress. Keeps track

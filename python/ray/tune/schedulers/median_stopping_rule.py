@@ -213,3 +213,11 @@ class MedianStoppingRule(FIFOScheduler):
     def _best_result(self, trial):
         results = self._results[trial]
         return self._compare_op([r[self._metric] for r in results])
+
+    def save(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        # TODO(ml-team): implement save/restore
+        raise NotImplementedError

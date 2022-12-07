@@ -227,3 +227,10 @@ class FIFOScheduler(TrialScheduler):
 
     def debug_string(self) -> str:
         return "Using FIFO scheduling algorithm."
+
+    def save(self, checkpoint_path: str):
+        # FIFOScheduler doesn't hold any state, so save/restore should be a noop
+        pass
+
+    def restore(self, checkpoint_path: str):
+        pass
