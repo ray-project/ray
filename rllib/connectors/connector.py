@@ -2,7 +2,6 @@
 """
 
 import abc
-import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
@@ -427,20 +426,16 @@ class ConnectorPipeline(abc.ABC):
         """Returns a list of connectors that fit 'key'.
 
         If key is a number n, we return a list with the nth element of this pipeline.
-        If key is a string matching the class name of a
+        If key is a Connector class or a string matching the class name of a
         Connector class, we return a list of all connectors in this pipeline matching
         the specified class.
-        If key is a Connector class, we return all Connectors that subclass a class
-        with the name 'key' or have a class of name 'key' themselves. For example, you
-        can call __getitem__ with the AgentConnector type as a key to get all
-        AgentConnectors.
 
         Args:
             key: The key to index by
 
         Returns: The Connector at index `key`.
         """
-        results = []
+        # In case key is a class
         if not isinstance(key, str):
             if isinstance(key, slice):
                 raise NotImplementedError(
@@ -449,15 +444,9 @@ class ConnectorPipeline(abc.ABC):
             elif isinstance(key, int):
                 return [self.connectors[key]]
             elif isinstance(key, type):
-                # Look for subclasses with same name.
-                # We can't use issubclass() or similar methods here because types will
-                # be different after restoring algorithms from checkpoints so we have
-                # to get around it by comparing type.__name__ attributes.
+                results = []
                 for c in self.connectors:
-                    key_class_name = key.__name__
-                    if key_class_name in [
-                        _c.__name__ for _c in inspect.getmro(c.__class__)
-                    ]:
+                    if issubclass(c.__class__, key):
                         results.append(c)
                 return results
             else:
@@ -465,6 +454,7 @@ class ConnectorPipeline(abc.ABC):
                     "Indexing by {} is currently not supported.".format(type(key))
                 )
 
+        results = []
         for c in self.connectors:
             if c.__class__.__name__ == key:
                 results.append(c)

@@ -1,15 +1,6 @@
 import unittest
 
-import gym
-
 from ray.rllib.connectors.connector import Connector, ConnectorPipeline
-from ray.rllib.connectors.connector import ConnectorContext
-from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
-from ray.rllib.connectors.agent.mean_std_filter import (
-    MeanStdObservationFilterAgentConnector,
-)
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 
 
 class TestConnectorPipeline(unittest.TestCase):
@@ -70,6 +61,7 @@ class TestConnectorPipeline(unittest.TestCase):
         self.assertEqual(m[0], [m.connectors[0]])
         self.assertEqual(m[m.connectors[1].__class__], [m.connectors[1]])
 
+<<<<<<< HEAD
     def test_pipeline_indexing(self):
         """Tests if ConnectorPipeline.__getitem__() works as intended."""
         context = ConnectorContext({}, observation_space=gym.spaces.Box(-1, 1, (1,)))
@@ -95,6 +87,8 @@ class TestConnectorPipeline(unittest.TestCase):
 >>>>>>> c3c62543a (initial)
             self.assertEqual(pipeline[key], expected_value)
 
+=======
+>>>>>>> 0f42a9fcb (only flip switch)
 
 if __name__ == "__main__":
     import pytest
