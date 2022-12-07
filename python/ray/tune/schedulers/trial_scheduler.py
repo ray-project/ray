@@ -25,7 +25,7 @@ class TrialScheduler:
     #  between schedulers and executor.
     NOOP = "NOOP"
 
-    CKPT_FILE_TMPL = "scheduler-state-{}.json"
+    CKPT_FILE_TMPL = "scheduler-state-{}.pkl"
 
     _metric = None
 
