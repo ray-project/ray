@@ -1,7 +1,7 @@
 import ray
 
 
-ds = ray.data.range(10).lazy()
+ds = ray.data.range(10)
 ds.show()
 ds.map(lambda x: x + 1).show()
 # print(ds.stats())

@@ -39,9 +39,6 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.bulk_executor import BulkExecutor
-from ray.data._internal.execution.interfaces import ExecutionOptions
-from ray.data._internal.execution.legacy_compat import execute_to_legacy_block_list
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
@@ -221,9 +218,6 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-
-        # New executor backend.
-        self._new_executor = None
 
         if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -2551,12 +2545,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if ctx.new_execution_backend:
-            executor = self._get_new_executor()
-            legacy_list = execute_to_legacy_block_list(executor, self._plan)
-            blocks, metadata = zip(*legacy_list.get_blocks_with_metadata())
-        else:
-            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.
         if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
@@ -2681,14 +2670,8 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        ctx = DatasetContext.get_current()
-        if ctx.new_execution_backend:
-            executor = self._get_new_executor()
-            blocks = execute_to_legacy_block_list(executor, self._plan)
-            stats = executor.get_stats()
-        else:
-            blocks = self._plan.execute()
-            stats = self._plan.stats()
+        blocks = self._plan.execute()
+        stats = self._plan.stats()
 
         time_start = time.perf_counter()
 
@@ -3808,8 +3791,6 @@ class Dataset(Generic[T]):
 
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        if self._new_executor:
-            return self._new_executor.get_stats().summary_string()
         return self._plan.stats().summary_string()
 
     @DeveloperAPI
@@ -4260,11 +4241,6 @@ class Dataset(Generic[T]):
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
             )
-
-    def _get_new_executor(self):
-        executor = BulkExecutor(ExecutionOptions())
-        self._new_executor = executor
-        return executor
 
 
 def _get_size_bytes(block: Block) -> int:
