@@ -60,6 +60,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(Status, Start, (bool manual_flush), (override));
 
   MOCK_METHOD(void, Stop, (), (override));
+
+  MOCK_METHOD(bool, Enabled, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -95,7 +97,7 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            task_event_buffer_mock_.get()) {}
+            *task_event_buffer_mock_.get()) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 

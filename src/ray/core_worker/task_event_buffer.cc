@@ -38,8 +38,11 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
                    << status.ToString() << "].";
 
+    enabled_ = false;
     return status;
   }
+
+  enabled_ = true;
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -67,6 +70,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 }
 
 void TaskEventBufferImpl::Stop() {
+  if (!enabled_) {
+    return;
+  }
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
 
   // Shutting down the io service to exit the io_thread. This should prevent
@@ -85,7 +91,12 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
+bool TaskEventBufferImpl::Enabled() const { return enabled_; }
+
 void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
+  if (!enabled_) {
+    return;
+  }
   absl::MutexLock lock(&mutex_);
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
@@ -100,6 +111,9 @@ void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
+  if (!enabled_) {
+    return;
+  }
   std::vector<rpc::TaskEvents> task_events;
   size_t num_task_events_dropped = 0;
   {
@@ -115,7 +129,8 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-          << "GCS hasn't replied to the previous flush events call (likely overloaded). "
+          << "GCS hasn't replied to the previous flush events call (likely "
+             "overloaded). "
              "Skipping reporting task state events and retry later."
           << "[cur_buffer_size=" << buffer_.size() << "].";
       return;

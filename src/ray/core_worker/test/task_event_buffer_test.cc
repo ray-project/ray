@@ -89,6 +89,7 @@ TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(0);
 
   ASSERT_TRUE(task_event_buffer_->Start(/*auto_flush*/ true).IsUnknownError());
+  ASSERT_FALSE(task_event_buffer_->Enabled());
 }
 
 TEST_F(TaskEventBufferTest, TestAddEvent) {
@@ -142,6 +143,41 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
 
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+}
+
+TEST_F(TaskEventBufferTest, TestFailedFlush) {
+  size_t num_events = 20;
+  // Adding some events
+  for (size_t i = 0; i < num_events; ++i) {
+    auto task_id = RandomTaskId();
+    task_event_buffer_->AddTaskEvent(GenTaskEvents(task_id, 0));
+  }
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+
+  // Mock gRPC sent failure.
+  EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
+      .Times(2)
+      .WillOnce(Return(Status::GrpcUnknown("grpc error")))
+      .WillOnce(Return(Status::OK()));
+
+  // Flush
+  task_event_buffer_->FlushEvents(false);
+
+  // Expect the number of dropped events incremented.
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsDropped(), num_events);
+
+  // Adding some more events
+  for (size_t i = 0; i < num_events; ++i) {
+    auto task_id = RandomTaskId();
+    task_event_buffer_->AddTaskEvent(GenTaskEvents(task_id, 0));
+  }
+
+  // Flush successfully will reset the num events dropped.
+  task_event_buffer_->FlushEvents(false);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsDropped(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBackPressure) {

@@ -77,6 +77,8 @@ class TaskEventBuffer {
   ///
   /// Connects the GCS client, starts its io_thread, and sets up periodical runner for
   /// flushing events to GCS.
+  /// When it returns non ok status, the TaskEventBuffer will be disabled, and call to
+  /// Enabled() will return false.
   ///
   /// \param auto_flush Test only flag to disable periodical flushing events if false.
   /// \return Status code. When the status is not ok, events will not be recorded nor
@@ -85,6 +87,11 @@ class TaskEventBuffer {
 
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   virtual void Stop() = 0;
+
+  /// Return true if recording and reporting of task events is enabled.
+  ///
+  /// The TaskEventBuffer will be disabled if Start() returns not ok.
+  virtual bool Enabled() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -107,6 +114,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
 
   void Stop() LOCKS_EXCLUDED(mutex_) override;
+
+  bool Enabled() const override;
 
  private:
   /// Test only functions.
@@ -146,6 +155,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Client to the GCS used to push profile events to it.
   std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
+  /// True if the TaskEventBuffer is enabled.
+  std::atomic<bool> enabled_ = false;
+
   /// Buffered task events.
   std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
 
@@ -169,6 +181,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
   FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
   FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBufferSizeLimit);

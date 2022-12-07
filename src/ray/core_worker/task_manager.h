@@ -93,7 +93,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes,
-              worker::TaskEventBuffer *task_event_buffer)
+              worker::TaskEventBuffer &task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
@@ -526,10 +526,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 
-  /// A task state events buffer initialized managed by the CoreWorker. It will be nullptr
-  /// if TaskEventBuffer is not initialized when recording is turned off (either due to
-  /// config or set-up error.)
-  worker::TaskEventBuffer *task_event_buffer_ = nullptr;
+  /// A task state events buffer initialized managed by the CoreWorker.
+  /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
+  /// error).
+  worker::TaskEventBuffer &task_event_buffer_;
 
   friend class TaskManagerTest;
 };

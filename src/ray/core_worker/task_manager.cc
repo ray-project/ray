@@ -881,7 +881,7 @@ void TaskManager::RecordMetrics() {
 
 void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
                                         rpc::TaskStatus status) {
-  if (!task_event_buffer_) {
+  if (!task_event_buffer_.Enabled()) {
     return;
   }
   // Make task event
@@ -925,7 +925,7 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
     UNREACHABLE;
   }
   }
-  task_event_buffer_->AddTaskEvent(std::move(task_event));
+  task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
