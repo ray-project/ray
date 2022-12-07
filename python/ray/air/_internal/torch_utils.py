@@ -64,13 +64,10 @@ def convert_pandas_to_torch_tensor(
             # Torch tensor.
             # See https://github.com/pytorch/pytorch/issues/51156.
             vals = vals.to_numpy()
-        try:
-            return torch.as_tensor(vals, dtype=dtype)
-        except TypeError:
-            # This exception will be raised if vals is of object dtype
-            # or otherwise cannot be made into a tensor directly.
-            # We assume it's a sequence in that case.
-            # This is more robust than checking for dtype.
+
+        if vals.dtype.type is np.object_:
+            # Column has an object dtype which Torch can't handle, so we try to
+            # tensorize each column element and then stack the resulting tensors.
             tensors = [tensorize(x, dtype) for x in vals]
             try:
                 return torch.stack(tensors)
@@ -79,6 +76,8 @@ def convert_pandas_to_torch_tensor(
                 # Try to coerce the tensor to a nested tensor, if possible.
                 # If this fails, the exception will be propagated up to the caller.
                 return torch.nested_tensor(tensors)
+        else:
+            return torch.as_tensor(vals, dtype=dtype)
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
