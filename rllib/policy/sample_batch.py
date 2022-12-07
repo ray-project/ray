@@ -152,6 +152,7 @@ class SampleBatch(dict):
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
+    ACTION_DIST = "action_dist"
 
     # Uniquely identifies an episode.
     EPS_ID = "eps_id"
