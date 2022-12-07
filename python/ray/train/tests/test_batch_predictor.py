@@ -2,6 +2,7 @@ import re
 import time
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 
@@ -413,6 +414,27 @@ def test_get_and_set_preprocessor():
         8.0,
         12.0,
     ]
+
+
+def test_batch_prediction_large_predictor_kwarg():
+    class StubPredictor(Predictor):
+        def __init__(self, **kwargs):
+            super().__init__()
+
+        @classmethod
+        def from_checkpoint(cls, checkpoint, **kwargs):
+            return cls(**kwargs)
+
+        def _predict_numpy(self, data):
+            return data
+
+    checkpoint = Checkpoint.from_dict({"spam": "ham"})
+    predictor_kwargs = {"array": np.arange(1e8)}  # This array is 800MB large
+    predictor = BatchPredictor.from_checkpoint(
+        checkpoint, StubPredictor, **predictor_kwargs
+    )
+    dataset = ray.data.range(1)
+    predictor.predict(dataset)
 
 
 def test_separate_gpu_stage_pipelined(shutdown_only):
