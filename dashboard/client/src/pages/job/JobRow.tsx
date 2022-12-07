@@ -34,6 +34,7 @@ export const JobRow = ({
     start_time,
     end_time,
     entrypoint,
+    driver_agent_http_address,
   },
   newIA = false,
 }: JobRowProps) => {
@@ -54,6 +55,30 @@ export const JobRow = ({
     } else {
       return <MiniTaskProgressBar {...progress} />;
     }
+  })();
+
+  const logsLink = (() => {
+    let link: string | undefined;
+    if (driver_agent_http_address) {
+      link = `/log/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
+    } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+      link = `/log/${encodeURIComponent(
+        ipLogMap[driver_info.node_ip_address],
+      )}`;
+    }
+
+    if (link) {
+      link += `?fileName=${
+        type === "DRIVER" ? job_id : `driver-${submission_id}`
+      }`;
+      return (
+        <Link to={link} target="_blank">
+          Log
+        </Link>
+      );
+    }
+
+    return "-";
   })();
 
   return (
@@ -88,20 +113,7 @@ export const JobRow = ({
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
-        {driver_info && ipLogMap[driver_info.node_ip_address] ? (
-          <Link
-            to={`/log/${encodeURIComponent(
-              ipLogMap[driver_info.node_ip_address],
-            )}?fileName=${
-              type === "DRIVER" ? job_id : `driver-${submission_id}`
-            }`}
-            target="_blank"
-          >
-            Log
-          </Link>
-        ) : (
-          "-"
-        )}
+        {logsLink}
       </TableCell>
       <TableCell align="center">
         {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}
