@@ -146,7 +146,7 @@ const Logs = (props: LogsProps) => {
     <div className={classes.root} ref={el}>
       <TitleCard title="Logs Viewer">
         <Paper>
-          {!origin && <p>Please choose an url to see logs for that node</p>}
+          {!origin && <p>Select a node to view logs</p>}
           {origin && (
             <p>
               Node: {origin}
