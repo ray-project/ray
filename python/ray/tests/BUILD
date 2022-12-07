@@ -109,8 +109,10 @@ py_test_module_list(
     "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
+    "test_nested_task.py",
     "test_metrics.py",
     "test_task_metrics.py",
+    "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
     "test_placement_group_metrics.py",
     "test_object_store_metrics.py",
@@ -194,7 +196,7 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
   ],
-  size = "small",
+  size = "medium",
   tags = ["exclusive", "ray_ha", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
@@ -206,6 +208,7 @@ py_test_module_list(
     "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
+    "test_autoscaler_e2e.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",

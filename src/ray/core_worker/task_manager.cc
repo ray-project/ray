@@ -125,6 +125,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     if (!it->second.IsPending()) {
       resubmit = true;
       it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      it->second.MarkRetryOnResubmit();
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -450,6 +451,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     }
     if (will_retry) {
       it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      it->second.MarkRetryOnFailed();
     }
   }
 
