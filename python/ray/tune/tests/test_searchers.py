@@ -538,6 +538,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         searcher.suggest("1")
         searcher.suggest("2")
+        searcher.suggest("not_completed")
         self._on_trial_callbacks(searcher, "1")
 
         searcher.save(self.checkpoint_path)
@@ -549,6 +550,13 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._on_trial_callbacks(searcher, "2")
         searcher.suggest("3")
         self._on_trial_callbacks(searcher, "3")
+
+        # NOTE: Trial "not_completed" that was suggested before saving never completes
+        # We expect that it should still be tracked in the searcher state,
+        # which is usually done in the searcher's `_live_trial_mapping`.
+        # See individual searcher tests below for the special cases (e.g. Optuna, BOHB).
+        if hasattr(searcher, "_live_trial_mapping"):
+            assert "not_completed" in searcher._live_trial_mapping
 
     def testAx(self):
         from ray.tune.search.ax import AxSearch
@@ -601,6 +609,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = TuneBOHB()
         self._restore(searcher)
 
+        assert "not_completed" in searcher.trial_to_params
+
     def testCFO(self):
         from ray.tune.search.flaml import CFO
 
@@ -630,7 +640,12 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
     def testHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
-        searcher = HEBOSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = HEBOSearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            random_state_seed=1234,
+        )
 
         self._save(searcher)
 
@@ -641,7 +656,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         from ray.tune.search.hyperopt import HyperOptSearch
 
         searcher = HyperOptSearch(
-            space=self.config, metric=self.metric_name, mode="max"
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
         )
         self._save(searcher)
 
@@ -672,6 +689,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         searcher = OptunaSearch()
         self._restore(searcher)
+
+        assert "not_completed" in searcher._ot_trials
 
     def testSkopt(self):
         from ray.tune.search.skopt import SkOptSearch
