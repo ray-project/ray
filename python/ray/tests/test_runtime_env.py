@@ -42,7 +42,7 @@ def test_get_wheel_filename():
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39"]:
+        for py_version in ["36", "37", "38", "39", "310"]:
             if sys_platform == "win32" and py_version == "36":
                 # Windows wheels are not built for py3.6 anymore
                 continue
@@ -55,9 +55,12 @@ def test_get_wheel_filename():
 def test_get_master_wheel_url():
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
-    test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
+    # This should be a commit for which wheels have been built for
+    # all platforms and python versions at
+    # `s3://ray-wheels/master/<test_commit>/`.
+    test_commit = "6fd684bbdb186a73732f6113a83a12b63200f170"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39"]:
+        for py_version in ["36", "37", "38", "39", "310"]:
             if sys_platform == "win32" and py_version == "36":
                 # Windows wheels are not built for py3.6 anymore
                 continue
@@ -68,9 +71,13 @@ def test_get_master_wheel_url():
 
 
 def test_get_release_wheel_url():
-    test_commits = {"1.6.0": "5052fe67d99f1d4bfc81b2a8694dbf2aa807bbdc"}
+    # This should be a commit for which wheels have been built for
+    # all platforms and python versions at
+    # `s3://ray-wheels/releases/2.2.0/<commit>/`.
+    # NOTE: These should not be changed for releases.
+    test_commits = {"2.2.0": "03de294293ab598da6e183f182b49b7003cceba8"}
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39"]:
+        for py_version in ["36", "37", "38", "39", "310"]:
             for version, commit in test_commits.items():
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
