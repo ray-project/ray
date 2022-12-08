@@ -131,6 +131,35 @@ def test_dynamic_status_message():
     assert "may be waiting for the runtime environment" in info.message
 
 
+def test_job_info_to_json():
+    info = JobInfo(
+        status=JobStatus.PENDING,
+        entrypoint="echo hi",
+        entrypoint_num_cpus=1,
+        entrypoint_num_gpus=1,
+        entrypoint_resources={"Custom": 1},
+        runtime_env={"pip": ["pkg"]},
+    )
+    expected_items = {
+        "status": "PENDING",
+        "message": (
+            "Job has not started yet. It may be waiting for resources "
+            "(CPUs, GPUs, custom resources) to become available. "
+            "It may be waiting for the runtime environment to be set up."
+        ),
+        "entrypoint": "echo hi",
+        "entrypoint_num_cpus": 1,
+        "entrypoint_num_gpus": 1,
+        "entrypoint_resources": {"Custom": 1},
+        "runtime_env": {"pip": ["pkg"]},
+    }
+
+    # Check expected items are a subset of the info
+    assert expected_items.items() <= info.to_json().items()
+
+    assert JobInfo.from_json(info.to_json()) == info
+
+
 if __name__ == "__main__":
     import sys
 
