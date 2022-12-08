@@ -26,7 +26,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -104,7 +103,6 @@ class DreamerConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
         self.num_envs_per_worker = 1
-        self.horizon = 1000
         self.batch_mode = "complete_episodes"
         self.clip_actions = False
 
@@ -338,7 +336,7 @@ class Dreamer(Algorithm):
         return DreamerTorchPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Setup buffer.

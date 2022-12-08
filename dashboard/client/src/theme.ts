@@ -1,14 +1,14 @@
 import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
-import { createMuiTheme, ThemeOptions } from "@material-ui/core/styles";
+import { createTheme, ThemeOptions } from "@material-ui/core/styles";
 
 const basicTheme: ThemeOptions = {
   typography: {
     fontSize: 12,
     fontFamily: [
+      "Roboto",
       "-apple-system",
       "BlinkMacSystemFont",
       '"Segoe UI"',
-      "Roboto",
       '"Helvetica Neue"',
       "Arial",
       "sans-serif",
@@ -16,6 +16,9 @@ const basicTheme: ThemeOptions = {
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
     ].join(","),
+    h1: {
+      fontSize: "2rem",
+    },
     body1: {
       fontSize: "0.75rem",
     },
@@ -27,7 +30,7 @@ const basicTheme: ThemeOptions = {
   },
 };
 
-export const lightTheme = createMuiTheme({
+export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {
@@ -53,7 +56,7 @@ export const lightTheme = createMuiTheme({
   },
 });
 
-export const darkTheme = createMuiTheme({
+export const darkTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {

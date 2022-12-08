@@ -252,6 +252,29 @@ def read_datasource(
         Dataset holding the data read from the datasource.
     """
     ctx = DatasetContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    local_uri = False
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+        local_uri = True
+
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
+
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     cur_pg = ray.util.get_current_placement_group()
@@ -267,7 +290,7 @@ def read_datasource(
 
     if force_local:
         requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, read_args
+            datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
@@ -282,6 +305,7 @@ def read_datasource(
                 ctx,
                 cur_pg,
                 parallelism,
+                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -306,25 +330,6 @@ def read_datasource(
             "of available CPU slots in the cluster. Use `.repartition(n)` to "
             "increase the number of "
             "dataset blocks."
-        )
-
-    if ray_remote_args is None:
-        ray_remote_args = {}
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
-
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
         )
 
     block_list = LazyBlockList(
@@ -373,7 +378,7 @@ def read_mongo(
 
     Examples:
         >>> import ray
-        >>> from pymongoarrow.api import Schema
+        >>> from pymongoarrow.api import Schema # doctest: +SKIP
         >>> ds = ray.data.read_mongo( # doctest: +SKIP
         ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
         ...     database="my_db",
@@ -495,7 +500,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
     *,
@@ -1558,6 +1563,7 @@ def _get_read_tasks(
     ctx: DatasetContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
+    local_uri: bool,
     kwargs: dict,
 ) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
@@ -1574,6 +1580,8 @@ def _get_read_tasks(
         OOM, and the list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
+    if local_uri:
+        kwargs["local_uri"] = local_uri
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
