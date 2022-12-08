@@ -81,8 +81,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_string REDIS_SERVER_NAME() const
 
-        c_bool pull_based_healthcheck() const
-
         int64_t health_check_initial_delay_ms() const
 
         int64_t health_check_period_ms() const

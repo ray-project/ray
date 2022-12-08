@@ -624,8 +624,7 @@ time.sleep(5)
     assert actor_repr not in out
 
 
-@pytest.mark.parametrize("pull_based", [True, False])
-def test_node_name_in_raylet_death(pull_based):
+def test_node_name_in_raylet_death():
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
 import time
@@ -633,22 +632,14 @@ import os
 
 WAIT_BUFFER_SECONDS=5
 
-if {pull_based}:
-    os.environ["RAY_pull_based_healthcheck"]="true"
-    os.environ["RAY_health_check_initial_delay_ms"]="0"
-    os.environ["RAY_health_check_period_ms"]="1000"
-    os.environ["RAY_health_check_timeout_ms"]="10"
-    os.environ["RAY_health_check_failure_threshold"]="2"
-    sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
-        int(os.environ["RAY_health_check_failure_threshold"])
-    sleep_time += WAIT_BUFFER_SECONDS
-else:
-    NUM_HEARTBEATS=10
-    HEARTBEAT_PERIOD=500
-    os.environ["RAY_pull_based_healthcheck"]="false"
-    os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
-    sleep_time = NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS
+os.environ["RAY_pull_based_healthcheck"]="true"
+os.environ["RAY_health_check_initial_delay_ms"]="0"
+os.environ["RAY_health_check_period_ms"]="1000"
+os.environ["RAY_health_check_timeout_ms"]="10"
+os.environ["RAY_health_check_failure_threshold"]="2"
+sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+    int(os.environ["RAY_health_check_failure_threshold"])
+sleep_time += WAIT_BUFFER_SECONDS
 
 import ray
 

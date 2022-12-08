@@ -138,10 +138,6 @@ cdef class Config:
         return RayConfig.instance().REDIS_SERVER_NAME()
 
     @staticmethod
-    def pull_based_healthcheck():
-        return RayConfig.instance().pull_based_healthcheck()
-
-    @staticmethod
     def health_check_initial_delay_ms():
         return RayConfig.instance().health_check_initial_delay_ms()
 
