@@ -390,7 +390,7 @@ def training_function(config, data):
     # Load the checkpoint, if there is any.
     loaded_checkpoint = session.get_checkpoint()
     if loaded_checkpoint is not None:
-        last_epoch = loaded_checkpoint["epoch"] + 1
+        last_epoch = loaded_checkpoint.to_dict()["epoch"] + 1
     else:
         last_epoch = 0
 
@@ -429,104 +429,6 @@ With all of those changes implemented, we can now run our tuning and obtain mean
 results = tuner.fit()
 results.get_dataframe()
 ```
-
-
-<div class="tuneStatus">
-  <div style="display: flex;flex-direction: row">
-    <div style="display: flex;flex-direction: column;">
-      <h3>Tune Status</h3>
-      <table>
-<tbody>
-<tr><td>Current time:</td><td>2022-11-30 17:40:28</td></tr>
-<tr><td>Running for: </td><td>00:00:15.67        </td></tr>
-<tr><td>Memory:      </td><td>4.8/31.0 GiB       </td></tr>
-</tbody>
-</table>
-    </div>
-    <div class="vDivider"></div>
-    <div class="systemInfo">
-      <h3>System Info</h3>
-      Using FIFO scheduling algorithm.<br>Resources requested: 0/8 CPUs, 0/0 GPUs, 0.0/13.0 GiB heap, 0.0/6.5 GiB objects
-    </div>
-
-  </div>
-  <div class="hDivider"></div>
-  <div class="trialStatus">
-    <h3>Trial Status</h3>
-    <table>
-<thead>
-<tr><th>Trial name                   </th><th>status    </th><th>loc                 </th><th style="text-align: right;">  hyperparameter_a</th><th style="text-align: right;">  hyperparameter_b</th><th style="text-align: right;">  iter</th><th style="text-align: right;">  total time (s)</th><th style="text-align: right;">  metric</th></tr>
-</thead>
-<tbody>
-<tr><td>training_function_0b239_00000</td><td>TERMINATED</td><td>172.31.43.110:613145</td><td style="text-align: right;">          18.066  </td><td style="text-align: right;">          -98.2989</td><td style="text-align: right;">    10</td><td style="text-align: right;">         10.2821</td><td style="text-align: right;">-58.4   </td></tr>
-<tr><td>training_function_0b239_00001</td><td>TERMINATED</td><td>172.31.43.110:613210</td><td style="text-align: right;">           1.54492</td><td style="text-align: right;">          -47.7415</td><td style="text-align: right;">    10</td><td style="text-align: right;">         10.3626</td><td style="text-align: right;">-24.4615</td></tr>
-<tr><td>training_function_0b239_00002</td><td>TERMINATED</td><td>172.31.43.110:613211</td><td style="text-align: right;">           8.12929</td><td style="text-align: right;">           28.8464</td><td style="text-align: right;">    10</td><td style="text-align: right;">         10.3338</td><td style="text-align: right;"> 18.5103</td></tr>
-<tr><td>training_function_0b239_00003</td><td>TERMINATED</td><td>172.31.43.110:613213</td><td style="text-align: right;">          17.982  </td><td style="text-align: right;">          -27.8679</td><td style="text-align: right;">    10</td><td style="text-align: right;">         10.2427</td><td style="text-align: right;">-16.1388</td></tr>
-</tbody>
-</table>
-  </div>
-</div>
-<style>
-.tuneStatus {
-  color: var(--jp-ui-font-color1);
-}
-.tuneStatus .systemInfo {
-  display: flex;
-  flex-direction: column;
-}
-.tuneStatus td {
-  white-space: nowrap;
-}
-.tuneStatus .trialStatus {
-  display: flex;
-  flex-direction: column;
-}
-.tuneStatus h3 {
-  font-weight: bold;
-}
-.tuneStatus .hDivider {
-  border-bottom-width: var(--jp-border-width);
-  border-bottom-color: var(--jp-border-color0);
-  border-bottom-style: solid;
-}
-.tuneStatus .vDivider {
-  border-left-width: var(--jp-border-width);
-  border-left-color: var(--jp-border-color0);
-  border-left-style: solid;
-  margin: 0.5em 1em 0.5em 1em;
-}
-</style>
-
-
-
-
-<div class="trialProgress">
-  <h3>Trial Progress</h3>
-  <table>
-<thead>
-<tr><th>Trial name                   </th><th>date               </th><th>done  </th><th>episodes_total  </th><th>experiment_id                   </th><th>experiment_tag                                      </th><th>hostname        </th><th style="text-align: right;">  iterations_since_restore</th><th style="text-align: right;">  metric</th><th>node_ip      </th><th style="text-align: right;">   pid</th><th>should_checkpoint  </th><th style="text-align: right;">  time_since_restore</th><th style="text-align: right;">  time_this_iter_s</th><th style="text-align: right;">  time_total_s</th><th style="text-align: right;">  timestamp</th><th style="text-align: right;">  timesteps_since_restore</th><th>timesteps_total  </th><th style="text-align: right;">  training_iteration</th><th>trial_id   </th><th style="text-align: right;">  warmup_time</th></tr>
-</thead>
-<tbody>
-<tr><td>training_function_0b239_00000</td><td>2022-11-30_17-40-26</td><td>True  </td><td>                </td><td>acf38c19d59c4cf2ad7955807657b6ea</td><td>0_hyperparameter_a=18.0660,hyperparameter_b=-98.2989</td><td>ip-172-31-43-110</td><td style="text-align: right;">                        10</td><td style="text-align: right;">-58.4   </td><td>172.31.43.110</td><td style="text-align: right;">613145</td><td>True               </td><td style="text-align: right;">             10.2821</td><td style="text-align: right;">           1.01595</td><td style="text-align: right;">       10.2821</td><td style="text-align: right;"> 1669830026</td><td style="text-align: right;">                        0</td><td>                 </td><td style="text-align: right;">                  10</td><td>0b239_00000</td><td style="text-align: right;">   0.00354052</td></tr>
-<tr><td>training_function_0b239_00001</td><td>2022-11-30_17-40-28</td><td>True  </td><td>                </td><td>5ca9e03d7cca46a7852cd501bc3f7b38</td><td>1_hyperparameter_a=1.5449,hyperparameter_b=-47.7415 </td><td>ip-172-31-43-110</td><td style="text-align: right;">                        10</td><td style="text-align: right;">-24.4615</td><td>172.31.43.110</td><td style="text-align: right;">613210</td><td>True               </td><td style="text-align: right;">             10.3626</td><td style="text-align: right;">           1.03042</td><td style="text-align: right;">       10.3626</td><td style="text-align: right;"> 1669830028</td><td style="text-align: right;">                        0</td><td>                 </td><td style="text-align: right;">                  10</td><td>0b239_00001</td><td style="text-align: right;">   0.00403118</td></tr>
-<tr><td>training_function_0b239_00002</td><td>2022-11-30_17-40-28</td><td>True  </td><td>                </td><td>aa38dd786c714486a8d69fa5b372df48</td><td>2_hyperparameter_a=8.1293,hyperparameter_b=28.8464  </td><td>ip-172-31-43-110</td><td style="text-align: right;">                        10</td><td style="text-align: right;"> 18.5103</td><td>172.31.43.110</td><td style="text-align: right;">613211</td><td>True               </td><td style="text-align: right;">             10.3338</td><td style="text-align: right;">           1.03423</td><td style="text-align: right;">       10.3338</td><td style="text-align: right;"> 1669830028</td><td style="text-align: right;">                        0</td><td>                 </td><td style="text-align: right;">                  10</td><td>0b239_00002</td><td style="text-align: right;">   0.00528598</td></tr>
-<tr><td>training_function_0b239_00003</td><td>2022-11-30_17-40-28</td><td>True  </td><td>                </td><td>5b401e15ab614332b631d552603a8d77</td><td>3_hyperparameter_a=17.9820,hyperparameter_b=-27.8679</td><td>ip-172-31-43-110</td><td style="text-align: right;">                        10</td><td style="text-align: right;">-16.1388</td><td>172.31.43.110</td><td style="text-align: right;">613213</td><td>True               </td><td style="text-align: right;">             10.2427</td><td style="text-align: right;">           1.02007</td><td style="text-align: right;">       10.2427</td><td style="text-align: right;"> 1669830028</td><td style="text-align: right;">                        0</td><td>                 </td><td style="text-align: right;">                  10</td><td>0b239_00003</td><td style="text-align: right;">   0.00380898</td></tr>
-</tbody>
-</table>
-</div>
-<style>
-.trialProgress {
-  display: flex;
-  flex-direction: column;
-  color: var(--jp-ui-font-color1);
-}
-.trialProgress h3 {
-  font-weight: bold;
-}
-.trialProgress td {
-  white-space: nowrap;
-}
-</style>
 
 
 
