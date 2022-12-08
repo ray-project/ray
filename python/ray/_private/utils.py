@@ -1266,9 +1266,9 @@ def get_wheel_filename(
     assert py_version in ["36", "37", "38", "39", "310"], py_version
 
     os_strings = {
-        "darwin": "macosx_10_15_x86_64"
-        if py_version in ["38", "39", "310"]
-        else "macosx_10_15_intel",
+        "darwin": "macosx_10_15_intel"
+        if py_version in ["36", "37"]
+        else "macosx_10_15_x86_64",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64",
     }
