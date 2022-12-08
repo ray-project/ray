@@ -14,6 +14,7 @@ import msgpack
 import os
 import pickle
 import setproctitle
+import signal
 import sys
 import threading
 import time
@@ -138,7 +139,7 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode
+from ray._private.utils import decode, DeferSigint
 
 cimport cpython
 
@@ -675,6 +676,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     "by the first execution.\n"
                     "See https://github.com/ray-project/ray/issues/28688.")
 
+
 cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -783,7 +785,7 @@ cdef void execute_task(
         try:
             if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                      and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_interval_ms() == 0):
+                    ray._config.memory_monitor_refresh_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -794,7 +796,6 @@ cdef void execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
-
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
@@ -806,9 +807,19 @@ cdef void execute_task(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
                     else:
-                        args = (ray._private.worker.global_worker
-                                .deserialize_objects(
-                                    metadata_pairs, object_refs))
+                        # Defer task cancellation (SIGINT) until after the task argument
+                        # deserialization context has been left.
+                        # NOTE (Clark): We defer SIGINT until after task argument
+                        # deserialization completes to keep from interrupting
+                        # non-reentrant imports that may be re-entered during error
+                        # serialization or storage.
+                        # See https://github.com/ray-project/ray/issues/30453.
+                        # NOTE (Clark): Signal handlers can only be registered on the
+                        # main thread.
+                        with DeferSigint.create_if_main_thread():
+                            args = (ray._private.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_refs))
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
@@ -1509,6 +1520,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
 
     def get_current_job_id(self):
         return JobID(
