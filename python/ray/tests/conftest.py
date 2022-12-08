@@ -234,6 +234,7 @@ def ray_start_with_dashboard(request, maybe_external_redis):
 
 @pytest.fixture
 def make_sure_dashboard_http_port_unused():
+    """Make sure the dashboard agent http port is unused."""
     for process in psutil.process_iter():
         should_kill = False
         try:
@@ -241,11 +242,14 @@ def make_sure_dashboard_http_port_unused():
                 if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
                     should_kill = True
                     break
-        except psutil.AccessDenied:
+        except Exception:
             continue
         if should_kill:
-            process.kill()
-            process.wait()
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
     yield
 
 

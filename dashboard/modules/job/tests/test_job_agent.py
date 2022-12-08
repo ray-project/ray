@@ -32,7 +32,7 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.experimental.state.api import list_nodes
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import _ray_start, make_sure_dashboard_http_port_unused
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 
 
@@ -43,26 +43,6 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
-
-
-@pytest.fixture
-def make_sure_dashboard_http_port_unused():
-    for process in psutil.process_iter():
-        should_kill = False
-        try:
-            for conn in process.connections():
-                if conn.laddr.port == DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
-                    should_kill = True
-                    break
-        except Exception:
-            continue
-        if should_kill:
-            try:
-                process.kill()
-                process.wait()
-            except Exception:
-                pass
-    yield
 
 
 @pytest.fixture
