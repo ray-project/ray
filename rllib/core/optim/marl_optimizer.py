@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, List, Mapping, Union
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, ModuleID
@@ -25,7 +26,9 @@ class DefaultMARLOptimizer(MultiAgentRLOptimizer):
         rl_optimizer_classes = self._rl_optimizer_classes
         for submodule_id in self.module.keys():
             submodule = self.module[submodule_id]
-            if issubclass(rl_optimizer_classes, RLOptimizer):
+            if inspect.isclass(rl_optimizer_classes) and issubclass(
+                rl_optimizer_classes, RLOptimizer
+            ):
                 assert len(self.module.keys()) == 1
                 optimizers[submodule_id] = rl_optimizer_classes(submodule, self._config)
             elif isinstance(rl_optimizer_classes, dict) and isinstance(
