@@ -342,6 +342,7 @@ class AlgorithmConfig:
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
+        self._enable_rl_module_api = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -632,6 +633,14 @@ class AlgorithmConfig:
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+
+        # RLModule API only works with connectors.
+        if not self.enable_connectors and self._enable_rl_module_api:
+            raise ValueError(
+                "RLModule API only works with connectors. "
+                "Please enable connectors via "
+                "`config.rollouts(enable_connectors=True)`."
+            )
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
@@ -1928,10 +1937,11 @@ class AlgorithmConfig:
     def experimental(
         self,
         *,
-        _tf_policy_handles_more_than_one_loss=NotProvided,
-        _disable_preprocessor_api=NotProvided,
-        _disable_action_flattening=NotProvided,
-        _disable_execution_plan_api=NotProvided,
+        _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
+        _disable_preprocessor_api: Optional[bool] = NotProvided,
+        _disable_action_flattening: Optional[bool] = NotProvided,
+        _disable_execution_plan_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -1957,6 +1967,9 @@ class AlgorithmConfig:
                 If True, the execution plan API will not be used. Instead,
                 a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
+            _enable_rl_module_api: Experimental flag.
+                If True, the RLlib Module API will be used for creating the neural
+                network modules instead of the ModelV2 API.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1971,6 +1984,8 @@ class AlgorithmConfig:
             self._disable_action_flattening = _disable_action_flattening
         if _disable_execution_plan_api is not NotProvided:
             self._disable_execution_plan_api = _disable_execution_plan_api
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
 
         return self
 
