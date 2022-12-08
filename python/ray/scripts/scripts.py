@@ -1089,12 +1089,14 @@ def stop(force: bool, grace_period: int):
     processes_to_kill = RAY_PROCESSES
     gcs = processes_to_kill[0]
     assert gcs[0] == "gcs_server"
-    
+
     grace_period_to_kill_gcs = int(grace_period / 2)
     grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
 
     # Kill evertyhing except GCS.
-    found, stopped, alive = kill_procs(force, grace_period_to_kill_components, processes_to_kill[1:])
+    found, stopped, alive = kill_procs(
+        force, grace_period_to_kill_components, processes_to_kill[1:]
+    )
     total_procs_found += found
     total_procs_stopped += stopped
     procs_not_gracefully_killed.extend(alive)
