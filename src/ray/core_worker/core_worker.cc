@@ -66,18 +66,21 @@ class ScopedTaskMetricSetter {
     auto task_spec = ctx.GetCurrentTask();
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
+      is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
+      is_retry_ = false;
     }
-    ctr_.SetMetricStatus(task_name_, status);
+    ctr_.SetMetricStatus(task_name_, status, is_retry_);
   }
 
-  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_); }
+  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_, is_retry_); }
 
  private:
   rpc::TaskStatus status_;
   TaskCounter &ctr_;
   std::string task_name_;
+  bool is_retry_;
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
@@ -225,6 +228,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  // Initialize the task state event buffer.
+  auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
+  task_event_buffer_ =
+      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+    if (!task_event_buffer_->Start().ok()) {
+      RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
+    }
+  }
+
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
@@ -339,7 +352,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       push_error_callback,
-      RayConfig::instance().max_lineage_bytes()));
+      RayConfig::instance().max_lineage_bytes(),
+      *task_event_buffer_.get()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -594,6 +608,8 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
+  task_event_buffer_->Stop();
+
   if (gcs_client_) {
     // We should disconnect gcs client first otherwise because it contains
     // a blocking logic that can block the io service upon
@@ -608,6 +624,10 @@ void CoreWorker::Shutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
+
+  // Shutdown gRPC server
+  core_worker_server_->Shutdown();
+
   // Now that gcs_client is not used within io service, we can reset the pointer and clean
   // it up.
   gcs_client_.reset();
@@ -629,6 +649,9 @@ void CoreWorker::Disconnect(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
   RecordMetrics();
+
+  // Force task state events push before exiting the worker.
+  task_event_buffer_->FlushEvents(/* forced */ true);
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
@@ -669,6 +692,7 @@ void CoreWorker::Exit(
          exit_type,
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
+          rpc::DrainAndResetServerCallExecutor();
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
@@ -1144,7 +1168,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
-
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1947,9 +1970,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
 
-  // Depth shouldn't matter for an actor task, but for consistency it should be
-  // the same as the actor creation task's depth.
-  int64_t depth = worker_context_.GetTaskDepth();
+  // The depth of the actor task is depth of the caller + 1
+  // The caller is not necessarily the creator of the actor.
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
                       actor_task_id,
@@ -2246,10 +2269,18 @@ Status CoreWorker::ExecuteTask(
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name);
-  }
+    task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-  if (!options_.is_local_mode) {
+    // Make task event
+    if (task_event_buffer_->Enabled()) {
+      rpc::TaskEvents task_event;
+      task_event.set_task_id(task_spec.TaskId().Binary());
+      task_event.set_attempt_number(task_spec.AttemptNumber());
+      auto state_updates = task_event.mutable_state_updates();
+      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
+
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
@@ -2389,7 +2420,7 @@ Status CoreWorker::ExecuteTask(
   }
 
   if (!options_.is_local_mode) {
-    task_counter_.MoveRunningToFinished(func_name);
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
@@ -2649,7 +2680,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  task_counter_.IncPending(func_name);
+  task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.

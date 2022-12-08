@@ -58,7 +58,7 @@ Constants are the parameters that are the same for every Trial. Those can be the
 TL;DR - use the `param_space` argument to specify small, serializable parameters that you want to tune over.
 ```
 
-The first way of passing inputs into Trainables is the [*search space*](tune_60_seconds_search_spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or out of constant values. The search space may be composed out of nested dictionaries, and those in turn can have distributions as well.
+The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or out of constant values. The search space may be composed out of nested dictionaries, and those in turn can have distributions as well.
 
 ```{warning}
 Each value in the search space will be saved directly in the Trial metadata. This means that every value in the search space **must** be serializable and take up a small amount of memory.
