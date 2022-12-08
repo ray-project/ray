@@ -1,7 +1,7 @@
 from typing import Any, List, Mapping, Union
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, ModuleID
-from ray.rllib.core.loss_and_optim.rl_optimizer import RLOptimizer
+from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.utils.nested_dict import NestedDict
 
 
@@ -24,15 +24,16 @@ class DefaultMARLOptimizer(MultiAgentRLOptimizer):
         optimizers = {}
         rl_optimizer_classes = self._rl_optimizer_classes
         for submodule_id in self.module.keys():
-            if isinstance(rl_optimizer_classes, RLOptimizer):
+            submodule = self.module[submodule_id]
+            if issubclass(rl_optimizer_classes, RLOptimizer):
                 assert len(self.module.keys()) == 1
-                optimizers[submodule_id] = rl_optimizer_classes(self._config)
+                optimizers[submodule_id] = rl_optimizer_classes(submodule, self._config)
             elif isinstance(rl_optimizer_classes, dict) and isinstance(
                 self._config, dict
             ):
                 cls = rl_optimizer_classes[submodule_id]
                 cfg = self._config[submodule_id]
-                optimizers[submodule_id] = cls(cfg)
+                optimizers[submodule_id] = cls(submodule, cfg)
             else:
                 # TODO: avnishn fill in the value error.
                 raise ValueError
@@ -65,10 +66,10 @@ class DefaultMARLOptimizer(MultiAgentRLOptimizer):
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         state = {}
-        for submodule_id, rl_optim in self._optimizer.items():
+        for submodule_id, rl_optim in self._optimizers.items():
             state[submodule_id] = rl_optim.get_state()
         return state
 
     def set_state(self, state: Mapping[ModuleID, Mapping[str, Any]]):
         for submodule_id, state in state.items():
-            self._optimizer[submodule_id].set_state(state)
+            self._optimizers[submodule_id].set_state(state)
