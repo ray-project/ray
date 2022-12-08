@@ -154,7 +154,7 @@ def test_job_info_to_json():
         "runtime_env": {"pip": ["pkg"]},
     }
 
-    # Check expected items are a subset of the info
+    # Check that the expected items are in the JSON.
     assert expected_items.items() <= info.to_json().items()
 
     assert JobInfo.from_json(info.to_json()) == info
