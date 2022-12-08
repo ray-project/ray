@@ -9,10 +9,10 @@ networking:
 # https://blog.scottlowe.org/2019/07/30/adding-a-name-to-kubernetes-api-server-certificate/
 nodes:
 - role: control-plane
+  image: kindest/node:v1.25.3@sha256:f1de3b0670462f43280114eccceab8bf1b9576d2afe0582f8f74529da6fd0365
   kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
-    image: kindest/node:v1.25.3@sha256:f1de3b0670462f43280114eccceab8bf1b9576d2afe0582f8f74529da6fd0365
     apiServer:
       certSANs:
         - "docker"
