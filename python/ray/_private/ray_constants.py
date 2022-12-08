@@ -363,3 +363,5 @@ def gcs_actor_scheduling_enabled():
 
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+
+SUPPORTED_PYTHON_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]

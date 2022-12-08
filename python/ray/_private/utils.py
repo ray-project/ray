@@ -1247,7 +1247,7 @@ def import_attr(full_path: str):
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1256,19 +1256,23 @@ def get_wheel_filename(
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
             `ray --version`.  Examples: "3.0.0.dev0"
-        py_version (str):
-            The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38", "39"
+        py_version: The Python version as returned by sys.version_info. A
+            tuple of (major, minor). Examples: (3, 8)
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38", "39", "310"], py_version
+    assert py_version in ray_constants.SUPPORTED_PY_VERSIONS, py_version
 
+    py_version_str = "".join(map(str, py_version))
+    if py_version_str in ["36", "37"]:
+        darwin_os_string = "macosx_10_15_intel"
+    elif py_version_str in ["38", "39"]:
+        darwin_os_string = "macosx_10_15_x86_64"
+    else:
+        darwin_os_string = "macosx_10_15_universal2"
     os_strings = {
-        "darwin": "macosx_10_15_intel"
-        if py_version in ["36", "37"]
-        else "macosx_10_15_x86_64",
+        "darwin": darwin_os_string,
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64",
     }
@@ -1276,8 +1280,8 @@ def get_wheel_filename(
     assert sys_platform in os_strings, sys_platform
 
     wheel_filename = (
-        f"ray-{ray_version}-cp{py_version}-"
-        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"ray-{ray_version}-cp{py_version_str}-"
+        f"cp{py_version_str}{'m' if py_version_str in ['36', '37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1288,7 +1292,7 @@ def get_master_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
     filename = get_wheel_filename(
@@ -1304,7 +1308,7 @@ def get_release_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel for a specific release."""
     filename = get_wheel_filename(

@@ -37,13 +37,16 @@ from ray._private.utils import (
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
+import ray._private.ray_constants as ray_constants
+
 
 def test_get_wheel_filename():
+    """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39", "310"]:
-            if sys_platform == "win32" and py_version == "36":
+        for py_version in [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]:
+            if sys_platform == "win32" and py_version == (3, 6):
                 # Windows wheels are not built for py3.6 anymore
                 continue
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
@@ -53,15 +56,16 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
+    """Test the code that generates the filenames of `master` commit wheels."""
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
-    # This should be a commit for which wheels have been built for
+    # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
     test_commit = "6fd684bbdb186a73732f6113a83a12b63200f170"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39", "310"]:
-            if sys_platform == "win32" and py_version == "36":
+        for py_version in [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]:
+            if sys_platform == "win32" and py_version == (3, 6):
                 # Windows wheels are not built for py3.6 anymore
                 continue
             url = get_master_wheel_url(
@@ -71,16 +75,38 @@ def test_get_master_wheel_url():
 
 
 def test_get_release_wheel_url():
-    # This should be a commit for which wheels have been built for
+    """Test the code that generates the filenames of the `release` branch wheels."""
+    # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    # NOTE: These should not be changed for releases.
-    test_commits = {"2.2.0": "03de294293ab598da6e183f182b49b7003cceba8"}
+    test_commits = {"2.2.0": "b6af0887ee5f2e460202133791ad941a41f15beb"}
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39", "310"]:
+        for py_version in [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]:
             for version, commit in test_commits.items():
+                if sys_platform == "win32" and py_version == (3, 6):
+                    # Windows wheels are not built for py3.6 anymore
+                    continue
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
+
+
+def test_current_py_version_supported():
+    """Test that the running python version is supported.
+
+    This is run as a check in the Ray `runtime_env` `conda` code
+    before downloading the Ray wheel into the conda environment.
+    If Ray wheels are not available for this python version, then
+    the `conda` environment installation will fail.
+
+    When a new python version is added to the Ray wheels, please update
+    `ray_constants.SUPPORTED_PYTHON_VERSIONS`.  In a subsequent commit,
+    once wheels have been built for the new python version, please update
+    the tests test_get_wheel_filename, test_get_master_wheel_url, and
+    (after the first Ray release with the new python version)
+    test_get_release_wheel_url.
+    """
+    py_version = sys.version_info[:2]
+    assert py_version in ray_constants.SUPPORTED_PYTHON_VERSIONS
 
 
 def test_compatible_with_dataclasses():
