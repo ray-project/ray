@@ -103,6 +103,10 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     dfds = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
 
+    df3 = df1.set_index("one")
+    ds = ray.data.from_pandas(df3)
+    assert ds.to_pandas().equals(df3)
+
 
 def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):
     # Check that tensor column casting occurs when converting a Dataset to a Pandas
