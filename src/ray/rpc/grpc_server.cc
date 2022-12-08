@@ -48,6 +48,24 @@ GrpcServer::GrpcServer(std::string name,
   grpc::channelz::experimental::InitChannelzService();
 }
 
+void GrpcServer::Shutdown() {
+  if (!is_closed_) {
+    // Drain the executor threads.
+    // Shutdown the server with an immediate deadline.
+    // TODO(edoakes): do we want to do this in all cases?
+    server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
+    for (const auto &cq : cqs_) {
+      cq->Shutdown();
+    }
+    for (auto &polling_thread : polling_threads_) {
+      polling_thread.join();
+    }
+    is_closed_ = true;
+    RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+    server_.reset();
+  }
+}
+
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
   std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
@@ -171,7 +189,6 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
-        server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
