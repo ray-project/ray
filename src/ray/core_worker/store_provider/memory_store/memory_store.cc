@@ -278,11 +278,6 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                  /*abort_if_any_object_is_exception=*/true);
 }
 
-bool CoreWorkerMemoryStore::ObjectHasOwner(const ObjectID &object_id) {
-  rpc::Address unused_owner_address;
-  return ref_counter_->GetOwner(object_id, &unused_owner_address);
-}
-
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       int num_objects,
                                       int64_t timeout_ms,
@@ -294,15 +289,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   std::shared_ptr<GetRequest> get_request;
   int count = 0;
-  int objects_without_owner = 0;
 
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
     absl::flat_hash_set<ObjectID> ids_to_remove;
 
     absl::MutexLock lock(&mu_);
-    // Check for objects that we hold locally and see if this get request can be
-    // fullfilled directly from local storage.
     for (size_t i = 0; i < object_ids.size() && count < num_objects; i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
@@ -317,35 +309,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
         count += 1;
       } else {
         remaining_ids.insert(object_id);
-        // If reference counting is turned off we can't rely on it to
-        // look up ownership, so we mark this true and take no extra action
-        // based on it.
-        auto has_owner = ref_counter_ == nullptr || ObjectHasOwner(object_id);
-        if (!has_owner) {
-          objects_without_owner += 1;
-        }
       }
     }
     RAY_CHECK(count <= num_objects);
-    const int objects_with_owner = object_ids.size() - objects_without_owner;
-
-    // If we must fail for any exception, OR if we are requesting more items than
-    // items available with known owners, then return a failed status.
-    if (objects_without_owner > 0 &&
-        (abort_if_any_object_is_exception || num_objects > objects_with_owner)) {
-      // TODO: Should we include the ObjectIDs in the error?
-      std::ostringstream stream;
-      stream << "An application is trying to access a Ray object whose owner is "
-             << "unknown. "
-                "Please make sure that all Ray objects you are trying to access are "
-                "part of the current Ray session. Note that "
-                "object IDs generated randomly (ObjectID.from_random()) or "
-                "out-of-band (ObjectID.from_binary(...)) cannot be passed as a "
-                "task argument because  Ray does not know which task created them. "
-                "If this was not how your object ID was generated, please file an "
-                "issue at https://github.com/ray-project/ray/issues/";
-      return Status::ObjectNotFound(stream.str());
-    }
 
     // Clean up the objects if ref counting is off.
     if (ref_counter_ == nullptr) {
