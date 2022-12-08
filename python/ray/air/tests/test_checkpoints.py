@@ -503,7 +503,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert Path(checkpoint_dir).stem == checkpoint._uuid.hex
+            assert Path(checkpoint_dir).stem.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 
