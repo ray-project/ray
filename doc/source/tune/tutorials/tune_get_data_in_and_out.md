@@ -55,7 +55,7 @@ Constants are the parameters that are the same for every Trial. Those can be the
 ### Search space
 
 ```{note}
-TL;DR - use the `param_space` argument to specify small, serializable parameters that you want to tune over.
+TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
 ```
 
 The first way of passing inputs into Trainables is the [*search space*](tune_60_seconds_search_spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or out of constant values. The search space may be composed out of nested dictionaries, and those in turn can have distributions as well.
@@ -160,7 +160,7 @@ tuner = Tuner(
 
 ### Loading data in Trainable
 
-You can also load data directly in Trainable from eg. cloud storage, NFS or from disk.
+You can also load data directly in Trainable from eg. cloud storage, shared file storage such as NFS, or from the local disk of the Trainable worker.
 
 ```{warning}
 When loading from disk, ensure that all nodes in your cluster have access to the file you are trying to load.
@@ -170,7 +170,6 @@ A common use-case is to load the dataset from S3 or any other cloud storage with
 
 The working directory of the Trainable worker will be automatically changed to the corresponding Trial directory. For more details, see {ref}`tune-working-dir`.
 
-For brevity, we will not use this approach in our example.
 
 Our tuning run can now be run, though we will not yet obtain any meaningful outputs back.
 
@@ -275,7 +274,7 @@ Similarly to search space values, each value reported as a metric will be saved 
 ```
 
 ```{note}
-Tune will automatically include some metrics, such as the training iteration, timestamp and more.
+Tune will automatically include some metrics, such as the training iteration, timestamp and more. See [here](tune-autofilled-metrics) for the entire list.
 ```
 
 In our example, we want to maximize the `metric`. We will report it each epoch to Tune, and set the `metric` and `mode` arguments in `tune.TuneConfig` to let Tune know that it should use it as the optimization objective.
