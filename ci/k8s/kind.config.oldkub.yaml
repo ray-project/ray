@@ -12,7 +12,7 @@ nodes:
   kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
-    image: kindest/node:v1.25.3@sha256:f1de3b0670462f43280114eccceab8bf1b9576d2afe0582f8f74529da6fd0365
+    image: kindest/node:v1.19.16@sha256:85e79f860f3648d2a3a9aeedb6716f5037215b2372d8ab8b9b2b889a5c8c2959
     apiServer:
       certSANs:
         - "docker"

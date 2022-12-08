@@ -23,6 +23,7 @@ mv ./kustomize /usr/bin/kustomize
 kind delete clusters --all
 
 # Create the cluster
+# K8s 1.25
 time kind create cluster --wait 120s --config ./ci/k8s/kind.config.yaml
 docker ps
 
