@@ -232,11 +232,11 @@ class Checkpoint:
             },
         )
 
-    def _copy_metadata_attrs_to(self, target: "Checkpoint") -> None:
-        """Copy in-place metadata attributes from self to ``target``."""
-        for attr, value in self._metadata.checkpoint_state.items():
+    def _copy_metadata_attrs_from(self, source: "Checkpoint") -> None:
+        """Copy in-place metadata attributes from ``source`` to self."""
+        for attr, value in source._metadata.checkpoint_state.items():
             if attr in target._SERIALIZED_ATTRS:
-                setattr(target, attr, value)
+                setattr(self, attr, value)
 
     @_metadata.setter
     def _metadata(self, metadata: _CheckpointMetadata):
@@ -487,7 +487,7 @@ class Checkpoint:
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
-        other._copy_metadata_attrs_to(new_checkpoint)
+        new_checkpoint._copy_metadata_attrs_to(other)
         return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
