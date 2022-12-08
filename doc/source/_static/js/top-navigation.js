@@ -53,14 +53,14 @@ if (is_get_started) {
 topNavContentLeft.append(getStartedLink)
 
 //-- The Blog link
-blogLink = document.createElement("a")
-blogLink.innerText = "Blog"
-blogLink.setAttribute("href", "https://www.anyscale.com/blog")
-topNavContentLeft.append(blogLink)
+// blogLink = document.createElement("a")
+// blogLink.innerText = "Blog"
+// blogLink.setAttribute("href", "https://www.anyscale.com/blog")
+// topNavContentLeft.append(blogLink)
 
 //-- The Use Cases link
 useCasesLink = document.createElement("a")
-useCasesLink.innerText = "Use Cases"
+useCasesLink.innerText = "Use cases"
 useCasesLink.setAttribute("href", getNavURL("ray-overview/use-cases.html"))
 if (is_use_cases) {
     useCasesLink.style.borderBottom = "2px solid #007bff"
@@ -87,7 +87,7 @@ topNavContentLeft.append(librariesMenu)
 
 //-- The Documentation link
 documentationLink = document.createElement("a")
-documentationLink.innerText = "Documentation"
+documentationLink.innerText = "Docs"
 documentationLink.setAttribute("href", getNavURL("ray-overview/index.html").replace("ray-overview/index.html", "index.html"))
 if (is_documentation) {
     documentationLink.style.borderBottom = "2px solid #007bff"
@@ -103,17 +103,18 @@ learnList.innerHTML += "<li><a href='https://discuss.ray.io/'><span class='prima
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events'><span class='primary'>Events</span><span class='secondary'>Webinars, meetups, office hours</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span></a></li>"
+learnList.innerHTML += "<li><a href='" + getNavURL("/ray-overview/ray-libraries.html") + "'><span class='primary'>Ecosystem</span></a></li>"
 learnMenu.append(learnList)
 topNavContentLeft.append(learnMenu)
 
 //-- The Ecosystem link
-ecosystemLink = document.createElement("a")
-ecosystemLink.innerText = "Ecosystem"
-ecosystemLink.setAttribute("href", getNavURL("/ray-overview/ray-libraries.html"))
-if (is_ecosystem) {
-    ecosystemLink.style.borderBottom = "2px solid #007bff"
-}
-topNavContentLeft.append(ecosystemLink)
+// ecosystemLink = document.createElement("a")
+// ecosystemLink.innerText = "Ecosystem"
+// ecosystemLink.setAttribute("href", getNavURL("/ray-overview/ray-libraries.html"))
+// if (is_ecosystem) {
+//     ecosystemLink.style.borderBottom = "2px solid #007bff"
+// }
+// topNavContentLeft.append(ecosystemLink)
 
 //-- The Community link
 communityLink = document.createElement("a")
