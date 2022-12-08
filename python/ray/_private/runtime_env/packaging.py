@@ -176,9 +176,12 @@ def _hash_directory(
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
-    Parse resource uri into protocol and package name based on its format.
+    Parse package uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
+
+    >>> parse_uri(https://test.com/file.zip)
+    (Protocol.HTTPS, "https_test_com_file.zip")
     """
     uri = urlparse(pkg_uri)
     try:
@@ -197,7 +200,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     for disallowed_char in disallowed_chars:
         package_name = package_name.replace(disallowed_char, "_")
 
-    # Remove all periods except the last one, which is used for the file extension
+    # Remove all periods except the last, which is used for the file extension
     package_name = package_name.replace(".", "_", package_name.count(".") - 1)
 
     return (protocol, package_name)
