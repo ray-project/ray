@@ -734,11 +734,8 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-/// A feature flag to enable pull based health check.
-RAY_CONFIG(bool, pull_based_healthcheck, true)
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
-
 /// The delay to send the first health check.
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 /// The interval between two health check.

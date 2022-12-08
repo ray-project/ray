@@ -438,11 +438,6 @@ struct GcsServerMocker {
 
     bool IsRemoved(const NodeID &node_id) const override { return false; }
 
-    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
     void AsyncResubscribe() override {}
   };
 };

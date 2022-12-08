@@ -312,7 +312,7 @@ class GcsTableStorage {
     return *placement_group_schedule_table_;
   }
 
-  GcsResourceUsageBatchTable &HeartbeatBatchTable() {
+  GcsResourceUsageBatchTable &ResourceUsageBatchTable() {
     RAY_CHECK(resource_usage_batch_table_ != nullptr);
     return *resource_usage_batch_table_;
   }
