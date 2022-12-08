@@ -254,22 +254,19 @@ struct Mocker {
     return add_job_request;
   }
 
-  static std::shared_ptr<rpc::TaskEventData> GenTaskEventsData(
-      const std::vector<TaskID> &task_ids,
-      uint64_t attempt_number = 0,
+  static rpc::TaskEventData GenTaskEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
       int32_t num_profile_task_events_dropped = 0,
       int32_t num_status_task_events_dropped = 0) {
-    auto task_events = std::make_shared<rpc::TaskEventData>();
-    for (auto const &task_id : task_ids) {
-      auto events = task_events->add_events_by_task();
-      events->set_task_id(task_id.Binary());
-      events->set_attempt_number(attempt_number);
+    rpc::TaskEventData data;
+    for (auto &events : task_events) {
+      auto new_events = data.add_events_by_task();
+      new_events->CopyFrom(events);
     }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
 
-    task_events->set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-    task_events->set_num_status_task_events_dropped(num_profile_task_events_dropped);
-
-    return task_events;
+    return data;
   }
 };
 

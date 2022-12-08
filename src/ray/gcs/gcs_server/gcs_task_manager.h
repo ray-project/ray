@@ -15,6 +15,8 @@
 #pragma once
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -23,6 +25,8 @@ namespace ray {
 namespace gcs {
 
 using AddTaskEventCallback = std::function<void(Status status, const TaskID &task_id)>;
+
+using TaskAttempt = std::pair<TaskID, int32_t>;
 
 /// GcsTaskManger is responsible for capturing task states change reported from other
 /// components, i.e. raylets/workers through grpc handles.
@@ -35,24 +39,51 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
   ///
-  GcsTaskManager();
+  GcsTaskManager()
+      : task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
+            RayConfig::instance().task_events_max_num_task_in_gcs())),
+        io_service_thread_(std::make_unique<std::thread>([this] {
+          SetThreadName("task_events");
+          // Keep io_service_ alive.
+          boost::asio::io_service::work io_service_work_(io_service_);
+          io_service_.run();
+        })) {}
 
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetTaskStatus(rpc::GetTaskStatusRequest request,
-                           rpc::GetTaskStatusReply *reply,
+  void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                           rpc::GetTaskEventsReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleGetProfileEvents(rpc::GetProfileEventsRequest request,
-                              rpc::GetProfileEventsReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
 
   // Stops the event loop and the thread of the task event handler.
   void Stop();
 
   instrumented_io_context &GetIoContext() { return io_service_; }
+
+  class GcsTaskManagerStorage {
+   public:
+    GcsTaskManagerStorage(size_t max_num_task_events)
+        : max_num_task_events_(max_num_task_events) {}
+
+    absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents task_event);
+
+    std::vector<rpc::TaskEvents> GetTaskEvents(
+        absl::optional<JobID> job_id = absl::nullopt);
+
+    const size_t max_num_task_events_ = 0;
+    /// Current task events tracked. This map might contain less events than the
+    /// actual task events reported to GCS due to truncation for capping memory usage.
+    std::vector<rpc::TaskEvents> task_events_;
+    /// A iterator into task_events_ that determines which element to be overwritten.
+    size_t next_idx_to_overwrite_ = 0;
+    /// Counter for tracking the size of task event. This assumes tasks events are never
+    /// removed actively.
+    uint64_t num_bytes_task_events_ = 0;
+
+    absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
+  };
 
  private:
   /// Add events for a single task to the underlying GCS storage.
@@ -61,22 +92,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param events_by_task Events by a single task.
   void AddTaskEventForTask(rpc::TaskEvents &&events_by_task);
 
-  size_t total_num_task_events_reported_ = 0;
-
-  /// Current task events tracked. This map might contain less events than the actual task
-  /// events reported to GCS due to truncation for capping memory usage.
-  /// TODO(rickyx):  Refactor this to an abstraction
-  std::vector<rpc::TaskEvents> task_events_;
+  uint32_t total_num_task_events_reported_ = 0;
 
   /// Total number of task events dropped on the worker.
-  size_t total_num_task_events_dropped_ = 0;
+  uint32_t total_num_status_task_events_dropped_ = 0;
+  uint32_t total_num_profile_task_events_dropped_ = 0;
 
-  /// A iterator into task_events_ that determines which element to be overwritten.
-  size_t next_idx_to_overwrite_ = 0;
-
-  /// Counter for tracking the size of task event. This assumes tasks events are never
-  /// removed actively.
-  size_t num_bytes_task_events_ = 0;
+  std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
   /// Its own separate IO service and thread.
   instrumented_io_context io_service_;
@@ -84,6 +106,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestAddTaskEventMerge);
+  FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
+  FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestGetTaskEvents);
+  FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestGetTaskEventsByJob);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
 };
 
