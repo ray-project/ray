@@ -354,7 +354,7 @@ def find_bootstrap_address(temp_dir: Optional[str]):
 def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     """Attempts to find the address of Ray cluster to use, in this order:
 
-    1. Use RAY_ADDRESS if defined.
+    1. Use RAY_ADDRESS if defined and nonempty.
     2. If no address is provided or the provided address is "auto", use the
     address in /tmp/ray/ray_current_cluster if available. This will error if
     the specified address is None and there is no address found. For "auto",
@@ -365,7 +365,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
     env_addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if env_addr is not None:
+    if env_addr is not None and env_addr != "":
         addr = env_addr
 
     if addr is not None and addr != "auto":
