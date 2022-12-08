@@ -223,7 +223,7 @@ class TestValidateEnvVars:
 
         with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
             parse_and_validate_env_vars({"hi": True})
-        
+
         with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
             parse_and_validate_env_vars({1.23: "hi"})
 
