@@ -58,7 +58,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// TODO(rickyx)
   ///  Handles a GetTaskEvents request.
   ///
   /// \param request gRPC Request.
@@ -66,7 +65,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param send_reply_callback Callback to invoke when sending reply.
   void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                            rpc::GetTaskEventsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
+                           rpc::SendReplyCallback send_reply_callback) override {
+    RAY_LOG(FATAL) << "Unimplemented!";
+  };
 
   /// Stops the event loop and the thread of the task event handler.
   ///
@@ -108,13 +109,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// replaced task event.
     absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents task_event);
 
-    /// TODO(rickyx)
     /// Get task events.
     ///
     /// \param job_id Getting task events from this `job_id` only.
     /// \return A vector of task events.
     std::vector<rpc::TaskEvents> GetTaskEvents(
-        absl::optional<JobID> job_id = absl::nullopt);
+        absl::optional<JobID> job_id = absl::nullopt) = delete;
 
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;

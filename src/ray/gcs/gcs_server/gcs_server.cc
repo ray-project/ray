@@ -168,7 +168,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
-    // Init GCS task manager.
+  // Init GCS task manager.
   InitGcsTaskManager();
 
   // Install event listeners.
@@ -238,7 +238,7 @@ void GcsServer::Stop() {
       gcs_ray_syncer_->Stop();
     }
 
-        gcs_task_manager_->Stop();
+    gcs_task_manager_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
