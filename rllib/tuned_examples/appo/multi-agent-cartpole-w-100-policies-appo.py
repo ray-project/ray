@@ -56,12 +56,12 @@ config = (
     # On the eval track, always let policy 0 play so we get its results in each results
     # dict.
     .evaluation(
-        evaluation_config={
-            "policy_mapping_fn": (
+        evaluation_config=APPOConfig.overrides(
+            policy_mapping_fn=(
                 lambda aid, eps, worker, **kw: "pol"
                 + str(0 if aid == 0 else np.random.randint(num_trainable, num_policies))
             ),
-        },
+        ),
         evaluation_num_workers=2,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,

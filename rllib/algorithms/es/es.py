@@ -108,10 +108,10 @@ class ESConfig(AlgorithmConfig):
         # (would break ESPolicy's compute_single_action method) and to not do
         # obs-filtering.
         self.evaluation(
-            evaluation_config={
-                "num_envs_per_worker": 1,
-                "observation_filter": "NoFilter",
-            }
+            evaluation_config=AlgorithmConfig.overrides(
+                num_envs_per_worker=1,
+                observation_filter="NoFilter",
+            )
         )
         # __sphinx_doc_end__
         # fmt: on

@@ -163,12 +163,14 @@ if __name__ == "__main__":
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
             None,
             None,
+            # Provide entire AlgorithmConfig object, not just an override.
             PPOConfig().training(num_sgd_iter=10, sgd_minibatch_size=128),
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
+            # Provide entire AlgorithmConfig object, not just an override.
             DQNConfig(),
         ),
     }

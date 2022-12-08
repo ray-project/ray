@@ -89,7 +89,7 @@ if __name__ == "__main__":
             evaluation_interval=1,
             evaluation_duration=10,
             evaluation_parallel_to_training=False,
-            evaluation_config={"input": "sampler"},
+            evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
         )
     )
     # evaluation_parallel_to_training should be False b/c iterations are very long

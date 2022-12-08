@@ -62,7 +62,7 @@ class TestCQL(unittest.TestCase):
                 always_attach_evaluation_results=True,
                 evaluation_interval=2,
                 evaluation_duration=10,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
                 evaluation_parallel_to_training=False,
                 evaluation_num_workers=2,
             )
