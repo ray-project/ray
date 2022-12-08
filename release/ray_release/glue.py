@@ -70,7 +70,7 @@ command_runner_to_file_manager = {
 }
 
 
-DEFAULT_RUN_TYPE = "job"
+DEFAULT_RUN_TYPE = "sdk_command"
 
 
 def run_release_test(
@@ -87,6 +87,8 @@ def run_release_test(
     buildkite_group(":spiral_note_pad: Loading test configuration")
 
     validate_test(test)
+
+    logger.info(f"Test config: {test}")
 
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
@@ -126,6 +128,9 @@ def run_release_test(
         file_manager_cls = file_manager_str_to_file_manager[file_manager_str]
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
+
+    logger.info(f"Got command runner cls: {command_runner_cls}")
+    logger.info(f"Got file manager cls: {file_manager_cls}")
 
     # Instantiate managers and command runner
     try:
