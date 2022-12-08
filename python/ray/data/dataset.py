@@ -331,6 +331,8 @@ class Dataset(Generic[T]):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        skip_pre_buffer: bool = False,
+        skip_post_buffer: bool = False,
         **ray_remote_args,
     ) -> "Dataset[Any]":
         """Apply the given function to batches of data.
@@ -577,27 +579,33 @@ class Dataset(Generic[T]):
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
                 validate_batch(batch)
                 # Add output batch to output buffer.
-                output_buffer.add_batch(batch)
-                if output_buffer.has_next():
-                    yield output_buffer.next()
+                if skip_post_buffer:
+                    yield batch
+                else:
+                    output_buffer.add_batch(batch)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
 
-            # Process batches for each block.
-            for block in blocks:
-                batcher.add(block)
-                while batcher.has_batch():
+            if skip_pre_buffer:
+                for block in blocks:
+                    yield from process_next_batch(block)
+            else:
+                for block in blocks:
+                    batcher.add(block)
+                    while batcher.has_batch():
+                        batch = batcher.next_batch()
+                        yield from process_next_batch(batch)
+
+                # Process any last remainder batch.
+                batcher.done_adding()
+                if batcher.has_any():
                     batch = batcher.next_batch()
                     yield from process_next_batch(batch)
 
-            # Process any last remainder batch.
-            batcher.done_adding()
-            if batcher.has_any():
-                batch = batcher.next_batch()
-                yield from process_next_batch(batch)
-
-            # Yield remainder block from output buffer.
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+            if not skip_post_buffer:
+                output_buffer.finalize()
+                if output_buffer.has_next():
+                    yield output_buffer.next()
 
         plan = self._plan.with_stage(
             OneToOneStage(
