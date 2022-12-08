@@ -66,10 +66,11 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
-    JobFileManager: JobFileManager,
+    JobRunner: JobFileManager,
 }
 
-uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
+
+DEFAULT_RUN_TYPE = "job"
 
 
 def run_release_test(
@@ -104,7 +105,7 @@ def run_release_test(
 
     start_time = time.monotonic()
 
-    run_type = test["run"].get("type", "sdk_command")
+    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
