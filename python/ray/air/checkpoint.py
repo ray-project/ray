@@ -487,7 +487,7 @@ class Checkpoint:
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
-        new_checkpoint._copy_metadata_attrs_to(other)
+        new_checkpoint._copy_metadata_attrs_from(other)
         return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
