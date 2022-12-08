@@ -68,6 +68,8 @@ Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
+.. _tune-key-concepts-search-spaces:
+
 Search Spaces
 -------------
 
@@ -362,6 +364,8 @@ allowing you to do ad-hoc data analysis over your results.
     :language: python
     :start-after: __results_start__
     :end-before: __results_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 What's Next?
 -------------
