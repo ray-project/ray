@@ -1,4 +1,5 @@
 .. _fault-tolerance-actors:
+.. _actor-fault-tolerance:
 
 Actor fault tolerance
 =====================
@@ -55,12 +56,14 @@ after a failed actor task will not execute on the actor until the failed actor
 task has been successfully retried. The system will not attempt to re-execute
 any tasks that executed successfully before the failure
 (unless ``max_task_retries`` is nonzero and the task is needed for :ref:`object
-reconstruction <object-reconstruction>`). 
+reconstruction <fault-tolerance-objects-reconstruction>`).
+
 .. note::
-    For :ref:`async or threaded actors <async-actors>`, :ref:`tasks might be
-    executed out of order <actor-task-order>`. Upon actor restart, the system
-    will only retry *incomplete* tasks. Previously completed tasks will not be
-    re-executed.
+
+  For :ref:`async or threaded actors <async-actors>`, :ref:`tasks might be
+  executed out of order <actor-task-order>`. Upon actor restart, the system
+  will only retry *incomplete* tasks. Previously completed tasks will not be
+  re-executed.
 
 
 At-least-once execution is best suited for read-only actors or actors with

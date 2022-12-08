@@ -1,4 +1,5 @@
 .. _fault-tolerance-objects:
+.. _object-fault-tolerance:
 
 Object fault tolerance
 ======================

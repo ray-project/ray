@@ -1,4 +1,5 @@
 .. _fault-tolerance-tasks:
+.. _task-fault-tolerance:
 
 Task fault tolerance
 ====================
@@ -21,6 +22,8 @@ another task that depends on the object.
   :language: python
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
+
+.. _task-retries:
 
 Retrying failed tasks
 ---------------------
