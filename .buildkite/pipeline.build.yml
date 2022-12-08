@@ -558,6 +558,7 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pip install -e /ray/python
     - echo "--- Setting up local kind cluster."
+    # Kubernetes 1.19
     - ./ci/k8s/prep-k8s-environment-old-kub.sh
     - echo "--- Building py37-cpu Ray image for the test."
     - LINUX_WHEELS=1 ./ci/ci.sh build
