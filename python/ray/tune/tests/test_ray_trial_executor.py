@@ -470,6 +470,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         return PlacementGroupResourceManager()
 
     def setUp(self):
+
         self.head_cpus = 8
         self.head_gpus = 4
         self.head_custom = 16
@@ -674,12 +675,16 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
+        # Clean up left-over state from local mode shutdown
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
 
+    @unittest.skip("Skipping as trial cleanup is not applicable for local mode.")
     def testTrialCleanup(self):
-        self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
+        pass
 
+    @unittest.skip("Skipping as trial cleanup is not applicable for local mode.")
     def testTrialHangingCleanup(self):
-        self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
+        pass
 
 
 class FixedResourceExecutorTest(RayTrialExecutorTest):
