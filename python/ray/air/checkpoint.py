@@ -235,7 +235,7 @@ class Checkpoint:
     def _copy_metadata_attrs_from(self, source: "Checkpoint") -> None:
         """Copy in-place metadata attributes from ``source`` to self."""
         for attr, value in source._metadata.checkpoint_state.items():
-            if attr in target._SERIALIZED_ATTRS:
+            if attr in self._SERIALIZED_ATTRS:
                 setattr(self, attr, value)
 
     @_metadata.setter
