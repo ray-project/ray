@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 from functools import partial
 import pytest
-import psutil
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
@@ -32,7 +31,7 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.experimental.state.api import list_nodes
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.tests.conftest import _ray_start, make_sure_dashboard_http_port_unused
+from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 
 

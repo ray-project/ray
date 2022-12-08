@@ -29,7 +29,7 @@ def _get_snapshot(address: str):
     schema_path = os.path.join(
         os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
     )
-    # pprint.pprint(data)
+    pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
     return data
 
