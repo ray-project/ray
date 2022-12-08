@@ -12,6 +12,8 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
+WAIT_TIMEOUT = 20
+
 
 def get_all_ray_worker_processes():
     processes = [
@@ -21,7 +23,7 @@ def get_all_ray_worker_processes():
     result = []
     for p in processes:
         if p is not None and len(p) > 0 and "ray::" in p[0]:
-            result.append(p)
+            result.append(p[0])
     return result
 
 
@@ -48,7 +50,9 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 
     ray.shutdown()
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -77,7 +81,9 @@ tasks = [f.remote() for _ in range(num_cpus)]
     p.wait()
     time.sleep(0.1)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -109,7 +115,9 @@ def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     for worker in workers:
         cluster.remove_node(worker)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -152,7 +160,9 @@ time.sleep(100)
 
     cluster.remove_node(head)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):

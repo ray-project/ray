@@ -1441,7 +1441,10 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1968,6 +1971,7 @@ def connect(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
+                num_retries=1,
             )
 
     driver_name = ""
@@ -2098,6 +2102,7 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        code_paths = []
         if not interactive_mode:
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2105,15 +2110,15 @@ def connect(
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                worker.run_function_on_all_workers(
-                    lambda worker_info: sys.path.insert(1, script_directory)
-                )
+                code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
             worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
+                lambda worker_info: [sys.path.insert(1, path) for path in code_paths]
             )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
