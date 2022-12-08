@@ -355,7 +355,7 @@ class HEBOSearch(Searcher):
         else:
             numpy_random_state = None
             torch_random_state = None
-        save_object = self.__dict__
+        save_object = self.__dict__.copy()
         save_object["__numpy_random_state"] = numpy_random_state
         save_object["__torch_random_state"] = torch_random_state
         with open(checkpoint_path, "wb") as f:

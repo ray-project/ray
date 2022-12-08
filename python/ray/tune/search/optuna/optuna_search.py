@@ -602,7 +602,7 @@ class OptunaSearch(Searcher):
         self._ot_study.add_trial(trial)
 
     def save(self, checkpoint_path: str):
-        save_object = self.__dict__
+        save_object = self.__dict__.copy()
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 

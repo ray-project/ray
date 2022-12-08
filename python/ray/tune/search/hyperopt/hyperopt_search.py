@@ -435,7 +435,7 @@ class HyperOptSearch(Searcher):
         self.rstate.set_state(state["rstate"])
 
     def save(self, checkpoint_path: str) -> None:
-        save_object = self.__dict__
+        save_object = self.__dict__.copy()
         save_object["__rstate"] = self.rstate.get_state()
         with open(checkpoint_path, "wb") as f:
             cloudpickle.dump(save_object, f)
