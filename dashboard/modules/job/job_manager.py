@@ -306,23 +306,14 @@ class JobSupervisor:
         }
 
     async def _polling(self, child_process: subprocess.Popen) -> int:
-        try:
-            while child_process is not None:
-                return_code = child_process.poll()
-                if return_code is not None:
-                    # subprocess finished with return code
-                    return return_code
-                else:
-                    # still running, yield control, 0.1s by default
-                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except Exception:
-            if child_process:
-                os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
-                try:
-                    child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
-                except subprocess.TimeoutExpired:
-                    child_process.kill()
-            return 1
+        while child_process is not None:
+            return_code = child_process.poll()
+            if return_code is not None:
+                # subprocess finished with return code
+                return return_code
+            else:
+                # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     async def run(
         self,
@@ -380,14 +371,15 @@ class JobSupervisor:
             )
 
             if self._stop_event.is_set():
-                polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
+                    polling_task.cancel()
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
                     os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     try:
-                        child_process.wait(self.WAIT_FOR_JOB_TERMINATION_S)
-                    except subprocess.TimeoutExpired:
+                        await asyncio.wait_for(polling_task, self.WAIT_FOR_JOB_TERMINATION_S)
+                    except TimeoutError:
+                        polling_task.cancel()
                         child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
