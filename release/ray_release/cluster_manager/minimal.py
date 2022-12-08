@@ -9,6 +9,7 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.util import format_link, anyscale_cluster_env_build_url
+from retry import retry
 
 REPORT_S = 30.0
 
@@ -19,7 +20,8 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    def create_cluster_env(self, _repeat: bool = True):
+    @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
+    def create_cluster_env(self):
         assert self.cluster_env_id is None
 
         if self.cluster_env:
@@ -66,15 +68,11 @@ class MinimalClusterManager(ClusterManager):
                     )
                     self.cluster_env_id = result.result.id
                 except Exception as e:
-                    if _repeat:
-                        logger.warning(
-                            f"Got exception when trying to create cluster "
-                            f"env: {e}. Sleeping for 10 seconds and then "
-                            f"try again once..."
-                        )
-                        time.sleep(10)
-                        return self.create_cluster_env(_repeat=False)
-
+                    logger.warning(
+                        f"Got exception when trying to create cluster "
+                        f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                        f"try again..."
+                    )
                     raise ClusterEnvCreateError("Could not create cluster env.") from e
 
                 logger.info(f"Cluster env created with ID {self.cluster_env_id}")

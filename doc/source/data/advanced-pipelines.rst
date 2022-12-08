@@ -37,7 +37,7 @@ For example, in the following pipeline, the ``map(func)`` transformation only oc
     @ray.remote(num_gpus=1)
     def train_func(pipe: DatasetPipeline):
         model = MyModel()
-        for batch in pipe.to_torch():
+        for batch in pipe.iter_torch_batches():
             model.fit(batch)
 
     # Read from the pipeline in a remote training function.

@@ -60,7 +60,7 @@ def workflow_state_from_storage(
             # TODO(suquark): although not necessary, but for completeness,
             #  we may also load name and metadata.
             state.tasks[task_id] = Task(
-                name="",
+                task_id="",
                 options=r.task_options,
                 user_metadata={},
                 func_body=reader.load_task_func_body(task_id),

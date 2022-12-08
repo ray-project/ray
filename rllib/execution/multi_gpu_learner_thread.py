@@ -1,5 +1,5 @@
 import logging
-from six.moves import queue
+import queue
 import threading
 
 from ray.util.timer import _Timer
@@ -85,7 +85,7 @@ class MultiGPULearnerThread(LearnerThread):
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",
-                error=False,
+                error=True,
             )
         super().__init__(
             local_worker=local_worker,
@@ -153,14 +153,17 @@ class MultiGPULearnerThread(LearnerThread):
 
             for pid in self.policy_map.keys():
                 # Not a policy-to-train.
-                if not self.local_worker.is_policy_to_train(pid):
+                if (
+                    self.local_worker.is_policy_to_train is not None
+                    and not self.local_worker.is_policy_to_train(pid)
+                ):
                     continue
                 policy = self.policy_map[pid]
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
                 )
                 learner_info_builder.add_learn_on_batch_results(default_policy_results)
-                self.weights_updated = True
+                self.policy_ids_updated.append(pid)
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )
@@ -213,7 +216,10 @@ class _MultiGPULoaderThread(threading.Thread):
         # Load the batch into the idle stack.
         with self.load_timer:
             for pid in policy_map.keys():
-                if not s.local_worker.is_policy_to_train(pid, batch):
+                if (
+                    s.local_worker.is_policy_to_train is not None
+                    and not s.local_worker.is_policy_to_train(pid, batch)
+                ):
                     continue
                 policy = policy_map[pid]
                 if isinstance(batch, SampleBatch):

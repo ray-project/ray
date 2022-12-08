@@ -87,8 +87,9 @@ class HorovodTrainer(DataParallelTrainer):
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
-        from ray.air import session, Checkpoint
+        from ray.air import session
         from ray.train.horovod import HorovodTrainer
+        from ray.train.torch import TorchCheckpoint
         from ray.air.config import ScalingConfig
 
         input_size = 1
@@ -122,14 +123,10 @@ class HorovodTrainer(DataParallelTrainer):
             )
             for epoch in range(num_epochs):
                 model.train()
-                for inputs, labels in iter(
-                    dataset_shard.to_torch(
-                        label_column="y",
-                        label_column_dtype=torch.float,
-                        feature_column_dtypes=torch.float,
-                        batch_size=32,
-                    )
+                for batch in dataset_shard.iter_torch_batches(
+                    batch_size=32, dtypes=torch.float
                 ):
+                    inputs, labels = torch.unsqueeze(batch["x"], 1), batch["y"]
                     inputs.to(device)
                     labels.to(device)
                     outputs = model(inputs)
@@ -140,8 +137,8 @@ class HorovodTrainer(DataParallelTrainer):
                     print(f"epoch: {epoch}, loss: {loss.item()}")
                 session.report(
                     {},
-                    checkpoint=Checkpoint.from_dict(
-                        dict(model=model.state_dict())
+                    checkpoint=TorchCheckpoint.from_state_dict(
+                        model.state_dict()
                     ),
                 )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])

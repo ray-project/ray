@@ -164,12 +164,6 @@ class GlobalState:
                 "RayletSocketName": item.raylet_socket_name,
                 "MetricsExportPort": item.metrics_export_port,
                 "NodeName": item.node_name,
-                "AgentInfo": {
-                    "IpAddress": item.agent_info.ip_address,
-                    "GrpcPort": item.agent_info.grpc_port,
-                    "HttpPort": item.agent_info.http_port,
-                    "Pid": item.agent_info.pid,
-                },
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = (
@@ -207,6 +201,7 @@ class GlobalState:
             job_info["StartTime"] = entry.start_time
             job_info["EndTime"] = entry.end_time
             job_info["IsDead"] = entry.is_dead
+            job_info["Entrypoint"] = entry.entrypoint
             results.append(job_info)
 
         return results
@@ -355,7 +350,7 @@ class GlobalState:
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10 ** 6 * time_in_seconds
+        time_in_microseconds = 10**6 * time_in_seconds
         return time_in_microseconds
 
     # Colors are specified at

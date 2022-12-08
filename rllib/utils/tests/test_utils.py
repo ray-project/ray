@@ -10,10 +10,12 @@ from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.tf_utils import (
     flatten_inputs_to_1d_tensor as flatten_tf,
+    l2_loss as tf_l2_loss,
     one_hot as one_hot_tf,
 )
 from ray.rllib.utils.torch_utils import (
     flatten_inputs_to_1d_tensor as flatten_torch,
+    l2_loss as torch_l2_loss,
     one_hot as one_hot_torch,
 )
 
@@ -561,6 +563,13 @@ class TestUtils(unittest.TestCase):
         x = torch.tensor([[0, 2, 1, 0]], dtype=torch.int32)
         y = one_hot_torch(x, space)
         self.assertTrue(([1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0] == y.numpy()).all())
+
+    def test_l2_loss(self):
+        for _ in range(10):
+            tensor = np.random.random(8)
+            tf_loss = tf_l2_loss(tf.constant(tensor))
+            torch_loss = torch_l2_loss(torch.Tensor(tensor))
+            self.assertAlmostEqual(tf_loss.numpy(), torch_loss.numpy(), places=3)
 
 
 if __name__ == "__main__":

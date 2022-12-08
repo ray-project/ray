@@ -38,11 +38,10 @@ class MockWorker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
-    task_assign_time_ = std::chrono::high_resolution_clock::now();
+    task_assign_time_ = std::chrono::steady_clock::now();
   };
 
-  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
-      const override {
+  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const override {
     return task_assign_time_;
   };
 
@@ -125,6 +124,10 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
+  const std::string GetTaskOrActorIdAsDebugString() const override {
+    RAY_CHECK(false) << "Method unused";
+    return "";
+  }
   void MarkDetachedActor() override { is_detached_actor_ = true; }
   bool IsDetachedActor() const override { return is_detached_actor_; }
   const std::shared_ptr<ClientConnection> Connection() const override {
@@ -186,7 +189,7 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
-  std::chrono::high_resolution_clock::time_point task_assign_time_;
+  std::chrono::steady_clock::time_point task_assign_time_;
   int runtime_env_hash_;
 };
 

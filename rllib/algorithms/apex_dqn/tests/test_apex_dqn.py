@@ -23,12 +23,11 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
-                replay_buffer_config={
-                    "learning_starts": 1000,
-                },
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -40,22 +39,21 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
-            results = trainer.train()
+            algo = config.build()
+            results = algo.train()
             check_train_results(results)
             print(results)
-            trainer.stop()
+            algo.stop()
 
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
-                replay_buffer_config={
-                    "learning_starts": 1000,
-                },
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -67,34 +65,31 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build()
 
             # Test per-worker epsilon distribution.
-            infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state()
-            )
+            infos = algo.workers.foreach_policy(lambda p, _: p.get_exploration_state())
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
             for i in range(2):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
             # Test again per-worker epsilon distribution
             # (should not have changed).
-            infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state()
-            )
+            infos = algo.workers.foreach_policy(lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            trainer.stop()
+            algo.stop()
 
     def test_apex_lr_schedule(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,
@@ -110,7 +105,6 @@ class TestApexDQN(unittest.TestCase):
                 replay_buffer_config={
                     "no_local_replay_buffer": True,
                     "type": "MultiAgentPrioritizedReplayBuffer",
-                    "learning_starts": 10,
                     "capacity": 100,
                     "prioritized_replay_alpha": 0.6,
                     # Beta parameter for sampling from prioritized replay buffer.
@@ -121,9 +115,14 @@ class TestApexDQN(unittest.TestCase):
                 # Initial lr, doesn't really matter because of the schedule below.
                 lr=0.2,
                 lr_schedule=[[0, 0.2], [100, 0.001]],
+                # Number of timesteps to collect from rollout workers before we start
+                # sampling from replay buffers for learning.
+                num_steps_sampled_before_learning_starts=10,
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
                 # 0 metrics reporting delay, this makes sure timestep,
                 # which lr depends on, is updated after each worker rollout.
                 min_time_s_per_iteration=0,
@@ -143,11 +142,11 @@ class TestApexDQN(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
 
             lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2
-            self.assertGreaterEqual(lr, 0.1)
+            self.assertLessEqual(lr, 0.2)
 
             lr = _step_n_times(algo, 20)  # 200 timesteps
             # LR Annealed to 0.001

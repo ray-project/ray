@@ -106,7 +106,7 @@ If the current node's object store does not contain the object, the object is do
           return 1;
         }
       }
-      Assert.assertThrows(RayTimeoutException.class, 
+      Assert.assertThrows(RayTimeoutException.class,
         () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
 
 .. tabbed:: C++
@@ -180,5 +180,4 @@ More about Ray Objects
     :maxdepth: 1
 
     objects/serialization.rst
-    objects/memory-management.rst
     objects/object-spilling.rst

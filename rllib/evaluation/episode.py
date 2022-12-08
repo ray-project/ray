@@ -88,7 +88,8 @@ class Episode:
         self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
-        self.episode_id: int = random.randrange(2e9)
+        self.started = False
+        self.episode_id: int = random.randrange(int(1e18))
         self.env_id = env_id
         self.worker = worker
         self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
@@ -114,19 +115,6 @@ class Episode:
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
-
-    @DeveloperAPI
-    def soft_reset(self) -> None:
-        """Clears rewards and metrics, but retains RNN and other state.
-
-        This is used to carry state across multiple logical episodes in the
-        same env (i.e., if `soft_horizon` is set).
-        """
-        self.length = 0
-        self.episode_id = random.randrange(2e9)
-        self.total_reward = 0.0
-        self.agent_rewards = defaultdict(float)
-        self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
     def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> PolicyID:
@@ -450,17 +438,17 @@ class Episode:
         deprecation_warning(
             old="Episode._policy_mapping_fn",
             new="Episode.policy_mapping_fn",
-            error=False,
+            error=True,
         )
         return self.policy_mapping_fn
 
-    @Deprecated(new="Episode.last_extra_action_outs_for", error=False)
+    @Deprecated(new="Episode.last_extra_action_outs_for", error=True)
     def last_pi_info_for(self, *args, **kwargs):
         return self.last_extra_action_outs_for(*args, **kwargs)
 
 
 # Backward compatibility. The name Episode implies that there is
 # also a (single agent?) Episode.
-@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=False)
+@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=True)
 class MultiAgentEpisode(Episode):
     pass

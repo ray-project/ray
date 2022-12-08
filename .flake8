@@ -12,6 +12,7 @@ max-line-length = 88
 inline-quotes = "
 ignore =
   C408
+  C417
   E121
   E123
   E126

@@ -16,6 +16,13 @@ This section covers the functions you can use to define your search spaces.
     ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
     The default :ref:`tune-basicvariant` supports all distributions.
 
+.. tip::
+
+    Avoid passing large objects as values in the search space, as that will incur a performance overhead.
+    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    from disk (making sure that all nodes have access to the files) or cloud storage.
+    See :ref:`tune-bottlenecks` for more information.
+
 For a high-level overview, see this example:
 
 .. TODO: test this
@@ -27,7 +34,7 @@ For a high-level overview, see this example:
         "uniform": tune.uniform(-5, -1),
 
         # Sample a float uniformly between 3.2 and 5.4,
-        # rounding to increments of 0.2
+        # rounding to multiples of 0.2
         "quniform": tune.quniform(3.2, 5.4, 0.2),
 
         # Sample a float uniformly between 0.0001 and 0.01, while
@@ -35,7 +42,7 @@ For a high-level overview, see this example:
         "loguniform": tune.loguniform(1e-4, 1e-2),
 
         # Sample a float uniformly between 0.0001 and 0.1, while
-        # sampling in log space and rounding to increments of 0.00005
+        # sampling in log space and rounding to multiples of 0.00005
         "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
 
         # Sample a random float from a normal distribution with
@@ -43,14 +50,15 @@ For a high-level overview, see this example:
         "randn": tune.randn(10, 2),
 
         # Sample a random float from a normal distribution with
-        # mean=10 and sd=2, rounding to increments of 0.2
+        # mean=10 and sd=2, rounding to multiples of 0.2
         "qrandn": tune.qrandn(10, 2, 0.2),
 
         # Sample a integer uniformly between -9 (inclusive) and 15 (exclusive)
         "randint": tune.randint(-9, 15),
 
         # Sample a random uniformly between -21 (inclusive) and 12 (inclusive (!))
-        # rounding to increments of 3 (includes 12)
+        # rounding to multiples of 3 (includes 12)
+        # if q is 1, then randint is called instead with the upper bound exclusive
         "qrandint": tune.qrandint(-21, 12, 3),
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
@@ -58,7 +66,8 @@ For a high-level overview, see this example:
         "lograndint": tune.lograndint(1, 10),
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
-        # while sampling in log space and rounding to increments of 2
+        # while sampling in log space and rounding to multiples of 2
+        # if q is 1, then lograndint is called instead with the upper bound exclusive
         "qlograndint": tune.qlograndint(1, 10, 2),
 
         # Sample an option uniformly from the specified choices

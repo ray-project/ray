@@ -3,13 +3,12 @@ import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.callbacks.keras import Callback
-from ray.air.constants import MODEL_KEY
+from ray.air.integrations.keras import Callback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (
+    TensorflowCheckpoint,
     TensorflowTrainer,
-    prepare_dataset_shard,
     TensorflowPredictor,
 )
 
@@ -47,16 +46,7 @@ def train_func(config: dict):
     dataset = session.get_dataset_shard("train")
 
     for _ in range(config.get("epoch", 3)):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=32,
-            )
-        )
+        tf_dataset = dataset.to_tf("x", "y", batch_size=32)
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 
@@ -72,8 +62,8 @@ def test_keras_callback_e2e():
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
-    checkpoint_dict = checkpoint.to_dict()
-    assert MODEL_KEY in checkpoint_dict
+    assert isinstance(checkpoint, TensorflowCheckpoint)
+    assert checkpoint._flavor == TensorflowCheckpoint.Flavor.MODEL_WEIGHTS
 
     predictor = TensorflowPredictor.from_checkpoint(
         checkpoint, model_definition=build_model

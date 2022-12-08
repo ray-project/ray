@@ -9,8 +9,6 @@ pendulum-sac:
     config:
         # Works for both torch and tf.
         framework: tf
-        horizon: 200
-        soft_horizon: false
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
@@ -27,11 +25,11 @@ pendulum-sac:
         min_sample_timesteps_per_iteration: 1000
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          learning_starts: 256
+        num_steps_sampled_before_learning_starts: 256
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003
           entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 0
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5

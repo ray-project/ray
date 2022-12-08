@@ -1,11 +1,10 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
-from ray.tune import register_env
+from ray.tune.registry import get_trainable_cls, register_env
 
 
 def check_support_multiagent(alg, config):
@@ -33,12 +32,12 @@ def check_support_multiagent(alg, config):
     }
 
     for fw in framework_iterator(config):
-        if fw in ["tf2", "tfe"] and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
+        if fw == "tf2" and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_algorithm_class(alg)(config=config, env="multi_agent_mountaincar")
+            a = get_trainable_cls(alg)(config=config, env="multi_agent_mountaincar")
         else:
-            a = get_algorithm_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_trainable_cls(alg)(config=config, env="multi_agent_cartpole")
 
         results = a.train()
         check_train_results(results)
@@ -97,8 +96,8 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "num_gpus": 0,
                 "replay_buffer_config": {
                     "capacity": 1000,
-                    "learning_starts": 10,
                 },
+                "num_steps_sampled_before_learning_starts": 10,
                 "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
                 "optimizer": {
@@ -115,8 +114,8 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_sample_timesteps_per_iteration": 100,
                 "replay_buffer_config": {
                     "capacity": 1000,
-                    "learning_starts": 10,
                 },
+                "num_steps_sampled_before_learning_starts": 10,
                 "num_gpus": 0,
                 "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
@@ -131,8 +130,8 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
                     "capacity": 1000,
-                    "learning_starts": 500,
                 },
+                "num_steps_sampled_before_learning_starts": 10,
                 "use_state_preprocessor": True,
             },
         )

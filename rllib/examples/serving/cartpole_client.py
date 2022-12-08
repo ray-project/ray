@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # unnecessary env objects within the PolicyClient/Server objects, but
     # that only this following env and the loop below runs the entire
     # training process.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
     # If server has n workers, all ports between 9900 and 990[n-1] should
     # be listened on. E.g. if server has num_workers=2, try 9900 or 9901.

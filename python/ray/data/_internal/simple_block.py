@@ -67,7 +67,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> List[T]:
+    def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
@@ -75,6 +75,15 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def take(self, indices: List[int]) -> List[T]:
         return [self._items[i] for i in indices]
+
+    def select(self, columns: List[KeyFn]) -> List[T]:
+        if len(columns) != 1 or not callable(columns[0]):
+            raise ValueError(
+                "Column must be a single callable when selecting on Simple blocks, "
+                f"but got: {columns}."
+            )
+        callable_col = columns[0]
+        return [callable_col(row) for row in self.iter_rows()]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -87,9 +96,13 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pandas.DataFrame({"value": self._items})
 
-    def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
-        if columns:
-            raise ValueError("`columns` arg is not supported for list block.")
+    def to_numpy(
+        self, columns: Optional[Union[KeyFn, List[KeyFn]]] = None
+    ) -> np.ndarray:
+        if columns is not None:
+            if not isinstance(columns, list):
+                columns = [columns]
+            return BlockAccessor.for_block(self.select(columns)).to_numpy()
         return np.array(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
@@ -324,7 +337,7 @@ class SimpleBlockAccessor(BlockAccessor):
                             has_next_row = False
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_key, self.slice(start, end)
                     start = end
                 except StopIteration:
                     break

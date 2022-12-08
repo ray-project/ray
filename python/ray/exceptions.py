@@ -68,7 +68,7 @@ class CrossLanguageError(RayError):
 class TaskCancelledError(RayError):
     """Raised when this task is cancelled.
 
-    Attributes:
+    Args:
         task_id: The TaskID of the function that was directly
             cancelled.
     """
@@ -178,7 +178,7 @@ class RayTaskError(RayError):
             if line.startswith("Traceback "):
                 traceback_line = (
                     f"{colorama.Fore.CYAN}"
-                    f"{self.proctitle}"
+                    f"{self.proctitle}()"
                     f"{colorama.Fore.RESET} "
                     f"(pid={self.pid}, ip={self.ip}"
                 )
@@ -254,12 +254,13 @@ class RayActorError(RayError):
     RayActorError will contain the creation_task_error, which is used to
     reconstruct the exception on the caller side.
 
-    cause: The cause of the actor error. `RayTaskError` type means
-        the actor has died because of an exception within `__init__`.
-        `ActorDiedErrorContext` means the actor has died because of
-        unexepected system error. None means the cause is not known.
-        Theoretically, this should not happen,
-        but it is there as a safety check.
+    Args:
+        cause: The cause of the actor error. `RayTaskError` type means
+            the actor has died because of an exception within `__init__`.
+            `ActorDiedErrorContext` means the actor has died because of
+            unexepected system error. None means the cause is not known.
+            Theoretically, this should not happen,
+            but it is there as a safety check.
     """
 
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
@@ -298,6 +299,7 @@ class RayActorError(RayError):
                     "The actor never ran - it was cancelled before it started running."
                 )
             self.error_msg = "\n".join(error_msg_lines)
+            self.actor_id = ActorID(cause.actor_id).hex()
 
     @property
     def actor_init_failed(self) -> bool:
@@ -367,11 +369,39 @@ class OutOfDiskError(RayError):
 
 
 @PublicAPI
+class OutOfMemoryError(RayError):
+    """Indicates that the node is running out of memory and is close to full.
+
+    This is raised if the node is low on memory and tasks or actors are being
+    evicted to free up memory.
+    """
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@PublicAPI
+class NodeDiedError(RayError):
+    """Indicates that the node is either dead or unreachable."""
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@PublicAPI
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -411,7 +441,7 @@ class ObjectLostError(RayError):
 class ObjectFetchTimedOutError(ObjectLostError):
     """Indicates that an object fetch timed out.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -432,7 +462,7 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -447,12 +477,32 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
         )
 
 
+@DeveloperAPI
+class ObjectFreedError(ObjectLostError):
+    """Indicates that an object was manually freed by the application.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object was manually freed using the internal `free` call. "
+                "Please ensure that `free` is only called once the object is no "
+                "longer needed."
+            )
+        )
+
+
 @PublicAPI
 class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
     reference to the object.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -490,7 +540,7 @@ class OwnerDiedError(ObjectLostError):
 class ObjectReconstructionFailedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -511,7 +561,7 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because the maximum
     number of task retries has been exceeded.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -533,7 +583,7 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because its lineage
     was evicted due to memory pressure.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -575,7 +625,7 @@ class AsyncioActorExit(RayError):
 class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up.
 
-    params:
+    Args:
         error_message: The error message that explains
             why runtime env setup has failed.
     """
@@ -584,7 +634,7 @@ class RuntimeEnvSetupError(RayError):
         self.error_message = error_message
 
     def __str__(self):
-        msgs = ["Failed to setup runtime environment."]
+        msgs = ["Failed to set up runtime environment."]
         if self.error_message:
             msgs.append(self.error_message)
         return "\n".join(msgs)

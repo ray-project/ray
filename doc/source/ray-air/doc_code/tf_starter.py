@@ -17,8 +17,7 @@ dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 import tensorflow as tf
 
 from ray.air import session
-from ray.air.callbacks.keras import Callback
-from ray.train.tensorflow import prepare_dataset_shard
+from ray.air.integrations.keras import Callback
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 
@@ -54,15 +53,8 @@ def train_func(config: dict):
 
     results = []
     for _ in range(epochs):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=batch_size,
-            )
+        tf_dataset = dataset.to_tf(
+            feature_columns="x", label_columns="y", batch_size=batch_size
         )
         history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)

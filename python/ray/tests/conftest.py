@@ -15,19 +15,16 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
-import signal
 
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
-from ray._private.services import (
-    REDIS_EXECUTABLE,
-    _start_redis_instance,
-)
+
 from ray._private.test_utils import (
     get_and_run_node_killer,
     init_error_pubsub,
@@ -35,6 +32,7 @@ from ray._private.test_utils import (
     setup_tls,
     teardown_tls,
     enable_external_redis,
+    start_redis_instance,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -152,17 +150,20 @@ def _setup_redis(request):
     else:
         del param["external_redis_ports"]
     processes = []
+    enable_tls = "RAY_REDIS_CA_CERT" in os.environ
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        port, proc = _start_redis_instance(
-            REDIS_EXECUTABLE,
+        port, proc = start_redis_instance(
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
+            enable_tls=enable_tls,
         )
         processes.append(proc)
-    address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    import os
+    scheme = "rediss://" if enable_tls else ""
+    address_str = ",".join(
+        map(lambda x: f"{scheme}127.0.0.1:{x}", external_redis_ports)
+    )
 
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
@@ -199,25 +200,25 @@ def shutdown_only(maybe_external_redis):
     ray._private.utils.reset_ray_address()
 
 
+# Provide a shared Ray instance for a test class
+@pytest.fixture(scope="class")
+def class_ray_instance():
+    yield ray.init()
+    ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
+
+
 @contextmanager
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init("local", **init_kwargs)
-    agent_pids = []
-    for node in ray.nodes():
-        agent_pids.append(int(node["AgentInfo"]["Pid"]))
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    # Make sure the agent process is dead.
-    for pid in agent_pids:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except Exception:
-            pass
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
 
@@ -361,6 +362,16 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
+def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+    param = getattr(request, "param", {})
+    env_vars = param.pop("env_vars", {})
+    for k, v in env_vars.items():
+        monkeypatch.setenv(k, v)
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_2_nodes(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
@@ -385,6 +396,12 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 @pytest.fixture
 def call_ray_start(request):
+    with call_ray_start_context(request) as address:
+        yield address
+
+
+@contextmanager
+def call_ray_start_context(request):
     default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0"
@@ -429,7 +446,7 @@ def call_ray_start_with_external_redis(request):
     port_list = ports.split(",")
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
+        start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
@@ -1051,3 +1068,13 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
+@pytest.fixture(params=[True, False])
+def enable_syncer_test(request, monkeypatch):
+    with_syncer = request.param
+    monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
+    ray._raylet.Config.initialize("")
+    yield
+    monkeypatch.delenv("RAY_use_ray_syncer")
+    ray._raylet.Config.initialize("")

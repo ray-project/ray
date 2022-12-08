@@ -100,11 +100,20 @@ def _all_tower_reduce(path, *tower_data):
         return None
 
     if isinstance(path[-1], str):
+        # TODO(sven): We need to fix this terrible dependency on `str.starts_with`
+        #  for determining, how to aggregate these stats! As "num_..." might
+        #  be a good indicator for summing, it will fail if the stats is e.g.
+        #  `num_samples_per_sec" :)
+        # Counter stats: Reduce sum.
+        # if path[-1].startswith("num_"):
+        #    return np.nansum(tower_data)
         # Min stats: Reduce min.
         if path[-1].startswith("min_"):
             return np.nanmin(tower_data)
         # Max stats: Reduce max.
         elif path[-1].startswith("max_"):
             return np.nanmax(tower_data)
+    if np.isnan(tower_data).all():
+        return np.nan
     # Everything else: Reduce mean.
     return np.nanmean(tower_data)

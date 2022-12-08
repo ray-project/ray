@@ -113,8 +113,8 @@ using a Pytorch pre-trained ResNet model.
 We test out the performance across different cluster sizes and data sizes.
 
 - `GPU image batch prediction script`_
-- `GPU training small cluster configuration`_
-- `GPU training large cluster configuration`_
+- `GPU prediction small cluster configuration`_
+- `GPU prediction large cluster configuration`_
 
 .. list-table::
 
@@ -122,19 +122,20 @@ We test out the performance across different cluster sizes and data sizes.
       - **Data Size**
       - **Performance**
       - **Command**
-    * - 1 g3.8xlarge node
+    * - 1 g4dn.8xlarge node
       - 1 GB (1623 images)
-      - 72.59 s (22.3 images/sec)
+      - 46.12 s (35.19 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=1`
-    * - 1 g3.8xlarge node
+    * - 1 g4dn.8xlarge node
       - 20 GB (32460 images)
-      - 1213.48 s (26.76 images/sec)
+      - 285.2 s (113.81 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=20`
-    * - 4 g3.16xlarge nodes
+    * - 4 g4dn.12xlarge nodes
       - 100 GB (162300 images)
-      - 885.98 s (183.19 images/sec)
+      - 304.01 s (533.86 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=100`
 
+.. _pytorch_gpu_training_benchmark:
 
 GPU image training
 ------------------
@@ -150,7 +151,7 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. note::
 
-    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and 
+    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and
     all ports are open in the secure group.
 
 
@@ -181,8 +182,11 @@ Pytorch Training Parity
 This task checks the performance parity between native Pytorch Distributed and
 Ray Train's distributed TorchTrainer.
 
-We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+We demonstrate that the performance is similar (within 2.5\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
+
+The reported times are for the raw training times. There is an unreported constant setup
+overhead of a few seconds for both methods that is negligible for longer training runs.
 
 - `Pytorch comparison training script`_
 - `Pytorch comparison CPU cluster configuration`_
@@ -196,15 +200,15 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 201.17 s (vs 195.90 s Pytorch)
+      - 196.64 s (vs 194.90 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 m5.2xlarge nodes (16 workers)
       - FashionMNIST
-      - 447.14 s (vs 461.75 s Pytorch)
+      - 430.88 s (vs 475.97 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
-      - 236.61 s (vs 220.97 s Pytorch)
+      - 149.80 s (vs 146.46 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 
 
@@ -216,8 +220,11 @@ Tensorflow Training Parity
 This task checks the performance parity between native Tensorflow Distributed and
 Ray Train's distributed TensorflowTrainer.
 
-We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+We demonstrate that the performance is similar (within 1\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
+
+The reported times are for the raw training times. There is an unreported constant setup
+overhead of a few seconds for both methods that is negligible for longer training runs.
 
 .. note:: The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
 
@@ -233,15 +240,15 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 90.61 s (vs 81.26 s Tensorflow)
+      - 78.81 s (vs 79.67 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 m5.2xlarge nodes (16 workers)
       - FashionMNIST
-      - 75.34 s (vs 69.51 s Tensorflow)
+      - 64.57 s (vs 67.45 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
-      - 495.85 s (vs 479.28 s Tensorflow)
+      - 465.16 s (vs 461.74 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu`
 
 
@@ -252,6 +259,8 @@ Performance may vary greatly across different model, hardware, and cluster confi
 .. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
 .. _`GPU image batch prediction script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/gpu_batch_prediction.py#L18-L49
 .. _`GPU image training script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106
+.. _`GPU prediction small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_g4_8xl.yaml#L6-L15
+.. _`GPU prediction large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4_g4_12xl.yaml#L6-L15
 .. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1.yaml#L6-L24
 .. _`GPU training large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_16.yaml#L5-L25
 .. _`Pytorch comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py

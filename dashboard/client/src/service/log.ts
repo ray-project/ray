@@ -22,9 +22,21 @@ export const getLogDetail = async (url: string) => {
       el.getElementsByTagName("li"),
       (li: HTMLLIElement) => {
         const a = li.children[0] as HTMLAnchorElement;
+        let href = a.href;
+        if (
+          // Skip remove protocal and host at log index page
+          url !== "log_index" &&
+          !li.innerText.startsWith("http://") &&
+          !li.innerText.startsWith("https://")
+        ) {
+          // Remove protocol and host
+          // (Treat everything after the hostname as a string)
+          const protocolAndHost = `${a.protocol}//${a.host}`;
+          href = href.substring(protocolAndHost.length);
+        }
         return {
           name: li.innerText,
-          href: li.innerText.includes("http") ? a.href : a.pathname,
+          href,
         } as { [key: string]: string };
       },
     );

@@ -57,6 +57,8 @@ class WorkerContext {
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
 
+  void SetTaskDepth(int64_t depth) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
 
   void ResetCurrentTask();
@@ -103,6 +105,7 @@ class WorkerContext {
   const WorkerType worker_type_;
   const WorkerID worker_id_;
   const JobID current_job_id_;
+  int64_t task_depth_ GUARDED_BY(mutex_) = 0;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;

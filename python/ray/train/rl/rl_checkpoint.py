@@ -1,9 +1,11 @@
 import os
+from packaging import version
 from typing import Optional
 
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as cpickle
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.typing import EnvType
 from ray.util.annotations import PublicAPI
 
@@ -30,6 +32,16 @@ class RLCheckpoint(Checkpoint):
         Returns:
             The policy stored in this checkpoint.
         """
+        # TODO: Deprecate this RLCheckpoint class (or move all our
+        #  Algorithm/Policy.from_checkpoint utils into here).
+        # If newer checkpoint version -> Use `Policy.from_checkpoint()` util.
+        checkpoint_info = get_checkpoint_info(checkpoint=self)
+        if checkpoint_info["checkpoint_version"] > version.Version("0.1"):
+            # Since we have an Algorithm checkpoint, will extract all policies in that
+            # Algorithm -> need to index into "default_policy" in the returned dict.
+            return Policy.from_checkpoint(checkpoint=self)["default_policy"]
+
+        # Older checkpoint version.
         with self.as_directory() as checkpoint_path:
             trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
             config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)

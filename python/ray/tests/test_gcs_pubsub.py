@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import threading
 
@@ -136,6 +137,26 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
 
     assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
     assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')
+
+    await subscriber.close()
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 7, 0), reason="no asyncio.all_tasks in py3.6"
+)
+@pytest.mark.asyncio
+async def test_aio_poll_no_leaks(ray_start_regular):
+    """Test that polling doesn't leak memory."""
+    ctx = ray_start_regular
+    gcs_server_addr = ctx.address_info["gcs_address"]
+
+    subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
+    await subscriber.subscribe()
+
+    for _ in range(10000):
+        subscriber.poll()
+        # There should only be 1 task, but use 10 as a buffer.
+        assert len(asyncio.all_tasks()) < 10
 
     await subscriber.close()
 

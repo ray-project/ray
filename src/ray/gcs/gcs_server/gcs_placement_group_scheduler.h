@@ -31,6 +31,7 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
+
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -332,6 +333,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) override;
 
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(std::function<void()> listener);
+
+  void HandleWaitingRemovedBundles();
+
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -429,6 +435,19 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                                             rpc::PlacementStrategy strategy,
                                             double max_cpu_fraction_per_node);
 
+  /// Try to release bundle resource to cluster resource manager.
+  ///
+  /// \param bundle The node to which the bundle is scheduled and the bundle's
+  /// specification.
+  /// \return True if the bundle is succesfully released. False otherwise.
+  bool TryReleasingBundleResources(
+      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
+
+  /// Help function to check if the resource_name has the pattern
+  /// {original_resource_name}_group_{placement_group_id}, which means
+  /// wildcard resource.
+  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
+
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
 
@@ -457,6 +476,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
   gcs_syncer::RaySyncer *ray_syncer_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
+
+  /// The bundles that waiting to be destroyed and release resources.
+  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
+      waiting_removed_bundles_;
 };
 
 }  // namespace gcs

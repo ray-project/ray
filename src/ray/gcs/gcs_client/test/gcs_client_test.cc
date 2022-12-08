@@ -105,6 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
+    rpc::DrainAndResetServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
@@ -138,8 +139,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
@@ -471,7 +471,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
 
   auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
-  auto stub = rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
   *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";

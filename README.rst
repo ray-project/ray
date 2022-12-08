@@ -14,7 +14,7 @@
 
 |
 
-Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for accelerating ML workloads:
+Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for simplifying ML compute:
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray-padded.svg
 
@@ -64,6 +64,7 @@ More Information
 
 - `Documentation`_
 - `Ray Architecture whitepaper`_
+- `Ray AIR Technical whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `Ownership: a distributed futures system for fine-grained tasks`_
 - `RLlib paper`_
@@ -73,6 +74,7 @@ More Information
 
 - `Ray paper`_
 - `Ray HotOS paper`_
+- `Ray Architecture v1 whitepaper`_
 
 .. _`Ray AIR`: https://docs.ray.io/en/latest/ray-air/getting-started.html
 .. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
@@ -80,7 +82,9 @@ More Information
 .. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
 .. _`Objects`: https://docs.ray.io/en/latest/ray-core/objects.html
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
-.. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Architecture v1 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview
+.. _`Ray AIR Technical whitepaper`: https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889

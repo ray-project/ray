@@ -163,7 +163,7 @@ TEST_P(DirectActorSubmitterTest, TestSubmitTask) {
   ASSERT_TRUE(CheckSubmitTask(task));
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _))
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _))
       .Times(worker_client_->callbacks.size());
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
@@ -316,7 +316,7 @@ TEST_P(DirectActorSubmitterTest, TestActorDead) {
   // Simulate the actor dying. All in-flight tasks should get failed.
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task1.TaskId(), _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
   }
@@ -351,12 +351,12 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(CheckSubmitTask(task2));
   ASSERT_TRUE(CheckSubmitTask(task3));
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
       .Times(1);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
       .Times(1);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task4.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task4.TaskId(), _, _, _)).Times(1);
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -405,7 +405,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(CheckSubmitTask(task3));
 
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(4);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(4);
   // Tasks 2 and 3 will be retried.
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
       .Times(1)
@@ -464,7 +464,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(CheckSubmitTask(task2));
   ASSERT_TRUE(CheckSubmitTask(task3));
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(3);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _, _)).Times(3);
 
   // Tasks 2 will be retried
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
@@ -521,7 +521,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
   ASSERT_TRUE(CheckSubmitTask(task));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // Actor restarts, but we don't receive the disconnect message until later.
@@ -531,7 +531,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(CheckSubmitTask(task));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // We receive the RESTART message late. Nothing happens.
@@ -541,7 +541,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
   ASSERT_TRUE(CheckSubmitTask(task));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // The actor dies twice. We receive the last RESTART message first.
@@ -597,7 +597,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 1);
   // Submit a task.
   ASSERT_TRUE(CheckSubmitTask(task1));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // Submit 2 tasks.
@@ -614,10 +614,10 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
 
   // The task replies are now received. Since the tasks are already failed, they will not
   // be marked as failed or finished again.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
       .Times(0);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task3.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task3.TaskId(), _, _, _)).Times(0);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
       .Times(0);
   // Task 2 replied with OK.
@@ -641,7 +641,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
   ASSERT_TRUE(CheckSubmitTask(task1));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // Actor failed and is now restarting.
@@ -651,7 +651,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(CheckSubmitTask(task2));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
       .Times(1);
   ASSERT_EQ(io_context.poll_one(), 1);
@@ -744,7 +744,8 @@ class DirectActorReceiverTest : public ::testing::Test {
                                   std::placeholders::_1,
                                   std::placeholders::_2,
                                   std::placeholders::_3,
-                                  std::placeholders::_4);
+                                  std::placeholders::_4,
+                                  std::placeholders::_5);
     receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
@@ -753,10 +754,13 @@ class DirectActorReceiverTest : public ::testing::Test {
                     dependency_waiter_);
   }
 
-  Status MockExecuteTask(const TaskSpecification &task_spec,
-                         const std::shared_ptr<ResourceMappingType> &resource_ids,
-                         std::vector<std::shared_ptr<RayObject>> *return_objects,
-                         ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  Status MockExecuteTask(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          *dynamic_return_objects,
+      ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }
 

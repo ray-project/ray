@@ -31,7 +31,7 @@ install_bazel() {
       new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
-        return
+        export BAZEL_CONFIG_ONLY=1
       fi
     fi
   fi
@@ -80,7 +80,7 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ]; then  # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
     case "${OSTYPE}" in
       linux*) miniconda_dir="/opt/miniconda";;
@@ -115,6 +115,9 @@ install_miniconda() {
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
+        if [ "${MINIMAL_INSTALL-}" = 1 ]; then
+          rm -rf "${miniconda_dir}"
+        fi
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
@@ -221,11 +224,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.3.1
-    # cryptography 37.0.0 breaks ensurepip.
-    # Example build failure:
-    # https://buildkite.com/ray-project/ray-builders-branch/builds/7207#a16e8f76-a993-4d8d-a5f0-09c4f76245dc
-    "${python}" -m pip install cryptography==36.0.2
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -285,23 +284,7 @@ download_mnist() {
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
-install_dependencies() {
-
-  install_bazel
-  install_base
-  install_toolchains
-
-  install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
-    install_miniconda
-    # Upgrade the miniconda pip.
-    install_upgrade_pip
-  fi
-
-  install_nvm
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
-  fi
+install_pip_packages() {
 
   # Install modules needed in all jobs.
   alias pip="python -m pip"
@@ -310,11 +293,11 @@ install_dependencies() {
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
-  if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
+  if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
-    if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
+      pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
@@ -323,17 +306,24 @@ install_dependencies() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -Ur "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
-  fi
 
-  # Default requirements
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+    # Repeat for requirements_test.txt
+    local status="0";
+    local errmsg="";
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
+
   fi
 
   if [ "${LINT-}" = 1 ]; then
@@ -363,26 +353,29 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
     #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
+  SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.
@@ -390,15 +383,32 @@ install_dependencies() {
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    pip install -U "ludwig[test]">=0.4 jsonschema>=4
+    pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
+  fi
+
+  # Additional dependency for time series libraries.
+  # This cannot be included in requirements_tune.txt as it has conflicting
+  # dependencies.
+  if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    if [ -n "${ARROW_VERSION-}" ]; then
+      if [ "${ARROW_VERSION-}" = nightly ]; then
+        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+      else
+        pip install -U pyarrow=="${ARROW_VERSION}"
+      fi
+    fi
+    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
@@ -416,19 +426,50 @@ install_dependencies() {
     fi
   fi
 
-  # RLlib testing with TF 1.x.
-  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
+  # Inject our own mirror for the CIFAR10 dataset
+  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
+    TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
+
+    [ -f "$TF_CIFAR" ] && sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' \
+      "$TF_CIFAR"
+    [ -f "$TORCH_CIFAR" ] &&sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' \
+      "$TORCH_CIFAR"
   fi
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
-    # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@a1f17d81f01543196b2c23240da692d9ae310942
+    "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+}
+
+install_dependencies() {
+  install_bazel
+
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+    install_base
+    install_toolchains
+  fi
+
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
+    install_miniconda
+  fi
+
+  install_upgrade_pip
+
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+    install_nvm
+    if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+      install_node
+    fi
+  fi
+
+  install_pip_packages
 }
 
 install_dependencies "$@"

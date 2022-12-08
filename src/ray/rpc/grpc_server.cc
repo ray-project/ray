@@ -14,6 +14,8 @@
 
 #include "ray/rpc/grpc_server.h"
 
+#include <grpcpp/ext/channelz_service_plugin.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/impl/service_type.h>
 
 #include <boost/asio/detail/socket_holder.hpp>
@@ -39,6 +41,29 @@ GrpcServer::GrpcServer(std::string name,
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
+  // Enable built in health check implemented by gRPC:
+  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  grpc::EnableDefaultHealthCheckService(true);
+  grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+  grpc::channelz::experimental::InitChannelzService();
+}
+
+void GrpcServer::Shutdown() {
+  if (!is_closed_) {
+    // Drain the executor threads.
+    // Shutdown the server with an immediate deadline.
+    // TODO(edoakes): do we want to do this in all cases?
+    server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
+    for (const auto &cq : cqs_) {
+      cq->Shutdown();
+    }
+    for (auto &polling_thread : polling_threads_) {
+      polling_thread.join();
+    }
+    is_closed_ = true;
+    RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+    server_.reset();
+  }
 }
 
 void GrpcServer::Run() {
@@ -59,6 +84,14 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
+  // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
+  // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
+  // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:
+  // https://github.com/ray-project/ray/blob/releases/2.0.0/python/ray/_private/gcs_utils.py#L72
+  // Setting this value larger will trigger GOAWAY from the gRPC server to be sent to the
+  // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
+                             60000);
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
@@ -156,7 +189,6 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
-        server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:

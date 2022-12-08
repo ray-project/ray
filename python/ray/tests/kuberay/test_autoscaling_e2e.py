@@ -110,7 +110,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
             ray_container = containers[0]
             # Confirm the first container in the example config is the Ray container.
-            assert ray_container["name"] in ["ray-head", "machine-learning"]
+            assert ray_container["name"] in ["ray-head", "ray-worker"]
             # ("machine-learning" is the name of the worker Ray container)
 
             ray_container["image"] = RAY_IMAGE
@@ -259,7 +259,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
-        assert "Adding 1 nodes of type small-group." in logs
+        assert "Adding 1 node(s) of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 

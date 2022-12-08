@@ -168,6 +168,7 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
+        status=200 if success else 500,
     )
 
 
@@ -261,17 +262,21 @@ def init_ray_and_catch_exceptions() -> Callable:
                     try:
                         address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Set the gcs rpc timeout to shorter
+                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                        )
                         # Init ray without logging to driver
                         # to avoid infinite logging issue.
                         ray.init(
                             address=address,
                             log_to_driver=False,
+                            configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

@@ -1,13 +1,12 @@
-import os
+# Deprecate: Remove whole file in 2.4
 from typing import List, Dict, Callable, Optional
 
+from ray.air.integrations.wandb import _setup_wandb
 from ray.tune import Trainable
 from ray.tune.trainable import FunctionTrainable
 
-from ray.air.callbacks.wandb import (
+from ray.air.integrations.wandb import (
     wandb,
-    _clean_log,
-    _set_api_key,
     WandbLoggerCallback as _WandbLoggerCallback,
 )
 
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 callback_deprecation_message = (
     "`ray.tune.integration.wandb.WandbLoggerCallback` "
     "is deprecated and will be removed in "
-    "the future. Please use `ray.air.callbacks.wandb.WandbLoggerCallback` "
+    "the future. Please use `ray.air.integrations.wandb.WandbLoggerCallback` "
     "instead."
 )
 
@@ -51,6 +50,13 @@ class WandbLoggerCallback(_WandbLoggerCallback):
         )
 
 
+# Deprecate: Remove in 2.4
+@Deprecated(
+    message=(
+        "The WandbTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.wandb.setup_wandb` instead."
+    )
+)
 def wandb_mixin(func: Callable):
     """wandb_mixin
 
@@ -126,6 +132,13 @@ def wandb_mixin(func: Callable):
     return func
 
 
+# Deprecate: Remove in 2.4
+@Deprecated(
+    message=(
+        "The WandbTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.wandb.setup_wandb` instead."
+    )
+)
 class WandbTrainableMixin:
     _wandb = wandb
 
@@ -149,17 +162,8 @@ class WandbTrainableMixin:
                 "containing at least a `project` specification."
             )
 
+        # Init without wandb_config
         super().__init__(_config, *args, **kwargs)
-
-        api_key_file = wandb_config.pop("api_key_file", None)
-        if api_key_file:
-            api_key_file = os.path.expanduser(api_key_file)
-
-        _set_api_key(api_key_file, wandb_config.pop("api_key", None))
-
-        # Fill trial ID and name
-        trial_id = self.trial_id
-        trial_name = self.trial_name
 
         # Project name for Wandb
         try:
@@ -174,32 +178,19 @@ class WandbTrainableMixin:
             default_group = self._name
         else:
             default_group = type(self).__name__
-        wandb_group = wandb_config.pop("group", default_group)
 
-        # remove unpickleable items!
-        _config = _clean_log(_config)
+        group = wandb_config.pop("group", default_group)
 
-        wandb_init_kwargs = dict(
-            id=trial_id,
-            name=trial_name,
-            resume=True,
-            reinit=True,
-            allow_val_change=True,
-            group=wandb_group,
+        self.wandb = _setup_wandb(
+            trial_id=self.trial_id,
+            trial_name=self.trial_name,
+            group=group,
             project=wandb_project,
-            config=_config,
+            config=config,
+            _wandb=self._wandb,
         )
-        wandb_init_kwargs.update(wandb_config)
-
-        # On windows, we can't fork
-        if os.name == "nt":
-            os.environ["WANDB_START_METHOD"] = "thread"
-        else:
-            os.environ["WANDB_START_METHOD"] = "fork"
-
-        self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
-        self._wandb.finish()
+        self.wandb.finish()
         if hasattr(super(), "stop"):
             super().stop()

@@ -1,6 +1,7 @@
 import concurrent.futures
 import asyncio
 import pytest
+from ray._private.utils import get_or_create_event_loop
 import requests
 
 import ray
@@ -99,8 +100,8 @@ def test_handle_in_endpoint(serve_instance):
         def __init__(self, handle):
             self.handle = handle
 
-        def __call__(self, _):
-            return ray.get(self.handle.remote())
+        async def __call__(self, _):
+            return await (await self.handle.remote())
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)
@@ -230,7 +231,7 @@ def test_handle_across_loops(serve_instance):
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        asyncio.get_event_loop().run_until_complete(refresh_get())
+        get_or_create_event_loop().run_until_complete(refresh_get())
 
     handle = A.get_handle(sync=False)
 
@@ -239,7 +240,7 @@ def test_handle_across_loops(serve_instance):
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        asyncio.get_event_loop().run_until_complete(cache_get())
+        get_or_create_event_loop().run_until_complete(cache_get())
 
 
 if __name__ == "__main__":

@@ -124,6 +124,12 @@ class NodeProvider:
         """Creates a number of nodes within the namespace.
 
         Optionally returns a mapping from created node ids to node metadata.
+
+        Optionally may throw a
+        ray.autoscaler.node_launch_exception.NodeLaunchException which the
+        autoscaler may use to provide additional functionality such as
+        observability.
+
         """
         raise NotImplementedError
 
@@ -139,6 +145,8 @@ class NodeProvider:
         This is the method actually called by the autoscaler. Prefer to
         implement this when possible directly, otherwise it delegates to the
         create_node() implementation.
+
+        Optionally may throw a ray.autoscaler.node_launch_exception.NodeLaunchException.
         """
         return self.create_node(node_config, tags, count)
 
@@ -236,3 +244,19 @@ class NodeProvider:
     ) -> Dict[str, Any]:
         """Fills out missing "resources" field for available_node_types."""
         return cluster_config
+
+    def safe_to_scale(self) -> bool:
+        """Optional condition to determine if it's safe to proceed with an autoscaling
+        update. Can be used to wait for convergence of state managed by an external
+        cluster manager.
+
+        Called by the autoscaler immediately after non_terminated_nodes().
+        If False is returned, the autoscaler will abort the update.
+        """
+        return True
+
+    def post_process(self) -> None:
+        """This optional method is executed at the end of
+        StandardAutoscaler._update().
+        """
+        pass

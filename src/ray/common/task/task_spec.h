@@ -159,7 +159,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
-  TaskSpecification() {}
+  TaskSpecification() { ComputeResources(); }
 
   /// Construct from a protobuf message object.
   /// The input message will be copied/moved into this object.
@@ -213,6 +213,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t AttemptNumber() const;
 
+  bool IsRetry() const;
+
+  int32_t MaxRetries() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -224,6 +228,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
+
+  bool ReturnsDynamic() const;
+
+  std::vector<ObjectID> DynamicReturnIds() const;
+
+  void AddDynamicReturnId(const ObjectID &dynamic_return_id);
 
   const uint8_t *ArgData(size_t arg_index) const;
 
@@ -368,6 +378,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool ExecuteOutOfOrder() const;
 
   bool IsSpreadSchedulingStrategy() const;
+
+  /// \return true if the task or actor is retriable.
+  bool IsRetriable() const;
 
  private:
   void ComputeResources();

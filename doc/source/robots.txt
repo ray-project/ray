@@ -1,6 +1,8 @@
+# Algolia-Crawler-Verif: C37A60AFB138256B
 User-agent: *
+Allow: /
 Allow: /*/latest/
 Allow: /en/latest/   # Fallback for bots that don't understand wildcards
 Allow: /*/master/
 Allow: /en/master/   # Fallback for bots that don't understand wildcards
-Disallow: /
+Sitemap: https://docs.ray.io/en/latest/sitemap.xml

@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -139,19 +139,15 @@ class MyTorchModel(TorchModelV2, nn.Module):
             )
 
 
-def model_import_test(algo, config, env):
+def model_import_test(config):
     # Get the abs-path to use (bazel-friendly).
     rllib_dir = Path(__file__).parent.parent
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
-    agent_cls = get_algorithm_class(algo)
-
     for fw in framework_iterator(config, ["tf", "torch"]):
-        config["model"]["custom_model"] = (
-            "keras_model" if fw != "torch" else "torch_model"
-        )
+        config.model["custom_model"] = "keras_model" if fw != "torch" else "torch_model"
 
-        agent = agent_cls(config, env)
+        agent = config.build()
 
         def current_weight(agent):
             if fw == "tf":
@@ -202,14 +198,12 @@ class TestModelImport(unittest.TestCase):
 
     def test_ppo(self):
         model_import_test(
-            "PPO",
-            config={
-                "num_workers": 0,
-                "model": {
-                    "vf_share_layers": True,
-                },
-            },
-            env="CartPole-v0",
+            config=(
+                PPOConfig()
+                .environment("CartPole-v1")
+                .rollouts(num_rollout_workers=0)
+                .training(model={"vf_share_layers": True})
+            )
         )
 
 

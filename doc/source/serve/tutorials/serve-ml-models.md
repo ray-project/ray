@@ -57,12 +57,12 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note} 
-`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](deployment-graph-e2e-tutorial).
+`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
 ```console
-$ serve run tutorial_tensorflow:app
+$ serve run tutorial_tensorflow:mnist_model
 ```
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
@@ -72,7 +72,7 @@ import requests
 import numpy as np
 
 resp = requests.get(
-    "http://localhost:8000/mnist", json={"array": np.random.randn(28 * 28).tolist()}
+    "http://localhost:8000/", json={"array": np.random.randn(28 * 28).tolist()}
 )
 print(resp.json())
 ```
@@ -127,12 +127,12 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note} 
-`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](deployment-graph-e2e-tutorial).
+`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
 ```console
-$ serve run tutorial_pytorch:app
+$ serve run tutorial_pytorch:image_model
 ```
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
@@ -145,7 +145,7 @@ ray_logo_bytes = requests.get(
     "ray/master/doc/source/images/ray_header_logo.png"
 ).content
 
-resp = requests.post("http://localhost:8000/image_predict", data=ray_logo_bytes)
+resp = requests.post("http://localhost:8000/", data=ray_logo_bytes)
 print(resp.json())
 ```
 
@@ -226,12 +226,12 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note} 
-`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](deployment-graph-e2e-tutorial).
+`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
 ```console
-$ serve run tutorial_sklearn:app
+$ serve run tutorial_sklearn:boosting_model
 ```
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
@@ -245,7 +245,7 @@ sample_request_input = {
     "petal length": 1.1,
     "petal width": 0.9,
 }
-response = requests.get("http://localhost:8000/classifier", json=sample_request_input)
+response = requests.get("http://localhost:8000/", json=sample_request_input)
 print(response.text)
 ```
 

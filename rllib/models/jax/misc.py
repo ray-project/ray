@@ -1,7 +1,8 @@
 import time
 from typing import Callable, Optional
 
-from ray.rllib.utils.framework import get_activation_fn, try_import_jax
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_jax
 
 jax, flax = try_import_jax()
 nn = np = None

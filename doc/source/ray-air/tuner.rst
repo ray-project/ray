@@ -5,6 +5,8 @@ Configuring Hyperparameter Tuning
 
 The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
+.. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
+
 .. figure:: images/tuner.svg
     :align: center
 
@@ -171,13 +173,16 @@ Read more about this in the :ref:`Search Algorithm <search-alg-ref>` and :ref:`S
 How to analyze results?
 -----------------------
 
-``Tuner.fit()`` generates a `ResultGrid` object. This object contains metrics, results, and checkpoints
-of each trial. Below is a simple example:
+``Tuner.fit()`` generates a :ref:`ResultGrid <result-grid-docstring>` object.
+This object contains metrics, results, and checkpoints of each trial.
+Below is a simple example:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __result_grid_inspection_start__
     :end-before: __result_grid_inspection_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 Advanced Tuning
 ---------------

@@ -15,30 +15,53 @@ from ray.util import PublicAPI
 
 @PublicAPI(stability="beta")
 class ResultGrid:
-    """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
+    """A set of ``Result`` objects for interacting with Ray Tune results.
 
-    You can use it to inspect the trials run as well as obtaining the best result.
+    You can use it to inspect the trials and obtain the best result.
 
-    The constructor is a private API.
+    The constructor is a private API. This object can only be created as a result of
+    ``Tuner.fit()``.
 
-    Usage pattern:
+    Example:
+         >>> import random
+         >>> from ray import air, tune
+         >>> def random_error_trainable(config):
+         ...     if random.random() < 0.5:
+         ...         return {"loss": 0.0}
+         ...     else:
+         ...         raise ValueError("This is an error")
+         >>> tuner = tune.Tuner(
+         ...     random_error_trainable,
+         ...     run_config=air.RunConfig(name="example-experiment"),
+         ...     tune_config=tune.TuneConfig(num_samples=10),
+         ... )
+         >>> result_grid = tuner.fit()  # doctest: +SKIP
+         >>> for i in range(len(result_grid)): # doctest: +SKIP
+         ...     result = result_grid[i]
+         ...     if not result.error:
+         ...             print(f"Trial finishes successfully with metrics"
+         ...                f"{result.metrics}.")
+         ...     else:
+         ...             print(f"Trial failed with error {result.error}.")
 
-    .. code-block:: python
 
-        result_grid = tuner.fit()
-        for i in range(len(result_grid)):
-            result = result_grid[i]
-            if not result.error:
-                print(f"Trial finishes successfully with metric {result.metric}.")
-            else:
-                print(f"Trial errors out with {result.error}.")
-        best_result = result_grid.get_best_result()
-        best_checkpoint = best_result.checkpoint
-        best_metric = best_result.metric
+    You can also use ``result_grid`` for more advanced analysis.
+
+    >>> # Get the best result based on a particular metric.
+    >>> best_result = result_grid.get_best_result( # doctest: +SKIP
+    ...     metric="loss", mode="min")
+    >>> # Get the best checkpoint corresponding to the best result.
+    >>> best_checkpoint = best_result.checkpoint # doctest: +SKIP
+    >>> # Get a dataframe for the last reported results of all of the trials
+    >>> df = result_grid.get_dataframe() # doctest: +SKIP
+    >>> # Get a dataframe for the minimum loss seen for each trial
+    >>> df = result_grid.get_dataframe(metric="loss", mode="min") # doctest: +SKIP
 
     Note that trials of all statuses are included in the final result grid.
     If a trial is not in terminated state, its latest result and checkpoint as
     seen by Tune will be provided.
+
+    See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
     """
 
     def __init__(
@@ -138,7 +161,9 @@ class ResultGrid:
                 df = result_grid.get_dataframe()
 
                 # Get best ever reported accuracy per trial
-                df = result_grid.get_dataframe(metric="accuracy", mode="max")
+                df = result_grid.get_dataframe(
+                    filter_metric="accuracy", filter_mode="max"
+                )
 
         Args:
             filter_metric: Metric to filter best result for.

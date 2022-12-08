@@ -4,7 +4,7 @@ Tips for first-time users
 Ray provides a highly flexible, yet minimalist and easy to use API.
 On this page, we describe several tips that can help first-time Ray users to avoid some
 common mistakes that can significantly hurt the performance of their programs.
-For an in-depth treatment of advanced design patterns, please refer to our
+For an in-depth treatment of advanced design patterns, please read :ref:`core design patterns <core-patterns>`.
 
 .. list-table:: The core Ray API we use in this document.
    :header-rows: 1
@@ -45,13 +45,14 @@ Since each task requests by default one CPU, this setting allows us to execute u
 As a result, our Ray system consists of one driver executing the program,
 and up to four workers running remote tasks or actors.
 
+.. _tip-delay-get:
 
 Tip 1: Delay ray.get()
 ----------------------
 
 With Ray, the invocation of every remote operation (e.g., task, actor method) is asynchronous. This means that the operation immediately returns a promise/future, which is essentially an identifier (ID) of the operation’s result. This is key to achieving parallelism, as it allows the driver program to launch multiple operations in parallel. To get the actual results, the programmer needs to call ``ray.get()`` on the IDs of the results. This call blocks until the results are available. As a side effect, this operation also blocks the driver program from invoking other operations, which can hurt parallelism.
 
-Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray.get()``. To illustrate this point, consider the following simple Python code which call the ``do_some_work()`` function four times, where each invocation takes around 1 sec:
+Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray.get()``. To illustrate this point, consider the following simple Python code which calls the ``do_some_work()`` function four times, where each invocation takes around 1 sec:
 
 .. code-block:: python
 
@@ -101,7 +102,7 @@ However, when executing the above program one gets:
     duration = 0.0003619194030761719
     results =  [ObjectRef(df5a1a828c9685d3ffffffff0100000001000000), ObjectRef(cb230a572350ff44ffffffff0100000001000000), ObjectRef(7bbd90284b71e599ffffffff0100000001000000), ObjectRef(bd37d2621480fc7dffffffff0100000001000000)]
 
-When looking at this output, two things jump out. First, the program finishes immediately, i.e., in less than 1 ms. Second, instead of the expected results (i.e., [0, 1, 2, 3]) we get a bunch of identifiers. Recall that remote operations are asynchronous and they return futures (i.e., object IDs) instead of the results themselves. This is exactly what we see here. We measure only the time it takes to invoke the tasks, not their running times, and we get the IDs of the results corresponding to the four tasks.
+When looking at this output, two things jump out. First, the program finishes immediately, i.e., in less than 1 ms. Second, instead of the expected results (i.e., [0, 1, 2, 3]), we get a bunch of identifiers. Recall that remote operations are asynchronous and they return futures (i.e., object IDs) instead of the results themselves. This is exactly what we see here. We measure only the time it takes to invoke the tasks, not their running times, and we get the IDs of the results corresponding to the four tasks.
 
 To get the actual results,  we need to use ray.get(), and here the first instinct is to just call ``ray.get()`` on the remote operation invocation, i.e., replace line 12 with:
 

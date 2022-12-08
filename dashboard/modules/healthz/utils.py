@@ -14,10 +14,10 @@ class HealthChecker:
             return False
 
         liveness = await self._gcs_aio_client.check_alive(
-            [self._local_node_address.encode()], 1
+            [self._local_node_address.encode()], 0.1
         )
         return liveness[0]
 
     async def check_gcs_liveness(self) -> bool:
-        await self._gcs_aio_client.check_alive([], 1)
+        await self._gcs_aio_client.check_alive([], 0.1)
         return True

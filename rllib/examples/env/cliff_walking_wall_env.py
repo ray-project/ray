@@ -35,9 +35,11 @@ class CliffWalkingWallEnv(gym.Env):
     Each time step incurs -1 reward, except reaching the goal which gives +10 reward.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, seed=42) -> None:
         self.observation_space = spaces.Discrete(48)
         self.action_space = spaces.Discrete(4)
+        self.observation_space.seed(seed)
+        self.action_space.seed(seed)
 
     def reset(self):
         self.position = 36

@@ -11,10 +11,19 @@ from libc.stdint cimport (
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.unordered_map cimport unordered_map
 from libcpp.memory cimport (
     shared_ptr,
     unique_ptr
 )
+from libcpp.pair cimport pair as c_pair
+from libcpp.utility cimport pair
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+    make_optional,
+)
+
 from ray.includes.common cimport (
     CBuffer,
     CRayObject,
@@ -123,13 +132,17 @@ cdef class CoreWorker:
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
-            self, serialized_object, const CObjectID &return_id, size_t
-            data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
+            self, serialized_object,
+            const CObjectID &return_id,
+            const CObjectID &generator_id,
+            size_t data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
             &contained_id, int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
-            self, worker, outputs, const c_vector[CObjectID] return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns)
+            self,
+            worker, outputs,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+            CObjectID ref_generator_id=*)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(

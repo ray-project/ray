@@ -39,16 +39,19 @@ from ray import serve
 
 def train_ppo_model():
     # Configure our PPO algorithm.
-    config = ppo.PPOConfig()\
-        .framework("torch")\
+    config = (
+        ppo.PPOConfig()
+        .environment("CartPole-v1")
+        .framework("torch")
         .rollouts(num_rollout_workers=0)
+    )
     # Create a `PPO` instance from the config.
-    algo = config.build(env="CartPole-v0")
+    algo = config.build()
     # Train for one iteration.
     algo.train()
     # Save state of the trained Algorithm in a checkpoint.
-    algo.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
+    checkpoint_dir = algo.save("/tmp/rllib_checkpoint")
+    return checkpoint_dir
 
 
 checkpoint_path = train_ppo_model()
@@ -72,7 +75,7 @@ pass them into the restored `Algorithm` using the `compute_single_action` method
 from starlette.requests import Request
 
 
-@serve.deployment(route_prefix="/cartpole-ppo")
+@serve.deployment
 class ServePPOModel:
     def __init__(self, checkpoint_path) -> None:
         # Re-create the originally used config.
@@ -94,36 +97,46 @@ class ServePPOModel:
 
 :::{tip}
 Although we used a single input and `Algorithm.compute_single_action(...)` here, you
-can process a batch of input using Ray Serve's [batching](serve-batching) feature
+can process a batch of input using Ray Serve's [batching](serve-performance-batching-requests) feature
 and use `Algorithm.compute_actions(...)` to process a batch of inputs.
 :::
 
 Now that we've defined our `ServePPOModel` service, let's deploy it to Ray Serve.
-The deployment will be exposed through the `/cartpole-ppo` route.
 
 ```{code-cell} python3
 :tags: [hide-output]
-serve.start()
-ServePPOModel.deploy(checkpoint_path)
+ppo_model = ServePPOModel.bind(checkpoint_path)
+serve.run(ppo_model)
 ```
 
-Note that the `checkpoint_path` that we passed to the `deploy()` method will be passed to
+Note that the `checkpoint_path` that we passed to the `bind()` method will be passed to
 the `__init__` method of the `ServePPOModel` class that we defined above.
 
 Now that the model is deployed, let's query it!
 
 ```{code-cell} python3
-import gym
+# Note: `gymnasium` (not `gym`) will be **the** API supported by RLlib from Ray 2.3 on.
+try:
+    import gymnasium as gym
+    gymnasium = True
+except Exception:
+    import gym
+    gymnasium = False
+
 import requests
 
 
+env = gym.make("CartPole-v1")
+
 for _ in range(5):
-    env = gym.make("CartPole-v0")
-    obs = env.reset()
+    if gymnasium:
+        obs, infos = env.reset()
+    else:
+        obs = env.reset()
 
     print(f"-> Sending observation {obs}")
     resp = requests.get(
-        "http://localhost:8000/cartpole-ppo", json={"observation": obs.tolist()}
+        "http://localhost:8000/", json={"observation": obs.tolist()}
     )
     print(f"<- Received response {resp.json()}")
 ```

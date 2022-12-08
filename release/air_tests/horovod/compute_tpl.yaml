@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_workers: 3
+max_workers: 1
 
 head_node_type:
     name: head_node
@@ -10,8 +10,8 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: g3.8xlarge
-      max_workers: 3
-      min_workers: 3
+      max_workers: 1
+      min_workers: 1
       use_spot: false
 
 aws:
@@ -27,3 +27,4 @@ aws:
     - DeviceName: /dev/sda1
       Ebs:
         VolumeSize: 500
+        DeleteOnTermination: true
