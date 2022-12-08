@@ -69,7 +69,7 @@ if [ -z "${NO_CLONE}" ]; then
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
+  pip install -e .
 fi
 
 RETRY_NUM=0
