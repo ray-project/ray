@@ -57,6 +57,7 @@ class Node:
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
         connect_only: bool = False,
+        default_worker: bool = False,
     ):
         """Start a node.
 
@@ -71,6 +72,7 @@ class Node:
                 other spawned processes if this process dies unexpectedly.
             connect_only: If true, connect to the node without starting
                 new processes.
+            default_worker: Whether it's running from a ray worker or not
         """
         if shutdown_at_exit:
             if connect_only:
@@ -78,7 +80,7 @@ class Node:
                     "'shutdown_at_exit' and 'connect_only' cannot both be true."
                 )
             self._register_shutdown_hooks()
-
+        self._default_worker = default_worker
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
@@ -179,13 +181,18 @@ class Node:
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
             self._session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            session_name = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "session_name",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._session_name = ray._private.utils.decode(session_name)
+            if ray_params.session_name is None:
+                assert not self._default_worker
+                session_name = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "session_name",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._session_name = ray._private.utils.decode(session_name)
+            else:
+                # worker mode
+                self._session_name = ray_params.session_name
             # setup gcs client
             self.get_gcs_client()
 
@@ -193,7 +200,13 @@ class Node:
         if head:
             self._webui_url = None
         else:
-            self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
+            if ray_params.webui is None:
+                assert not self._default_worker
+                self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
+            else:
+                self._webui_url = (
+                    f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
+                )
 
         self._init_temp()
 
@@ -201,9 +214,11 @@ class Node:
         if head:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
-            storage._init_storage(
-                ray._private.services.get_storage_uri_from_internal_kv(), is_head=False
-            )
+            if not self._default_worker:
+                storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
+            else:
+                storage_uri = ray_params.storage
+            storage._init_storage(storage_uri, is_head=False)
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -355,6 +370,9 @@ class Node:
 
         cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
+            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
+
+        if not cluster_metadata:
             return
         ray._private.utils.check_version_info(cluster_metadata)
 
@@ -382,26 +400,34 @@ class Node:
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "temp_dir",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._temp_dir = ray._private.utils.decode(temp_dir)
+            if self._ray_params.temp_dir is None:
+                assert not self._default_worker
+                temp_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "temp_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._temp_dir = ray._private.utils.decode(temp_dir)
+            else:
+                self._temp_dir = self._ray_params.temp_dir
 
         try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
-            session_dir = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "session_dir",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._session_dir = ray._private.utils.decode(session_dir)
+            if self._temp_dir is None or self._session_name is None:
+                assert not self._default_worker
+                session_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "session_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._session_dir = ray._private.utils.decode(session_dir)
+            else:
+                self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -981,6 +1007,7 @@ class Node:
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
+            webui=self._webui_url,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

@@ -1310,6 +1310,7 @@ def start_raylet(
     ray_debugger_external: bool = False,
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
+    webui: Optional[str] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1437,14 +1438,19 @@ def start_raylet(
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
-        f"--storage={storage}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}",
-        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
+        f"--session-name={session_name}",
+        f"--temp-dir={temp_dir}",
+        f"--webui={webui}",
     ]
+
+    start_worker_command.append(f"--storage={storage}")
+
+    start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
