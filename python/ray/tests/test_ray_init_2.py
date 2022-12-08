@@ -268,6 +268,18 @@ def test_default_resource_not_allowed_error(shutdown_only):
             ray.init(resources={resource: 100000})
 
 
+def test_get_ray_address_from_environment(monkeypatch):
+    monkeypatch.setenv("RAY_ADDRESS", "")
+    assert (
+        ray._private.services.get_ray_address_from_environment("addr", None) == "addr"
+    )
+    monkeypatch.setenv("RAY_ADDRESS", "env_addr")
+    assert (
+        ray._private.services.get_ray_address_from_environment("addr", None)
+        == "env_addr"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
