@@ -55,6 +55,7 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tensor_dtype import get_np_dtype
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
@@ -1607,23 +1608,17 @@ class Policy(metaclass=ABCMeta):
 
 @DeveloperAPI
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, np.ndarray]
-) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
-        value_dict = NestedDict(value)
-        struct = tree.map_structure(
-            lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
-            value_dict,
-        )
-        space = get_gym_space_from_struct_of_spaces(struct.asdict())
-    elif isinstance(value, np.ndarray):
-        space = gym.spaces.Box(-1.0, 1.0, shape=value.shape[1:], dtype=value.dtype)
-    else:
-        raise ValueError(
-            f"Unsupported type of value {type(value)} passed "
-            "to get_gym_space_from_struct_of_tensors. Only Nested dict with "
-            "np.ndarray leaves or an np.ndarray are supported."
-        )
+    value: Union[Mapping, Tuple, List, np.ndarray, torch.Tensor], batched_input=True,
+) -> gym.Space:
+
+    start_idx = 1 if batched_input else 0
+    struct = tree.map_structure(
+        lambda x: gym.spaces.Box(
+            -1.0, 1.0, shape=x.shape[start_idx:], dtype=get_np_dtype(x)
+        ),
+        value,
+    )
+    space = get_gym_space_from_struct_of_spaces(struct)
     return space
 
 

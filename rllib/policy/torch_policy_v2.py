@@ -172,10 +172,13 @@ class TorchPolicyV2(Policy):
 
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
-        # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_view_requirements_from_init_state()
-        # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.view_requirements)
+        if self.config["_enable_rl_module_api"]:
+            self.view_requirements = self.model.view_requirements
+        else:
+            # Auto-update model's inference view requirements, if recurrent.
+            self._update_model_view_requirements_from_init_state()
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(self.model.view_requirements)
 
         self.exploration = self._create_exploration()
         self._optimizers = force_list(self.optimizer())
@@ -488,20 +491,35 @@ class TorchPolicyV2(Policy):
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
-            # Pack internal state inputs into (separate) list.
-            state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
-            ]
-            # Calculate RNN sequence lengths.
-            seq_lens = (
-                torch.tensor(
-                    [1] * len(state_batches[0]),
-                    dtype=torch.long,
-                    device=state_batches[0].device,
+            if self.config["_enable_rl_module_api"]:
+                # TODO (Kourosh): Similar to past, if state_batches are not empty, 
+                # infer seq_lens from the batch size. I still am not sure if I need 
+                # this here. 
+                state_batches = input_dict["state_in"]
+                if state_batches:
+                    if SampleBatch.SEQ_LENS in input_dict:
+                        seq_lens = input_dict[SampleBatch.SEQ_LENS]
+                    else:
+                        seq_lens = torch.tensor(
+                            [1] * input_dict.count, dtype=torch.long, 
+                            device=input_dict[SampleBatch.OBS].device
+                        )
+                        input_dict[SampleBatch.SEQ_LENS] = seq_lens
+            else:
+                # Pack internal state inputs into (separate) list.
+                state_batches = [
+                    input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
+                ]
+                # Calculate RNN sequence lengths.
+                seq_lens = (
+                    torch.tensor(
+                        [1] * len(state_batches[0]),
+                        dtype=torch.long,
+                        device=state_batches[0].device,
+                    )
+                    if state_batches
+                    else None
                 )
-                if state_batches
-                else None
-            )
 
             return self._compute_action_helper(
                 input_dict, state_batches, seq_lens, explore, timestep
@@ -1036,12 +1054,11 @@ class TorchPolicyV2(Policy):
 
         Returns:
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.
-            The input_dict is modified in-place to include a numpy copy of the computed
-            actions under `SampleBatch.ACTIONS`.
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        self._is_recurrent = state_batches is not None and state_batches != []
+        # TODO (Kourosh): we should not modify self._is_recurrent here.
+        # self._is_recurrent = state_batches is not None and state_batches != []
 
         # Switch to eval mode.
         if self.model:
@@ -1065,7 +1082,7 @@ class TorchPolicyV2(Policy):
             else:
                 actions = action_dist.sample()
                 logp = None
-            state_out = fwd_out.pop("state_out", [])
+            state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
@@ -1110,10 +1127,6 @@ class TorchPolicyV2(Policy):
             actions, logp = self.exploration.get_exploration_action(
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
-
-        # # convert to numpy so that the type of objects in the SampleBatch are
-        # # consistent.
-        # input_dict[SampleBatch.ACTIONS] = convert_to_numpy(actions)
 
         # Add default and custom fetches.
         if not extra_fetches:

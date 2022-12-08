@@ -1,4 +1,7 @@
 import abc
+from dataclasses import dataclass
+import gym
+import tree # pip install dm-tree
 from typing import Mapping, Any, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -12,12 +15,33 @@ from ray.rllib.utils.annotations import (
 
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 
 
+
 ModuleID = str
+
+
+@dataclass
+class RLModuleConfig:
+    """Configuration for the PPO module.
+
+    Attributes:
+        observation_space: The observation space of the environment.
+        action_space: The action space of the environment.
+        max_seq_len: Max seq len for training an RNN model.
+        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink 
+        this design?)
+    """
+
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    max_seq_len: int = None
 
 
 @ExperimentalAPI
@@ -81,12 +105,12 @@ class RLModule(abc.ABC):
     def __init__(self, config: Mapping[str, Any] = None) -> None:
         self.config = config or {}
         self.setup()
-        self._input_specs_train = self.input_specs_train()
-        self._output_specs_train = self.output_specs_train()
-        self._input_specs_exploration = self.input_specs_exploration()
-        self._output_specs_exploration = self.output_specs_exploration()
-        self._input_specs_inference = self.input_specs_inference()
-        self._output_specs_inference = self.output_specs_inference()
+        # self._input_specs_train = self.input_specs_train()
+        # self._output_specs_train = self.output_specs_train()
+        # self._input_specs_exploration = self.input_specs_exploration()
+        # self._output_specs_exploration = self.output_specs_exploration()
+        # self._input_specs_inference = self.input_specs_inference()
+        # self._output_specs_inference = self.output_specs_inference()
 
     def setup(self) -> None:
         """Called once during initialization.
@@ -101,6 +125,34 @@ class RLModule(abc.ABC):
         This is used for recurrent models.
         """
         return {}
+
+    @property
+    def view_requirements(self) -> Mapping[str, ViewRequirement]:
+        """Returns the view requirements of the module."""
+        vr = self.__get_default_view_requirements()
+
+        # get the initial state in numpy format, infer the state from it, and create 
+        # an apporpriate view requirement.
+        init_state = convert_to_numpy(self.get_initial_state())
+        init_state = tree.map_structure(lambda x: x[None], init_state)
+        space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+        vr["state_in"] = ViewRequirement(
+            data_col=f"state_out",
+            shift=-1,
+            used_for_compute_actions=True,
+            used_for_training=True,
+            batch_repeat_value=self.config.max_seq_len,
+            space=space,
+        )
+
+        vr[f"state_out"] = ViewRequirement(
+            used_for_compute_actions=True,
+            used_for_training=True,
+            space=space, 
+        )
+
+        return vr
+
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
@@ -140,9 +192,9 @@ class RLModule(abc.ABC):
         """Returns the input specs of the forward_train method."""
         return ModelSpec()
 
-    @check_specs(
-        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
-    )
+    # @check_specs(
+    #     input_spec="_input_specs_inference", output_spec="_output_specs_inference"
+    # )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method.
@@ -162,9 +214,9 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    @check_specs(
-        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
-    )
+    # @check_specs(
+    #     input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
+    # )
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -186,7 +238,7 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
+    # @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
     def forward_train(
         self,
         batch: SampleBatchType,
@@ -236,3 +288,28 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule
+
+
+    def __get_default_view_requirements(self):
+        obs_space = self.config.observation_space
+        act_space = self.config.action_space
+        return {
+            SampleBatch.OBS: ViewRequirement(space=obs_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=obs_space,
+                used_for_compute_actions=False,
+            ),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=act_space, used_for_compute_actions=False
+            ),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
+            SampleBatch.T: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.UNROLL_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
+        }

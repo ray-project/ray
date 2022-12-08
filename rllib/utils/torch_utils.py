@@ -588,3 +588,4 @@ class Swish(nn.Module):
 
     def forward(self, input_tensor):
         return input_tensor * torch.sigmoid(self._beta * input_tensor)
+        
