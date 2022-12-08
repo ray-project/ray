@@ -17,10 +17,14 @@
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -49,10 +53,10 @@ class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
 
-  /// Add a task event to be reported..
+  /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvents(rpc::TaskEvents task_events) = 0;
+  virtual void AddTaskEvent(rpc::TaskEvents task_events) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -61,13 +65,135 @@ class TaskEventBuffer {
   /// GCS. If GCS has not responded to a previous flush, it will defer the flushing to
   /// the next interval (if not forced.)
   ///
+  /// Before flushing to GCS, events from a single task attempt will also be coalesced
+  /// into one rpc::TaskEvents as an optimization.
+  ///
   /// \param forced When set to true, buffered events will be sent to GCS even if GCS has
   ///       not responded to the previous flush. A forced flush will be called before
   ///       CoreWorker disconnects to ensure all task events in the buffer are sent.
   virtual void FlushEvents(bool forced) = 0;
 
+  /// Start the TaskEventBuffer.
+  ///
+  /// Connects the GCS client, starts its io_thread, and sets up periodical runner for
+  /// flushing events to GCS.
+  /// When it returns non ok status, the TaskEventBuffer will be disabled, and call to
+  /// Enabled() will return false.
+  ///
+  /// \param auto_flush Test only flag to disable periodical flushing events if false.
+  /// \return Status code. When the status is not ok, events will not be recorded nor
+  /// reported.
+  virtual Status Start(bool auto_flush = true) = 0;
+
   /// Stop the TaskEventBuffer and it's underlying IO, disconnecting GCS clients.
   virtual void Stop() = 0;
+
+  /// Return true if recording and reporting of task events is enabled.
+  ///
+  /// The TaskEventBuffer will be disabled if Start() returns not ok.
+  virtual bool Enabled() const = 0;
+};
+
+/// Implementation of TaskEventBuffer.
+///
+/// The buffer has its own io_context and io_thread, that's isolated from other
+/// components.
+///
+/// This class is thread-safe.
+class TaskEventBufferImpl : public TaskEventBuffer {
+ public:
+  /// Constructor
+  ///
+  /// \param gcs_client GCS client
+  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
+
+  void AddTaskEvent(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
+
+  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+
+  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
+
+  void Stop() LOCKS_EXCLUDED(mutex_) override;
+
+  bool Enabled() const override;
+
+ private:
+  /// Test only functions.
+  std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    std::vector<rpc::TaskEvents> copy(buffer_);
+    return copy;
+  }
+
+  /// Test only functions.
+  size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    return num_status_task_events_dropped_;
+  }
+
+  /// Test only functions.
+  size_t GetNumProfileTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    return num_profile_task_events_dropped_;
+  }
+
+  /// Test only functions.
+  gcs::GcsClient *GetGcsClient() {
+    absl::MutexLock lock(&mutex_);
+    return gcs_client_.get();
+  }
+
+  /// Mutex guarding task_events_data_.
+  absl::Mutex mutex_;
+
+  /// IO service event loop owned by TaskEventBuffer.
+  instrumented_io_context io_service_;
+
+  /// Work guard to prevent the io_context from exiting when no work.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+
+  /// Dedicated io thread for running the periodical runner and the GCS client.
+  std::thread io_thread_;
+
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
+
+  /// Client to the GCS used to push profile events to it.
+  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
+
+  /// True if the TaskEventBuffer is enabled.
+  std::atomic<bool> enabled_ = false;
+
+  /// Buffered task events.
+  std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+
+  /// A iterator into buffer_ that determines which element to be overwritten.
+  size_t next_idx_to_overwrite_ GUARDED_BY(mutex_) = 0;
+
+  /// Number of profile task events dropped since the last report flush.
+  size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+
+  /// Number of status task events dropped since the last report flush.
+  size_t num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+
+  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
+  /// GCS with too many calls. There is no point sending more events if GCS could not
+  /// process them quick enough.
+  bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
+
+  /// Debug stats: total number of bytes of task events sent so far to GCS.
+  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
+
+  /// Debug stats: total number of task events sent so far to GCS.
+  uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
+
+  FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
+  FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
+  FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
+  FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
+  FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
+  FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
+  FRIEND_TEST(TaskEventBufferTest, TestBufferSizeLimit);
 };
 
 }  // namespace worker

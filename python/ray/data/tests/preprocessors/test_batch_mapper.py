@@ -54,9 +54,7 @@ def test_batch_mapper_basic(ray_start_regular_shared):
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
+                    "column_1": [2, 3, 4, 5],
                 }
             ),
         ),
@@ -170,9 +168,7 @@ def test_batch_mapper_batch_size(ray_start_regular_shared, ds):
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
+                    "column_1": [2, 3, 4, 5],
                 }
             ),
         ),
@@ -274,8 +270,6 @@ def test_batch_mapper_arrow_data_format(
             lazy_fixture("ds_numpy_single_column_tensor_format"),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
                     TENSOR_COLUMN_NAME: [
                         [[1, 2], [3, 4]],
                         [[5, 6], [7, 8]],
@@ -287,14 +281,7 @@ def test_batch_mapper_arrow_data_format(
         ),
         (
             lazy_fixture("ds_numpy_list_of_ndarray_tensor_format"),
-            pd.DataFrame(
-                {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: [[[1, 2], [3, 4]]]
-                    * 4
-                }
-            ),
+            pd.DataFrame({TENSOR_COLUMN_NAME: [[[1, 2], [3, 4]]] * 4}),
         ),
     ],
 )
