@@ -93,6 +93,7 @@ def _load_trial_from_checkpoint(
     if new_local_dir:
         trial_cp["local_dir"] = new_local_dir
     new_trial.__setstate__(trial_cp)
+    new_trial.refresh_default_resource_request()
     return new_trial
 
 
@@ -260,11 +261,18 @@ class _ExperimentCheckpointManager:
 
         synced = False
         if self._syncer:
-            # Todo: Implement sync_timeout for experiment-level syncing
-            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
-                self._syncer.wait()
+                try:
+                    self._syncer.wait()
+                except TimeoutError as e:
+                    logger.warning(
+                        "The previous sync of the experiment checkpoint to the cloud "
+                        f"timed out: {str(e)}. Tune will continue to retry syncing. "
+                        "If this warning keeps showing up, consider diagnosing the "
+                        "reason behind the hanging sync operation, or increase the "
+                        "`sync_timeout` in `SyncConfig`."
+                    )
                 synced = self._syncer.sync_up(
                     local_dir=self._local_dir,
                     remote_dir=self._remote_dir,
