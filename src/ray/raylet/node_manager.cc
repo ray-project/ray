@@ -290,7 +290,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
@@ -996,17 +995,15 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
