@@ -470,7 +470,6 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         return PlacementGroupResourceManager()
 
     def setUp(self):
-
         self.head_cpus = 8
         self.head_gpus = 4
         self.head_custom = 16
