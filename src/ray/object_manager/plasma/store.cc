@@ -319,8 +319,11 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
         boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
         std::move(socket_));
   }
-  // We're ready to accept another client.
-  DoAccept();
+
+  if (error != boost::asio::error::operation_aborted) {
+    // We're ready to accept another client.
+    DoAccept();
+  }
 }
 
 void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
