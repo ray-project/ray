@@ -180,7 +180,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
 
-    >>> parse_uri(https://test.com/file.zip)
+    >>> parse_uri("https://test.com/file.zip")
     (Protocol.HTTPS, "https_test_com_file.zip")
     """
     uri = urlparse(pkg_uri)
