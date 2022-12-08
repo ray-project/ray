@@ -215,9 +215,8 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_client_test -//:gcs_heartbeat_manager_test
-      -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
-      -//:ray_syncer_test
+      -//:gcs_server_rpc_test -//:gcs_client_test -//:metric_exporter_client_test
+      -//:stats_test -//:worker_pool_test -//:ray_syncer_test
 
 - label: ":serverless: Dashboard Tests"
   conditions:
