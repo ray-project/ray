@@ -253,6 +253,21 @@ struct Mocker {
     add_job_request->mutable_data()->CopyFrom(*job_table_data);
     return add_job_request;
   }
+
+  static rpc::TaskEventData GenTaskEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      int32_t num_profile_task_events_dropped = 0,
+      int32_t num_status_task_events_dropped = 0) {
+    rpc::TaskEventData data;
+    for (auto &events : task_events) {
+      auto new_events = data.add_events_by_task();
+      new_events->CopyFrom(events);
+    }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    return data;
+  }
 };
 
 }  // namespace ray
