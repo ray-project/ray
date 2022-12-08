@@ -156,7 +156,7 @@ class Checkpoint:
     @DeveloperAPI
     def __init__(
         self,
-        local_path: Optional[Union[str, Path]] = None,
+        local_path: Optional[Union[str, os.PathLike]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
@@ -277,7 +277,7 @@ class Checkpoint:
             return self._uri
 
         if self._local_path and Path(self._local_path).exists():
-            return "file://" + str(self._local_path)
+            return f"file://{self._local_path}"
 
         return None
 
@@ -439,7 +439,7 @@ class Checkpoint:
         )
 
     @classmethod
-    def from_directory(cls, path: Union[str, Path]) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
