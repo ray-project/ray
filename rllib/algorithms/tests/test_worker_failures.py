@@ -509,12 +509,12 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config={
-                    "ignore_worker_failures": False,
-                    "recreate_failed_workers": True,
+                evaluation_config=PGConfig.overrides(
+                    ignore_worker_failures=False,
+                    recreate_failed_workers=True,
                     # Restart the entire eval worker.
-                    "restart_failed_sub_environments": False,
-                    "env_config": {
+                    restart_failed_sub_environments=False,
+                    env_config={
                         "evaluation": True,
                         # Make eval worker (index 1) fail.
                         "bad_indices": [1],
@@ -522,7 +522,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_stop_count": 4,
                         "counter": COUNTER_NAME,
                     },
-                },
+                ),
             )
             .callbacks(callbacks_class=AddPolicyCallback)
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
@@ -592,8 +592,8 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
-                    "env_config": {
+                evaluation_config=PGConfig.overrides(
+                    env_config={
                         "evaluation": True,
                         "p_done": 0.0,
                         "max_episode_len": 20,
@@ -604,7 +604,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_stop_count": 4,
                         "counter": COUNTER_NAME,
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -658,18 +658,18 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
-                    "ignore_worker_failures": True,
-                    "recreate_failed_workers": True,
+                evaluation_config=PGConfig.overrides(
+                    ignore_worker_failures=True,
+                    recreate_failed_workers=True,
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
-                    "restart_failed_sub_environments": True,
-                    "env_config": {
+                    restart_failed_sub_environments=True,
+                    env_config={
                         "evaluation": True,
                         # Make eval worker (index 1) fail.
                         "bad_indices": [1],
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -738,11 +738,11 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
+                evaluation_config=PGConfig.overrides(
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
-                    "restart_failed_sub_environments": True,
-                    "env_config": {
+                    restart_failed_sub_environments=True,
+                    env_config={
                         "evaluation": True,
                         "p_done": 0.0,
                         "max_episode_len": 20,
@@ -752,7 +752,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_start_count": 3,
                         "failure_stop_count": 5,
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -815,11 +815,11 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config={
-                    "env_config": {
+                evaluation_config=PGConfig.overrides(
+                    env_config={
                         "evaluation": True,
                     }
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )

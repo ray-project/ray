@@ -83,7 +83,7 @@ class TestDT(unittest.TestCase):
                 evaluation_duration=10,
                 evaluation_duration_unit="episodes",
                 evaluation_parallel_to_training=False,
-                evaluation_config={"input": "sampler", "explore": False},
+                evaluation_config=DTConfig.overrides(input_="sampler", explore=False),
             )
             .rollouts(
                 num_rollout_workers=0,

@@ -119,7 +119,7 @@ class SlateQConfig(AlgorithmConfig):
         self.compress_observations = False
         self._disable_preprocessor_api = True
         # Switch to greedy actions in evaluation workers.
-        self.evaluation(evaluation_config={"explore": False})
+        self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
         # __sphinx_doc_end__
         # fmt: on
 

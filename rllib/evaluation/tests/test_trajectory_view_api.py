@@ -283,7 +283,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
         }
 
         def policy_fn(agent_id, episode, **kwargs):
@@ -326,7 +326,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         max_seq_len = 50
         rollout_fragment_length = 201
         policies = {
-            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, None),
         }
 
         def policy_fn(agent_id, episode, **kwargs):
