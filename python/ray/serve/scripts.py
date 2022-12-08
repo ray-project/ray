@@ -13,7 +13,7 @@ import re
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr
+from ray._private.utils import import_attr, split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
@@ -99,7 +99,6 @@ def process_dict_for_yaml_dump(data):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
-
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
@@ -313,7 +312,7 @@ def run(
             is_config = False
 
         # Setting the runtime_env here will set defaults for the deployments.
-        ray.init(namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+        ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
 
         if is_config:
             client = _private_api.serve_start(
@@ -359,87 +358,6 @@ def run(
             sys.exit()
 
     else:
-        script = """
-# Ray blocks SIGINT signals, so to properly shutdown serve upon keyboard interrupt,
-# need to unblock SIGINT.
-import signal
-signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
-
-import argparse
-import importlib
-import pathlib
-import signal
-import sys
-import time
-import yaml
-
-from ray import serve
-from ray._private.utils import import_attr
-from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve._private import api as _private_api
-from ray.serve.schema import ServeApplicationSchema
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--config-or-import-path')
-parser.add_argument('--host')
-parser.add_argument('--port')
-parser.add_argument('--blocking', action='store_true')
-parser.add_argument('--gradio', action='store_true')
-args = parser.parse_args()
-
-if pathlib.Path(args.config_or_import_path).is_file():
-    config_path = args.config_or_import_path
-    cli_logger.print(f'Deploying from config file: "{config_path}".')
-
-    with open(config_path, 'r') as config_file:
-        config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
-    is_config = True
-else:
-    import_path = args.config_or_import_path
-    cli_logger.print(f'Deploying from import path: "{import_path}".')
-    node = import_attr(import_path)
-    is_config = False
-
-if is_config:
-    client = _private_api.serve_start(
-        detached=True,
-        http_options={
-            'host': config.host,
-            'port': config.port,
-            'location': 'EveryNode',
-        },
-    )
-else:
-    client = _private_api.serve_start(
-        detached=True,
-        http_options={'host': args.host, 'port': args.port, 'location': 'EveryNode'},
-    )
-
-try:
-    if is_config:
-        client.deploy_app(config, _blocking=args.gradio)
-        cli_logger.success('Submitted deploy config successfully.')
-        if args.gradio:
-            handle = serve.get_deployment('DAGDriver').get_handle()
-    else:
-        handle = serve.run(node, host=args.host, port=args.port)
-        cli_logger.success('Deployed Serve app successfully.')
-
-    if args.gradio:
-        from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-
-        visualizer = GraphVisualizer()
-        visualizer.visualize_with_gradio(handle)
-    else:
-        if args.blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-
-except KeyboardInterrupt:
-    serve.shutdown()
-    sys.exit()
-"""
         final_runtime_env = parse_runtime_env_args(
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
@@ -452,8 +370,8 @@ except KeyboardInterrupt:
         client = JobSubmissionClient(address)
         submission_id = client.submit_job(
             entrypoint=(
-                f'python -c "{script}" '
-                f"--config-or-import-path={config_or_import_path} "
+                f"serve run {config_or_import_path} "
+                "--address=auto "
                 f"--host={host} "
                 f"--port={port} "
                 + ("--blocking " if blocking else "")
@@ -467,7 +385,6 @@ except KeyboardInterrupt:
                 print(lines, end="")
 
         def interrupt_handler():
-            cli_logger.info("Got KeyboardInterrupt, shutting down...")
             client.stop_job(submission_id)
 
         loop = asyncio.get_event_loop()
