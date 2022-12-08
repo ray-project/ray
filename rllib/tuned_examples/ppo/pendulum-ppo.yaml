@@ -18,3 +18,5 @@ pendulum-ppo:
         sgd_minibatch_size: 64
         num_sgd_iter: 6
         observation_filter: MeanStdFilter
+        seed: 42
+        enable_connectors: true
