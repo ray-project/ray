@@ -962,11 +962,11 @@ def start(
 @click.option(
     "-g",
     "--grace-period",
-    default=10,
+    default=16,
     help=(
         "The time in seconds ray waits for processes to be properly terminated. "
         "If processes are not terminated within the grace period, "
-        "they are forcefully terminated after the grace period."
+        "they are forcefully terminated after the grace period. "
     ),
 )
 @add_click_logging_options
@@ -1089,14 +1089,18 @@ def stop(force: bool, grace_period: int):
     processes_to_kill = RAY_PROCESSES
     gcs = processes_to_kill[0]
     assert gcs[0] == "gcs_server"
+    
+    grace_period_to_kill_gcs = int(grace_period / 2)
+    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+
     # Kill evertyhing except GCS.
-    found, stopped, alive = kill_procs(force, grace_period, processes_to_kill[1:])
+    found, stopped, alive = kill_procs(force, grace_period_to_kill_components, processes_to_kill[1:])
     total_procs_found += found
     total_procs_stopped += stopped
     procs_not_gracefully_killed.extend(alive)
 
     # Kill GCS.
-    found, stopped, alive = kill_procs(force, grace_period, [gcs])
+    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
     total_procs_found += found
     total_procs_stopped += stopped
     procs_not_gracefully_killed.extend(alive)
