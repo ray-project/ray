@@ -1,5 +1,6 @@
 import time
 from collections import Counter
+import logging
 import os
 import pickle
 import shutil
@@ -7,6 +8,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from freezegun import freeze_time
 
 import ray
 from ray.air import CheckpointConfig
@@ -882,6 +885,90 @@ class TrialRunnerTest3(unittest.TestCase):
         # we should sync 4 times - every 2 checkpoints, but the last sync will not
         # happen as the experiment finishes before it is triggered
         assert syncer.sync_up_counter == 4
+
+    def getHangingSyncer(self, sync_period: float, sync_timeout: float):
+        def _hanging_sync_up_command(*args, **kwargs):
+            time.sleep(200)
+
+        from ray.tune.syncer import _DefaultSyncer
+
+        class HangingSyncer(_DefaultSyncer):
+            def __init__(self, sync_period: float, sync_timeout: float):
+                super(HangingSyncer, self).__init__(
+                    sync_period=sync_period, sync_timeout=sync_timeout
+                )
+                self.sync_up_counter = 0
+
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                self.sync_up_counter += 1
+                super(HangingSyncer, self).sync_up(local_dir, remote_dir, exclude)
+
+            def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
+                return _hanging_sync_up_command, {}
+
+        return HangingSyncer(sync_period=sync_period, sync_timeout=sync_timeout)
+
+    def testForcedCloudCheckpointSyncTimeout(self):
+        """Test that trial runner experiment checkpointing with forced cloud syncing
+        times out correctly when the sync process hangs."""
+        ray.init(num_cpus=3)
+
+        syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            remote_checkpoint_dir="fake",
+        )
+        # Checkpoint for the first time starts the first sync in the background
+        runner.checkpoint(force=True)
+        assert syncer.sync_up_counter == 1
+
+        buffer = []
+        logger = logging.getLogger("ray.tune.execution.trial_runner")
+        with patch.object(logger, "warning", lambda x: buffer.append(x)):
+            # The second checkpoint will log a warning about the previous sync
+            # timing out. Then, it will launch a new sync process in the background.
+            runner.checkpoint(force=True)
+        assert any(
+            "sync of the experiment checkpoint to the cloud timed out" in x
+            for x in buffer
+        )
+        assert syncer.sync_up_counter == 2
+
+    def testPeriodicCloudCheckpointSyncTimeout(self):
+        """Test that trial runner experiment checkpointing with the default periodic
+        cloud syncing times out and retries correctly when the sync process hangs."""
+        ray.init(num_cpus=3)
+
+        sync_period = 60
+        syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            remote_checkpoint_dir="fake",
+        )
+
+        with freeze_time() as frozen:
+            runner.checkpoint()
+            assert syncer.sync_up_counter == 1
+
+            frozen.tick(sync_period / 2)
+            # Cloud sync has already timed out, but we shouldn't retry until
+            # the next sync_period
+            runner.checkpoint()
+            assert syncer.sync_up_counter == 1
+
+            frozen.tick(sync_period / 2)
+            # We've now reached the sync_period - a new sync process should be
+            # started, with the old one timing out
+            buffer = []
+            logger = logging.getLogger("ray.tune.syncer")
+            with patch.object(logger, "warning", lambda x: buffer.append(x)):
+                runner.checkpoint()
+            assert any("did not finish running within the timeout" in x for x in buffer)
+            assert syncer.sync_up_counter == 2
 
 
 class SearchAlgorithmTest(unittest.TestCase):
