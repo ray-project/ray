@@ -157,7 +157,12 @@ def test_job_info_to_json():
     # Check that the expected items are in the JSON.
     assert expected_items.items() <= info.to_json().items()
 
-    assert JobInfo.from_json(info.to_json()) == info
+    new_job_info = JobInfo.from_json(info.to_json())
+    assert new_job_info == info
+
+    # If `status` is just a string, then operations like status.is_terminal()
+    # would fail, so we should make sure that it's a JobStatus.
+    assert isinstance(new_job_info.status, JobStatus)
 
 
 if __name__ == "__main__":

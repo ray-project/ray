@@ -93,6 +93,8 @@ class JobInfo:
     driver_node_id: Optional[str] = None
 
     def __post_init__(self):
+        if isinstance(self.status, str):
+            self.status = JobStatus(self.status)
         if self.message is None:
             if self.status == JobStatus.PENDING:
                 self.message = "Job has not started yet."
@@ -146,6 +148,9 @@ class JobInfo:
         Args:
             json_dict: A JSON dictionary to use to initialize the JobInfo object.
         """
+        # Convert enum values to enum objects.
+        json_dict["status"] = JobStatus(json_dict["status"])
+
         return cls(**json_dict)
 
 
