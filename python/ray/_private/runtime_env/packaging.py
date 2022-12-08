@@ -192,16 +192,17 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
 
-    package_name = uri.netloc
     if protocol in Protocol.remote_protocols():
         package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-    disallowed_chars = ["/", ":", "@", "+"]
-    for disallowed_char in disallowed_chars:
-        package_name = package_name.replace(disallowed_char, "_")
+        disallowed_chars = ["/", ":", "@", "+"]
+        for disallowed_char in disallowed_chars:
+            package_name = package_name.replace(disallowed_char, "_")
 
-    # Remove all periods except the last, which is used for the file extension
-    package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+        # Remove all periods except the last, which is used for the file extension
+        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+    else:
+        package_name = uri.netloc
 
     return (protocol, package_name)
 
