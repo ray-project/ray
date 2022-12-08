@@ -12,7 +12,7 @@ import urllib.parse
 import warnings
 import shutil
 from datetime import datetime
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
 
 import click
 import psutil
@@ -962,111 +962,164 @@ def start(
 @click.option(
     "-g",
     "--grace-period",
-    default=10,
+    default=16,
     help=(
-        "The time ray waits for processes to be properly terminated. "
+        "The time in seconds ray waits for processes to be properly terminated. "
         "If processes are not terminated within the grace period, "
-        "they are forcefully terminated after the grace period."
+        "they are forcefully terminated after the grace period. "
     ),
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period):
+def stop(force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
-
-    # Note that raylet needs to exit before object store, otherwise
-    # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = RAY_PROCESSES
+    total_procs_found = 0
+    total_procs_stopped = 0
+    procs_not_gracefully_killed = []
 
-    process_infos = []
-    for proc in psutil.process_iter(["name", "cmdline"]):
-        try:
-            process_infos.append((proc, proc.name(), proc.cmdline()))
-        except psutil.Error:
-            pass
+    def kill_procs(
+        force: bool, grace_period: int, processes_to_kill: List[str]
+    ) -> Tuple[int, int, List[psutil.Process]]:
+        """Find all processes from `processes_to_kill` and terminate them.
 
-    stopped = []
-    for keyword, filter_by_cmd in processes_to_kill:
-        if filter_by_cmd and is_linux and len(keyword) > 15:
-            # getting here is an internal bug, so we do not use cli_logger
-            msg = (
-                "The filter string should not be more than {} "
-                "characters. Actual length: {}. Filter: {}"
-            ).format(15, len(keyword), keyword)
-            raise ValueError(msg)
+        Unless `force` is specified, it gracefully kills processes. If
+        processes are not cleaned within `grace_period`, it force kill all
+        remaining processes.
 
-        found = []
-        for candidate in process_infos:
-            proc, proc_cmd, proc_args = candidate
-            corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
-            if keyword in corpus:
-                found.append(candidate)
-        for proc, proc_cmd, proc_args in found:
-            proc_string = str(subprocess.list2cmdline(proc_args))
+        Returns:
+            total_procs_found: Total number of processes found from
+                `processes_to_kill` is added.
+            total_procs_stopped: Total number of processes gracefully
+                stopped from `processes_to_kill` is added.
+            procs_not_gracefully_killed: If processes are not killed
+                gracefully, they are added here.
+        """
+        process_infos = []
+        for proc in psutil.process_iter(["name", "cmdline"]):
             try:
-                if force:
-                    proc.kill()
-                else:
-                    # TODO(mehrdadn): On Windows, this is forceful termination.
-                    # We don't want CTRL_BREAK_EVENT, because that would
-                    # terminate the entire process group. What to do?
-                    proc.terminate()
+                process_infos.append((proc, proc.name(), proc.cmdline()))
+            except psutil.Error:
+                pass
 
-                if force:
-                    cli_logger.verbose(
-                        "Killed `{}` {} ",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGKILL)"),
-                    )
-                else:
-                    cli_logger.verbose(
-                        "Send termination request to `{}` {}",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGTERM)"),
-                    )
+        stopped = []
+        for keyword, filter_by_cmd in processes_to_kill:
+            if filter_by_cmd and is_linux and len(keyword) > 15:
+                # getting here is an internal bug, so we do not use cli_logger
+                msg = (
+                    "The filter string should not be more than {} "
+                    "characters. Actual length: {}. Filter: {}"
+                ).format(15, len(keyword), keyword)
+                raise ValueError(msg)
 
-                stopped.append(proc)
-            except psutil.NoSuchProcess:
-                cli_logger.verbose(
-                    "Attempted to stop `{}`, but process was already dead.",
-                    cf.bold(proc_string),
+            found = []
+            for candidate in process_infos:
+                proc, proc_cmd, proc_args = candidate
+                corpus = (
+                    proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
-            except (psutil.Error, OSError) as ex:
-                cli_logger.error(
-                    "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
-                )
+                if keyword in corpus:
+                    found.append(candidate)
+            for proc, proc_cmd, proc_args in found:
+                proc_string = str(subprocess.list2cmdline(proc_args))
+                try:
+                    if force:
+                        proc.kill()
+                    else:
+                        # TODO(mehrdadn): On Windows, this is forceful termination.
+                        # We don't want CTRL_BREAK_EVENT, because that would
+                        # terminate the entire process group. What to do?
+                        proc.terminate()
 
-    # Wait for the processes to actually stop.
-    # Dedup processes.
-    stopped, alive = psutil.wait_procs(stopped, timeout=0)
-    procs_to_kill = stopped + alive
-    total_found = len(procs_to_kill)
+                    if force:
+                        cli_logger.verbose(
+                            "Killed `{}` {} ",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGKILL)"),
+                        )
+                    else:
+                        cli_logger.verbose(
+                            "Send termination request to `{}` {}",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGTERM)"),
+                        )
 
-    # Wait for grace period to terminate processes.
-    gone_procs = set()
+                    stopped.append(proc)
+                except psutil.NoSuchProcess:
+                    cli_logger.verbose(
+                        "Attempted to stop `{}`, but process was already dead.",
+                        cf.bold(proc_string),
+                    )
+                except (psutil.Error, OSError) as ex:
+                    cli_logger.error(
+                        "Could not terminate `{}` due to {}",
+                        cf.bold(proc_string),
+                        str(ex),
+                    )
 
-    def on_terminate(proc):
-        gone_procs.add(proc)
-        cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+        # Wait for the processes to actually stop.
+        # Dedup processes.
+        stopped, alive = psutil.wait_procs(stopped, timeout=0)
+        procs_to_kill = stopped + alive
+        total_found = len(procs_to_kill)
 
-    stopped, alive = psutil.wait_procs(
-        procs_to_kill, timeout=grace_period, callback=on_terminate
+        # Wait for grace period to terminate processes.
+        gone_procs = set()
+
+        def on_terminate(proc):
+            gone_procs.add(proc)
+            cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+
+        stopped, alive = psutil.wait_procs(
+            procs_to_kill, timeout=grace_period, callback=on_terminate
+        )
+        total_stopped = len(stopped)
+
+        # For processes that are not killed within the grace period,
+        # we send force termination signals.
+        for proc in alive:
+            proc.kill()
+        # Wait a little bit to make sure processes are killed forcefully.
+        psutil.wait_procs(alive, timeout=2)
+        return total_found, total_stopped, alive
+
+    # GCS should exit after all other processes exit.
+    # Otherwise, some of processes may exit with an unexpected
+    # exit code which breaks ray start --block.
+    processes_to_kill = RAY_PROCESSES
+    gcs = processes_to_kill[0]
+    assert gcs[0] == "gcs_server"
+
+    grace_period_to_kill_gcs = int(grace_period / 2)
+    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+
+    # Kill evertyhing except GCS.
+    found, stopped, alive = kill_procs(
+        force, grace_period_to_kill_components, processes_to_kill[1:]
     )
-    total_stopped = len(stopped)
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
+
+    # Kill GCS.
+    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
-    if total_found == 0:
+    if total_procs_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
     else:
-        if total_stopped == total_found:
-            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
+        if total_procs_stopped == total_procs_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_procs_stopped)
         else:
             cli_logger.warning(
-                f"Stopped only {total_stopped} out of {total_found} Ray processes "
-                f"within the grace period {grace_period} seconds. "
+                f"Stopped only {total_procs_stopped} out of {total_procs_found} "
+                f"Ray processes within the grace period {grace_period} seconds. "
                 f"Set `{cf.bold('-v')}` to see more details. "
-                f"Remaining processes {alive} will be forcefully terminated.",
+                f"Remaining processes {procs_not_gracefully_killed} "
+                "will be forcefully terminated.",
             )
             cli_logger.warning(
                 f"You can also use `{cf.bold('--force')}` to forcefully terminate "
@@ -1074,12 +1127,6 @@ def stop(force, grace_period):
                 "proper termination."
             )
 
-    # For processes that are not killed within the grace period,
-    # we send force termination signals.
-    for proc in alive:
-        proc.kill()
-    # Wait a little bit to make sure processes are killed forcefully.
-    psutil.wait_procs(alive, timeout=2)
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
