@@ -50,10 +50,10 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 absl::optional<rpc::TaskEvents>
 GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents events_by_task) {
-  RAY_LOG_EVERY_MS(INFO, 5000) << "GcsTaskManagerStorage currently stores "
-                               << task_events_.size()
-                               << " task event entries, approximate size="
-                               << 1.0 * num_bytes_task_events_ / 1024 / 1024 << "MiB";
+  RAY_LOG_EVERY_MS(INFO, 10000)
+      << "GcsTaskManagerStorage currently stores " << task_events_.size()
+      << " task event entries, approximate size="
+      << 1.0 * num_bytes_task_events_ / 1024 / 1024 << "MiB";
 
   TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   int32_t attempt_number = events_by_task.attempt_number();
@@ -140,26 +140,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
             if (!task_event.has_profile_events()) {
               continue;
             }
-            auto profile_event = reply->add_events_by_task();
-            profile_event->set_task_id(task_event.task_id());
-            profile_event->set_attempt_number(task_event.attempt_number());
-            profile_event->mutable_profile_events()->Swap(
-                task_event.mutable_profile_events());
+            AddProfileEvent(reply, task_event);
           }
-
           reply->set_num_events_dropped(total_num_profile_task_events_dropped_);
         } else if (request.event_type() == rpc::TaskEventType::STATUS_EVENT) {
           for (auto &task_event : task_events) {
             if (!task_event.has_state_updates()) {
               continue;
             }
-            auto status_event = reply->add_events_by_task();
-            status_event->set_task_id(task_event.task_id());
-            status_event->set_attempt_number(task_event.attempt_number());
-
-            status_event->mutable_task_info()->Swap(task_event.mutable_task_info());
-            status_event->mutable_state_updates()->Swap(
-                task_event.mutable_state_updates());
+            AddStatusUpdateEvent(reply, task_event);
           }
           reply->set_num_events_dropped(total_num_status_task_events_dropped_);
         } else {
@@ -206,12 +195,36 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
           }
           RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
         }
+        RAY_LOG_EVERY_MS(INFO, 10000)
+            << "GcsTaskManager currently has [total_num_task_events_reported="
+            << total_num_task_events_reported_
+            << "],[total_num_status_task_events_dropped="
+            << total_num_status_task_events_dropped_
+            << "],[total_num_profile_task_events_dropped="
+            << total_num_profile_task_events_dropped_ << "].";
 
         // Processed all the task events
         RAY_LOG(DEBUG) << "Processed all " << num_to_process << " task events";
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       },
       "GcsTaskManager::HandleAddTaskEventData");
+}
+
+void GcsTaskManager::AddProfileEvent(rpc::GetTaskEventsReply *reply,
+                                     rpc::TaskEvents &task_event) {
+  auto profile_event = reply->add_events_by_task();
+  profile_event->set_task_id(task_event.task_id());
+  profile_event->set_attempt_number(task_event.attempt_number());
+  profile_event->mutable_profile_events()->Swap(task_event.mutable_profile_events());
+}
+
+void GcsTaskManager::AddStatusUpdateEvent(rpc::GetTaskEventsReply *reply,
+                                          rpc::TaskEvents &task_event) {
+  auto status_event = reply->add_events_by_task();
+  status_event->set_task_id(task_event.task_id());
+  status_event->set_attempt_number(task_event.attempt_number());
+  status_event->mutable_task_info()->Swap(task_event.mutable_task_info());
+  status_event->mutable_state_updates()->Swap(task_event.mutable_state_updates());
 }
 
 }  // namespace gcs

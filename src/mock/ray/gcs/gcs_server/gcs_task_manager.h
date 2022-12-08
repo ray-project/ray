@@ -17,7 +17,8 @@ namespace gcs {
 
 class MockGcsTaskManager : public GcsTaskManager {
  public:
-  MockGcsTaskManager() : GcsTaskManager(nullptr, nullptr, nullptr) {}
+  MockGcsTaskManager() : GcsTaskManager() {}
+
   MOCK_METHOD(void,
               HandleAddTaskEventData,
               (rpc::AddTaskEventDataRequest request,
