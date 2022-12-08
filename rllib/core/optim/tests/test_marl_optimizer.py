@@ -7,8 +7,8 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check
 
 
-class TestDefaultMarlOptimizer:
-    def test_default_marl_optimizer_set_state_get_state(self):
+class TestMARLlOptimizer:
+    def test_marl_optimizer_set_state_get_state(self):
         env = gym.make("CartPole-v1")
         module_config = FCConfig(
             input_dim=sum(env.observation_space.shape),
@@ -35,3 +35,9 @@ class TestDefaultMarlOptimizer:
             optim2.get_state()[DEFAULT_POLICY_ID]["module"]["param_groups"][0]["lr"],
             0.01,
         )
+
+    def test_default_marl_optimizer_compute_loss(self):
+        pass
+
+    def test_custom_marl_optimizer_compute_loss(self):
+        pass
