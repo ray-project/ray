@@ -13,7 +13,7 @@ import re
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr, split_address
+from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
@@ -99,6 +99,7 @@ def process_dict_for_yaml_dump(data):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
+
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
@@ -312,7 +313,9 @@ def run(
             is_config = False
 
         # Setting the runtime_env here will set defaults for the deployments.
-        ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
 
         if is_config:
             client = _private_api.serve_start(
