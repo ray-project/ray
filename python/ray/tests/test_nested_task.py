@@ -1,4 +1,5 @@
 import sys
+import threading
 
 import pytest
 
@@ -148,6 +149,34 @@ def test_crashed_actor_restores_depth(shutdown_only):
     nested_actor = ray.get(actor.create_restartable_actor.remote())
 
     ray.get(nested_actor.run.remote())
+
+
+def test_thread_create_task(shutdown_only):
+    @ray.remote
+    def thread_create_task():
+        assert ray._private.worker.global_worker.task_depth == 1
+
+        global has_exception
+        has_exception = False
+
+        @ray.remote
+        def check_nested_depth():
+            assert ray._private.worker.global_worker.task_depth == 2
+
+        def run_check_nested_depth():
+            try:
+                ray.get(check_nested_depth.options(max_retries=0).remote())
+            except Exception:
+                global has_exception
+                has_exception = True
+
+        t1 = threading.Thread(target=run_check_nested_depth)
+        t1.start()
+        t1.join()
+
+        assert not has_exception
+
+    ray.get(thread_create_task.remote())
 
 
 if __name__ == "__main__":
