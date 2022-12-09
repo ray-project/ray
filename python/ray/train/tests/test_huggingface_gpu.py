@@ -31,6 +31,7 @@ def create_checkpoint():
         return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
 
 
+# TODO(ml-team): Add np.ndarray to batch_type
 @pytest.mark.parametrize("batch_type", [pd.DataFrame])
 @pytest.mark.parametrize("device", [None, 0])
 def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
