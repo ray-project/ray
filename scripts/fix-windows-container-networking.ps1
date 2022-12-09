@@ -1,1 +1,0 @@
-../ci/pipeline/fix-windows-container-networking.ps1
