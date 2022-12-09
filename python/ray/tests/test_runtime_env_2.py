@@ -6,8 +6,10 @@ import os
 from typing import List
 
 import ray
+from ray.dashboard.modules.job.common import JobStatus
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray._private.test_utils import wait_for_condition
 
 if os.environ.get("RAY_MINIMAL") != "1":
     from ray.job_submission import JobSubmissionClient
@@ -215,13 +217,25 @@ class TestNoUserInfoInLogs:
         # requires ray[default].
         if not using_ray_client and os.environ.get("RAY_MINIMAL") != "1":
             client = JobSubmissionClient()
-            client.submit_job(entrypoint="echo 'hello world'", runtime_env=runtime_env)
-            client.submit_job(
+            job_id_good_runtime_env = client.submit_job(
+                entrypoint="echo 'hello world'", runtime_env=runtime_env
+            )
+            job_id_bad_runtime_env = client.submit_job(
                 entrypoint="echo 'hello world'", runtime_env=bad_runtime_env
             )
 
-        # Allow time for log files to be written.
-        time.sleep(5)
+            # Wait for the jobs to have status SUCCEEDED or FAILED using wait_for_condition
+
+            def job_succeeded(job_id):
+                job_status = client.get_job_status(job_id)
+                return job_status == JobStatus.SUCCEEDED
+            
+            def job_failed(job_id):
+                job_status = client.get_job_status(job_id)
+                return job_status == JobStatus.FAILED
+            
+            wait_for_condition(lambda: job_succeeded(job_id_good_runtime_env))
+            wait_for_condition(lambda: job_failed(job_id_bad_runtime_env))
 
         with pytest.raises(AssertionError):
             assert_no_user_info_in_logs(USER_SECRET)
