@@ -52,15 +52,6 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental flag.
-    # If True, try to use a native (tf.keras.Model or torch.Module) default
-    # model instead of our built-in ModelV2 defaults.
-    # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for:
-    # 1) framework != torch AND
-    # 2) fully connected and CNN default networks as well as
-    # auto-wrapped LSTM- and attention nets.
-    "_use_default_native_models": False,
-    # Experimental flag.
     # If True, user specified no preprocessor to be created
     # (via config._disable_preprocessor_api=True). If True, observations
     # will arrive in model as they are returned by the env.
