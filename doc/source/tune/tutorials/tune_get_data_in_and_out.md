@@ -94,6 +94,16 @@ def training_function(config):
             -1
         ) + model["hyperparameter_b"] * 0.1 * data["A"].sum()
         trained_model = {"state": model, "epoch": epoch}
+
+
+tuner = Tuner(
+    training_function,
+    param_space={
+        "hyperparameter_a": tune.uniform(0, 20),
+        "hyperparameter_b": tune.uniform(-100, 100),
+        "epochs": 10,
+    },
+)
 ```
 
 ### Parameters
