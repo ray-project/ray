@@ -70,6 +70,7 @@ export type UnifiedJob = {
   metadata: { [key: string]: string } | null;
   runtime_env: { [key: string]: string } | null;
   driver_info: DriverInfo | null;
+  driver_agent_http_address: string | null;
 };
 
 export type DriverInfo = {
