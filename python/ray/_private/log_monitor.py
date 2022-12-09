@@ -505,6 +505,7 @@ if __name__ == "__main__":
     )
 
     def is_proc_alive(pid):
+
         try:
             os.kill(pid, 0)
             return True

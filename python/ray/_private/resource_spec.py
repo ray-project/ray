@@ -274,6 +274,7 @@ def _autodetect_num_gpus():
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
+
     if importlib.util.find_spec("GPUtil"):
         gpu_list = GPUtil.getGPUs()
         result = len(gpu_list)
