@@ -262,7 +262,6 @@
 
       wait_for_nodes:
         num_nodes: 2
-    type: job
 
   alert: default
 
