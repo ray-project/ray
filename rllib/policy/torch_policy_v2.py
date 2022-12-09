@@ -86,7 +86,7 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        if self.config["_enable_rl_module_api"]:
+        if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
             dist_class = None
         else:
@@ -172,7 +172,7 @@ class TorchPolicyV2(Policy):
 
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
-        if self.config["_enable_rl_module_api"]:
+        if self.config.get("_enable_rl_module_api", False):
             self.view_requirements = self.model.view_requirements
         else:
             # Auto-update model's inference view requirements, if recurrent.
@@ -492,7 +492,7 @@ class TorchPolicyV2(Policy):
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
-            if self.config["_enable_rl_module_api"]:
+            if self.config.get("_enable_rl_module_api", False):
                 # TODO (Kourosh): Similar to past, if state_batches are not empty, 
                 # infer seq_lens from the batch size. I still am not sure if I need 
                 # this here. 
@@ -812,7 +812,7 @@ class TorchPolicyV2(Policy):
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {}
-                    if self.config["_enable_rl_module_api"]
+                    if self.config.get("_enable_rl_module_api", False)
                     else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
@@ -937,7 +937,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
-        if self.config["_enable_rl_module_api"]:
+        if self._enable_rl_module_api:
             # convert the tree of a tree to numpy arrays
             return tree.map_structure(lambda s: convert_to_numpy(s), self.model.get_initial_state())
         

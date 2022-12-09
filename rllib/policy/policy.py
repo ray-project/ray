@@ -1306,7 +1306,7 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # With RL modules you want the explore flag to be True for initialization of the
         # tensors and placeholder you'd need for training.
-        explore = self.config["_enable_rl_module_api"]
+        explore = self.config.get("_enable_rl_module_api", False)
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
@@ -1356,7 +1356,7 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            if self.config["_enable_rl_module_api"]:
+            if self.config.get("_enable_rl_module_api", False):
                 sub_batch = postprocessed_batch[:B]
                 postprocessed_batch["state_in"] = sub_batch["state_in"]
                 postprocessed_batch["state_out"] = sub_batch["state_out"]
@@ -1614,7 +1614,7 @@ class Policy(metaclass=ABCMeta):
 
 @DeveloperAPI
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, Tuple, List, np.ndarray, torch.Tensor], batched_input=True,
+    value: Union[Mapping, Tuple, List, TensorType], batched_input=True,
 ) -> gym.Space:
 
     start_idx = 1 if batched_input else 0
