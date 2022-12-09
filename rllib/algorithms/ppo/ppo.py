@@ -322,13 +322,13 @@ class PPO(Algorithm):
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers,
                 max_agent_steps=self.config.train_batch_size,
-                _enable_rl_module_api=self.config._enable_rl_module_api,
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
             )
         else:
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers,
                 max_env_steps=self.config.train_batch_size,
-                _enable_rl_module_api=self.config._enable_rl_module_api,
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
             )
 
         train_batch = train_batch.as_multi_agent()
