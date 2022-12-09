@@ -127,7 +127,7 @@ class PPOTorchRLModule(TorchRLModule):
         if isinstance(self.config.encoder_config, LSTMConfig):
             # TODO (Kourosh): How does this work in RLlib today?
             return self.encoder.get_inital_state()
-        return []
+        return {}
     
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:

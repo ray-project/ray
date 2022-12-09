@@ -487,6 +487,7 @@ class TorchPolicyV2(Policy):
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
+        seq_lens = None
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
@@ -495,7 +496,7 @@ class TorchPolicyV2(Policy):
                 # TODO (Kourosh): Similar to past, if state_batches are not empty, 
                 # infer seq_lens from the batch size. I still am not sure if I need 
                 # this here. 
-                state_batches = input_dict["state_in"]
+                state_batches = input_dict.get("state_in", None)
 
                 if state_batches:
                     if SampleBatch.SEQ_LENS in input_dict:
@@ -512,15 +513,12 @@ class TorchPolicyV2(Policy):
                     input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
                 ]
                 # Calculate RNN sequence lengths.
-                seq_lens = (
-                    torch.tensor(
+                if state_batches:
+                    seq_lens = torch.tensor(
                         [1] * len(state_batches[0]),
                         dtype=torch.long,
                         device=state_batches[0].device,
                     )
-                    if state_batches
-                    else None
-                )
 
             return self._compute_action_helper(
                 input_dict, state_batches, seq_lens, explore, timestep

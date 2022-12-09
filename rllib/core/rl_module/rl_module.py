@@ -134,22 +134,23 @@ class RLModule(abc.ABC):
         # get the initial state in numpy format, infer the state from it, and create 
         # an apporpriate view requirement.
         init_state = convert_to_numpy(self.get_initial_state())
-        init_state = tree.map_structure(lambda x: x[None], init_state)
-        space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
-        vr["state_in"] = ViewRequirement(
-            data_col=f"state_out",
-            shift=-1,
-            used_for_compute_actions=True,
-            used_for_training=True,
-            batch_repeat_value=self.config.max_seq_len,
-            space=space,
-        )
+        if init_state:
+            init_state = tree.map_structure(lambda x: x[None], init_state)
+            space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+            vr["state_in"] = ViewRequirement(
+                data_col=f"state_out",
+                shift=-1,
+                used_for_compute_actions=True,
+                used_for_training=True,
+                batch_repeat_value=self.config.max_seq_len,
+                space=space,
+            )
 
-        vr[f"state_out"] = ViewRequirement(
-            used_for_compute_actions=True,
-            used_for_training=True,
-            space=space, 
-        )
+            vr[f"state_out"] = ViewRequirement(
+                used_for_compute_actions=True,
+                used_for_training=True,
+                space=space, 
+            )
 
         return vr
 

@@ -1634,7 +1634,7 @@ def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )
-    elif isinstance(value, tuple):
+    elif isinstance(value, (tuple, list)):
         return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
     else:
         assert isinstance(

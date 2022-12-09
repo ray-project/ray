@@ -62,7 +62,8 @@ class StateBufferConnector(AgentConnector):
         if states is None:
             states = self._initial_states
         if self._enable_rl_module_api:
-            d["state_out"] = states
+            if states:
+                d["state_out"] = states
         else:
             for i, v in enumerate(states):
                 d["state_out_{}".format(i)] = v
