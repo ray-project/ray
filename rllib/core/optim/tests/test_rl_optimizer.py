@@ -13,7 +13,7 @@ from ray.rllib.offline.dataset_reader import (
 )
 
 import ray
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import FCNet, FCConfig
+from ray.rllib.core.rl_module.encoder import FullyConnectedEncoder, FCConfig
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -95,7 +95,7 @@ def do_rollouts(
 class BCTorchModule(TorchRLModule):
     def __init__(self, config: FCConfig) -> None:
         super().__init__(config)
-        self.policy = FCNet(config)
+        self.policy = FullyConnectedEncoder(config)
 
     @override(RLModule)
     def input_specs_exploration(self) -> ModelSpec:
@@ -127,7 +127,7 @@ class BCTorchModule(TorchRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
         with torch.no_grad():
-            action_logits = self.policy(obs)
+            action_logits = self.policy({"obs": obs})["embedding"]
         action_logits_inference = torch.argmax(action_logits, dim=-1)
         action_dist = TorchDeterministic(action_logits_inference)
         return {"action_dist": action_dist}
@@ -140,7 +140,7 @@ class BCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
+        action_logits = self.policy({"obs": obs})["embedding"]
         action_dist = TorchCategorical(logits=action_logits)
         return {"action_dist": action_dist}
 
