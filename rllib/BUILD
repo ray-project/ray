@@ -1827,6 +1827,13 @@ py_test(
     srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
 )
 
+py_test(
+    name = "test_rl_optimizer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
