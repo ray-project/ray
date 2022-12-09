@@ -29,6 +29,7 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
@@ -96,46 +97,33 @@ class BCTorchModule(TorchRLModule):
         super().__init__(config)
         self.policy = FCNet(config)
 
-    def input_specs(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
-        return ModelSpec(
-            {
-                "obs": TorchTensorSpec("b, do", do=obs_dim),
-                "actions": TorchTensorSpec("b"),
-            }
-        )
-
-    def output_specs(self) -> ModelSpec:
-        return ModelSpec({"action_dist": Distribution})
-
+    @override(RLModule)
     def input_specs_exploration(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
-        return ModelSpec(
-            {
-                "obs": TorchTensorSpec("b, do", do=obs_dim),
-            }
-        )
+        return ModelSpec(self._default_inputs())
 
+    @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
+        return ModelSpec(self._default_inputs())
+
+    @override(RLModule)
+    def input_specs_train(self) -> ModelSpec:
         return ModelSpec(
-            {
-                "obs": TorchTensorSpec("b, do", do=obs_dim),
-            }
+            dict(self._default_inputs(), **{"actions": TorchTensorSpec("b")}),
         )
 
-    def input_specs_train(self) -> ModelSpec:
-        return self.input_specs()
-
+    @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
-        return self.output_specs()
+        return ModelSpec(self._default_outputs())
 
+    @override(RLModule)
     def output_specs_inference(self) -> ModelSpec:
-        return self.output_specs()
+        return ModelSpec(self._default_outputs())
 
+    @override(RLModule)
     def output_specs_train(self) -> ModelSpec:
-        return self.output_specs()
+        return ModelSpec(self._default_outputs())
 
+    @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
         with torch.no_grad():
@@ -144,33 +132,41 @@ class BCTorchModule(TorchRLModule):
         action_dist = TorchDeterministic(action_logits_inference)
         return {"action_dist": action_dist}
 
+    @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
+    @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
         action_logits = self.policy(obs)
         action_dist = TorchCategorical(logits=action_logits)
         return {"action_dist": action_dist}
 
-    def is_distributed(self) -> bool:
-        return False
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        pass
-
+    @override(TorchRLModule)
     def get_state(self) -> Mapping[str, Any]:
         return {"policy": self.policy.state_dict()}
 
+    @override(TorchRLModule)
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.load_state_dict(state["policy"])
+
+    def _default_inputs(self) -> dict:
+        obs_dim = self.config.input_dim
+        return {
+            "obs": TorchTensorSpec("b, do", do=obs_dim),
+        }
+
+    def _default_outputs(self) -> dict:
+        return {"action_dist": Distribution}
 
 
 class BCTorchOptimizer(RLOptimizer):
     def __init__(self, module, config):
         super().__init__(module, config)
 
+    @override(RLOptimizer)
     def compute_loss(
         self, batch: NestedDict, fwd_out: Mapping[str, Any]
     ) -> Mapping[str, Any]:
@@ -182,6 +178,7 @@ class BCTorchOptimizer(RLOptimizer):
         }
         return loss_dict
 
+    @override(RLOptimizer)
     def _configure_optimizers(self) -> List[torch.optim.Optimizer]:
         return {
             "module": torch.optim.SGD(
@@ -189,9 +186,11 @@ class BCTorchOptimizer(RLOptimizer):
             )
         }
 
+    @override(RLOptimizer)
     def get_state(self):
         return {key: optim.state_dict() for key, optim in self.get_optimizers().items()}
 
+    @override(RLOptimizer)
     def set_state(self, state: Mapping[Any, Any]) -> None:
         assert set(state.keys()) == set(self.get_state().keys()) or not state
         for key, optim_dict in state.items():
@@ -244,14 +243,12 @@ class BCTorchTrainer:
         Returns:
             A dictionary of results.
         """
-
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        results = {
+        return {
             "avg_reward": batch["rewards"].mean(),
+            "module_norm": model_norm(self._module),
+            **loss_numpy,
         }
-        results.update(loss_numpy)
-        results["module_norm"] = model_norm(self._module)
-        return results
 
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
@@ -312,8 +309,15 @@ class BCTorchTrainer:
 
 
 class TestRLOptimizer(unittest.TestCase):
-    def test_rl_optimizer_example_torch(self):
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_rl_optimizer_example_torch(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
         module_config = FCConfig(
