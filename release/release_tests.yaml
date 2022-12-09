@@ -4491,7 +4491,7 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 17 minutes.
+    # Expect the benchmark to finish around 20 minutes.
     timeout: 1800
     script: python map_batches_benchmark.py
 
