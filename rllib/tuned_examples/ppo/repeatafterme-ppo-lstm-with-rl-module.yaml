@@ -1,4 +1,4 @@
-repeat-after-me-ppo-w-lstm:
+repeat-after-me-ppo-w-lstm-w-rlm:
     # Default case: Discrete(2) observations/actions.
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
     run: PPO

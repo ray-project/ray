@@ -262,28 +262,28 @@ class PPOTorchRLModule(TorchRLModule):
         logp = action_dist.logp(batch[SampleBatch.ACTIONS])
         entropy = action_dist.entropy()
 
-        # TODO (Kourosh): This design pattern is not ideal.
-        encoder_out_next = {"embedding": batch[SampleBatch.NEXT_OBS]}
-        if self.encoder:
-            # get vf of the next obs
-            encoder_in = SampleBatch({
-                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS],
-            })
-            if "state_in" in batch:
-                encoder_in["state_in"] = batch["state_out"]
+        # # TODO (Kourosh): This design pattern is not ideal.
+        # encoder_out_next = {"embedding": batch[SampleBatch.NEXT_OBS]}
+        # if self.encoder:
+        #     # get vf of the next obs
+        #     encoder_in = SampleBatch({
+        #         SampleBatch.OBS: batch[SampleBatch.NEXT_OBS],
+        #     })
+        #     if "state_in" in batch:
+        #         encoder_in["state_in"] = batch["state_out"]
             
-            if SampleBatch.SEQ_LENS in batch:
-                encoder_in[SampleBatch.SEQ_LENS] = batch[SampleBatch.SEQ_LENS]
-            encoder_out_next = self.encoder(encoder_in)
+        #     if SampleBatch.SEQ_LENS in batch:
+        #         encoder_in[SampleBatch.SEQ_LENS] = batch[SampleBatch.SEQ_LENS]
+        #     encoder_out_next = self.encoder(encoder_in)
         
-        vf_next_obs = self.vf(encoder_out_next["embedding"])
+        # vf_next_obs = self.vf(encoder_out_next["embedding"])
 
         output = {
             SampleBatch.ACTION_DIST: action_dist,
             SampleBatch.ACTION_LOGP: logp,
             SampleBatch.VF_PREDS: vf.squeeze(-1),
             "entropy": entropy,
-            "vf_preds_next_obs": vf_next_obs.squeeze(-1),
+            # "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
 
         output["state_out"] = encoder_out.get("state_out", [])

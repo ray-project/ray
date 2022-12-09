@@ -152,14 +152,17 @@ class LSTMEncoder(Encoder):
         # states are batch-first when coming in
         states = tree.map_structure(lambda x: x.transpose(0, 1), states)
 
-        x = add_time_dimension(
-            x,
-            seq_lens=input_dict[SampleBatch.SEQ_LENS],
-            framework="torch",
-            time_major=not self.config.batch_first,
-        )
-        states_o = {}
-        x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
+        try:
+            x = add_time_dimension(
+                x,
+                seq_lens=input_dict[SampleBatch.SEQ_LENS],
+                framework="torch",
+                time_major=not self.config.batch_first,
+            )
+            states_o = {}
+            x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
+        except RuntimeError:
+            breakpoint()
         x = self.linear(x)
         x = x.view(-1, x.shape[-1])
         

@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     concat_samples,
 )
+from ray.rllib.policy.sample_batch_v2 import concat_samples as concat_samples_v2
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import SampleBatchType
@@ -24,6 +25,7 @@ def synchronous_parallel_sample(
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
+    _enable_rl_module_api: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
@@ -98,7 +100,10 @@ def synchronous_parallel_sample(
         all_sample_batches.extend(sample_batches)
 
     if concat is True:
-        full_batch = concat_samples(all_sample_batches)
+        if _enable_rl_module_api:
+            full_batch = concat_samples_v2(all_sample_batches)
+        else:
+            full_batch = concat_samples(all_sample_batches)
         # Discard collected incomplete episodes in episode mode.
         # if max_episodes is not None and episodes >= max_episodes:
         #    last_complete_ep_idx = len(full_batch) - full_batch[
