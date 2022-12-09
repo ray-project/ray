@@ -224,16 +224,14 @@ class TestNoUserInfoInLogs:
                 entrypoint="echo 'hello world'", runtime_env=bad_runtime_env
             )
 
-            # Wait for the jobs to have status SUCCEEDED or FAILED using wait_for_condition
-
             def job_succeeded(job_id):
                 job_status = client.get_job_status(job_id)
                 return job_status == JobStatus.SUCCEEDED
-            
+
             def job_failed(job_id):
                 job_status = client.get_job_status(job_id)
                 return job_status == JobStatus.FAILED
-            
+
             wait_for_condition(lambda: job_succeeded(job_id_good_runtime_env))
             wait_for_condition(lambda: job_failed(job_id_bad_runtime_env))
 
