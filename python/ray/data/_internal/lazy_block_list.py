@@ -653,7 +653,9 @@ def _execute_read_task_nosplit(
 
     metadata = task.get_metadata()
     metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=metadata.input_files, exec_stats=stats.build(), scheduling_strategy=scheduling_strategy,
+        input_files=metadata.input_files,
+        exec_stats=stats.build(),
+        scheduling_strategy=scheduling_strategy,
     )
     stats_actor.record_task.remote(stats_uuid, i, [metadata])
     return block, metadata

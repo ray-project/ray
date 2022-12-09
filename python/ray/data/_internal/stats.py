@@ -191,7 +191,9 @@ class DatasetStats:
             base_name: The name of the base operation for a multi-stage operation.
         """
 
-        self.stages: Dict[Union[OneToOneStage, AllToAllStage], List[BlockMetadata]] = stages
+        self.stages: Dict[
+            Union[OneToOneStage, AllToAllStage], List[BlockMetadata]
+        ] = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent
@@ -252,7 +254,7 @@ class DatasetStats:
                 if DatasetContext.get_current().block_splitting_enabled:
                     # Only populate stats when stats from all read tasks are ready at
                     # stats actor.
-                    
+
                     if len(stats_map.items()) == len(read_task):
                         read_task = []
                         for _, blocks_metadata in sorted(stats_map.items()):
@@ -262,8 +264,12 @@ class DatasetStats:
                         read_task[i] = metadata[0]
         out = ""
 
-        def _get_scheduling_strategy_str(stage_obj: Union[OneToOneStage, AllToAllStage]):
-            stage_scheduling_strategy = stage_obj.ray_remote_args.get("scheduling_strategy")
+        def _get_scheduling_strategy_str(
+            stage_obj: Union[OneToOneStage, AllToAllStage]
+        ):
+            stage_scheduling_strategy = stage_obj.ray_remote_args.get(
+                "scheduling_strategy"
+            )
             if stage_scheduling_strategy is not None:
                 return f"(SchedulingStrategy: {stage_scheduling_strategy})"
             else:
@@ -279,7 +285,9 @@ class DatasetStats:
             stage_obj, metadata = next(iter(self.stages.items()))
             stage_uuid = self.dataset_uuid + stage_obj.name
             scheduling_strategy_str = _get_scheduling_strategy_str(stage_obj)
-            out += "Stage {} {} {}: ".format(self.number, stage_obj.name, scheduling_strategy_str)
+            out += "Stage {} {} {}: ".format(
+                self.number, stage_obj.name, scheduling_strategy_str
+            )
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
@@ -303,7 +311,9 @@ class DatasetStats:
                 stage_uuid = self.dataset_uuid + stage_obj.name
                 out += "\n"
                 scheduling_strategy_str = _get_scheduling_strategy_str(stage_obj)
-                out += "\tSubstage {} {} {}: ".format(n, stage_obj.name, scheduling_strategy_str)
+                out += "\tSubstage {} {} {}: ".format(
+                    n, stage_obj.name, scheduling_strategy_str
+                )
                 if stage_uuid in already_printed:
                     out += "\t[execution cached]\n"
                 else:
