@@ -15,7 +15,7 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
-
+import psutil
 import pytest
 
 import ray
@@ -230,6 +230,27 @@ def ray_start_with_dashboard(request, maybe_external_redis):
         param["num_cpus"] = 1
     with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
+
+
+@pytest.fixture
+def make_sure_dashboard_http_port_unused():
+    """Make sure the dashboard agent http port is unused."""
+    for process in psutil.process_iter():
+        should_kill = False
+        try:
+            for conn in process.connections():
+                if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
+                    should_kill = True
+                    break
+        except Exception:
+            continue
+        if should_kill:
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
+    yield
 
 
 # The following fixture will start ray with 0 cpu.
