@@ -485,57 +485,64 @@ def test__summarize_blocks(ray_start_regular_shared, stage_two_block):
     summarized_str = stats._summarize_blocks("read", False)
     summarized_lines = summarized_str.split("\n")
 
-    assert summarized_lines[0] == "2/2 blocks executed in {}s".format(
-        max(round(stats.time_total_s, 2), 0)
+    assert (
+        "2/2 blocks executed in {}s".format(max(round(stats.time_total_s, 2), 0))
+        == summarized_lines[0]
     )
-    assert summarized_lines[
-        1
-    ] == "* Remote wall time: {}s min, {}s max, {}s mean, {}s total".format(
-        min(block_params["wall_time"]),
-        max(block_params["wall_time"]),
-        np.mean(block_params["wall_time"]),
-        sum(block_params["wall_time"]),
+    assert (
+        "* Remote wall time: {}s min, {}s max, {}s mean, {}s total".format(
+            min(block_params["wall_time"]),
+            max(block_params["wall_time"]),
+            np.mean(block_params["wall_time"]),
+            sum(block_params["wall_time"]),
+        )
+        == summarized_lines[1]
     )
-    assert summarized_lines[
-        2
-    ] == "* Remote cpu time: {}s min, {}s max, {}s mean, {}s total".format(
-        min(block_params["cpu_time"]),
-        max(block_params["cpu_time"]),
-        np.mean(block_params["cpu_time"]),
-        sum(block_params["cpu_time"]),
+    assert (
+        "* Remote cpu time: {}s min, {}s max, {}s mean, {}s total".format(
+            min(block_params["cpu_time"]),
+            max(block_params["cpu_time"]),
+            np.mean(block_params["cpu_time"]),
+            sum(block_params["cpu_time"]),
+        )
+        == summarized_lines[2]
     )
-    assert summarized_lines[
-        3
-    ] == "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-        min(block_params["max_rss_bytes"]) / (1024 * 1024),
-        max(block_params["max_rss_bytes"]) / (1024 * 1024),
-        int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+    assert (
+        "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
+            min(block_params["max_rss_bytes"]) / (1024 * 1024),
+            max(block_params["max_rss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+        )
+        == summarized_lines[3]
     )
-    assert summarized_lines[
-        4
-    ] == "* Output num rows: {} min, {} max, {} mean, {} total".format(
-        min(block_params["num_rows"]),
-        max(block_params["num_rows"]),
-        int(np.mean(block_params["num_rows"])),
-        sum(block_params["num_rows"]),
+    assert (
+        "* Output num rows: {} min, {} max, {} mean, {} total".format(
+            min(block_params["num_rows"]),
+            max(block_params["num_rows"]),
+            int(np.mean(block_params["num_rows"])),
+            sum(block_params["num_rows"]),
+        )
+        == summarized_lines[4]
     )
-    assert summarized_lines[
-        5
-    ] == "* Output size bytes: {} min, {} max, {} mean, {} total".format(
-        min(block_params["size_bytes"]),
-        max(block_params["size_bytes"]),
-        int(np.mean(block_params["size_bytes"])),
-        sum(block_params["size_bytes"]),
+    assert (
+        "* Output size bytes: {} min, {} max, {} mean, {} total".format(
+            min(block_params["size_bytes"]),
+            max(block_params["size_bytes"]),
+            int(np.mean(block_params["size_bytes"])),
+            sum(block_params["size_bytes"]),
+        )
+        == summarized_lines[5]
     )
 
     node_counts = Counter(block_params["node_id"])
-    assert summarized_lines[
-        6
-    ] == "* Tasks per node: {} min, {} max, {} mean; {} nodes used".format(
-        min(node_counts.values()),
-        max(node_counts.values()),
-        int(np.mean(list(node_counts.values()))),
-        len(node_counts),
+    assert (
+        "* Tasks per node: {} min, {} max, {} mean; {} nodes used".format(
+            min(node_counts.values()),
+            max(node_counts.values()),
+            int(np.mean(list(node_counts.values()))),
+            len(node_counts),
+        )
+        == summarized_lines[6]
     )
 
 
