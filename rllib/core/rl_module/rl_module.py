@@ -24,7 +24,7 @@ ModuleID = str
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
-    Here is the pseudo code for how the forward methods are called:
+    Here is the pseudocode for how the forward methods are called:
 
     # During Training (acting in env from each rollout worker)
     ----------------------------------------------------------

@@ -65,7 +65,9 @@ if __name__ == "__main__":
             # The multiagent Policy map.
             policies={
                 # The Policy we are actually learning.
-                "pg_policy": PolicySpec(config={"framework": args.framework}),
+                "pg_policy": PolicySpec(
+                    config=PGConfig.overrides(framework_str=args.framework)
+                ),
                 # Random policy we are playing against.
                 "random": PolicySpec(policy_class=RandomPolicy),
             },
