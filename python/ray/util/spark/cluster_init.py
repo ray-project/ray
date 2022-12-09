@@ -645,7 +645,7 @@ def init_ray_cluster(
             "Current active ray cluster on spark haven't shut down. You cannot create a new ray "
             "cluster."
         )
-    _active_ray_cluster = _init_ray_cluster(
+    cluster = _init_ray_cluster(
         num_worker_nodes=num_worker_nodes,
         total_cpus=total_cpus,
         total_gpus=total_gpus,
@@ -657,7 +657,10 @@ def init_ray_cluster(
         ray_temp_root_dir=ray_temp_root_dir,
         safe_mode=safe_mode,
     )
-    _active_ray_cluster.connect()
+    cluster.connect()  # NB: this line might raise error.
+
+    # If connect cluster successfully, set global _active_ray_cluster to be the started cluster.
+    _active_ray_cluster = cluster
 
 
 @PublicAPI(stability="alpha")

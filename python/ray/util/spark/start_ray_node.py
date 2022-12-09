@@ -35,15 +35,19 @@ if __name__ == '__main__':
             # Wait for a while to ensure the children processes of the ray node all exited.
             time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
 
-            # Start clean the temp dir,
+            # Release the shared lock, representing current ray node does not use the
+            # temp dir.
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
             try:
-                # try to upgrade shared lock to exclusive lock first
-                # to ensure removing dir safely.
+                # Start clean the temp-dir,
+                # acquiring exclusive lock to ensure removing dir safely.
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 shutil.rmtree(temp_dir, ignore_errors=True)
             except BlockingIOError:
-                # Lock is used by other processes, representing there are other ray nodes
-                # running, skip cleaning temp-dir.
+                # The file has active shared lock or exclusive lock, representing there
+                # are other ray nodes running, or other node running cleanup temp-dir routine.
+                # skip cleaning temp-dir.
                 pass
         except Exception:
             # swallow any exception.
