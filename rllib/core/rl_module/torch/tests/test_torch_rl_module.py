@@ -1,6 +1,5 @@
 import copy
 import gym
-from ray.rllib.policy.sample_batch import SampleBatch
 import torch
 import tree
 import numpy as np
@@ -9,8 +8,6 @@ import unittest
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
-    get_separate_encoder_config,
-    get_shared_encoder_config,
     get_ppo_loss,
 )
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -70,8 +67,12 @@ class TestRLModule(unittest.TestCase):
 
             self.assertIsNotNone(module.encoder)
             self.assertEqual(module.encoder.net.layers[0].in_features, obs_dim)
-            self.assertEqual(module.pi.layers[0].in_features, module.encoder.net.output_dim)
-            self.assertEqual(module.vf.layers[0].in_features, module.encoder.net.output_dim)
+            self.assertEqual(
+                module.pi.layers[0].in_features, module.encoder.net.output_dim
+            )
+            self.assertEqual(
+                module.vf.layers[0].in_features, module.encoder.net.output_dim
+            )
             if isinstance(env.action_space, gym.spaces.Discrete):
                 self.assertEqual(module.pi.layers[-1].out_features, action_dim)
             else:

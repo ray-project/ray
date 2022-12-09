@@ -1,8 +1,10 @@
 from typing import List, Optional
-import torch
-import torch.nn as nn
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 # TODO (Kourosh): Find a better hierarchy for the primitives after the POC is done.
+
 
 class FCNet(nn.Module):
     """A simple fully connected network.
@@ -15,13 +17,12 @@ class FCNet(nn.Module):
         activation: The activation function to use after each layer.
     """
 
-    def __init__(self, 
+    def __init__(
+        self,
         input_dim: int,
         hidden_layers: List[int],
         output_dim: Optional[int] = None,
         activation: str = "linear",
-
-        
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -48,7 +49,6 @@ class FCNet(nn.Module):
             self.output_dim = output_dim
 
         self.layers = nn.Sequential(*self.layers)
-
 
     def forward(self, x):
         return self.layers(x)

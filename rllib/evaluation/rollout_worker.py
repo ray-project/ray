@@ -732,7 +732,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added and not pol.config["_enable_rl_module_api"]:
+            if (
+                not pol._model_init_state_automatically_added
+                and not pol.config["_enable_rl_module_api"]
+            ):
                 pol._update_model_view_requirements_from_init_state()
 
         self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}

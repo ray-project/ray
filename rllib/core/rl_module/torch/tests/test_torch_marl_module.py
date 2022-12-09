@@ -101,7 +101,7 @@ class TestMARLModule(unittest.TestCase):
             env.observation_space,
             env.action_space,
             model_config=model_config,
-            return_config=True
+            return_config=True,
         )
 
         model_config["vf_share_layers"] = False
@@ -109,7 +109,7 @@ class TestMARLModule(unittest.TestCase):
             env.observation_space,
             env.action_space,
             model_config=model_config,
-            return_config=True
+            return_config=True,
         )
 
         multi_agent_dict = {
@@ -187,7 +187,7 @@ class TestMARLModule(unittest.TestCase):
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),
-            return_config=True
+            return_config=True,
         )
         module = PPOTorchRLModule(config).as_multi_agent()
 
@@ -209,7 +209,7 @@ class TestMARLModule(unittest.TestCase):
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 env_class = make_multi_agent(env_name)
                 env = env_class({"num_agents": 2})
-                module =  PPOTorchRLModule.from_model_config_dict(
+                module = PPOTorchRLModule.from_model_config_dict(
                     env.observation_space,
                     env.action_space,
                     model_config=copy.deepcopy(MODEL_DEFAULTS),

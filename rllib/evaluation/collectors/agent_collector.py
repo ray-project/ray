@@ -152,7 +152,11 @@ class AgentCollector:
 
             # data.shape is () is the same as vr.space.shape = None
             data_shape = np.shape(data) if len(np.shape(data)) > 0 else None
-            vr_shape = vr.space.shape if hasattr(vr.space, "shape") and vr.space.shape != () else None
+            vr_shape = (
+                vr.space.shape
+                if hasattr(vr.space, "shape") and vr.space.shape != ()
+                else None
+            )
 
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion

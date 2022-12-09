@@ -27,11 +27,7 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-    PPOModuleConfig,
-    FCConfig,
-)
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
 torch, nn = try_import_torch()
 
@@ -100,7 +96,9 @@ class PPOTorchPolicyWithRLModule(
 
         """
 
-        return PPOTorchRLModule.from_model_config_dict(self.observation_space, self.action_space, model_config=self.config["model"])
+        return PPOTorchRLModule.from_model_config_dict(
+            self.observation_space, self.action_space, model_config=self.config["model"]
+        )
 
     @override(TorchPolicyV2)
     def loss(

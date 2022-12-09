@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import gym
-import tree # pip install dm-tree
+import tree  # pip install dm-tree
 from typing import Mapping, Any, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import ModelSpec  # , check_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -34,7 +34,7 @@ class RLModuleConfig:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
         max_seq_len: Max seq len for training an RNN model.
-        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink 
+        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink
         this design?)
     """
 
@@ -130,14 +130,14 @@ class RLModule(abc.ABC):
         """Returns the view requirements of the module."""
         vr = self.__get_default_view_requirements()
 
-        # get the initial state in numpy format, infer the state from it, and create 
+        # get the initial state in numpy format, infer the state from it, and create
         # an apporpriate view requirement.
         init_state = convert_to_numpy(self.get_initial_state())
         if init_state:
             init_state = tree.map_structure(lambda x: x[None], init_state)
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             vr["state_in"] = ViewRequirement(
-                data_col=f"state_out",
+                data_col="state_out",
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
@@ -145,14 +145,13 @@ class RLModule(abc.ABC):
                 space=space,
             )
 
-            vr[f"state_out"] = ViewRequirement(
+            vr["state_out"] = ViewRequirement(
                 used_for_compute_actions=True,
                 used_for_training=True,
-                space=space, 
+                space=space,
             )
 
         return vr
-
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
@@ -288,7 +287,6 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule
-
 
     def __get_default_view_requirements(self):
         obs_space = self.config.observation_space

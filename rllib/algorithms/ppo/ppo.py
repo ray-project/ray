@@ -320,11 +320,14 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.train_batch_size, _enable_rl_module_api=self.config._enable_rl_module_api,
+                worker_set=self.workers,
+                max_agent_steps=self.config.train_batch_size,
+                _enable_rl_module_api=self.config._enable_rl_module_api,
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.train_batch_size,
+                worker_set=self.workers,
+                max_env_steps=self.config.train_batch_size,
                 _enable_rl_module_api=self.config._enable_rl_module_api,
             )
 

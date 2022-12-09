@@ -493,9 +493,9 @@ class TorchPolicyV2(Policy):
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
             if self.config.get("_enable_rl_module_api", False):
-                # TODO (Kourosh): Similar to past, if state_batches are not empty, 
-                # infer seq_lens from the batch size. I still am not sure if I need 
-                # this here. 
+                # TODO (Kourosh): Similar to past, if state_batches are not empty,
+                # infer seq_lens from the batch size. I still am not sure if I need
+                # this here.
                 state_batches = input_dict.get("state_in", None)
 
                 if state_batches:
@@ -503,8 +503,9 @@ class TorchPolicyV2(Policy):
                         seq_lens = input_dict[SampleBatch.SEQ_LENS]
                     else:
                         seq_lens = torch.tensor(
-                            [1] * input_dict.count, dtype=torch.long, 
-                            device=input_dict[SampleBatch.OBS].device
+                            [1] * input_dict.count,
+                            dtype=torch.long,
+                            device=input_dict[SampleBatch.OBS].device,
                         )
                         input_dict[SampleBatch.SEQ_LENS] = seq_lens
             else:
@@ -939,8 +940,10 @@ class TorchPolicyV2(Policy):
     def get_initial_state(self) -> List[TensorType]:
         if self.config.get("_enable_rl_module_api", False):
             # convert the tree of a tree to numpy arrays
-            return tree.map_structure(lambda s: convert_to_numpy(s), self.model.get_initial_state())
-        
+            return tree.map_structure(
+                lambda s: convert_to_numpy(s), self.model.get_initial_state()
+            )
+
         return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)

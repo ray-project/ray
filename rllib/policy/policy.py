@@ -47,7 +47,6 @@ from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
@@ -1367,9 +1366,9 @@ class Policy(metaclass=ABCMeta):
                         "state_in_{}".format(i)
                     ][:B]
                     if "state_out_{}".format(i) in postprocessed_batch:
-                        postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
+                        postprocessed_batch[
                             "state_out_{}".format(i)
-                        ][:B]
+                        ] = postprocessed_batch["state_out_{}".format(i)][:B]
                     i += 1
 
             seq_len = sample_batch_size // B
@@ -1614,7 +1613,8 @@ class Policy(metaclass=ABCMeta):
 
 @DeveloperAPI
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, Tuple, List, TensorType], batched_input=True,
+    value: Union[Mapping, Tuple, List, TensorType],
+    batched_input=True,
 ) -> gym.Space:
 
     start_idx = 1 if batched_input else 0

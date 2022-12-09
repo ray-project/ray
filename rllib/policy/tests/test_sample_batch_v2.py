@@ -8,7 +8,10 @@ import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch_v2 import SampleBatchV2 as SampleBatch, attempt_count_timesteps
+from ray.rllib.policy.sample_batch_v2 import (
+    SampleBatchV2 as SampleBatch,
+    attempt_count_timesteps,
+)
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
@@ -270,17 +273,15 @@ class TestSampleBatch(unittest.TestCase):
             },
         )
 
-        # what about padded batches?
-        s3 = SampleBatch(
-            {
-                "a": np.array([1, 2, 0, 3, 2, 3, 4, 0, 0]),
-                "b": {"c": np.array([4, 5, 0, 6, 5, 6, 7, 0, 0])},
-                SampleBatch.SEQ_LENS: [2, 3, 1],
-                "state_in": [1.0, 3.0, 4.0],
-            }
-        )
-        
-
+        # # what about padded batches?
+        # s3 = SampleBatch(
+        #     {
+        #         "a": np.array([1, 2, 0, 3, 2, 3, 4, 0, 0]),
+        #         "b": {"c": np.array([4, 5, 0, 6, 5, 6, 7, 0, 0])},
+        #         SampleBatch.SEQ_LENS: [2, 3, 1],
+        #         "state_in": [1.0, 3.0, 4.0],
+        #     }
+        # )
 
     def test_split_by_episode(self):
         s = SampleBatch(

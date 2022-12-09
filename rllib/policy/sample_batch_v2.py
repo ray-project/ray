@@ -1,12 +1,11 @@
-"""This module copies the old sample_batch class and modifies the way it handles 
-state_in/out_<x> to be compatible with RLModule API, which expects a dict of tensors 
-for state_in/out. This is a temporary solution until we can refactor the sample_batch 
+"""This module copies the old sample_batch class and modifies the way it handles
+state_in/out_<x> to be compatible with RLModule API, which expects a dict of tensors
+for state_in/out. This is a temporary solution until we can refactor the sample_batch
 class to be compatible with RLModule API."""
 
 import collections
 import numpy as np
 import sys
-import itertools
 import tree  # pip install dm_tree
 from typing import Dict, Iterator, List, Optional, Set, Union
 from numbers import Number
@@ -20,7 +19,6 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
-    PolicyID,
     TensorType,
     SampleBatchType,
     ViewRequirementsDict,
@@ -577,7 +575,7 @@ class SampleBatchV2(SampleBatch):
                     if count >= end:
                         if state_start is None:
                             state_start = i
-                        data["state_in"] = self["state_in"][state_start:i+1]
+                        data["state_in"] = self["state_in"][state_start : i + 1]
                         seq_lens = list(self[SampleBatch.SEQ_LENS][state_start:i]) + [
                             seq_len - (count - end)
                         ]
@@ -1155,6 +1153,7 @@ class SampleBatchV2(SampleBatch):
                 ]
 
         return SampleBatchV2(input_dict, seq_lens=np.array([1], dtype=np.int32))
+
 
 @PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:

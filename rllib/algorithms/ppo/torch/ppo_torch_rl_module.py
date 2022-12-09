@@ -1,7 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import gym
-import tree # pip install dm-tree
-from typing import List, Mapping, Any
+from typing import Mapping, Any
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
@@ -9,18 +8,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import ModelSpec
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,
 )
-from ray.rllib.core.rl_module.encoder import (
-    FCNet,
-    FCConfig, 
-    LSTMConfig
-)
+from ray.rllib.core.rl_module.encoder import FCNet, FCConfig, LSTMConfig
 
 
 torch, nn = try_import_torch()
@@ -75,7 +70,6 @@ def get_separate_encoder_config(env):
     )
 
 
-
 @dataclass
 class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO module.
@@ -88,10 +82,12 @@ class PPOModuleConfig(RLModuleConfig):
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
     """
+
     pi_config: FCConfig = None
     vf_config: FCConfig = None
     encoder_config: FCConfig = None
     free_log_std: bool = False
+
 
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
@@ -128,7 +124,7 @@ class PPOTorchRLModule(TorchRLModule):
             # TODO (Kourosh): How does this work in RLlib today?
             return self.encoder.get_inital_state()
         return {}
-    
+
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:
         return self.input_specs_exploration()
@@ -271,11 +267,11 @@ class PPOTorchRLModule(TorchRLModule):
         #     })
         #     if "state_in" in batch:
         #         encoder_in["state_in"] = batch["state_out"]
-            
+
         #     if SampleBatch.SEQ_LENS in batch:
         #         encoder_in[SampleBatch.SEQ_LENS] = batch[SampleBatch.SEQ_LENS]
         #     encoder_out_next = self.encoder(encoder_in)
-        
+
         # vf_next_obs = self.vf(encoder_out_next["embedding"])
 
         output = {
@@ -293,7 +289,9 @@ class PPOTorchRLModule(TorchRLModule):
         return TorchCategorical if self._is_discrete else TorchDiagGaussian
 
     @classmethod
-    def from_model_config_dict(cls, observation_space, action_space, model_config, return_config=False):
+    def from_model_config_dict(
+        cls, observation_space, action_space, model_config, return_config=False
+    ):
         # TODO: use the new catalog to perform this logic and construct the final config
 
         activation = model_config["fcnet_activation"]
@@ -346,10 +344,9 @@ class PPOTorchRLModule(TorchRLModule):
             len(observation_space.shape) == 1
         ), "This simple PPOModule only supports 1D observation space."
 
-        assert isinstance(
-            action_space, (gym.spaces.Discrete, gym.spaces.Box)
-        ), ("This simple PPOModule only supports Discrete and Box action space.",)
-
+        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
+            "This simple PPOModule only supports Discrete and Box action space.",
+        )
 
         # build pi network
         if encoder_config is None:
@@ -362,7 +359,6 @@ class PPOTorchRLModule(TorchRLModule):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
-        
 
         # build vf network
         if encoder_config is None:
@@ -384,6 +380,6 @@ class PPOTorchRLModule(TorchRLModule):
 
         if return_config:
             return config_
-            
+
         module = PPOTorchRLModule(config_)
         return module
