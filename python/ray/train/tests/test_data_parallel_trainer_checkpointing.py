@@ -52,6 +52,13 @@ checkpoint_type_and_should_copy = (
     "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
 )
 def test_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
+    """
+    Test that a checkpoint is created and accessible.
+
+    - Assert that the data from the returned checkpoint has an expected state.
+    - Assert that the directory was moved/copied depending on
+      ``checkpoint_type_and_should_copy``.
+    """
     checkpoint_type, should_copy = checkpoint_type_and_should_copy
     with patch.dict(
         os.environ,
@@ -79,6 +86,14 @@ def test_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
     "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
 )
 def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
+    """
+    Test that a checkpoint with a preprocessor is created and accessible.
+
+    - Assert that the data from the returned checkpoint has an expected state.
+    - Assert that the preprocessor keeps its state.
+    - Assert that the directory was moved/copied depending on
+      ``checkpoint_type_and_should_copy``.
+    """
     checkpoint_type, should_copy = checkpoint_type_and_should_copy
 
     class DummyPreprocessor(Preprocessor):
@@ -111,6 +126,16 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should
 
 
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
+    """
+    Test that training can be resumed from a reported checkpoint.
+
+    - Assert that the data from the returned checkpoint has an expected state.
+    - Move the checkpoint to memory and then back to disk to test ser/deser and ensure
+      that a different directory can be used.
+    - Restart training from checkpoint and assert that hhe returned checkpoint
+      has an expected state.
+    """
+
     def train_func():
         checkpoint = session.get_checkpoint()
         if checkpoint:
@@ -143,6 +168,13 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
 
 @pytest.mark.parametrize("mode", ["min", "max"])
 def test_checkpoints_to_keep(ray_start_4_cpus, mode):
+    """
+    Test that ``CheckpointConfig`` is respected.
+
+    - Report 4 times with different metrics.
+    - Assert that the kept checkpoints match the expectation.
+    """
+
     def train_func():
         session.report(
             dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
