@@ -97,6 +97,18 @@ class SyncConfig:
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
 
+    def __post_init__(self):
+        if self.upload_dir and self.syncer is None:
+            raise ValueError(
+                "`upload_dir` enables syncing to cloud storage, but `syncer=None` "
+                "disables syncing. Either remove the `upload_dir`, "
+                "or set `syncer` to 'auto' or a custom syncer."
+            )
+        if not self.upload_dir and isinstance(self.syncer, Syncer):
+            raise ValueError(
+                "Must specify an `upload_dir` to use a custom `syncer`."
+            )
+
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
 
