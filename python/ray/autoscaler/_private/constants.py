@@ -92,9 +92,9 @@ RAY_PROCESSES = [
     # about comm and args. This can help avoid killing non-ray processes.
     # Format:
     # Keyword to filter, filter by command (True)/filter by args (False)
+    ["gcs_server", True],
     ["raylet", True],
     ["plasma_store", True],
-    ["gcs_server", True],
     ["monitor.py", False],
     ["ray.util.client.server", False],
     ["default_worker.py", False],  # Python worker.
