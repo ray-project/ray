@@ -80,7 +80,7 @@ class ConnectorContext:
             action_space=policy.action_space,
             view_requirements=policy.view_requirements,
             is_policy_recurrent=policy.is_recurrent(),
-            _enable_rl_module_api=policy.config["_enable_rl_module_api"],
+            _enable_rl_module_api=policy.config.get("_enable_rl_module_api", False),
         )
 
 
