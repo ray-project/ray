@@ -114,7 +114,7 @@ TL;DR - use the `tune.with_parameters` util function to specify large constant p
 
 If we have large objects that are constant across Trials, we can use the [`tune.with_parameters`](tune-with-parameters) utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
 
-```{warning}
+```{tip}
 Objects put into the Ray object store must be serializable.
 ```
 
@@ -199,7 +199,7 @@ The [`ray.air.session`](air-session-ref) API is used to get data out of the Trai
 
 *Metrics* are values passed through the `metrics` argument in a `session.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](/tune/examples/tune_analyze_results), which include the reported metrics.
 
-```{warning}
+```{note}
 Similarly to search space values, each value reported as a metric will be saved directly in the Trial metadata. This means that every value reported as a metric **must** be serializable and take up a small amount of memory.
 ```
 
