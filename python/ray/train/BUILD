@@ -337,6 +337,14 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface_gpu",
+    size = "medium",
+    srcs = ["tests/test_huggingface_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_huggingface_predictor",
     size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
