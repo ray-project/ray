@@ -734,7 +734,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         for pol in self.policy_map.values():
             if (
                 not pol._model_init_state_automatically_added
-                and not pol.config["_enable_rl_module_api"]
+                and not pol.config.get("_enable_rl_module_api", False)
             ):
                 pol._update_model_view_requirements_from_init_state()
 

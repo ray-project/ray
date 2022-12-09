@@ -939,7 +939,7 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         if self.config.get("_enable_rl_module_api", False):
-            # convert the tree of a tree to numpy arrays
+            # convert the tree of tensors to a tree to numpy arrays
             return tree.map_structure(
                 lambda s: convert_to_numpy(s), self.model.get_initial_state()
             )
@@ -1065,8 +1065,6 @@ class TorchPolicyV2(Policy):
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        # TODO (Kourosh): we should not modify self._is_recurrent here.
-        # self._is_recurrent = state_batches is not None and state_batches != []
 
         # Switch to eval mode.
         if self.model:
