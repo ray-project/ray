@@ -937,7 +937,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
-        if self._enable_rl_module_api:
+        if self.config.get("_enable_rl_module_api", False):
             # convert the tree of a tree to numpy arrays
             return tree.map_structure(lambda s: convert_to_numpy(s), self.model.get_initial_state())
         
