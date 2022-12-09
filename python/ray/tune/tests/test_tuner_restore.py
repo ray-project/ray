@@ -788,6 +788,8 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
     tuner.fit()
     searcher = tuner._local_tuner._tune_config.search_alg
     scheduler = tuner._local_tuner._tune_config.scheduler
+    assert isinstance(searcher, MockSearcher)
+    assert isinstance(scheduler, MockScheduler)
     # Searcher state should get loaded correctly
     # Total of 3 reported results (1 from before failure, 2 after restore)
     assert searcher._test_result_counter == 3
