@@ -33,6 +33,7 @@ class TextDatasource(BinaryDatasource):
             builder.add(item)
 
         block = builder.build()
+        print("\n------------- ", block)
         return block
 
     def _convert_block_to_tabular_block(

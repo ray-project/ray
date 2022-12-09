@@ -37,6 +37,20 @@ def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
     assert list(df["country"]) == ["us", "us", "us"]
 
 
+def test_empty_text_files(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    # 2 empty files.
+    _ = open(os.path.join(path, "file1.txt"), "w")
+    _ = open(os.path.join(path, "file2.txt"), "w")
+    ds = ray.data.read_text(path)
+    assert ds.count() == 0
+    ds = ray.data.read_text(path, drop_empty_lines=False)
+    assert ds.count() == 2
+    # 2 empty lines, one from each file.
+    assert _to_lines(ds.take()) == ["", ""]
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
