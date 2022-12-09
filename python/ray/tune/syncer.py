@@ -79,6 +79,8 @@ class SyncConfig:
             If *False*, syncing from the worker trial directory to head node is
             best-effort and happens approximately every ``sync_period`` seconds.
             Defaults to True.
+            **Note**: This is ignored if ``upload_dir`` is specified, since this
+            only applies to worker-to-head-node syncing.
         sync_period: Minimum time in seconds to wait between syncs.
             Defaults to 5 minutes.
             **Note**: This applies to both cloud storage syncing and
