@@ -22,6 +22,8 @@ The following figure shows an overview of these components, which we cover in de
 
 .. image:: images/tune_flow.png
 
+.. _tune-key-concepts-trainables:
+
 Trainables
 ----------
 
