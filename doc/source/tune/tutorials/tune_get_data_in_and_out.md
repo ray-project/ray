@@ -178,86 +178,6 @@ Our tuning run can now be run, though we will not yet obtain any meaningful outp
 results = tuner.fit()
 ```
 
-    2022-11-30 17:39:53,677	INFO worker.py:1529 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
-
-
-
-<div class="tuneStatus">
-  <div style="display: flex;flex-direction: row">
-    <div style="display: flex;flex-direction: column;">
-      <h3>Tune Status</h3>
-      <table>
-<tbody>
-<tr><td>Current time:</td><td>2022-11-30 17:40:11</td></tr>
-<tr><td>Running for: </td><td>00:00:15.09        </td></tr>
-<tr><td>Memory:      </td><td>4.6/31.0 GiB       </td></tr>
-</tbody>
-</table>
-    </div>
-    <div class="vDivider"></div>
-    <div class="systemInfo">
-      <h3>System Info</h3>
-      Using FIFO scheduling algorithm.<br>Resources requested: 0/8 CPUs, 0/0 GPUs, 0.0/13.0 GiB heap, 0.0/6.5 GiB objects
-    </div>
-
-  </div>
-  <div class="hDivider"></div>
-  <div class="trialStatus">
-    <h3>Trial Status</h3>
-    <table>
-<thead>
-<tr><th>Trial name                   </th><th>status    </th><th>loc                 </th><th style="text-align: right;">  hyperparameter_a</th><th style="text-align: right;">  hyperparameter_b</th></tr>
-</thead>
-<tbody>
-<tr><td>training_function_009fd_00000</td><td>TERMINATED</td><td>172.31.43.110:612933</td><td style="text-align: right;">          13.4068 </td><td style="text-align: right;">          -96.9415</td></tr>
-<tr><td>training_function_009fd_00001</td><td>TERMINATED</td><td>172.31.43.110:612992</td><td style="text-align: right;">           3.65062</td><td style="text-align: right;">           87.3678</td></tr>
-<tr><td>training_function_009fd_00002</td><td>TERMINATED</td><td>172.31.43.110:612994</td><td style="text-align: right;">           5.57592</td><td style="text-align: right;">          -77.3671</td></tr>
-<tr><td>training_function_009fd_00003</td><td>TERMINATED</td><td>172.31.43.110:612997</td><td style="text-align: right;">          16.2883 </td><td style="text-align: right;">           15.3073</td></tr>
-</tbody>
-</table>
-  </div>
-</div>
-<style>
-.tuneStatus {
-  color: var(--jp-ui-font-color1);
-}
-.tuneStatus .systemInfo {
-  display: flex;
-  flex-direction: column;
-}
-.tuneStatus td {
-  white-space: nowrap;
-}
-.tuneStatus .trialStatus {
-  display: flex;
-  flex-direction: column;
-}
-.tuneStatus h3 {
-  font-weight: bold;
-}
-.tuneStatus .hDivider {
-  border-bottom-width: var(--jp-border-width);
-  border-bottom-color: var(--jp-border-color0);
-  border-bottom-style: solid;
-}
-.tuneStatus .vDivider {
-  border-left-width: var(--jp-border-width);
-  border-left-color: var(--jp-border-color0);
-  border-left-style: solid;
-  margin: 0.5em 1em 0.5em 1em;
-}
-</style>
-
-
-
-    Trial training_function_009fd_00000 completed. Last result: 
-    Trial training_function_009fd_00001 completed. Last result: 
-    Trial training_function_009fd_00002 completed. Last result: 
-    Trial training_function_009fd_00003 completed. Last result: 
-
-
-    2022-11-30 17:40:11,109	INFO tune.py:762 -- Total run time: 15.70 seconds (15.09 seconds for the tuning loop).
-
 
 ## Getting data out
 
@@ -367,7 +287,7 @@ Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc)
 
 In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
 
-Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-checkpoint-syncing), {class}`keep only a certain number of checkpoints to save space <~ray.air.config.CheckpointConfig>` and more.
+Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-checkpoint-syncing), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
 
 ```{note}
 The experiment state itself is checkpointed separately. See {ref}`tune-two-types-of-ckpt` for more details.
