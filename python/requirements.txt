@@ -21,8 +21,7 @@ virtualenv>=20.0.24
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
-# https://github.com/grpc/grpc/issues/31772
-# The commit is https://github.com/grpc/grpc/pull/30996
+# Tracking issue: https://github.com/ray-project/ray/issues/30984
 grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'
 grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
 grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'
