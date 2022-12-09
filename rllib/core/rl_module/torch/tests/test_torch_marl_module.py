@@ -1,13 +1,14 @@
-import unittest
+import copy
 import gym
 import tree
 import torch
 import numpy as np
+import unittest
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
-    get_separate_encoder_config,
-    get_shared_encoder_config,
+    # get_separate_encoder_config,
+    # get_shared_encoder_config,
     get_ppo_loss,
 )
 from ray.rllib.core.rl_module.torch import TorchMultiAgentRLModule
@@ -15,6 +16,7 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.catalog import MODEL_DEFAULTS
 
 
 def to_numpy(tensor):
@@ -94,9 +96,21 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
+        model_config = copy.deepcopy(MODEL_DEFAULTS)
+        config1 = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=model_config,
+            return_config=True
+        )
 
-        config1 = get_shared_encoder_config(env)
-        config2 = get_separate_encoder_config(env)
+        model_config["vf_share_layers"] = False
+        config2 = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=model_config,
+            return_config=True
+        )
 
         multi_agent_dict = {
             "module1": (PPOTorchRLModule, config1),
@@ -117,9 +131,11 @@ class TestMARLModule(unittest.TestCase):
         assert isinstance(env.action_space, (gym.spaces.Box, gym.spaces.Discrete))
         assert isinstance(env.observation_space, (gym.spaces.Box, gym.spaces.Discrete))
 
-        config = get_shared_encoder_config(env)
-        module = PPOTorchRLModule(config)
-        marl_module = module.as_multi_agent()
+        marl_module = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=copy.deepcopy(MODEL_DEFAULTS),
+        ).as_multi_agent()
 
         self.assertNotIsInstance(marl_module, PPOTorchRLModule)
         self.assertIsInstance(marl_module, TorchMultiAgentRLModule)
@@ -135,8 +151,11 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
-        config = get_shared_encoder_config(env)
-        module = PPOTorchRLModule(config).as_multi_agent()
+        module = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=copy.deepcopy(MODEL_DEFAULTS),
+        ).as_multi_agent()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -146,7 +165,11 @@ class TestMARLModule(unittest.TestCase):
             set(module[DEFAULT_POLICY_ID].get_state().keys()),
         )
 
-        module2 = PPOTorchRLModule(config).as_multi_agent()
+        module2 = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=copy.deepcopy(MODEL_DEFAULTS),
+        ).as_multi_agent()
         state2 = module2.get_state()
         self.assertRaises(AssertionError, lambda: check(state, state2))
 
@@ -160,7 +183,12 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        config = get_shared_encoder_config(env)
+        config = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=copy.deepcopy(MODEL_DEFAULTS),
+            return_config=True
+        )
         module = PPOTorchRLModule(config).as_multi_agent()
 
         module.add_module("test", PPOTorchRLModule(config))
@@ -181,8 +209,11 @@ class TestMARLModule(unittest.TestCase):
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 env_class = make_multi_agent(env_name)
                 env = env_class({"num_agents": 2})
-                config = get_shared_encoder_config(env)
-                module = PPOTorchRLModule(config).as_multi_agent()
+                module =  PPOTorchRLModule.from_model_config_dict(
+                    env.observation_space,
+                    env.action_space,
+                    model_config=copy.deepcopy(MODEL_DEFAULTS),
+                ).as_multi_agent()
 
                 def policy_map(agent_id):
                     return DEFAULT_POLICY_ID
@@ -231,8 +262,11 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        config = get_shared_encoder_config(env)
-        module = PPOTorchRLModule(config).as_multi_agent()
+        module = PPOTorchRLModule.from_model_config_dict(
+            env.observation_space,
+            env.action_space,
+            model_config=copy.deepcopy(MODEL_DEFAULTS),
+        ).as_multi_agent()
 
         def policy_map(agent_id):
             return DEFAULT_POLICY_ID

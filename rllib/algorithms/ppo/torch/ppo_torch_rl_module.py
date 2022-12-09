@@ -239,7 +239,7 @@ class PPOTorchRLModule(TorchRLModule):
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
                 SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
                 "entropy": TorchTensorSpec("b", dtype=torch.float32),
-                "vf_preds_next_obs": TorchTensorSpec("b", dtype=torch.float32),
+                # "vf_preds_next_obs": TorchTensorSpec("b", dtype=torch.float32),
             }
         )
         return spec
@@ -293,7 +293,7 @@ class PPOTorchRLModule(TorchRLModule):
         return TorchCategorical if self._is_discrete else TorchDiagGaussian
 
     @classmethod
-    def from_model_config_dict(cls, observation_space, action_space, model_config):
+    def from_model_config_dict(cls, observation_space, action_space, model_config, return_config=False):
         # TODO: use the new catalog to perform this logic and construct the final config
 
         activation = model_config["fcnet_activation"]
@@ -323,6 +323,7 @@ class PPOTorchRLModule(TorchRLModule):
                 encoder_config = FCConfig(
                     hidden_layers=fcnet_hiddens,
                     activation=activation,
+                    output_dim=model_config["fcnet_hiddens"][-1],
                 )
             pi_config = FCConfig()
             vf_config = FCConfig()
@@ -349,13 +350,12 @@ class PPOTorchRLModule(TorchRLModule):
             action_space, (gym.spaces.Discrete, gym.spaces.Box)
         ), ("This simple PPOModule only supports Discrete and Box action space.",)
 
-        if encoder_config:
-            encoder_config.input_dim = observation_space.shape[0]
 
         # build pi network
         if encoder_config is None:
             pi_config.input_dim = observation_space.shape[0]
         else:
+            encoder_config.input_dim = observation_space.shape[0]
             pi_config.input_dim = encoder_config.output_dim
 
         if isinstance(action_space, gym.spaces.Discrete):
@@ -382,5 +382,8 @@ class PPOTorchRLModule(TorchRLModule):
             free_log_std=free_log_std,
         )
 
+        if return_config:
+            return config_
+            
         module = PPOTorchRLModule(config_)
         return module
