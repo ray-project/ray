@@ -265,8 +265,8 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir):
             ),
         },
     )
-    # Catch the FailOnStats erro
-    with pytest.raises(tune.TuneError):
+    # Catch the FailOnStats error
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -324,7 +324,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
         },
     )
     # Catch the FailOnStats error
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -638,7 +638,7 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     assert len(tuner.get_results().errors) == 1
 
     # Continuing to fit should fail if we didn't re-specify the trainable
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
     fail_marker.unlink()

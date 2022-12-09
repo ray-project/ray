@@ -238,14 +238,22 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if columns is None:
             columns = self._table.column_names
-        if not isinstance(columns, list):
+            should_be_single_ndarray = self.is_tensor_wrapper()
+        elif isinstance(columns, list):
+            should_be_single_ndarray = (
+                columns == self._table_column_names and self.is_tensor_wrapper()
+            )
+        else:
             columns = [columns]
+            should_be_single_ndarray = True
+
         for column in columns:
             if column not in self._table.column_names:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.column_names}"
                 )
+
         arrays = []
         for column in columns:
             array = self._table[column]
@@ -256,7 +264,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             else:
                 array = array.combine_chunks()
             arrays.append(array.to_numpy(zero_copy_only=False))
-        if len(arrays) == 1:
+
+        if should_be_single_ndarray:
+            assert len(columns) == 1
             arrays = arrays[0]
         else:
             arrays = dict(zip(columns, arrays))
