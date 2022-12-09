@@ -19,7 +19,7 @@ DEPTH_POLICY = "group_by_depth"
 
 
 @pytest.fixture(params=[LIFO_POLICY, DEPTH_POLICY])
-def ray_with_memory_monitor(request):
+def ray_with_memory_monitor(shutdown_only, request):
     with ray.init(
         address="local",
         object_store_memory=100 * 1024 * 1024,
@@ -79,10 +79,10 @@ def test_deadlock_task_with_nested_task(
     )
     with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(
-            task_with_nested_task.options(max_retries=0).remote(
+            task_with_nested_task.options(max_retries=-1).remote(
                 task_bytes=task_bytes, nested_task_bytes=nested_task_bytes
             ),
-            timeout=60,
+            timeout=30,
         )
 
 
@@ -93,7 +93,7 @@ def test_deadlock_task_with_nested_task(
 def test_deadlock_task_with_nested_actor_with_actor_first(
     ray_with_memory_monitor,
 ):
-    leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
+    leaker = Leaker.options(max_restarts=-1, max_task_retries=-1).remote()
     with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(
             task_with_nested_actor.remote(
@@ -102,7 +102,7 @@ def test_deadlock_task_with_nested_actor_with_actor_first(
                 leaker=leaker,
                 actor_allocation_first=True,
             ),
-            timeout=60,
+            timeout=30,
         )
 
 
@@ -113,8 +113,8 @@ def test_deadlock_task_with_nested_actor_with_actor_first(
 def test_deadlock_task_with_nested_actor_with_actor_last(
     ray_with_memory_monitor,
 ):
-    leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
+    leaker = Leaker.options(max_restarts=-1, max_task_retries=-1).remote()
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(
             task_with_nested_actor.remote(
                 first_fraction=memory_usage_threshold - 0.1,
@@ -122,7 +122,7 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
                 leaker=leaker,
                 actor_allocation_first=False,
             ),
-            timeout=60,
+            timeout=30,
         )
 
 
@@ -146,7 +146,7 @@ class ActorWithNestedTask:
         self.mem = alloc_mem(actor_bytes)
         if self.barrier:
             ray.get(self.barrier.wait_all_done.remote())
-        ray.get(allocate_memory.options(max_retries=0).remote(nested_task_bytes))
+        ray.get(allocate_memory.options(max_retries=-1).remote(nested_task_bytes))
 
 
 @pytest.mark.skipif(
@@ -156,7 +156,7 @@ class ActorWithNestedTask:
 def test_deadlock_actor_with_nested_task(
     ray_with_memory_monitor,
 ):
-    leaker = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote()
+    leaker = ActorWithNestedTask.options(max_restarts=-1, max_task_retries=-1).remote()
     actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold - 0.1
     )
@@ -164,8 +164,8 @@ def test_deadlock_actor_with_nested_task(
         get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
         - actor_bytes
     )
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
-        ray.get(leaker.perform_allocations.remote(actor_bytes, nested_task_bytes))
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+        ray.get(leaker.perform_allocations.remote(actor_bytes, nested_task_bytes), timeout=30)
 
 
 @pytest.mark.skipif(
@@ -243,7 +243,6 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     if policy == LIFO_POLICY:
         with pytest.raises(ray.exceptions.GetTimeoutError) as _:
             ray.get(ref1, timeout=120)
-        with pytest.raises(ray.exceptions.GetTimeoutError) as _:
             ray.get(ref2, timeout=120)
     else:
         ray.get(ref1, timeout=120)
@@ -268,5 +267,5 @@ def test_churn_long_running(
     small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.2
     )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+        ray.get(allocate_memory.options(max_retries=-1).remote(small_bytes), timeout=45)
