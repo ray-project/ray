@@ -479,34 +479,20 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import (
                         AttentionWrapper,
-                        Keras_AttentionWrapper,
                     )
                     from ray.rllib.models.tf.recurrent_net import (
                         LSTMWrapper,
-                        Keras_LSTMWrapper,
                     )
 
                     wrapped_cls = model_cls
-                    # Wrapped (custom) model is itself a keras Model ->
-                    # wrap with keras LSTM/GTrXL (attention) wrappers.
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        model_cls = (
-                            Keras_LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else Keras_AttentionWrapper
-                        )
-                        model_config["wrapped_cls"] = wrapped_cls
-                    # Wrapped (custom) model is ModelV2 ->
-                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
-                    else:
-                        forward = wrapped_cls.forward
-                        model_cls = ModelCatalog._wrap_if_needed(
-                            wrapped_cls,
-                            LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else AttentionWrapper,
-                        )
-                        model_cls._wrapped_forward = forward
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls,
+                        LSTMWrapper
+                        if model_config.get("use_lstm")
+                        else AttentionWrapper,
+                    )
+                    model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -657,32 +643,22 @@ class ModelCatalog:
 
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
-                    Keras_AttentionWrapper,
                 )
                 from ray.rllib.models.tf.recurrent_net import (
                     LSTMWrapper,
-                    Keras_LSTMWrapper,
                 )
 
                 wrapped_cls = v2_class
                 if model_config.get("use_lstm"):
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_LSTMWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, LSTMWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper
+                    )
+                    v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_AttentionWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, AttentionWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper
+                    )
+                    v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
@@ -884,8 +860,6 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
-        Keras_FCNet = None
-        Keras_VisionNet = None
 
         if framework in ["tf2", "tf"]:
             from ray.rllib.models.tf.fcnet import (
@@ -893,7 +867,6 @@ class ModelCatalog:
             )
             from ray.rllib.models.tf.visionnet import (
                 VisionNetwork as VisionNet,
-                Keras_VisionNetwork as Keras_VisionNet,
             )
             from ray.rllib.models.tf.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
@@ -922,8 +895,6 @@ class ModelCatalog:
         if isinstance(input_space, Box) and len(input_space.shape) == 3:
             if framework == "jax":
                 raise NotImplementedError("No non-FC default net for JAX yet!")
-            elif model_config.get("_use_default_native_models") and Keras_VisionNet:
-                return Keras_VisionNet
             return VisionNet
         # `input_space` is 1D Box -> FCNet.
         elif (
@@ -937,12 +908,7 @@ class ModelCatalog:
                 )
             )
         ):
-            # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and Keras_FCNet:
-                return Keras_FCNet
-            # Classic ModelV2 FCNet.
-            else:
-                return FCNet
+            return FCNet
         # Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
         else:
             if framework == "jax":
