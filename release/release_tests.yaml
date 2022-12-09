@@ -114,6 +114,7 @@
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
+    type: job
 
   alert: default
 
@@ -139,6 +140,7 @@
     long_running: true
     wait_for_nodes:
       num_nodes: 2
+    type: job
 
 
   smoke_test:
@@ -168,6 +170,7 @@
 
     wait_for_nodes:
       num_nodes: 20
+    type: job
 
 
   alert: default
@@ -191,6 +194,7 @@
 
     wait_for_nodes:
       num_nodes: 11
+    type: job
 
 
   smoke_test:
@@ -220,6 +224,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -243,6 +248,7 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: job
 
   smoke_test:
     frequency: nightly
@@ -256,6 +262,7 @@
 
       wait_for_nodes:
         num_nodes: 2
+    type: job
 
   alert: default
 
@@ -275,6 +282,7 @@
   run:
     timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    type: job
 
 
   alert: default
@@ -295,6 +303,7 @@
   run:
     timeout: 3600
     script: python workloads/gpu_batch_prediction.py --data-size-gb 20
+    type: job
 
 
   alert: default
@@ -317,6 +326,7 @@
   run:
     timeout: 10800
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+    type: job
 
 
   alert: default
@@ -340,6 +350,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -363,6 +374,7 @@
 
     wait_for_nodes:
       num_nodes: 8
+    type: job
 
 
   alert: default
@@ -385,6 +397,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -408,6 +421,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -428,6 +442,7 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    type: job
 
 
   alert: default
@@ -450,6 +465,7 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    type: job
 
     wait_for_nodes:
       num_nodes: 4
@@ -478,6 +494,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   smoke_test:
@@ -510,6 +527,7 @@
   run:
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+    type: job
 
 
   alert: default
@@ -535,6 +553,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -648,6 +667,7 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: xgboost_tests
@@ -674,6 +694,7 @@
 
     wait_for_nodes:
       num_nodes: 5
+    type: job
 
 
   alert: xgboost_tests
@@ -699,6 +720,7 @@
     script: python workloads/distributed_api_test.py
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: xgboost_tests
@@ -725,6 +747,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: xgboost_tests
@@ -751,6 +774,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: xgboost_tests
@@ -777,6 +801,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: xgboost_tests
@@ -803,6 +828,7 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: xgboost_tests
@@ -829,6 +855,7 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: xgboost_tests
@@ -883,6 +910,7 @@
     script: python workloads/train_moderate.py
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: default
@@ -909,6 +937,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -932,6 +961,7 @@
   run:
     timeout: 900
     script: python workloads/ft_small_non_elastic.py
+    type: job
 
     wait_for_nodes:
       num_nodes: 4
@@ -985,6 +1015,7 @@
     script: python workloads/tune_16x4.py
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: default
@@ -1010,6 +1041,7 @@
     script: python workloads/tune_4x16.py
     wait_for_nodes:
       num_nodes: 32
+    type: job
 
 
   alert: default
