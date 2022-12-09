@@ -6,8 +6,6 @@ import shutil
 import fcntl
 import signal
 
-from .cluster_init import _RAY_HEAD_NODE_TAG_FILE
-
 
 _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
@@ -25,41 +23,51 @@ if __name__ == '__main__':
     if temp_dir is None:
         raise ValueError("Please explicitly set --temp-dir option.")
 
-    is_head_node = True if "--head" in arg_list else False
-
     temp_dir = os.path.normpath(temp_dir)
-    head_node_is_on_local = os.path.exists(os.path.join(temp_dir, _RAY_HEAD_NODE_TAG_FILE))
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    process = subprocess.Popen([ray_exec_path, "start", *arg_list], text=True)
+    lock_file = temp_dir + ".lock"
+    lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
-    def sigterm_handler(*args):
-        process.terminate()
-
+    def try_clean_temp_dir_at_exit():
         try:
-            # if a worker node and head node runs on the same machine,
-            # when the worker node exits, we cannot delete the temp dir immediately
-            # because head node is still using it.
-            if is_head_node or not head_node_is_on_local:
-                time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
-                lock_file = temp_dir + ".lock"
-                try:
-                    mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
-                    lock_fd = os.open(lock_file, mode)
-                    # because one spark job might start multiple ray worker node on one spark worker
-                    # machine, and they use the same temp dir, so acquire an exclusive file lock when
-                    # deleting the temp dir.
-                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            # Wait for a while to ensure the children processes of the ray node all exited.
+            time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
 
-                    if os.path.exists(temp_dir):
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                finally:
-                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                    os.close(lock_fd)
+            # Start clean the temp dir,
+            try:
+                # try to upgrade shared lock to exclusive lock first
+                # to ensure removing dir safely.
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except BlockingIOError:
+                # Lock is used by other processes, representing there are other ray nodes
+                # running, skip cleaning temp-dir.
+                pass
+        except Exception:
+            # swallow any exception.
+            pass
         finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
+
+    try:
+        # Mutilple ray nodes might start on the same machine, and they are using the
+        # same temp directory, adding a shared lock representing current ray node is
+        # using the temp directory.
+        fcntl.flock(lock_fd, fcntl.LOCK_SH)
+        process = subprocess.Popen([ray_exec_path, "start", *arg_list], text=True)
+
+        def sigterm_handler(*args):
+            process.terminate()
+            try_clean_temp_dir_at_exit()
             os._exit(143)
 
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
-    sys.exit(process.wait())
+        signal.signal(signal.SIGTERM, sigterm_handler)
+        ret_code = process.wait()
+        try_clean_temp_dir_at_exit()
+        sys.exit(ret_code)
+    except Exception:
+        try_clean_temp_dir_at_exit()
+        raise

@@ -176,8 +176,6 @@ _RAY_HEAD_STARTUP_TIMEOUT = 40
 _BACKGROUND_JOB_STARTUP_WAIT = 30
 _RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL = 3
 
-_RAY_HEAD_NODE_TAG_FILE = "used_by_ray_on_spark_head_node"
-
 
 def _init_ray_cluster(
     num_worker_nodes=None,
@@ -202,7 +200,7 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 012.")
+    _logger.warning("Test version 013.")
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -317,9 +315,6 @@ def _init_ray_cluster(
         ray_temp_root_dir, f"ray-{ray_head_port}-{temp_dir_unique_suffix}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
-
-    with open(os.path.join(ray_temp_dir, _RAY_HEAD_NODE_TAG_FILE), "w"):
-        pass
 
     ray_head_node_cmd = [
         sys.executable,
