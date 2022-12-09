@@ -311,7 +311,7 @@ class BCTorchTrainer:
         }
 
 
-class TestRLOptimizer(unittest.TestCase):
+class TestRLOptimizerTorch(unittest.TestCase):
     def test_rl_optimizer_example_torch(self):
         ray.init()
         torch.manual_seed(1)

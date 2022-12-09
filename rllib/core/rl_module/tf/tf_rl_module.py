@@ -1,8 +1,6 @@
-import tensorflow as tf
-from typing import Any, Mapping, Type
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -53,15 +51,3 @@ class TFRLModule(RLModule, tf.keras.Model):
     #     )
 
     #     return TFMultiAgentRLModule
-
-
-class DummyTFRLModule(TFRLModule):
-    def __init__(self, config: Mapping[str, Any]) -> None:
-        super().__init__(config)
-
-    def _forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
-        return batch
-
-
-if __name__ == "__main__":
-    
