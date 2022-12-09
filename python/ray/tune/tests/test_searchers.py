@@ -230,6 +230,27 @@ class InvalidValuesTest(unittest.TestCase):
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
+    def testNevergradWithKwargs(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        np.random.seed(2020)  # At least one nan, inf, -inf and float
+
+        out = tune.run(
+            _invalid_objective,
+            search_alg=NevergradSearch(
+                optimizer=ng.optimizers.NGOpt4,
+                optimizer_kwargs=dict(budget=16)
+            ),
+            config=self.config,
+            mode="max",
+            num_samples=16,
+            reuse_actors=False,
+        )
+
+        best_trial = out.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
+
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler

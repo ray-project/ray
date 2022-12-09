@@ -52,6 +52,8 @@ class NevergradSearch(Searcher):
     Parameters:
         optimizer: Optimizer provided
             from Nevergrad. Alter
+        optimizer_kwargs: Dictionary used
+            to instantiate the Nevergrad optimizer.
         space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
@@ -120,6 +122,7 @@ class NevergradSearch(Searcher):
         optimizer: Optional[
             Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
         ] = None,
+        optimizer_kwargs: Dict = dict(),
         space: Optional[Union[Dict, Parameter]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
@@ -139,6 +142,7 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
+        self._optimizer_kwargs = optimizer_kwargs
 
         if points_to_evaluate is None:
             self._points_to_evaluate = None
@@ -166,6 +170,13 @@ class NevergradSearch(Searcher):
                     "pass a list of parameter names or None as the `space` "
                     "parameter."
                 )
+            if self._optimizer_kwargs:
+                raise ValueError(
+                    "If you pass a optimizer kwargs to Nevergrad, either "
+                    "pass a class of the `Optimizer` or a instance of "
+                    "the `ConfiguredOptimizer`."
+                )
+            
             self._parameters = space
             self._nevergrad_opt = optimizer
         elif (
@@ -187,7 +198,7 @@ class NevergradSearch(Searcher):
 
     def _setup_nevergrad(self):
         if self._opt_factory:
-            self._nevergrad_opt = self._opt_factory(self._space)
+            self._nevergrad_opt = self._opt_factory(self._space, **self._optimizer_kwargs)
 
         # nevergrad.tell internally minimizes, so "max" => -1
         if self._mode == "max":
