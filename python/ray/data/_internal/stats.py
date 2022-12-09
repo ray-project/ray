@@ -7,6 +7,7 @@ import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import AllToAllStage, OneToOneStage
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -168,7 +169,8 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: Dict[str, List[BlockMetadata]],
+        # stages: Dict[str, List[BlockMetadata]],
+        stages: Dict[Union[OneToOneStage, AllToAllStage], List[BlockMetadata]],
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
@@ -189,7 +191,7 @@ class DatasetStats:
             base_name: The name of the base operation for a multi-stage operation.
         """
 
-        self.stages: Dict[str, List[BlockMetadata]] = stages
+        self.stages: Dict[Union[OneToOneStage, AllToAllStage], List[BlockMetadata]] = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent
@@ -244,17 +246,29 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DatasetContext.get_current().block_splitting_enabled:
-                # Only populate stats when stats from all read tasks are ready at
-                # stats actor.
-                if len(stats_map.items()) == len(self.stages["read"]):
-                    self.stages["read"] = []
-                    for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["read"] += blocks_metadata
-            else:
-                for i, metadata in stats_map.items():
-                    self.stages["read"][i] = metadata[0]
+            all_read_tasks = [s for s in self.stages if s.name == "read"]
+            if len(all_read_tasks) >= 1:
+                read_task = all_read_tasks[0]
+                if DatasetContext.get_current().block_splitting_enabled:
+                    # Only populate stats when stats from all read tasks are ready at
+                    # stats actor.
+                    
+                    if len(stats_map.items()) == len(read_task):
+                        read_task = []
+                        for _, blocks_metadata in sorted(stats_map.items()):
+                            read_task += blocks_metadata
+                else:
+                    for i, metadata in stats_map.items():
+                        read_task[i] = metadata[0]
         out = ""
+
+        def _get_scheduling_strategy_str(stage_obj: Union[OneToOneStage, AllToAllStage]):
+            stage_scheduling_strategy = stage_obj.ray_remote_args.get("scheduling_strategy")
+            if stage_scheduling_strategy is not None:
+                return f"(SchedulingStrategy: {stage_scheduling_strategy})"
+            else:
+                return "(SchedulingStrategy: none found)"
+
         if self.parents and include_parent:
             for p in self.parents:
                 parent_sum = p.summary_string(already_printed)
@@ -262,9 +276,10 @@ class DatasetStats:
                     out += parent_sum
                     out += "\n"
         if len(self.stages) == 1:
-            stage_name, metadata = next(iter(self.stages.items()))
-            stage_uuid = self.dataset_uuid + stage_name
-            out += "Stage {} {}: ".format(self.number, stage_name)
+            stage_obj, metadata = next(iter(self.stages.items()))
+            stage_uuid = self.dataset_uuid + stage_obj.name
+            scheduling_strategy_str = _get_scheduling_strategy_str(stage_obj)
+            out += "Stage {} {} {}: ".format(self.number, stage_obj.name, scheduling_strategy_str)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
@@ -284,10 +299,11 @@ class DatasetStats:
             out += "Stage {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
-            for n, (stage_name, metadata) in enumerate(self.stages.items()):
-                stage_uuid = self.dataset_uuid + stage_name
+            for n, (stage_obj, metadata) in enumerate(self.stages.items()):
+                stage_uuid = self.dataset_uuid + stage_obj.name
                 out += "\n"
-                out += "\tSubstage {} {}: ".format(n, stage_name)
+                scheduling_strategy_str = _get_scheduling_strategy_str(stage_obj)
+                out += "\tSubstage {} {} {}: ".format(n, stage_obj.name, scheduling_strategy_str)
                 if stage_uuid in already_printed:
                     out += "\t[execution cached]\n"
                 else:
