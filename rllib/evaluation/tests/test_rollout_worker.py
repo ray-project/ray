@@ -244,7 +244,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -284,7 +285,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             ),
@@ -336,7 +338,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -473,7 +476,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
