@@ -62,6 +62,8 @@ To disable lineage reconstruction entirely, set the environment variable
 setting, if there are no copies of an object left, an ``ObjectLostError`` will
 be raised.
 
+.. _fault-tolerance-ownership:
+
 Recovering from owner failure
 -----------------------------
 

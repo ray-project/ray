@@ -31,7 +31,7 @@ alive.
 
 .. note::
     KubeRay has supported fault-tolerance GCS. For the users who don't have experience
-    setting up this, please refer to `KubeRay GCS FT <https://github.com/ray-project/kuberay/blob/master/docs/guidance/gcs-ha.md>`_
+    setting up this, please refer to `KubeRay GCS FT <https://github.com/ray-project/kuberay/blob/master/docs/guidance/gcs-ft.md>`_
 
 
 Raylet failure

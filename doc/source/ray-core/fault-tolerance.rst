@@ -22,3 +22,4 @@ Ray also provides several mechanisms to automatically recover from internal syst
     fault_tolerance/tasks.rst
     fault_tolerance/actors.rst
     fault_tolerance/objects.rst
+    fault_tolerance/ray_components.rst
