@@ -132,7 +132,9 @@ class GcsActor {
   }
 
   ~GcsActor() {
-    if (last_metric_state_) {
+    // We don't decrement the value when it becomes DEAD because we don't want to
+    // lose the # of dead actors count when this class is GC'ed.
+    if (last_metric_state_ && last_metric_state_.value() != rpc::ActorTableData::DEAD) {
       RAY_LOG(DEBUG) << "Decrementing state at "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " " << GetActorTableData().class_name();
