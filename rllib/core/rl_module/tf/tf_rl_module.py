@@ -1,6 +1,7 @@
 from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -55,12 +56,7 @@ class TFRLModule(RLModule, tf.keras.Model):
         """
         raise NotImplementedError
 
-    # @classmethod
-    # @override(RLModule)
-    # def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
-    #     """Returns the multi-agent wrapper class for this module."""
-    #     from ray.rllib.core.rl_module.tf.tf_marl_module import (
-    #         TFMultiAgentRLModule,
-    #     )
-
-    #     return TFMultiAgentRLModule
+    @override(RLModule)
+    def get_multi_agent_class(cls) -> MultiAgentRLModule:
+        """Returns the multi-agent wrapper class for this module."""
+        raise NotImplementedError("Multi-agent not supported for TFRLModule yet")
