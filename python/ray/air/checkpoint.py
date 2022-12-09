@@ -156,7 +156,7 @@ class Checkpoint:
     @DeveloperAPI
     def __init__(
         self,
-        local_path: Optional[str] = None,
+        local_path: Optional[Union[str, os.PathLike]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
@@ -210,7 +210,9 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path: Optional[str] = local_path
+        self._local_path: Optional[str] = (
+            str(Path(local_path).resolve()) if local_path else local_path
+        )
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
@@ -229,6 +231,22 @@ class Checkpoint:
                 attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
             },
         )
+
+    def _copy_metadata_attrs_from(self, source: "Checkpoint") -> None:
+        """Copy in-place metadata attributes from ``source`` to self."""
+        for attr, value in source._metadata.checkpoint_state.items():
+            if attr in self._SERIALIZED_ATTRS:
+                setattr(self, attr, value)
+
+    @_metadata.setter
+    def _metadata(self, metadata: _CheckpointMetadata):
+        if metadata.checkpoint_type is not self.__class__:
+            raise ValueError(
+                f"Checkpoint type in metadata must match {self.__class__}, "
+                f"got {metadata.checkpoint_type}"
+            )
+        for attr, value in metadata.checkpoint_state.items():
+            setattr(self, attr, value)
 
     @property
     def uri(self) -> Optional[str]:
@@ -259,7 +277,7 @@ class Checkpoint:
             return self._uri
 
         if self._local_path and Path(self._local_path).exists():
-            return "file://" + self._local_path
+            return f"file://{self._local_path}"
 
         return None
 
@@ -290,7 +308,7 @@ class Checkpoint:
         data_dict = self.to_dict()
         if "bytes_data" in data_dict:
             return data_dict["bytes_data"]
-        return pickle.dumps(self.to_dict())
+        return pickle.dumps(data_dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Checkpoint":
@@ -421,7 +439,7 @@ class Checkpoint:
         )
 
     @classmethod
-    def from_directory(cls, path: str) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -463,12 +481,14 @@ class Checkpoint:
         if type(other) is cls:
             return other
 
-        return cls(
+        new_checkpoint = cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
+        new_checkpoint._copy_metadata_attrs_from(other)
+        return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -532,7 +552,7 @@ class Checkpoint:
             local_path = self._local_path
             external_path = _get_external_path(self._uri)
             if local_path:
-                if local_path != path:
+                if Path(local_path).resolve() != Path(path).resolve():
                     # If this exists on the local path, just copy over
                     if path and os.path.exists(path):
                         shutil.rmtree(path)
