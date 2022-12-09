@@ -59,22 +59,35 @@ class SyncConfig:
 
     If an ``upload_dir`` is specified, both experiment and trial checkpoints
     will be stored on remote (cloud) storage. Synchronization then only
-    happens via this remote storage.
+    happens via uploading/downloading from this remote storage - no syncing will
+    happen between nodes.
 
     Args:
         upload_dir: Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
             Specifying this will enable cloud-based checkpointing.
-        syncer: Syncer class to use for synchronizing checkpoints to/from
-            cloud storage. If set to ``None``, no syncing will take place.
-            Defaults to ``"auto"`` (auto detect).
-        sync_on_checkpoint: Force sync-down of trial checkpoint to
-            driver (only non cloud-storage).
-            If set to False, checkpoint syncing from worker to driver
-            is asynchronous and best-effort. This does not affect persistent
-            storage syncing. Defaults to True.
-        sync_period: Syncing period for syncing between nodes.
-        sync_timeout: Timeout after which running sync processes are aborted.
+        syncer: If ``upload_dir`` is specified, then this config accepts a custom
+            syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
+            used to synchronize checkpoints to/from cloud storage.
+            If no ``upload_dir`` is specified, this config can be set to ``None``,
+            which disables the default worker-to-head-node syncing.
+            Defaults to ``"auto"`` (auto detect), which assigns a default syncer
+            that uses pyarrow to handle cloud storage syncing when ``upload_dir``
+            is provided.
+        sync_on_checkpoint: If *True*, sync-down of the trial directory to the head node
+            will happen on every trial checkpoint.
+            If *False*, syncing from the worker trial directory to head node is
+            best-effort and happens approximately every ``sync_period`` seconds.
+            Defaults to True.
+        sync_period: Minimum time in seconds to wait between syncs.
+            Defaults to 5 minutes.
+            **Note**: This applies to both cloud storage syncing and
+            worker-to-head-node syncing.
+        sync_timeout: Maximum time in seconds to wait for a sync process
+            to finish running.
+            Defaults to 30 minutes.
+            **Note**: Currently, this timeout only affects syncing up/down to
+            cloud storage.
     """
 
     upload_dir: Optional[str] = None
