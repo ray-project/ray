@@ -10,8 +10,8 @@ torch, nn = try_import_torch()
 
 class TorchRLModule(RLModule, nn.Module):
     def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        RLModule.__init__(self, rl_modules)
         nn.Module.__init__(self)
+        RLModule.__init__(self, rl_modules)
 
     @override(nn.Module)
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:

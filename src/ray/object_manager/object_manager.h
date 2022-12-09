@@ -402,7 +402,7 @@ class ObjectManager : public ObjectManagerInterface,
   IObjectDirectory *object_directory_;
 
   /// Object store runner.
-  ObjectStoreRunner object_store_internal_;
+  std::unique_ptr<ObjectStoreRunner> object_store_internal_;
 
   /// Used by the buffer pool to read and write objects in the local store
   /// during object transfers.

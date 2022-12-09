@@ -436,7 +436,7 @@ class TestParseUri:
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
         ],
     )
-    def test_parsing_basic(self, parsing_tuple):
+    def test_parsing_remote_basic(self, parsing_tuple):
         uri, protocol, package_name = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(uri)
 
@@ -467,6 +467,47 @@ class TestParseUri:
         parsed_protocol, parsed_package_name = parse_uri(raw_uri)
         assert parsed_protocol == Protocol.HTTPS
         assert parsed_package_name == parsed_uri
+
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
+                Protocol.HTTPS,
+                "https_username_PAT_github_com_repo_archive_2_commit_hash.zip",
+            ),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.GS,
+                "gs_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.S3,
+                "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+        ],
+    )
+    def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == parsed_uri
+
+    @pytest.mark.parametrize(
+        "gcs_uri",
+        ["gcs://pip_install_test-0.5-py3-none-any.whl", "gcs://storing@here.zip"],
+    )
+    def test_parse_gcs_uri(self, gcs_uri):
+        """GCS URIs should not be modified in this function."""
+        protocol, package_name = parse_uri(gcs_uri)
+        assert protocol == Protocol.GCS
+        assert package_name == gcs_uri.split("/")[-1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")

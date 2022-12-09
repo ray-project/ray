@@ -204,6 +204,7 @@ def publish_error_to_driver(
     message: str,
     gcs_publisher,
     job_id=None,
+    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -225,7 +226,7 @@ def publish_error_to_driver(
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
     except Exception:
         logger.exception(f"Failed to publish error {error_data}")
 
