@@ -2351,6 +2351,12 @@ def put(
 
     The object may not be evicted while a reference to the returned ID exists.
 
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/return-ray-put`
+    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
+    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+
     Args:
         value: The Python object to be stored.
         _owner [Experimental]: The actor that should own this object. This
@@ -2427,6 +2433,11 @@ def wait(
     This method will issue a warning if it's running inside an async context.
     Instead of ``ray.wait(object_refs)``, you can use
     ``await asyncio.wait(object_refs)``.
+
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/limit-pending-tasks`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
         object_refs: List of object refs for objects that may
