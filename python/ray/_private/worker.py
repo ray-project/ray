@@ -2942,7 +2942,7 @@ def remote(
 
         Instead, use ray.put to create a copy of the object in the object store.
 
-        See :ref:`more info here <tip-delay-get>`.
+        See :ref:`more info here <ray-pass-large-arg-by-value>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
