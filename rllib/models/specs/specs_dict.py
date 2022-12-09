@@ -39,10 +39,10 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
         -----------------
         >>> spec_dict = ModelSpec({
         ...     "obs": {
-        ...         "arm":      TensorSpec("b, d_a", d_a=64),
-        ...         "gripper":  TensorSpec("b, d_g", d_g=12)
+        ...         "arm":      TensorSpec("b, dim_arm", dim_arm=64),
+        ...         "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
         ...     },
-        ...     "action": TensorSpec("b, d_a", h=12),
+        ...     "action": TensorSpec("b, dim_action", dim_action=12),
         ...     "action_dist": torch.distributions.Categorical
         ... })
 
