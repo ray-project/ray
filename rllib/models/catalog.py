@@ -13,6 +13,8 @@ from ray.tune.registry import (
     _global_registry,
 )
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.catalogV3 import get_vision_net_class, get_fc_net_class, \
+    get_encoder_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
@@ -882,37 +884,6 @@ class ModelCatalog:
         input_space: gym.Space, model_config: ModelConfigDict, framework: str = "tf"
     ) -> Type[ModelV2]:
 
-        VisionNet = None
-        ComplexNet = None
-        Keras_FCNet = None
-        Keras_VisionNet = None
-
-        if framework in ["tf2", "tf"]:
-            from ray.rllib.models.tf.fcnet import (
-                FullyConnectedNetwork as FCNet,
-                Keras_FullyConnectedNetwork as Keras_FCNet,
-            )
-            from ray.rllib.models.tf.visionnet import (
-                VisionNetwork as VisionNet,
-                Keras_VisionNetwork as Keras_VisionNet,
-            )
-            from ray.rllib.models.tf.complex_input_net import (
-                ComplexInputNetwork as ComplexNet,
-            )
-        elif framework == "torch":
-            from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FCNet
-            from ray.rllib.models.torch.visionnet import VisionNetwork as VisionNet
-            from ray.rllib.models.torch.complex_input_net import (
-                ComplexInputNetwork as ComplexNet,
-            )
-        elif framework == "jax":
-            from ray.rllib.models.jax.fcnet import FullyConnectedNetwork as FCNet
-        else:
-            raise ValueError(
-                "framework={} not supported in `ModelCatalog._get_v2_model_"
-                "class`!".format(framework)
-            )
-
         orig_space = (
             input_space
             if not hasattr(input_space, "original_space")
@@ -921,11 +892,7 @@ class ModelCatalog:
 
         # `input_space` is 3D Box -> VisionNet.
         if isinstance(input_space, Box) and len(input_space.shape) == 3:
-            if framework == "jax":
-                raise NotImplementedError("No non-FC default net for JAX yet!")
-            elif model_config.get("_use_default_native_models") and Keras_VisionNet:
-                return Keras_VisionNet
-            return VisionNet
+            return get_vision_net_class(framework=framework)
         # `input_space` is 1D Box -> FCNet.
         elif (
             isinstance(input_space, Box)
@@ -938,17 +905,10 @@ class ModelCatalog:
                 )
             )
         ):
-            # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and Keras_FCNet:
-                return Keras_FCNet
-            # Classic ModelV2 FCNet.
-            else:
-                return FCNet
+            return get_fc_net_class(framework=framework)
         # Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
         else:
-            if framework == "jax":
-                raise NotImplementedError("No non-FC default net for JAX yet!")
-            return ComplexNet
+            return get_encoder_class(framework=framework)
 
     @staticmethod
     def _get_multi_action_distribution(dist_class, action_space, config, framework):
