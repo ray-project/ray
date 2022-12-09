@@ -2264,6 +2264,14 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/ray-get-loop`
+    - :doc:`/ray-core/patterns/unnecessary-ray-get`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+
+
     Args:
         object_refs: Object ref of the object to get or a list of object refs
             to get.
