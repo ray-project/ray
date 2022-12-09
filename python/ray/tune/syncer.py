@@ -217,14 +217,14 @@ class _BackgroundProcess:
 
 @DeveloperAPI
 class Syncer(abc.ABC):
-    """Syncer class for synchronizing data between Ray nodes and external storage.
+    """Syncer class for synchronizing data between Ray nodes and remote (cloud) storage.
 
     This class handles data transfer for two cases:
 
-    1. Synchronizing data from the driver to external storage. This affects
-       experiment-level checkpoints and trial-level checkpoints if no cloud storage
-       is used.
-    2. Synchronizing data from remote trainables to external storage.
+    1. Synchronizing data such as experiment checkpoints from the driver to
+       cloud storage.
+    2. Synchronizing data such as trial checkpoints from remote trainables to
+       cloud storage.
 
     Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
     The base class implements a ``wait_or_retry()`` API that will retry a failed
@@ -324,8 +324,8 @@ class Syncer(abc.ABC):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
-        processes. This method should timeout after `sync_timeout` and
-        raise a `TimeoutError`.
+        processes. This method should timeout after the asynchronous command
+        has run for `sync_timeout` seconds and raise a `TimeoutError`.
         """
         pass
 
