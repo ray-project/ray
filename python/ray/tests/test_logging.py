@@ -15,11 +15,12 @@ import pytest
 
 import ray
 from ray._private import ray_constants
-from ray._private.log_monitor import (
+from ray._private.log_monitor import (  # noqa: F401
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
     LogFileInfo,
     LogMonitor,
+    is_alive,
 )
 from ray._private.test_utils import (
     get_log_batch,
@@ -206,11 +207,11 @@ def test_periodic_event_stats(shutdown_only):
     for path in paths:
         # Need to remove suffix to avoid reading log rotated files.
         if "python-core-driver" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
+            wait_for_condition(lambda: is_event_loop_stats_found(path))  # noqa B023
         if "raylet.out" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
+            wait_for_condition(lambda: is_event_loop_stats_found(path))  # noqa B023
         if "gcs_server.out" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
+            wait_for_condition(lambda: is_event_loop_stats_found(path))  # noqa B023
 
 
 def test_worker_id_names(shutdown_only):
