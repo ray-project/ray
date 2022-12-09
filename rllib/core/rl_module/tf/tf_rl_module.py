@@ -42,6 +42,19 @@ class TFRLModule(RLModule, tf.keras.Model):
         # TODO (Avnish): Implement this.
         return False
 
+    def trainable_variables(self) -> Mapping[str, Any]:
+        """Returns the trainable variables of the module.
+
+        Example:
+            return {"module": module.trainable_variables}
+
+        Note:
+            see tensorflow.org/guide/autodiff#gradients_with_respect_to_a_model
+            for more details
+
+        """
+        raise NotImplementedError
+
     # @classmethod
     # @override(RLModule)
     # def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
