@@ -23,6 +23,7 @@ class StateBufferConnector(AgentConnector):
         self._initial_states = ctx.initial_states
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
+        self._enable_rl_module_api = ctx._enable_rl_module_api
 
     def reset(self, env_id: str):
         # States should not be carried over between episodes.
@@ -60,8 +61,11 @@ class StateBufferConnector(AgentConnector):
 
         if states is None:
             states = self._initial_states
-        for i, v in enumerate(states):
-            d["state_out_{}".format(i)] = v
+        if self._enable_rl_module_api:
+            d["state_out"] = states
+        else:
+            for i, v in enumerate(states):
+                d["state_out_{}".format(i)] = v
 
         # Also add extra fetches if available.
         if fetches:

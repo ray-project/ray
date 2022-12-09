@@ -326,6 +326,7 @@ class PPO(Algorithm):
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
+        breakpoint()
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()

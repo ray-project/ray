@@ -496,6 +496,7 @@ class TorchPolicyV2(Policy):
                 # infer seq_lens from the batch size. I still am not sure if I need 
                 # this here. 
                 state_batches = input_dict["state_in"]
+
                 if state_batches:
                     if SampleBatch.SEQ_LENS in input_dict:
                         seq_lens = input_dict[SampleBatch.SEQ_LENS]
@@ -938,6 +939,10 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
+        if self.config["_enable_rl_module_api"]:
+            # convert the tree of a tree to numpy arrays
+            return tree.map_structure(lambda s: convert_to_numpy(s), self.model.get_initial_state())
+        
         return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)
@@ -1066,14 +1071,10 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = {}
         if isinstance(self.model, RLModule):
-            sample_batch = input_dict
-            if state_batches:
-                sample_batch.update({"state": state_batches})
-
             if explore:
-                fwd_out = self.model.forward_exploration(sample_batch)
+                fwd_out = self.model.forward_exploration(input_dict)
             else:
-                fwd_out = self.model.forward_inference(sample_batch)
+                fwd_out = self.model.forward_inference(input_dict)
             # anything but action_dist and state_out is an extra fetch
             action_dist = fwd_out.pop("action_dist")
 

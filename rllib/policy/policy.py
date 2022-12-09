@@ -1356,16 +1356,22 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            i = 0
-            while "state_in_{}".format(i) in postprocessed_batch:
-                postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
-                    "state_in_{}".format(i)
-                ][:B]
-                if "state_out_{}".format(i) in postprocessed_batch:
-                    postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
-                        "state_out_{}".format(i)
+            if self.config["_enable_rl_module_api"]:
+                sub_batch = postprocessed_batch[:B]
+                postprocessed_batch["state_in"] = sub_batch["state_in"]
+                postprocessed_batch["state_out"] = sub_batch["state_out"]
+            else:
+                i = 0
+                while "state_in_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
+                        "state_in_{}".format(i)
                     ][:B]
-                i += 1
+                    if "state_out_{}".format(i) in postprocessed_batch:
+                        postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
+                            "state_out_{}".format(i)
+                        ][:B]
+                    i += 1
+
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens

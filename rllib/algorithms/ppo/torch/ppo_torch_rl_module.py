@@ -150,7 +150,9 @@ class PPOTorchRLModule(TorchRLModule):
             action, _ = action_logits.chunk(2, dim=-1)
 
         action_dist = TorchDeterministic(action)
-        return {SampleBatch.ACTION_DIST: action_dist}
+        output = {SampleBatch.ACTION_DIST: action_dist}
+        output["state_out"] = encoder_out.get("state_out", [])
+        return output
 
     @override(RLModule)
     def input_specs_exploration(self):
@@ -204,7 +206,8 @@ class PPOTorchRLModule(TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist
 
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out).squeeze(-1)
+        output[SampleBatch.VF_PREDS] = self.vf(encoder_out["embedding"]).squeeze(-1)
+        output["state_out"] = encoder_out.get("state_out", [])
         return output
 
     @override(RLModule)
@@ -282,6 +285,8 @@ class PPOTorchRLModule(TorchRLModule):
             "entropy": entropy,
             "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
+
+        output["state_out"] = encoder_out.get("state_out", [])
         return output
 
     def __get_action_dist_type(self):

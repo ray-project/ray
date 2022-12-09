@@ -128,6 +128,7 @@ class LSTMEncoder(Encoder):
     def input_spec(self):
         config = self.config
         return ModelSpec({
+            # bxt is just a name for better readability to indicated padded batch
             SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
             "state_in": {
                 "h": TorchTensorSpec("b, h", h=config.hidden_dim),
@@ -159,9 +160,11 @@ class LSTMEncoder(Encoder):
         )
         states_o = {}
         x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
+        x = self.linear(x)
+        x = x.view(-1, x.shape[-1])
         
         return {
-            "embedding": self.linear(x),
+            "embedding": x,
             "state_out": tree.map_structure(lambda x: x.transpose(0, 1), states_o)
         }
         

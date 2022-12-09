@@ -55,6 +55,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                     # to behave in inference mode, so they don't accumulate episode data
                     # that is not useful for inference.
                     is_training=False,
+                    _enable_rl_module_api=ctx._enable_rl_module_api,
                 )
             )
         )

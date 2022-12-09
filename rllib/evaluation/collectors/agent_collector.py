@@ -61,6 +61,7 @@ class AgentCollector:
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
         is_training: bool = True,
+        _enable_rl_module_api: bool = False,
     ):
         """Initialize an AgentCollector.
 
@@ -82,6 +83,7 @@ class AgentCollector:
         self.intial_states = intial_states or []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
+        self._enable_rl_module_api = _enable_rl_module_api
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -100,7 +102,7 @@ class AgentCollector:
         #    [0, 1],  # <- 1st sub-component of observation
         #    [np.array([.2, .3]), np.array([.0, -.2])]  # <- 2nd sub-component
         # ]
-        # NOTE: infos and state_out_... are not flattened due to them often
+        # NOTE: infos and state_out... are not flattened due to them often
         # using custom dict values whose structure may vary from timestep to
         # timestep.
         self.buffers: Dict[str, List[List[TensorType]]] = {}
@@ -146,13 +148,18 @@ class AgentCollector:
 
         if view_requirement_name in self.view_requirements:
             vr = self.view_requirements[view_requirement_name]
+
+            # data.shape is () is the same as vr.space.shape = None
+            data_shape = np.shape(data) if len(np.shape(data)) > 0 else None
+            vr_shape = vr.space.shape if vr.space.shape != () else None
+
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
             # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
             #  space that is not a gym.Space
             if (
                 hasattr(vr.space, "shape")
-                and not vr.space.shape == np.shape(data)
+                and not vr_shape == data_shape
                 and log_once(
                     f"view_requirement"
                     f"_{view_requirement_name}_checked_in_agent_collector"
@@ -293,7 +300,7 @@ class AgentCollector:
             self._check_view_requirement(k, v)
 
             if k not in self.buffers:
-                if self.training and k.startswith("state_out_"):
+                if self.training and k.startswith("state_out"):
                     vr = self.view_requirements[k]
                     data_col = vr.data_col or k
                     self._fill_buffer_with_initial_values(
@@ -301,15 +308,18 @@ class AgentCollector:
                     )
                 else:
                     self._build_buffers({k: v})
-            # Do not flatten infos, state_out_ and (if configured) actions.
+            # Do not flatten infos, state_out and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
             should_flatten_action_key = (
                 k == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            should_flatten_state_key = (
+                k.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 k == SampleBatch.INFOS
-                or k.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -576,9 +586,13 @@ class AgentCollector:
             should_flatten_action_key = (
                 col == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+
+            should_flatten_state_key = (
+                col.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 col == SampleBatch.INFOS
-                or col.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -653,10 +667,10 @@ class AgentCollector:
         except KeyError:
             space = view_requirement.space
 
-        # special treatment for state_out_<i>
+        # special treatment for state_out
         # add them to the buffer in case they don't exist yet
         is_state = True
-        if data_col.startswith("state_out_"):
+        if data_col.startswith("state_out"):
             if not self.is_policy_recurrent:
                 raise ValueError(
                     f"{data_col} is not available, because the given policy is"
@@ -664,14 +678,17 @@ class AgentCollector:
                     f"Have you forgotten to return non-empty lists in"
                     f"policy.get_initial_states()?"
                 )
-            state_ind = int(data_col.split("_")[-1])
-            self._build_buffers({data_col: self.intial_states[state_ind]})
+            if self._enable_rl_module_api:
+                self._build_buffers({data_col: self.intial_states})
+            else:
+                state_ind = int(data_col.split("_")[-1])
+                self._build_buffers({data_col: self.intial_states[state_ind]})
         else:
             is_state = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
-                    #  state_out_x assumes the values do not have a batch dimension
+                    #  state_out assumes the values do not have a batch dimension
                     #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,

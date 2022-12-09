@@ -132,7 +132,7 @@ class PPOTorchPolicyWithRLModule(
             mask = sequence_mask(
                 train_batch[SampleBatch.SEQ_LENS],
                 max_seq_len,
-                time_major=model.is_time_major(),
+                time_major=self.config["model"]["_time_major"],
             )
             mask = torch.reshape(mask, [-1])
             num_valid = torch.sum(mask)

@@ -206,7 +206,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     ) -> Tuple[TensorType, List[TensorType]]:
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
-        breakpoint()
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
         # Concat. prev-action/reward if required.
@@ -259,7 +258,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         #     inputs = torch.nn.utils.rnn.pack_padded_sequence(
         #         inputs, seq_lens,
         #         batch_first=not time_major, enforce_sorted=False)
-        breakpoint()
         self._features, [h, c] = self.lstm(
             inputs, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)]
         )
