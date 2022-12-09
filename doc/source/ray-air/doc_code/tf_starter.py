@@ -56,7 +56,9 @@ def train_func(config: dict):
 
 config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 
-train_dataset = ray.data.from_items([{"x": x / 200, "y": 2 * x / 200} for x in range(200)])
+train_dataset = ray.data.from_items(
+    [{"x": x / 200, "y": 2 * x / 200} for x in range(200)]
+)
 scaling_config = ScalingConfig(num_workers=2)
 # If using GPUs, use the below scaling config instead.
 # scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
