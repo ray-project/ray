@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # workers.
     runtime_env = {
         "env_vars": {
-            "NCCL_SOCKET_IFNAME": "ens3",
+            "NCCL_SOCKET_IFNAME": "ens",
         },
         "working_dir": os.path.dirname(__file__),
     }
