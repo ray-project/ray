@@ -307,8 +307,10 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         # https://github.com/grpc/grpc/issues/31772
         # The commit is https://github.com/grpc/grpc/pull/30996
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10'",
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10'",
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
