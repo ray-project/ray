@@ -93,7 +93,7 @@ different error types:
 - ``ReferenceCountingAssertionError``: The object has already been deleted,
   so it cannot be retrieved. Ray implements automatic memory management through
   distributed reference counting, so this error should not happen in general.
-  However, there is a `known edge case`_ that can produce this error.
+  However, there is a `known edge case <https://github.com/ray-project/ray/issues/18456>`_ that can produce this error.
 - ``ObjectFetchTimedOutError``: A node timed out while trying to retrieve a
   copy of the object from a remote node. This error usually indicates a
   system-level bug. The timeout period can be configured using the
@@ -102,5 +102,3 @@ different error types:
 - ``ObjectLostError``: The object was successfully created, but no copy is
   reachable.  This is a generic error thrown when lineage reconstruction is
   disabled and all copies of the object are lost from the cluster.
-
-.. _`known edge case`: https://github.com/ray-project/ray/issues/18456

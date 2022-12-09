@@ -1,10 +1,12 @@
-.. _fault-tolerance-architecture:
+.. _fault-tolerance-internal-system:
 
 Advanced topic: Ray system failure model
 ========================================
 
 Here, we describe the system-level components of Ray and how failures in those
 components can affect tasks, objects, and actors.
+
+.. _fault-tolerance-gcs:
 
 GCS failure
 -----------
@@ -65,5 +67,3 @@ Worker failure
 When the worker failed, all the objects or actors owned by this worker will be
 lost. Workers could fail because of the node failure, raylet failure or the
 users code make it crashed.
-
-
