@@ -211,6 +211,7 @@ def test_sync_config_upload_dir_custom_syncer_mismatch():
     with pytest.raises(ValueError):
         tune.SyncConfig(upload_dir=None, syncer=_DefaultSyncer())
 
+
 def test_syncer_sync_up_down(temp_data_dirs):
     """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs

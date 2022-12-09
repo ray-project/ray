@@ -105,9 +105,7 @@ class SyncConfig:
                 "or set `syncer` to 'auto' or a custom syncer."
             )
         if not self.upload_dir and isinstance(self.syncer, Syncer):
-            raise ValueError(
-                "Must specify an `upload_dir` to use a custom `syncer`."
-            )
+            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
