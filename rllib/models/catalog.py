@@ -890,7 +890,6 @@ class ModelCatalog:
         if framework in ["tf2", "tf"]:
             from ray.rllib.models.tf.fcnet import (
                 FullyConnectedNetwork as FCNet,
-                Keras_FullyConnectedNetwork as Keras_FCNet,
             )
             from ray.rllib.models.tf.visionnet import (
                 VisionNetwork as VisionNet,
