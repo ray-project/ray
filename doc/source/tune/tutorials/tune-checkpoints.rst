@@ -244,13 +244,13 @@ In this example, here's how checkpoints will be saved:
 
 - **Locally on laptop**: Not saved here! Nothing will be sync'd to your laptop, since the experiment is being run on the remote cluster.
 - On head node:
-    - Experiment checkpoint: all checkpoint data stored at the experient directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
+    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
     - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
 - On worker nodes:
     - Experiment checkpoint: not stored on worker nodes!
     - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
 - S3:
-    - Experiment checkpoint: all checkpoint data stored at the experient directory level (ex: ``s3://my-checkpoints-bucket/path/my-tune-exp/experiment-state-<date>.json``)
+    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``s3://my-checkpoints-bucket/path/my-tune-exp/experiment-state-<date>.json``)
     - Trial checkpoints: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials)
 
 .. _tune-syncing-restore-from-uri:
@@ -314,7 +314,7 @@ Ray cluster: ``ray.init()`` in the example below will automatically detect and c
 In this example, here's how checkpoints will be saved:
 
 - On head node where we are running from:
-    - Experiment checkpoint: all checkpoint data stored at the experient directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
+    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
     - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials, since they have been synced to the head node)
 - On worker nodes:
     - Experiment checkpoint: not stored on worker nodes!
