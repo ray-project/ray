@@ -165,7 +165,10 @@ def test_deadlock_actor_with_nested_task(
         - actor_bytes
     )
     with pytest.raises(ray.exceptions.GetTimeoutError) as _:
-        ray.get(leaker.perform_allocations.remote(actor_bytes, nested_task_bytes), timeout=30)
+        ray.get(
+            leaker.perform_allocations.remote(actor_bytes, nested_task_bytes),
+            timeout=30,
+        )
 
 
 @pytest.mark.skipif(
