@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 import pickle
 import re
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -48,6 +48,10 @@ class OtherStubCheckpoint(Checkpoint):
     pass
 
 
+class OtherStubCheckpointWithAttrs(Checkpoint):
+    _SERIALIZED_ATTRS = StubCheckpoint._SERIALIZED_ATTRS
+
+
 def test_from_checkpoint():
     checkpoint = Checkpoint.from_dict({"spam": "ham"})
     assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
@@ -56,6 +60,13 @@ def test_from_checkpoint():
     checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
     checkpoint.foo = "bar"
     assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+    # Check that attributes persist if the new checkpoint
+    # has them as well.
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert OtherStubCheckpointWithAttrs.from_checkpoint(checkpoint).foo == "bar"
 
 
 class TestCheckpointTypeCasting:
@@ -507,7 +518,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
+            assert Path(checkpoint_dir).stem.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 

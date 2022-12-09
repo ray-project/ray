@@ -159,7 +159,7 @@ class Checkpoint:
     @DeveloperAPI
     def __init__(
         self,
-        local_path: Optional[str] = None,
+        local_path: Optional[Union[str, os.PathLike]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
@@ -214,7 +214,7 @@ class Checkpoint:
             raise ValueError("Cannot create checkpoint without data.")
 
         self._local_path: Optional[str] = (
-            str(Path(local_path).absolute()) if local_path else local_path
+            str(Path(local_path).resolve()) if local_path else local_path
         )
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
@@ -236,6 +236,12 @@ class Checkpoint:
                 if hasattr(self, attr)
             },
         )
+
+    def _copy_metadata_attrs_from(self, source: "Checkpoint") -> None:
+        """Copy in-place metadata attributes from ``source`` to self."""
+        for attr, value in source._metadata.checkpoint_state.items():
+            if attr in self._SERIALIZED_ATTRS:
+                setattr(self, attr, value)
 
     @_metadata.setter
     def _metadata(self, metadata: _CheckpointMetadata):
@@ -276,7 +282,7 @@ class Checkpoint:
             return self._uri
 
         if self._local_path and Path(self._local_path).exists():
-            return "file://" + str(self._local_path)
+            return f"file://{self._local_path}"
 
         return None
 
@@ -438,7 +444,7 @@ class Checkpoint:
         )
 
     @classmethod
-    def from_directory(cls, path: str) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -480,12 +486,14 @@ class Checkpoint:
         if type(other) is cls:
             return other
 
-        return cls(
+        new_checkpoint = cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
+        new_checkpoint._copy_metadata_attrs_from(other)
+        return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -547,10 +555,10 @@ class Checkpoint:
         else:
             # This is either a local fs, remote node fs, or external fs
             local_path = self._local_path
-            path_pathlib = Path(path)
+            path_pathlib = Path(path).resolve()
             external_path = _get_external_path(self._uri)
             if local_path:
-                local_path_pathlib = Path(local_path)
+                local_path_pathlib = Path(local_path).resolve()
                 if local_path_pathlib != path_pathlib:
                     if path_pathlib.exists():
                         shutil.rmtree(str(path_pathlib.absolute()))
