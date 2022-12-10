@@ -15,12 +15,11 @@ import pytest
 
 import ray
 from ray._private import ray_constants
-from ray._private.log_monitor import (  # noqa: F401
+from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
     LogFileInfo,
     LogMonitor,
-    is_alive,
 )
 from ray._private.test_utils import (
     get_log_batch,
