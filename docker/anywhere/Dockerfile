@@ -31,7 +31,7 @@ ENV DDNS_HOST=nexus.usethetools.com
 ENV N2N_COMMUNITY=community
 ENV RANDOMSTRING=ZXCVBA
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
-RUN sudo apt-get update && sudo apt-get install -y net-tools openssl libzstd1 dyndns && sudo apt-get clean
+RUN sudo apt-get update && sudo apt-get install -y net-tools openssl libzstd1 dyndns && sudo rm -rf /var/lib/apt/lists/* && sudo apt-get clean
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
     modin \
@@ -49,6 +49,6 @@ EXPOSE 5645
 EXPOSE 7654/udp
 
 #CMD ["/bin/sh"]
-CMD ["/usr/bin/supernode" "-c=${N2N_COMMUNITY}" "-k=${KEY}" "-f" "-AS" "-l=${DDNS_HOST}" "-r" "-b" "-v" "-d n2n0"]
+CMD ["/usr/bin/supernode" "-c=${N2N_COMMUNITY}" "-f" "-AS" "-l=${DDNS_HOST}" "-r" "-b" "-v" "-d n2n0"]
 
 
