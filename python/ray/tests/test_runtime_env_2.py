@@ -233,7 +233,7 @@ class TestNoUserInfoInLogs:
                 return job_status == JobStatus.FAILED
 
             wait_for_condition(lambda: job_succeeded(job_id_good_runtime_env))
-            wait_for_condition(lambda: job_failed(job_id_bad_runtime_env))
+            wait_for_condition(lambda: job_failed(job_id_bad_runtime_env), timeout=30)
 
         with pytest.raises(AssertionError):
             assert_no_user_info_in_logs(USER_SECRET)
