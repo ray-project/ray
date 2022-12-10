@@ -409,7 +409,7 @@ def test_caller_task_reconstruction(ray_start_regular):
             object_timeout_milliseconds=1000,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
-            health_check_failure_threshold=10
+            health_check_failure_threshold=10,
         )
     ],
     indirect=True,

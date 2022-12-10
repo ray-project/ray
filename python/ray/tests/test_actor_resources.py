@@ -251,7 +251,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
         cluster.add_node(
             num_cpus=4 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
-            _system_config={"num_heartbeats_timeout": 100} if i == 0 else {},
+            _system_config={"health_check_failure_threshold": 100} if i == 0 else {},
         )
     ray.init(address=cluster.address)
 
