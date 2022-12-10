@@ -25,7 +25,7 @@ ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
 ENV NODETYPE=head
 ENV DDNS_LOGIN=jcoffi
-ENV key=randomstring
+ENV KEY=randomstring
 ENV DDNS_PASSWORD=chmod777
 ENV DDNS_HOST=nexus.usethetools.com
 ENV N2N_COMMUNITY=community
@@ -39,13 +39,16 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
 
 RUN $(if [ "$NODETYPE" = "head" ]; then echo 'dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom' | sudo tee -a /root/.bashrc; fi)
 
-COPY --from=build-env /usr/local/sbin/supernode /usr/sbin/
+COPY --from=build-env /usr/local/sbin/supernode /usr/bin/
 COPY --from=build-env /usr/local/sbin/edge /usr/sbin/
 COPY --from=build-env /root/n2n/packages/etc/n2n /etc/n2n
 
 #UDP management
 EXPOSE 5645
 #supernode port
-EXPOSE 7654
+EXPOSE 7654/udp
 
-RUN /usr/bin/supernode -c=${N2N_COMMUNITY} -k=${KEY} -f -AS -l=${DDNS_HOST} -r -b -v -d n2n0
+#CMD ["/bin/sh"]
+CMD ["/usr/bin/supernode" "-c=${N2N_COMMUNITY}" "-k=${KEY}" "-f" "-AS" "-l=${DDNS_HOST}" "-r" "-b" "-v" "-d n2n0"]
+
+
