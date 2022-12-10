@@ -133,7 +133,10 @@ const NodeRow = ({
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
             {memoryConverter(objectStoreTotalMemory)}(
-            {(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}
+            {(
+              (raylet.objectStoreUsedMemory / objectStoreTotalMemory) *
+              100
+            ).toFixed(1)}
             %)
           </PercentageBar>
         )}
@@ -236,7 +239,7 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
         {mem && (
           <PercentageBar num={memoryInfo.rss} total={mem[0]}>
             {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            {((memoryInfo.rss / mem[0]) * 100).toFixed(1)}
             %)
           </PercentageBar>
         )}
