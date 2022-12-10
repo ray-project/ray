@@ -1,5 +1,6 @@
 import importlib
 import logging
+import sys
 import textwrap
 from functools import wraps
 from typing import Any, Callable, Iterable, Optional, TypeVar, Union
@@ -126,9 +127,12 @@ def _has_missing(
         if not message:
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
-        # stacklevel=3: First level is this function, then ensure_notebook_deps, then
-        # the actual function affected.
-        logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
+        if sys.version_info < (3, 8):
+            logger.warning(f"Missing packages: {missing}. {message}")
+        else:
+            # stacklevel=3: First level is this function, then ensure_notebook_deps,
+            # then the actual function affected.
+            logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
