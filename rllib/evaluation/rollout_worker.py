@@ -62,6 +62,7 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     concat_samples,
 )
+from ray.rllib.policy.sample_batch_v2 import concat_samples as concat_samples_v2
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
@@ -933,7 +934,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 else batch.agent_steps()
             )
             batches.append(batch)
-        batch = concat_samples(batches)
+        
+        if self.config.get("_enable_rl_module_api", False):
+            batch = concat_samples_v2(batches)
+        else:
+            batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
