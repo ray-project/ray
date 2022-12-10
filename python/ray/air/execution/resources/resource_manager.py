@@ -3,12 +3,14 @@ import abc
 from typing import List, Optional
 
 import ray
-from ray.air.experimental.execution.resources.request import (
+from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class ResourceManager(abc.ABC):
     def get_resource_futures(self) -> List[ray.ObjectRef]:
         """Return futures for resources to await."""
@@ -32,8 +34,14 @@ class ResourceManager(abc.ABC):
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 
-    def return_resources(
-        self, allocated_resources: AllocatedResource, cancel_request: bool = True
-    ):
-        """Return resources to resource pool."""
+    def free_resources(self, allocated_resources: AllocatedResource):
+        """Free resources from usage."""
+        raise NotImplementedError
+
+    def update_state(self):
+        """Reconcile internal state with cluster state."""
+        pass
+
+    def clear(self):
+        """Reset and clear all used resources."""
         raise NotImplementedError

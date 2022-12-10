@@ -1,34 +1,44 @@
 import time
 from collections import defaultdict
-from typing import Dict, Optional, List, Set, Union
+from typing import Dict, List, Optional, Set, Type, Union
 
 from dataclasses import dataclass
 
 import ray
-from ray.air.experimental.execution.resources.request import (
+from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )
-from ray.air.experimental.execution.resources.resource_manager import ResourceManager
-from ray.util.placement_group import placement_group, PlacementGroup
+from ray.air.execution.resources.resource_manager import ResourceManager
+from ray.util.annotations import DeveloperAPI
+from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
+@DeveloperAPI
 @dataclass
 class PlacementGroupAllocatedResource(AllocatedResource):
     placement_group: PlacementGroup
 
     def annotate_remote_objects(
-        self, objects
+        self, objects: List[Type]
     ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
-        # With an empty head, the second bundle should live in the
-        # actual PG's first bundle, so we start counting from -1
+        # If we have an empty head, we schedule the first object (the "head") in the
+        # first PG bundle with num_cpus=0. The second object will also be scheduled in
+        # the first bundle, but will occupy the respective resources. Thus, we start
+        # counting from i = -1, and bundle = max(i, 0) which will be [0, 0, 1, 2, ...]
         if self.resource_request.head_bundle_is_empty:
             start = -1
             bundles = [{}] + self.resource_request.bundles
         else:
             start = 0
             bundles = self.resource_request.bundles
+
+        if len(objects) > len(bundles):
+            raise RuntimeError(
+                f"The number of objects to annotate ({len(objects)}) cannot "
+                f"exceed the number of available bundles ({len(bundles)})."
+            )
 
         annotated = []
         for i, (obj, bundle) in enumerate(zip(objects, bundles), start=start):
@@ -43,6 +53,7 @@ class PlacementGroupAllocatedResource(AllocatedResource):
                         placement_group=self.placement_group,
                         # Max ensures that empty head bundles are correctly placed
                         placement_group_bundle_index=max(0, i),
+                        placement_group_capture_child_tasks=True,
                     ),
                     num_cpus=num_cpus,
                     num_gpus=num_gpus,
@@ -53,7 +64,40 @@ class PlacementGroupAllocatedResource(AllocatedResource):
         return annotated
 
 
+@DeveloperAPI
 class PlacementGroupResourceManager(ResourceManager):
+    """Resource manager using placement groups as the resource backend.
+
+    Ray core does not emit events when resources are available. Instead, we
+    have to periodically request and update the scheduling state of the
+    placement groups.
+
+    Internally, the placement group lifecycle is like this:
+    - Resources are requested with ``request_resources()``
+    - A placement group is scheduled ("staged")
+    - A ``PlacementGroup.ready()`` is scheduled ("staging future")
+    - We update the scheduling state when we need to
+        (e.g. when ``has_resources_ready()`` is called)
+    - When staging futures resolved, a placement group is moved from "staging"
+        to "ready"
+    - When a resource request is canceled, we remove a placement group from "staging".
+        If there are not staged placement groups (because they are already "ready"),
+        we remove one from "ready" instead.
+    - When a resource is acquired, the pg is removed from "ready" and moved
+        to "acquired"
+    - When a resource is freed, the pg is removed from "acquired" and destroyed
+
+    Per default, placement group scheduling state is refreshed every time when
+    resource state is inquired, but not more often than once every ``update_interval``
+    seconds. Alternatively, staging futures can be retrieved (and awaited) with
+    ``get_resource_futures()`` and state update can be force with ``update_state()``.
+
+    Args:
+        update_interval: Minimum interval in seconds between updating scheduling
+            state of placement groups.
+
+    """
+
     _resource_cls: AllocatedResource = PlacementGroupAllocatedResource
 
     def __init__(self, update_interval: float = 0.1):
@@ -78,10 +122,9 @@ class PlacementGroupResourceManager(ResourceManager):
     def _maybe_update_state(self):
         now = time.monotonic()
         if now > self._last_update + self._update_interval:
-            self._update_state()
-            self._last_update = now
+            self.update_state()
 
-    def _update_state(self):
+    def update_state(self):
         ready, not_ready = ray.wait(
             list(self._staging_future_to_pg.keys()),
             num_returns=len(self._staging_future_to_pg),
@@ -96,9 +139,10 @@ class PlacementGroupResourceManager(ResourceManager):
             # Remove from staging, add to ready
             self._request_to_staged_pgs[request].remove(pg)
             self._request_to_ready_pgs[request].add(pg)
+        self._last_update = time.monotonic()
 
     def request_resources(self, resource_request: ResourceRequest):
-        pg = placement_group(resource_request.bundles)
+        pg = resource_request.to_placement_group()
         self._pg_to_request[pg] = resource_request
         self._request_to_staged_pgs[resource_request].add(pg)
 
@@ -143,18 +187,27 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def return_resources(
-        self,
-        allocated_resources: PlacementGroupAllocatedResource,
-        cancel_request: bool = True,
-    ):
+    def free_resources(self, allocated_resources: PlacementGroupAllocatedResource):
         pg = allocated_resources.placement_group
-        request = self._pg_to_request[pg]
 
         self._acquired_pgs.remove(pg)
-        self._request_to_ready_pgs[request].add(pg)
+        remove_placement_group(pg)
+        self._pg_to_request.pop(pg)
 
-        if cancel_request:
-            self.cancel_resource_request(
-                resource_request=allocated_resources.resource_request
-            )
+    def clear(self):
+        if not ray.is_initialized():
+            return
+
+        for staged_pgs in self._request_to_staged_pgs.values():
+            for staged_pg in staged_pgs:
+                remove_placement_group(staged_pg)
+
+        for ready_pgs in self._request_to_ready_pgs.values():
+            for ready_pg in ready_pgs:
+                remove_placement_group(ready_pg)
+
+        for acquired_pg in self._acquired_pgs:
+            remove_placement_group(acquired_pg)
+
+    def __del__(self):
+        self.clear()

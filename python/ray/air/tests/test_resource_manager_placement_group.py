@@ -3,10 +3,10 @@ from collections import Counter
 import pytest
 
 import ray
-from ray.air.experimental.execution.resources.placement_group import (
+from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
 )
-from ray.air.experimental.execution.resources.request import ResourceRequest
+from ray.air.execution.resources.request import ResourceRequest
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])
 REQUEST_1_2_CPU = ResourceRequest([{"CPU": 1}, {"CPU": 2}])
@@ -67,10 +67,8 @@ def test_acquire_return_resources(ray_start_4_cpus):
     - Assert that these 2 CPUs are available to be acquired
     - Acquire
     - Assert that there are no 2 CPU resources available anymore
-    - Return, but don't cancel the request (keep PG)
-    - Assert that the 2 CPU resources are available again
-    - Cancel request
-    - Assert that the 2 CPU resources are not available anymore
+    - Free resources
+    - Assert that the 2 CPU resources are still not available (no new request)
         - This is also tested in includes test_request_cancel_resources
     """
     manager = PlacementGroupResourceManager(update_interval=0)
@@ -94,22 +92,12 @@ def test_acquire_return_resources(ray_start_4_cpus):
 
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
-    # Return
-    manager.return_resources(acquired, cancel_request=False)
-
-    assert manager.has_resources_ready(REQUEST_2_CPU)
-
-    # PG still exists
-    pg_states = _count_pg_states()
-    assert pg_states["CREATED"] == 1
-    assert pg_states["REMOVED"] == 0
-
-    # Cancel request
-    manager.cancel_resource_request(acquired.resource_request)
+    # Free resources
+    manager.free_resources(acquired)
 
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
-    # PG removed
+    # PG still exists
     pg_states = _count_pg_states()
     assert pg_states["CREATED"] == 0
     assert pg_states["REMOVED"] == 1
@@ -150,12 +138,11 @@ def test_request_pending(ray_start_4_cpus):
 
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
-    manager.return_resources(acq1, cancel_request=True)
-    manager.return_resources(acq2, cancel_request=True)
+    manager.free_resources(acq1)
+    manager.free_resources(acq2)
 
-    # Implementation: The PG manager returns the pending request, not the
-    # scheduled one.
-    assert not manager.get_resource_futures()
+    # Third PG becomes ready
+    ray.wait(manager.get_resource_futures(), num_returns=1)
     assert manager.has_resources_ready(REQUEST_2_CPU)
 
     pg_states = _count_pg_states()
@@ -255,6 +242,39 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
     res1, res2 = ray.get([av1.remote(), av2.remote()])
     assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 0
     assert sum(v for k, v in res2.items() if k.startswith("CPU_group_0")) == 2
+
+
+def test_capture_child_tasks(ray_start_4_cpus):
+    """Test that child tasks are captured when creating placement groups.
+
+    - Request PG with 2 bundles (1 CPU and 2 CPUs)
+    - Bind a remote task that needs 2 CPUs to run
+    - Assert that it can be scheduled from within the first bundle
+
+    This is only the case if child tasks are captured in the placement groups, as
+    there is only 1 CPU available outside (on a 4 CPU cluster). The 2 CPUs
+    thus have to come from the placement group.
+    """
+    manager = PlacementGroupResourceManager(update_interval=0)
+    manager.request_resources(REQUEST_1_2_CPU)
+    ray.wait(manager.get_resource_futures(), num_returns=1)
+
+    assert manager.has_resources_ready(REQUEST_1_2_CPU)
+
+    @ray.remote
+    def needs_cpus():
+        return "Ok"
+
+    @ray.remote
+    def spawn_child_task(num_cpus: int):
+        return ray.get(needs_cpus.options(num_cpus=num_cpus).remote())
+
+    acq = manager.acquire_resources(REQUEST_1_2_CPU)
+    [av1] = acq.annotate_remote_objects([spawn_child_task])
+
+    res = ray.get(av1.remote(2), timeout=2.0)
+
+    assert res
 
 
 if __name__ == "__main__":

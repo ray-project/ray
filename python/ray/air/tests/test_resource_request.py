@@ -1,6 +1,6 @@
 import pytest
 
-from ray.air.experimental.execution.resources.request import ResourceRequest
+from ray.air.execution.resources.request import ResourceRequest
 
 
 def test_request_same():
