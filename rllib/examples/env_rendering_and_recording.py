@@ -110,12 +110,12 @@ if __name__ == "__main__":
             evaluation_num_workers=1,
             # Special evaluation config. Keys specified here will override
             # the same keys in the main config, but only for evaluation.
-            evaluation_config={
+            evaluation_config=PPOConfig.overrides(
                 # Render the env while evaluating.
                 # Note that this will always only render the 1st RolloutWorker's
                 # env and only the 1st sub-env in a vectorized env.
-                "render_env": True,
-            },
+                render_env=True,
+            ),
         )
     )
 

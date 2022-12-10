@@ -162,7 +162,7 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
-.. tabbed:: Images (experimental)
+.. tabbed:: Images
 
   Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
 

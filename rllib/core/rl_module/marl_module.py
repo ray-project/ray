@@ -2,7 +2,7 @@ import abc
 import pprint
 from typing import Iterator, Mapping, Any, Union, Dict
 
-
+from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override
 
 from ray.rllib.models.specs.specs_dict import ModelSpec
@@ -15,6 +15,7 @@ from ray.rllib.utils.policy import validate_policy_id
 ModuleID = str
 
 
+@PublicAPI(stability="alpha")
 class MultiAgentRLModule(RLModule):
     """Base class for multi-agent RLModules.
 
@@ -30,8 +31,8 @@ class MultiAgentRLModule(RLModule):
     """
 
     def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        super().__init__()
         self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
+        super().__init__()
 
     @abc.abstractclassmethod
     def from_multi_agent_config(
@@ -85,7 +86,6 @@ class MultiAgentRLModule(RLModule):
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
-
         self._rl_modules[module_id] = module
 
     def remove_module(
@@ -240,6 +240,7 @@ class MultiAgentRLModule(RLModule):
             )
 
 
+@PublicAPI(stability="alpha")
 class DefaultMultiAgentRLModule(MultiAgentRLModule):
     """The default implementation for multi-agent RLModules.
 

@@ -48,7 +48,7 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
+from ray.tune.syncer import SyncConfig, SyncerCallback
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
@@ -425,7 +425,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
-    _validate_upload_dir(sync_config)
+    sync_config.validate_upload_dir()
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):

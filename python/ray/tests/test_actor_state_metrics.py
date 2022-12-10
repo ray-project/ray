@@ -5,9 +5,12 @@ import time
 from typing import Dict
 
 import ray
+
+from ray.experimental.state.api import list_actors
 from ray._private.test_utils import (
     raw_metrics,
     wait_for_condition,
+    run_string_as_driver,
 )
 from ray._private.worker import RayContext
 
@@ -128,6 +131,46 @@ def test_destroy_actors(shutdown_only):
         retry_interval_ms=500,
     )
     del c
+
+
+def test_destroy_actors_from_driver(shutdown_only):
+    driver = """
+import ray
+ray.init("auto")
+@ray.remote(num_cpus=0)
+class Actor:
+    def ready(self):
+        pass
+actors = [Actor.remote() for _ in range(10)]
+ray.get([actor.ready.remote() for actor in actors])
+"""
+    info = ray.init(num_cpus=3, _system_config=_SYSTEM_CONFIG)
+
+    output = run_string_as_driver(driver)
+    print(output)
+
+    expected = {
+        "DEAD": 10,
+    }
+    wait_for_condition(
+        lambda: actors_by_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    """
+    Make sure even after the actor entries are deleted from GCS by GC
+    (100ms after actors are cleaned) the metrics are correct.
+    """
+    # Wait until the state API returns the # of actors are 0
+    # becasue entries are GC'ed by GCS.
+    wait_for_condition(lambda: len(list_actors()) == 0, timeout=60)
+    # DEAD count shouldn't be changed.
+    wait_for_condition(
+        lambda: actors_by_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
 
 
 def test_dep_wait(shutdown_only):
