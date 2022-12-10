@@ -24,8 +24,6 @@ class SearchAlgorithm:
 
     _metric = None
 
-    _max_pending_trials: Optional[int] = 1
-
     @property
     def metric(self):
         return self._metric
