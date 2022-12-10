@@ -246,7 +246,9 @@ if __name__ == "__main__":
 def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
     system_config = {
-        "num_heartbeats_timeout": 3,
+        "health_check_failure_threshold": 3,
+        "health_check_period_ms": 1000,
+        "health_check_initial_delay_ms": 0,
     }
     if debug_enabled:
         system_config["record_ref_creation_sites"] = True
