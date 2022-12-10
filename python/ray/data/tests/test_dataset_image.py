@@ -1,12 +1,14 @@
+import os
 import time
+from typing import Dict
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.datasource import Partitioning
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
@@ -20,15 +22,12 @@ from ray.tests.conftest import *  # noqa
 
 class TestReadImages:
     def test_basic(self, ray_start_regular_shared):
-        """Test basic `read_images` functionality.
-        The folder "simple" contains three 32x32 RGB images.
-        """
         # "simple" contains three 32x32 RGB images.
         ds = ray.data.read_images("example://image-datasets/simple")
-        assert ds.schema().names == [TENSOR_COLUMN_NAME]
+        assert ds.schema().names == ["image"]
         column_type = ds.schema().types[0]
         assert isinstance(column_type, ArrowTensorType)
-        assert all(array.shape == (32, 32, 3) for array in ds.take())
+        assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
@@ -49,11 +48,11 @@ class TestReadImages:
         ds = ray.data.read_images(
             "example://image-datasets/different-sizes", size=(32, 32)
         )
-        assert all(array.shape == (32, 32, 3) for array in ds.take())
+        assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     def test_different_sizes(self, ray_start_regular_shared):
         ds = ray.data.read_images("example://image-datasets/different-sizes")
-        assert sorted(array.shape for array in ds.take()) == [
+        assert sorted(record["image"].shape for record in ds.take()) == [
             (16, 16, 3),
             (32, 32, 3),
             (64, 64, 3),
@@ -75,7 +74,7 @@ class TestReadImages:
     ):
         # "different-modes" contains 32x32 images with modes "CMYK", "L", and "RGB"
         ds = ray.data.read_images("example://image-datasets/different-modes", mode=mode)
-        assert all([array.shape == expected_shape for array in ds.take()])
+        assert all([record["image"].shape == expected_shape for record in ds.take()])
 
     def test_partitioning(
         self, ray_start_regular_shared, enable_automatic_tensor_extension_cast
@@ -98,6 +97,23 @@ class TestReadImages:
         else:
             assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
+    def test_include_paths(self, ray_start_regular_shared):
+        root = "example://image-datasets/simple"
+
+        ds = ray.data.read_images(root, include_paths=True)
+
+        def get_relative_path(path: str) -> str:
+            parts = os.path.normpath(path).split(os.sep)
+            # `parts[-3:]` corresponds to 'image-datasets', 'simple', and the filename.
+            return os.sep.join(parts[-3:])
+
+        relative_paths = [get_relative_path(record["path"]) for record in ds.take()]
+        assert sorted(relative_paths) == [
+            "image-datasets/simple/image1.jpg",
+            "image-datasets/simple/image2.jpg",
+            "image-datasets/simple/image3.jpg",
+        ]
+
     def test_e2e_prediction(self, ray_start_regular_shared):
         from ray.train.torch import TorchCheckpoint, TorchPredictor
         from ray.train.batch_predictor import BatchPredictor
@@ -106,9 +122,12 @@ class TestReadImages:
         from torchvision.models import resnet18
 
         dataset = ray.data.read_images("example://image-datasets/simple")
-
         transform = transforms.ToTensor()
-        dataset = dataset.map(transform)
+
+        def preprocess(batch: Dict[str, np.ndarray]):
+            return np.stack([transform(image) for image in batch["image"]])
+
+        dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
         model = resnet18(pretrained=True)
         checkpoint = TorchCheckpoint.from_model(model=model)

@@ -13,8 +13,6 @@ halfcheetah_bc:
         input: d4rl.halfcheetah-expert-v0
         #input: d4rl.halfcheetah-medium-replay-v0
         framework: torch
-        soft_horizon: False
-        horizon: 1000
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]

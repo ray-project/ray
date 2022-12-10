@@ -18,6 +18,7 @@ from typing import (
 import warnings
 
 import ray
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -562,6 +563,35 @@ class DatasetPipeline(Generic[T]):
             self._schema = self._peek().schema(fetch_if_missing)
         return self._schema
 
+    def dataset_format(self) -> BlockFormat:
+        """The format of the dataset pipeline's underlying data blocks. Possible
+        values are: "arrow", "pandas" and "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+
+        try:
+            import pyarrow as pa
+
+            if isinstance(schema, pa.Schema):
+                return BlockFormat.ARROW
+        except ModuleNotFoundError:
+            pass
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return BlockFormat.PANDAS
+        return BlockFormat.SIMPLE
+
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
 
@@ -732,7 +762,7 @@ class DatasetPipeline(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,

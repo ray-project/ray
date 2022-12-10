@@ -24,7 +24,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -53,7 +53,7 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
                 off_policy_estimation_methods={},
             )
             .offline_data(input_=[data_file])
@@ -115,7 +115,7 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 # Evaluate on actual environment.
-                evaluation_config={"input": "sampler"},
+                evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
                 off_policy_estimation_methods={},
             )
             .offline_data(

@@ -3,11 +3,12 @@ from collections import deque
 import logging
 import random
 import threading
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import time
 
 import grpc
 from grpc._channel import _InactiveRpcError
+from ray._private.utils import get_or_create_event_loop
 
 try:
     from grpc import aio as aiogrpc
@@ -144,11 +145,16 @@ class _SubscriberBase:
         return msg.key_id.decode(), msg.node_resource_usage_message.json
 
     @staticmethod
-    def _pop_actor(queue):
+    def _pop_actors(queue, batch_size=100):
         if len(queue) == 0:
-            return None, None
-        msg = queue.popleft()
-        return msg.key_id, msg.actor_message
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.actor_message))
+            popped += 1
+        return msgs
 
 
 class GcsPublisher(_PublisherBase):
@@ -158,7 +164,9 @@ class GcsPublisher(_PublisherBase):
         channel = gcs_utils.create_gcs_channel(address)
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
-    def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
+    def publish_error(
+        self, key_id: bytes, error_info: ErrorTableData, num_retries=None
+    ) -> None:
         """Publishes error info to GCS."""
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
@@ -166,7 +174,7 @@ class GcsPublisher(_PublisherBase):
             error_info_message=error_info,
         )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        self._gcs_publish(req)
+        self._gcs_publish(req, num_retries, timeout=1)
 
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
@@ -178,16 +186,17 @@ class GcsPublisher(_PublisherBase):
         req = self._create_function_key_request(key)
         self._gcs_publish(req)
 
-    def _gcs_publish(self, req) -> None:
-        count = MAX_GCS_PUBLISH_RETRIES
+    def _gcs_publish(self, req, num_retries=None, timeout=None) -> None:
+        count = num_retries or MAX_GCS_PUBLISH_RETRIES
         while count > 0:
             try:
-                self._stub.GcsPublish(req)
+                self._stub.GcsPublish(req, timeout=timeout)
                 return
             except _InactiveRpcError:
                 pass
-            time.sleep(1)
             count -= 1
+            if count > 0:
+                time.sleep(1)
         raise TimeoutError(f"Failed to publish after retries: {req}")
 
 
@@ -386,6 +395,7 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
             return self._pop_function_key(self._queue)
 
 
+# Test-only
 class GcsActorSubscriber(_SyncSubscriber):
     """Subscriber to actor updates. Thread safe.
 
@@ -408,7 +418,7 @@ class GcsActorSubscriber(_SyncSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
-    def poll(self, timeout=None) -> Optional[bytes]:
+    def poll(self, timeout=None) -> List[Tuple[bytes, str]]:
         """Polls for new actor messages.
 
         Returns:
@@ -417,7 +427,7 @@ class GcsActorSubscriber(_SyncSubscriber):
         """
         with self._lock:
             self._poll_locked(timeout=timeout)
-            return self._pop_actor(self._queue)
+            return self._pop_actors(self._queue, batch_size=1)
 
 
 class GcsAioPublisher(_PublisherBase):
@@ -503,12 +513,12 @@ class _AioSubscriber(_SubscriberBase):
         return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
 
     async def _poll(self, timeout=None) -> None:
-        req = self._poll_request()
         while len(self._queue) == 0:
-            poll = asyncio.get_event_loop().create_task(
+            req = self._poll_request()
+            poll = get_or_create_event_loop().create_task(
                 self._poll_call(req, timeout=timeout)
             )
-            close = asyncio.get_event_loop().create_task(self._close.wait())
+            close = get_or_create_event_loop().create_task(self._close.wait())
             done, others = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
@@ -607,11 +617,15 @@ class GcsAioActorSubscriber(_AioSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
-    async def poll(self, timeout=None) -> Tuple[bytes, str]:
+    @property
+    def queue_size(self):
+        return len(self._queue)
+
+    async def poll(self, timeout=None, batch_size=500) -> List[Tuple[bytes, str]]:
         """Polls for new actor message.
 
         Returns:
             A tuple of binary actor ID and actor table data.
         """
         await self._poll(timeout=timeout)
-        return self._pop_actor(self._queue)
+        return self._pop_actors(self._queue, batch_size=batch_size)

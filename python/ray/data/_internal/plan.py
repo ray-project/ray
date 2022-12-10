@@ -26,6 +26,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
+
+logger = DatasetLogger(__name__)
 
 
 class Stage:
@@ -237,6 +241,13 @@ class ExecutionPlan:
                         self._stages_after_snapshot.append(a)
                 else:
                     self.execute()
+            elif len(self._stages_after_snapshot) == 1 and isinstance(
+                self._stages_after_snapshot[-1], RandomizeBlocksStage
+            ):
+                # If RandomizeBlocksStage is last stage, we execute it (regardless of
+                # the fetch_if_missing), since RandomizeBlocksStage is just changing
+                # the order of references (hence super cheap).
+                self.execute()
             else:
                 return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
@@ -298,6 +309,7 @@ class ExecutionPlan:
         """
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
+            context = DatasetContext.get_current()
             for stage_idx, stage in enumerate(stages):
                 if allow_clear_input_blocks:
                     clear_input_blocks = self._should_clear_input_blocks(
@@ -314,6 +326,11 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
+
+                stats_summary_string = stats.summary_string(include_parent=False)
+                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                    stats_summary_string,
+                )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats

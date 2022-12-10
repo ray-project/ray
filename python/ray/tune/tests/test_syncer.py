@@ -3,7 +3,9 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import List, Optional
+from unittest.mock import patch
 
 import pytest
 from freezegun import freeze_time
@@ -11,8 +13,9 @@ from freezegun import freeze_time
 import ray
 import ray.cloudpickle as pickle
 from ray import tune
+from ray.air import Checkpoint
 from ray.tune import TuneError
-from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
+from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -21,6 +24,12 @@ def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
     # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
     ray.shutdown()
 
 
@@ -158,20 +167,39 @@ class CustomCommandSyncer(Syncer):
 
 def test_sync_string_invalid_uri():
     with pytest.raises(ValueError):
-        _validate_upload_dir(tune.SyncConfig(upload_dir="invalid://some/url"))
+        sync_config = tune.SyncConfig(upload_dir="invalid://some/url")
+        sync_config.validate_upload_dir()
 
 
 def test_sync_string_invalid_local():
     with pytest.raises(ValueError):
-        _validate_upload_dir(tune.SyncConfig(upload_dir="/invalid/dir"))
+        sync_config = tune.SyncConfig(upload_dir="/invalid/dir")
+        sync_config.validate_upload_dir()
 
 
 def test_sync_string_valid_local():
-    _validate_upload_dir(tune.SyncConfig(upload_dir="file:///valid/dir"))
+    sync_config = tune.SyncConfig(upload_dir="file:///valid/dir")
+    sync_config.validate_upload_dir()
 
 
 def test_sync_string_valid_s3():
-    _validate_upload_dir(tune.SyncConfig(upload_dir="s3://valid/bucket"))
+    sync_config = tune.SyncConfig(upload_dir="s3://valid/bucket")
+    sync_config.validate_upload_dir()
+
+
+def test_sync_config_validate():
+    sync_config = tune.SyncConfig()
+    sync_config.validate_upload_dir()
+
+
+def test_sync_config_validate_custom_syncer():
+    class CustomSyncer(_DefaultSyncer):
+        @classmethod
+        def validate_upload_dir(cls, upload_dir: str) -> bool:
+            return True
+
+    sync_config = tune.SyncConfig(upload_dir="/invalid/dir", syncer=CustomSyncer())
+    sync_config.validate_upload_dir()
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
@@ -328,6 +356,11 @@ def test_syncer_still_running_no_sync(temp_data_dirs):
         def is_running(self):
             return True
 
+        @property
+        def start_time(self):
+            # Don't consider the sync process timeout
+            return float("inf")
+
     syncer = _DefaultSyncer(sync_period=60)
     syncer._sync_process = FakeSyncProcess()
     assert not syncer.sync_up_if_needed(
@@ -354,6 +387,41 @@ def test_syncer_not_running_sync(temp_data_dirs):
         local_dir=tmp_source,
         remote_dir="memory:///test/test_syncer_not_running_sync",
     )
+
+
+def test_syncer_hanging_sync_with_timeout(temp_data_dirs):
+    """Check that syncing times out when the sync process is hanging."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    def _hanging_sync_up_command(*args, **kwargs):
+        time.sleep(200)
+
+    class _HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return _hanging_sync_up_command, {}
+
+    syncer = _HangingSyncer(sync_period=60, sync_timeout=10)
+
+    def sync_up():
+        return syncer.sync_up(
+            local_dir=tmp_source, remote_dir="memory:///test/test_syncer_timeout"
+        )
+
+    with freeze_time() as frozen:
+        assert sync_up()
+        frozen.tick(5)
+        # 5 seconds - initial sync hasn't reached the timeout yet
+        # It should continue running without launching a new sync
+        assert not sync_up()
+        frozen.tick(5)
+        # Reached the timeout - start running a new sync command
+        assert sync_up()
+        frozen.tick(20)
+        # We're 10 seconds past the timeout, waiting should result in a timeout error
+        with pytest.raises(TimeoutError):
+            syncer.wait()
 
 
 def test_syncer_not_running_sync_last_failed(caplog, temp_data_dirs):
@@ -438,6 +506,49 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+
+@pytest.mark.parametrize("num_retries", [None, 1, 2])
+def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
+    """Check that Trainable.save() default syncing can retry"""
+    tmp_source, tmp_target = temp_data_dirs
+    num_retries = num_retries or 3
+    ray.init(
+        num_cpus=2,
+        configure_logging=False,
+        runtime_env={
+            "env_vars": {
+                "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S": "0",
+                "TUNE_CHECKPOINT_CLOUD_RETRY_NUM": str(num_retries),
+            }
+        },
+    )
+
+    class FaultyCheckpoint(Checkpoint):
+        def to_uri(self, uri: str) -> str:
+            raise subprocess.CalledProcessError(-1, "dummy")
+
+    class TestTrainableRetry(TestTrainable):
+        _checkpoint_cls = FaultyCheckpoint
+
+        def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
+            from ray.tune.trainable.trainable import logger
+
+            output = []
+
+            def mock_error(x):
+                output.append(x)
+
+            with patch.object(logger, "error", mock_error):
+                ret = super()._maybe_save_to_cloud(checkpoint_dir)
+            assert f"after {num_retries}" in output[0]
+            return ret
+
+    trainable = ray.remote(TestTrainableRetry).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}"
+    )
+
+    ray.get(trainable.save.remote())
 
 
 def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):

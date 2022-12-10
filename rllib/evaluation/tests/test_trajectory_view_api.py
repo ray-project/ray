@@ -16,7 +16,11 @@ from ray.rllib.examples.policy.episode_env_aware_policy import (
 )
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
@@ -85,6 +89,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
+            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
             expected_count = config.num_envs_per_worker * config.rollout_fragment_length
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
@@ -93,16 +98,22 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["model"] = config["model"].copy()
-        # Activate LSTM + prev-action + rewards.
-        config["model"]["use_lstm"] = True
-        config["model"]["lstm_use_prev_action"] = True
-        config["model"]["lstm_use_prev_reward"] = True
-        config["create_env_on_driver"] = True
+        config = (
+            ppo.PPOConfig()
+            .environment("CartPole-v1")
+            # Activate LSTM + prev-action + rewards.
+            .training(
+                model={
+                    "use_lstm": True,
+                    "lstm_use_prev_action": True,
+                    "lstm_use_prev_reward": True,
+                }
+            )
+            .rollouts(create_env_on_local_worker=True)
+        )
 
         for _ in framework_iterator(config):
-            algo = ppo.PPO(config, env="CartPole-v1")
+            algo = config.build()
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -143,8 +154,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
+            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
-            self.assertEqual(sample_batch.count, 200, "ppo rollout count != 200")
+            # Rollout fragment length should be auto-computed to 2000:
+            # 2 workers, 1 env per worker, train batch size=4000 -> 2000 per worker.
+            self.assertEqual(sample_batch.count, 2000, "ppo rollout count != 2000")
             self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
             self.assertEqual(
                 len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
@@ -161,36 +175,41 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             algo.stop()
 
     def test_traj_view_attention_net(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        # Setup attention net.
-        config["model"] = config["model"].copy()
-        config["model"]["max_seq_len"] = 50
-        config["model"]["custom_model"] = GTrXLNet
-        config["model"]["custom_model_config"] = {
-            "num_transformer_units": 1,
-            "attention_dim": 64,
-            "num_heads": 2,
-            "memory_inference": 50,
-            "memory_training": 50,
-            "head_dim": 32,
-            "ff_hidden_dim": 32,
-        }
-        # Test with odd batch numbers.
-        config["train_batch_size"] = 1031
-        config["sgd_minibatch_size"] = 201
-        config["num_sgd_iter"] = 5
-        config["num_workers"] = 0
-        config["callbacks"] = MyCallbacks
-        config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                "ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+                env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
+            )
+            .rollouts(num_rollout_workers=0)
+            .callbacks(MyCallbacks)
+            # Setup attention net.
+            .training(
+                model={
+                    "custom_model": GTrXLNet,
+                    "custom_model_config": {
+                        "num_transformer_units": 1,
+                        "attention_dim": 64,
+                        "num_heads": 2,
+                        "memory_inference": 50,
+                        "memory_training": 50,
+                        "head_dim": 32,
+                        "ff_hidden_dim": 32,
+                    },
+                    "max_seq_len": 50,
+                },
+                # Test with odd batch numbers.
+                train_batch_size=1031,
+                sgd_minibatch_size=201,
+                num_sgd_iter=5,
+            )
+        )
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            algo = ppo.PPO(
-                config,
-                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
-            )
+            algo = config.build()
             rw = algo.workers.local_worker()
             sample = rw.sample()
-            assert sample.count == algo.config["rollout_fragment_length"]
+            assert sample.count == algo.config.get_rollout_fragment_length()
             results = algo.train()
             assert results["timesteps_total"] == config["train_batch_size"]
             algo.stop()
@@ -230,7 +249,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"
         ] = ViewRequirement()
-        batch = rollout_worker_w_api.sample()
+        batch = convert_ma_batch_to_sample_batch(rollout_worker_w_api.sample())
         self.assertTrue("next_actions" in batch)
         self.assertTrue("2nd_next_actions" in batch)
         expected_a_ = None  # expected next action
@@ -264,7 +283,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
         }
 
         def policy_fn(agent_id, episode, **kwargs):
@@ -307,7 +326,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         max_seq_len = 50
         rollout_fragment_length = 201
         policies = {
-            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, None),
         }
 
         def policy_fn(agent_id, episode, **kwargs):
@@ -316,7 +335,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
-            .training(model={"max_seq_len": max_seq_len})
+            .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010)
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=rollout_fragment_length,
@@ -337,11 +356,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # Env setup.
         config.environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
         config.rollouts(num_rollout_workers=2, rollout_fragment_length=21)
-        config.training(num_sgd_iter=2, train_batch_size=147)
+        config.training(num_sgd_iter=2, train_batch_size=168)
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid),
+            policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id),
             count_steps_by="agent_steps",
         )
 

@@ -136,7 +136,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Common wait for non-data refs.
         try:
             results = map_bar.fetch_until_complete(refs)
-        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+        except (ray.exceptions.RayError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
             for ref in refs:
@@ -145,7 +145,10 @@ class TaskPoolStrategy(ComputeStrategy):
             for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task had already failed with
+                    # a different error, or cancellation failed. In all cases, we
+                    # swallow the exception.
                     pass
             # Reraise the original task failure exception.
             raise e from None
@@ -418,7 +421,7 @@ class ActorPoolStrategy(ComputeStrategy):
             except Exception as err:
                 logger.exception(f"Error killing workers: {err}")
             finally:
-                raise e
+                raise e from None
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
@@ -515,11 +518,12 @@ def _bundle_blocks_up_to_size(
         block_bundles.append(curr_bundle)
     if len(blocks) / len(block_bundles) >= 10:
         logger.warning(
-            f"Having to send 10 or more blocks to a single {name} task to create a "
-            f"batch of size {target_size}, which may result in less transformation "
-            "parallelism than expected. This may indicate that your blocks are too "
-            "small and/or your batch size is too large, and you may want to decrease "
-            "your read parallelism and/or decrease your batch size."
+            f"`batch_size` is set to {target_size}, which reduces parallelism from "
+            f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
+            "expected, this may indicate that the batch size is too large or the "
+            "input block size is too small. To reduce batch size, consider decreasing "
+            "`batch_size` or use the default in `map_batches`. To increase input "
+            "block size, consider decreasing `parallelism` in read."
         )
     return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
 
