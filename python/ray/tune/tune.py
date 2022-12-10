@@ -129,7 +129,7 @@ def _report_progress(
 
 def _setup_signal_catching() -> threading.Event:
     original_handler = signal.getsignal(signal.SIGINT)
-    stop_event = threading.Event()
+    experiment_interrupted_event = threading.Event()
 
     def signal_interrupt_tune_run(sig: int, frame):
         logger.warning(
@@ -138,7 +138,7 @@ def _setup_signal_catching() -> threading.Event:
             "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
             "to skip. "
         )
-        stop_event.set()
+        experiment_interrupted_event.set()
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
 
@@ -157,7 +157,7 @@ def _setup_signal_catching() -> threading.Event:
         if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
-    return stop_event
+    return experiment_interrupted_event
 
 
 @PublicAPI
@@ -676,7 +676,7 @@ def run(
                 "Trainable API."
             )
 
-    stop_event = _setup_signal_catching()
+    experiment_interrupted_event = _setup_signal_catching()
 
     progress_reporter = progress_reporter or _detect_reporter()
 
@@ -728,7 +728,7 @@ def run(
         metric=metric,
         mode=mode,
     )
-    while not runner.is_finished() and not stop_event.is_set():
+    while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
@@ -761,7 +761,7 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial and not stop_event.is_set():
+        if raise_on_failed_trial and not experiment_interrupted_event.is_set():
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -773,7 +773,7 @@ def run(
             f"({tune_taken:.2f} seconds for the tuning loop)."
         )
 
-    if stop_event.is_set():
+    if experiment_interrupted_event.is_set():
         logger.warning(
             "Experiment has been interrupted, but the most recent state was "
             "saved. You can continue running this experiment by passing "
