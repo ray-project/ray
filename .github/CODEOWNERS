@@ -31,7 +31,7 @@
 # /src/ray @ray-project/ray-core-cpp
 
 # Dependencies
-/python/setup.py @richardliaw @ericl @edoakes
+/python/setup.py @richardliaw @ericl @edoakes @scv119
 
 # Formatting tool
 /ci/lint/format.sh @richardliaw @ericl @edoakes
