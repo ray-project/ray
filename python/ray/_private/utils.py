@@ -1,5 +1,6 @@
 import asyncio
 import binascii
+import contextlib
 import errno
 import functools
 import hashlib
@@ -23,6 +24,7 @@ from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+
 import grpc
 import numpy as np
 
@@ -202,6 +204,7 @@ def publish_error_to_driver(
     message: str,
     gcs_publisher,
     job_id=None,
+    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -223,7 +226,7 @@ def publish_error_to_driver(
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
     except Exception:
         logger.exception(f"Failed to publish error {error_data}")
 
@@ -347,6 +350,46 @@ def get_cuda_visible_devices():
 
 
 last_set_gpu_ids = None
+
+
+def set_omp_num_threads_if_unset() -> bool:
+    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+
+    This function sets the environment variable OMP_NUM_THREADS for the worker,
+    if the env is not previously set and it's running in worker (WORKER_MODE).
+
+    Returns True if OMP_NUM_THREADS is set in this function.
+
+    """
+    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
+    if num_threads_from_env is not None:
+        # No ops if it's set
+        return False
+
+    # If unset, try setting the correct CPU count assigned.
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
+    if num_assigned_cpus is None:
+        # This is an actor task w/o any num_cpus specified, set it to 1
+        logger.debug(
+            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+            "degradation with many workers (issue #6998). You can override this "
+            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+        )
+        num_assigned_cpus = 1
+
+    import math
+
+    # For num_cpu < 1: Set to 1.
+    # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
+    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
+    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    return True
 
 
 def set_cuda_visible_devices(gpu_ids):
@@ -1735,4 +1778,77 @@ def _get_pyarrow_version() -> Optional[str]:
             if hasattr(pyarrow, "__version__"):
                 _PYARROW_VERSION = pyarrow.__version__
     return _PYARROW_VERSION
-    
+
+
+class DeferSigint(contextlib.AbstractContextManager):
+    """Context manager that defers SIGINT signals until the the context is left."""
+
+    # This is used by Ray's task cancellation to defer cancellation interrupts during
+    # problematic areas, e.g. task argument deserialization.
+    def __init__(self):
+        # Whether the task has been cancelled while in the context.
+        self.task_cancelled = False
+        # The original SIGINT handler.
+        self.orig_sigint_handler = None
+        # The original signal method.
+        self.orig_signal = None
+
+    @classmethod
+    def create_if_main_thread(cls) -> contextlib.AbstractContextManager:
+        """Creates a DeferSigint context manager if running on the main thread,
+        returns a no-op context manager otherwise.
+        """
+        if threading.current_thread() == threading.main_thread():
+            return cls()
+        else:
+            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
+            # dropped.
+            return contextlib.suppress()
+
+    def _set_task_cancelled(self, signum, frame):
+        """SIGINT handler that defers the signal."""
+        self.task_cancelled = True
+
+    def _signal_monkey_patch(self, signum, handler):
+        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
+        registered within the DeferSigint context.
+        """
+        # Only raise an error if setting a SIGINT handler in the main thread; if setting
+        # a handler in a non-main thread, signal.signal will raise an error anyway
+        # indicating that Python does not allow that.
+        if (
+            threading.current_thread() == threading.main_thread()
+            and signum == signal.SIGINT
+        ):
+            raise ValueError(
+                "Can't set signal handler for SIGINT while SIGINT is being deferred "
+                "within a DeferSigint context."
+            )
+        return self.orig_signal(signum, handler)
+
+    def __enter__(self):
+        # Save original SIGINT handler for later restoration.
+        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        # Set SIGINT signal handler that defers the signal.
+        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
+        # within the context.
+        self.orig_signal = signal.signal
+        signal.signal = self._signal_monkey_patch
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        assert self.orig_sigint_handler is not None
+        assert self.orig_signal is not None
+        # Restore original signal.signal function.
+        signal.signal = self.orig_signal
+        # Restore original SIGINT handler.
+        signal.signal(signal.SIGINT, self.orig_sigint_handler)
+        if exc_type is None and self.task_cancelled:
+            # No exception raised in context but task has been cancelled, so we raise
+            # KeyboardInterrupt to go through the task cancellation path.
+            raise KeyboardInterrupt
+        else:
+            # If exception was raised in context, returning False will cause it to be
+            # reraised.
+            return False

@@ -237,7 +237,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -333,6 +333,14 @@ py_test(
     size = "small",
     srcs = ["tests/test_huggingface_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_huggingface_gpu",
+    size = "medium",
+    srcs = ["tests/test_huggingface_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
 

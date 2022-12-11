@@ -488,6 +488,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def task_depth(self):
+        return self.core_worker.get_task_depth()
+
+    @property
     def namespace(self):
         return self.core_worker.get_job_config().ray_namespace
 
@@ -1437,7 +1441,10 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1964,6 +1971,7 @@ def connect(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
+                num_retries=1,
             )
 
     driver_name = ""
@@ -2094,6 +2102,7 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        code_paths = []
         if not interactive_mode:
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2101,15 +2110,15 @@ def connect(
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                worker.run_function_on_all_workers(
-                    lambda worker_info: sys.path.insert(1, script_directory)
-                )
+                code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
             worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
+                lambda worker_info: [sys.path.insert(1, path) for path in code_paths]
             )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
@@ -2932,7 +2941,7 @@ def remote(
             This is a dictionary mapping strings (resource names) to floats.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.accelerators` for accelerator types.
+            See `ray.util.accelerators` for accelerator types.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
@@ -2966,8 +2975,7 @@ def remote(
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation. This API is
-            in beta and may change before becoming stable.
+            :ref:`runtime-environments` for detailed documentation.
         retry_exceptions: Only for *remote functions*. This specifies whether
             application-level errors should be retried up to max_retries times.
             This can be a boolean or a list of exceptions that should be retried.
@@ -2981,7 +2989,9 @@ def remote(
             "DEFAULT": default hybrid scheduling;
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling.
+            placement group based scheduling;
+            `NodeAffinitySchedulingStrategy`:
+            node id based affinity scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 

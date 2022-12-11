@@ -58,6 +58,7 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
+    "test_ray_shutdown.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_protobuf_compatibility.py"
@@ -109,8 +110,10 @@ py_test_module_list(
     "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
+    "test_nested_task.py",
     "test_metrics.py",
     "test_task_metrics.py",
+    "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
     "test_placement_group_metrics.py",
     "test_object_store_metrics.py",
@@ -121,6 +124,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
+    "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_resource_demand_scheduler.py",
@@ -177,7 +181,6 @@ py_test_module_list(
     "test_node_manager.py",
     "test_numba.py",
     "test_redis_tls.py",
-    "test_ray_shutdown.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_top_level_api.py",
@@ -193,7 +196,7 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
   ],
-  size = "small",
+  size = "medium",
   tags = ["exclusive", "ray_ha", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
@@ -201,8 +204,11 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
+    "test_autoscaler_e2e.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",

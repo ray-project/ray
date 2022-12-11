@@ -201,9 +201,9 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
-   * - Image Files (experimental)
+   * - Image Files
      - :func:`ray.data.read_images()`
-     - 🚧
+     - ✅
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
@@ -237,6 +237,9 @@ Supported Input Formats
    * - 🤗 (Hugging Face) Dataset
      - :func:`ray.data.from_huggingface()`
      - ✅
+   * - MongoDB
+     - :func:`ray.data.read_mongo()`
+     - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
      - ✅
@@ -265,6 +268,9 @@ Supported Output Formats
      - ✅
    * - TFRecords File Format
      - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
+     - ✅
+   * - MongoDB
+     - :meth:`ds.write_mongo() <ray.data.Dataset.write_mongo>`
      - ✅
    * - Spark Dataframe
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`

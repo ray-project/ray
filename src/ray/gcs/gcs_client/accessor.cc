@@ -426,7 +426,11 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status NodeInfoAccessor::DrainSelf() {
-  RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already drained.";
+    // This node is already drained.
+    return Status::OK();
+  }
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::DrainNodeRequest request;
@@ -809,6 +813,22 @@ Status StatsInfoAccessor::AsyncGetAll(
       [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.profile_info_list()));
         RAY_LOG(DEBUG) << "Finished getting all job info.";
+      });
+  return Status::OK();
+}
+
+Status TaskInfoAccessor::AsyncAddTaskEventData(
+    std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
+  RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
+  rpc::AddTaskEventDataRequest request;
+  // Prevent copy here
+  request.mutable_data()->Swap(data_ptr.get());
+  client_impl_->GetGcsRpcClient().AddTaskEventData(
+      request, [callback](const Status &status, const rpc::AddTaskEventDataReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
   return Status::OK();
 }

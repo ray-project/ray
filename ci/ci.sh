@@ -200,6 +200,8 @@ test_python() {
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
+      -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -572,17 +574,6 @@ lint_web() {
   )
 }
 
-check_python_test_directories_contain_init_file() {
-  cd "${WORKSPACE_DIR}"
-  while IFS= read -r -d '' test_directory
-  do
-    if [ ! -e "$test_directory"/__init__.py ]; then
-      echo "Add '__init__.py' to '$test_directory'"
-      exit 1
-    fi
-  done <   <(find python -name "tests" -type d -print0)
-}
-
 lint_copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
@@ -619,9 +610,6 @@ _lint() {
 
   # Run annotations check.
   lint_annotations
-
-  # Check Python test directories contain `__init__.py` file.
-  check_python_test_directories_contain_init_file
 
   # Make sure that the README is formatted properly.
   lint_readme

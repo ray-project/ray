@@ -172,13 +172,12 @@ class BatchPredictor:
 
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
-        predictor_kwargs = self._predictor_kwargs
         override_prep = self._override_preprocessor
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
-            and "use_gpu" not in predictor_kwargs
+            and "use_gpu" not in self._predictor_kwargs
             and num_gpus_per_worker > 0
         ):
             logger.info(
@@ -186,7 +185,9 @@ class BatchPredictor:
                 "Automatically enabling GPU prediction for this predictor. To "
                 "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
             )
-            predictor_kwargs["use_gpu"] = True
+            self._predictor_kwargs["use_gpu"] = True
+
+        predictor_kwargs_ref = ray.put(self._predictor_kwargs)
 
         # In case of [arrow block] -> [X] -> [Pandas UDF] -> [Y] -> [TorchPredictor]
         # We have two places where we can chose data format with less conversion cost.
@@ -204,6 +205,7 @@ class BatchPredictor:
         class ScoringWrapper:
             def __init__(self):
                 checkpoint = ray.get(checkpoint_ref)
+                predictor_kwargs = ray.get(predictor_kwargs_ref)
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
@@ -287,7 +289,9 @@ class BatchPredictor:
             if preprocessor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
-                override_prep = BatchMapper(lambda x: x)
+                override_prep = BatchMapper(
+                    lambda x: x, batch_format=predict_stage_batch_format
+                )
                 # preprocessor.transform will break for DatasetPipeline due to
                 # missing _dataset_format()
                 batch_fn = preprocessor._transform_batch

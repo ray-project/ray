@@ -1,6 +1,8 @@
 import functools
 from typing import Union, Type, Mapping, Any
 
+from ray.util.annotations import PublicAPI, DeveloperAPI
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_base import TensorSpec
@@ -25,6 +27,7 @@ DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
+@PublicAPI(stability="alpha")
 class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
     """A NestedDict containing `TensorSpec` and `Types`.
 
@@ -36,10 +39,10 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
         -----------------
         >>> spec_dict = ModelSpec({
         ...     "obs": {
-        ...         "arm":      TensorSpec("b, d_a", d_a=64),
-        ...         "gripper":  TensorSpec("b, d_g", d_g=12)
+        ...         "arm":      TensorSpec("b, dim_arm", dim_arm=64),
+        ...         "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
         ...     },
-        ...     "action": TensorSpec("b, d_a", h=12),
+        ...     "action": TensorSpec("b, dim_action", dim_action=12),
         ...     "action_dist": torch.distributions.Categorical
         ... })
 
@@ -146,23 +149,25 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
         return f"ModelSpec({repr(self._data)})"
 
 
+@DeveloperAPI
 def check_specs(
     input_spec: str = "",
     output_spec: str = "",
-    filter: bool = True,
-    cache: bool = False,
+    filter: bool = False,
+    cache: bool = True,
     input_exact_match: bool = False,
     output_exact_match: bool = False,
 ):
-    """A general-purpose [stateful decorator]
+    """A general-purpose check_specs decorator for Neural Network modules.
+
+    This is a stateful decorator
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
-    enforce input/output specs for any instance method that has `input_data` in input
-    args and returns and a single object.
+    enforce input/output specs for any instance method that has an argument named
+    `input_data` in its args and returns a single object.
 
-
-    It adds the ability to filter the input data if it is a mappinga to only contain
-    the keys in the spec. It can also cache the validation to make sure the spec is
-    only validated once in the lifetime of the instance.
+    It also allows you to filter the input data dictionary to only include those keys
+    that are specified in the model specs. It also allows you to cache the validation
+    to make sure the spec is only validated once in the entire lifetime of the instance.
 
     Examples (See more exmaples in ../tests/test_specs_dict.py):
 
@@ -183,12 +188,14 @@ def check_specs(
     Args:
         func: The instance method to decorate. It should be a callable that takes
             `self` as the first argument, `input_data` as the second argument and any
-            other keyword argument thereafter. It should return a single object.
-        input_spec: `self` should have an instance method that is named input_spec and
-            returns the `ModelSpec`, `TensorSpec`, or simply the `Type` that the
-            `input_data` should comply with.
-        output_spec: `self` should have an instance method that is named output_spec
-            and returns the spec that the output should comply with.
+            other keyword argument thereafter. It should return a single object
+            (i.e. not a tuple).
+        input_spec: `self` should have an instance method whose name matches the string
+            in input_spec and returns the `ModelSpec`, `TensorSpec`, or simply the
+            `Type` that the `input_data` should comply with.
+        output_spec: `self` should have an instance method whose name matches the
+            string in output_spec and returns the spec that the output should comply
+            with.
         filter: If True, and `input_data` is a nested dict the `input_data` will be
             filtered by its corresponding spec tree structure and then passed into the
             implemented function to make sure user is not confounded with unnecessary
@@ -206,8 +213,8 @@ def check_specs(
         A wrapped instance method. In case of `cache=True`, after the first invokation
         of the decorated method, the intance will have `__checked_specs_cache__`
         attribute that store which method has been invoked at least once. This is a
-        special attribute can be used for the cache itself. The wrapped class method
-        also has a special attribute `__checked_specs__` that marks the method as
+        special attribute that can be used for the cache itself. The wrapped class
+        method also has a special attribute `__checked_specs__` that marks the method as
         decorated.
     """
 
@@ -217,7 +224,6 @@ def check_specs(
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, input_data, **kwargs):
-
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
 
@@ -227,15 +233,17 @@ def check_specs(
             def validate(data, spec, exact_match, tag="data"):
                 is_mapping = isinstance(spec, ModelSpec)
                 is_tensor = isinstance(spec, TensorSpec)
+                cache_miss = should_validate()
 
                 if is_mapping:
                     if not isinstance(data, Mapping):
                         raise ValueError(
                             f"{tag} must be a Mapping, got {type(data).__name__}"
                         )
-                    data = NestedDict(data)
+                    if cache_miss or filter:
+                        data = NestedDict(data)
 
-                if should_validate():
+                if cache_miss:
                     try:
                         if is_mapping:
                             spec.validate(data, exact_match=exact_match)
@@ -259,7 +267,7 @@ def check_specs(
 
             input_data_ = input_data
             if input_spec:
-                input_spec_ = getattr(self, input_spec)()
+                input_spec_ = getattr(self, input_spec)
 
                 input_data_ = validate(
                     input_data,
@@ -268,13 +276,13 @@ def check_specs(
                     tag="input_data",
                 )
 
-                if filter and isinstance(input_spec_, ModelSpec):
+                if filter and isinstance(input_spec_, (ModelSpec, TensorSpec)):
                     # filtering should happen regardless of cache
                     input_data_ = input_data_.filter(input_spec_)
 
             output_data = func(self, input_data_, **kwargs)
             if output_spec:
-                output_spec_ = getattr(self, output_spec)()
+                output_spec_ = getattr(self, output_spec)
                 validate(
                     output_data,
                     output_spec_,
@@ -282,12 +290,12 @@ def check_specs(
                     tag="output_data",
                 )
 
-            if cache:
+            if cache and func.__name__ not in self.__checked_specs_cache__:
                 self.__checked_specs_cache__[func.__name__] = True
 
             return output_data
 
-        wrapper.__check_specs__ = True
+        wrapper.__checked_specs__ = True
         return wrapper
 
     return decorator

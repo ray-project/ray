@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -73,10 +74,11 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
-using TaskStatusCounter = CounterMap<std::pair<std::string, rpc::TaskStatus>>;
+using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
+using RetryTaskCallback =
+    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -90,20 +92,24 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
-              int64_t max_lineage_bytes)
+              int64_t max_lineage_bytes,
+              worker::TaskEventBuffer &task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
-        max_lineage_bytes_(max_lineage_bytes) {
+        max_lineage_bytes_(max_lineage_bytes),
+        task_event_buffer_(task_event_buffer) {
     task_counter_.SetOnChangeCallback(
-        [this](const std::pair<std::string, rpc::TaskStatus> key)
+        [this](const std::tuple<std::string, rpc::TaskStatus, bool> key)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              ray::stats::STATS_tasks.Record(task_counter_.Get(key),
-                                             {{"State", rpc::TaskStatus_Name(key.second)},
-                                              {"Name", key.first},
-                                              {"Source", "owner"}});
+              ray::stats::STATS_tasks.Record(
+                  task_counter_.Get(key),
+                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name", std::get<0>(key)},
+                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                   {"Source", "owner"}});
             });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -290,6 +296,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Make a rpc::TaskInfoEntry based on the TaskSpecification.
+  ///
+  /// \param[in] task_spec TaskSpecification of the task.
+  /// \return TaskInfoEntry based on the spec.
+  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
+
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;
@@ -311,25 +323,47 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
-    }
-
-    void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
+      auto new_status =
+          std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
+      counter.Increment(new_status);
       status = new_status;
     }
 
-    rpc::TaskStatus GetStatus() const { return status; }
+    void SetStatus(rpc::TaskStatus new_status) {
+      auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
+      counter.Swap(status, new_tuple);
+      status = new_tuple;
+    }
+
+    void MarkRetryOnFailed() {
+      // Record a separate counter increment for retries. This means that if a task
+      // is retried N times, we show it as N separate task counts.
+      // Note that the increment is for the "previous" task attempt. From now on, this
+      // task entry will report metrics or the "current" task attempt.
+      counter.Increment({spec.GetName(), rpc::TaskStatus::FAILED, is_retry_});
+      is_retry_ = true;
+    }
+
+    void MarkRetryOnResubmit() {
+      // Record a separate counter increment for resubmits. This means that if a task
+      // is resubmitted N times, we show it as N separate task counts.
+      // Note that the increment is for the "previous" task attempt. From now on, this
+      // task entry will report metrics or the "current" task attempt.
+      counter.Increment({spec.GetName(), rpc::TaskStatus::FINISHED, is_retry_});
+      is_retry_ = true;
+    }
+
+    rpc::TaskStatus GetStatus() const { return std::get<1>(status); }
 
     // Get the NodeID where the task is executed.
     NodeID GetNodeId() const { return node_id_; }
     // Set the NodeID where the task is executed.
     void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
-    bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
+    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
+      return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -352,10 +386,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;
-    // Number of times this task successfully completed execution so far.
-    int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set
-    // initially to the task's return objects, since if the task fails, these
+
     // objects may be reconstructed by resubmitting the task. Once the task
     // finishes its first execution, then the objects that the task returned by
     // value are removed from this set because they can be inlined in any
@@ -371,12 +403,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
+    // Number of times this task successfully completed execution so far.
+    int num_successful_executions = 0;
 
    private:
-    // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
+    // The task's current execution and metric status (name, status, is_retry).
+    std::tuple<std::string, rpc::TaskStatus, bool> status;
     // The node id where task is executed.
     NodeID node_id_;
+    // Whether this is a task retry due to task failure.
+    bool is_retry_ = false;
   };
 
   /// Update nested ref count info and store the in-memory value for a task's
@@ -424,6 +460,21 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+
+  /// Set the TaskStatus
+  ///
+  /// Sets the task status on the TaskEntry, and record the task status change events in
+  /// the TaskEventBuffer if enabled.
+  ///
+  /// \param task_entry corresponding TaskEntry of a task to record the event.
+  /// \param status the changed status.
+  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
+
+  /// Update task status change in TaskEventBuffer
+  ///
+  /// \param task_entry corresponding TaskEntry of a task to record the event.
+  /// \param status the changed status.
+  void RecordTaskStatusEvent(const TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -474,6 +525,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
+
+  /// A task state events buffer initialized managed by the CoreWorker.
+  /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
+  /// error).
+  worker::TaskEventBuffer &task_event_buffer_;
 
   friend class TaskManagerTest;
 };

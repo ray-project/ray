@@ -1,12 +1,13 @@
 import unittest
 import gym
+from ray.rllib.policy.sample_batch import SampleBatch
 import torch
 import tree
 import numpy as np
 
 
-from ray.rllib.core.examples.simple_ppo_rl_module import (
-    SimplePPOModule,
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    PPOTorchRLModule,
     get_separate_encoder_config,
     get_shared_encoder_config,
     get_ppo_loss,
@@ -38,7 +39,7 @@ class TestRLModule(unittest.TestCase):
             )
 
             config_separate_encoder = get_separate_encoder_config(env)
-            module = SimplePPOModule(config_separate_encoder)
+            module = PPOTorchRLModule(config_separate_encoder)
 
             self.assertIsInstance(module, TorchRLModule)
             self.assertIsNone(module.encoder)
@@ -52,7 +53,7 @@ class TestRLModule(unittest.TestCase):
 
             # with shared encoder
             config_shared_encoder = get_shared_encoder_config(env)
-            module = SimplePPOModule(config_shared_encoder)
+            module = PPOTorchRLModule(config_shared_encoder)
 
             self.assertIsNotNone(module.encoder)
             self.assertEqual(module.encoder.layers[0].in_features, obs_dim)
@@ -69,12 +70,12 @@ class TestRLModule(unittest.TestCase):
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             env = gym.make(env_name)
             config = get_shared_encoder_config(env)
-            module = SimplePPOModule(config)
+            module = PPOTorchRLModule(config)
 
             state = module.get_state()
             self.assertIsInstance(state, dict)
 
-            module2 = SimplePPOModule(config)
+            module2 = PPOTorchRLModule(config)
             state2 = module2.get_state()
             self.assertRaises(AssertionError, lambda: check(state, state2))
 
@@ -96,7 +97,7 @@ class TestRLModule(unittest.TestCase):
                         config = get_shared_encoder_config(env)
                     else:
                         config = get_separate_encoder_config(env)
-                    module = SimplePPOModule(config)
+                    module = PPOTorchRLModule(config)
 
                     obs = env.reset()
                     tstep = 0
@@ -104,21 +105,21 @@ class TestRLModule(unittest.TestCase):
 
                         if fwd_fn == "forward_exploration":
                             fwd_out = module.forward_exploration(
-                                {"obs": to_tensor(obs)[None]}
+                                {SampleBatch.OBS: to_tensor(obs)[None]}
                             )
                             action = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                         elif fwd_fn == "forward_inference":
                             # check if I sample twice, I get the same action
                             fwd_out = module.forward_inference(
-                                {"obs": to_tensor(obs)[None]}
+                                {SampleBatch.OBS: to_tensor(obs)[None]}
                             )
                             action = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                             action2 = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                             check(action, action2)
 
@@ -141,7 +142,7 @@ class TestRLModule(unittest.TestCase):
                 else:
                     config = get_separate_encoder_config(env)
 
-                module = SimplePPOModule(config)
+                module = PPOTorchRLModule(config)
 
                 # collect a batch of data
                 batch = []
@@ -150,15 +151,17 @@ class TestRLModule(unittest.TestCase):
                 while tstep < 10:
                     fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
                     action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-                    obs, reward, done, _ = env.step(action)
+                    new_obs, reward, done, _ = env.step(action)
                     batch.append(
                         {
-                            "obs": obs,
-                            "action": action[None] if action.ndim == 0 else action,
-                            "reward": np.array(reward),
-                            "done": np.array(done),
+                            SampleBatch.OBS: obs,
+                            SampleBatch.NEXT_OBS: new_obs,
+                            SampleBatch.ACTIONS: action,
+                            SampleBatch.REWARDS: np.array(reward),
+                            SampleBatch.DONES: np.array(done),
                         }
                     )
+                    obs = new_obs
                     tstep += 1
 
                 # convert the list of dicts to dict of lists

@@ -60,10 +60,10 @@ class _AsyncFileLock:
 
     async def __aenter__(self):
         while True:
-            acquired = self.file.acquire(blocking=False)
-            if acquired:
+            try:
+                self.file.acquire(timeout=0)
                 return
-            else:
+            except TimeoutError:
                 await asyncio.sleep(0.1)
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -176,57 +176,12 @@ def _hash_directory(
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
-    Parse resource uri into protocol and package name based on its format.
+    Parse package uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
-    For GCS URIs, netloc is the package name.
-        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-            -> ParseResult(
-                scheme='gcs',
-                netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
-            )
-            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.', ':', and '@' swapped with '_',
-    and the path will have '/' replaced with '_'. The package name will be the
-    adjusted path with 'https_' prepended.
-        urlparse(
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-        )
-            -> ParseResult(
-                scheme='https',
-                netloc='github.com',
-                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
-            )
-            -> ("https",
-            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
-    package name will be the adjusted path with 's3_' prepended.
-        urlparse("s3://bucket/dir/file.zip")
-            -> ParseResult(
-                scheme='s3',
-                netloc='bucket',
-                path='/dir/file.zip'
-            )
-            -> ("s3", "bucket_dir_file.zip")
-    For GS URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'gs_' prepended.
-        urlparse("gs://public-runtime-env-test/test_module.zip")
-            -> ParseResult(
-                scheme='gs',
-                netloc='public-runtime-env-test',
-                path='/test_module.zip'
-            )
-            -> ("gs",
-            "gs_public-runtime-env-test_test_module.zip")
-    For FILE URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'file_' prepended.
-        urlparse("file:///path/to/test_module.zip")
-            -> ParseResult(
-                scheme='file',
-                netloc='path',
-                path='/path/to/test_module.zip'
-            )
-            -> ("file", "file__path_to_test_module.zip")
+
+    >>> parse_uri("https://test.com/file.zip")
+    (Protocol.HTTPS, "https_test_com_file.zip")
     """
     uri = urlparse(pkg_uri)
     try:
@@ -236,21 +191,20 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Invalid protocol for runtime_env URI {pkg_uri}. "
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
-    if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
-    elif protocol == Protocol.HTTPS:
-        parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
-        return (
-            protocol,
-            f"https_{parsed_netloc}{uri.path.replace('/', '_')}",
-        )
-    elif protocol == Protocol.FILE:
-        return (
-            protocol,
-            f"file_{uri.path.replace('/', '_')}",
-        )
+
+    if protocol in Protocol.remote_protocols():
+        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+
+        disallowed_chars = ["/", ":", "@", "+"]
+        for disallowed_char in disallowed_chars:
+            package_name = package_name.replace(disallowed_char, "_")
+
+        # Remove all periods except the last, which is part of the file extension
+        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
-        return (protocol, uri.netloc)
+        package_name = uri.netloc
+
+    return (protocol, package_name)
 
 
 def is_zip_uri(uri: str) -> bool:
