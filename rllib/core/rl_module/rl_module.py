@@ -2,7 +2,7 @@ import abc
 from dataclasses import dataclass
 import gym
 import tree  # pip install dm-tree
-from typing import Mapping, Any, Type, TYPE_CHECKING
+from typing import Mapping, Any, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -111,6 +111,27 @@ class RLModule(abc.ABC):
         # self._output_specs_exploration = self.output_specs_exploration()
         # self._input_specs_inference = self.input_specs_inference()
         # self._output_specs_inference = self.output_specs_inference()
+
+    @classmethod
+    def from_config_dict(
+        cls,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        model_config: Mapping[str, Any],
+        return_config: bool = False,
+    ) -> Union["RLModule", Mapping[str, Any]]:
+        """Creates a RLModule instance from a config dict.
+
+        Args:
+            observation_space: The observation space of the env.
+            action_space: The action space of the env.
+            model_config: The model config dict.
+            return_config: If True, instead of returning the RLModule instance,
+                return the config dict that was used to create the RLModule. In this
+                case passing the config dict to the RLModule constructor will be on the
+                caller of this method.
+        """
+        raise NotImplementedError
 
     def setup(self) -> None:
         """Called once during initialization.

@@ -41,7 +41,7 @@ class TestRLModule(unittest.TestCase):
 
             # without shared encoder
             model_config["vf_share_layers"] = False
-            module = PPOTorchRLModule.from_model_config_dict(
+            module = PPOTorchRLModule.from_config_dict(
                 env.observation_space,
                 env.action_space,
                 model_config=model_config,
@@ -59,7 +59,7 @@ class TestRLModule(unittest.TestCase):
 
             # with shared encoder
             model_config["vf_share_layers"] = True
-            module = PPOTorchRLModule.from_model_config_dict(
+            module = PPOTorchRLModule.from_config_dict(
                 env.observation_space,
                 env.action_space,
                 model_config=model_config,
@@ -83,7 +83,7 @@ class TestRLModule(unittest.TestCase):
 
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             env = gym.make(env_name)
-            module = PPOTorchRLModule.from_model_config_dict(
+            module = PPOTorchRLModule.from_config_dict(
                 env.observation_space,
                 env.action_space,
                 model_config=MODEL_DEFAULTS,
@@ -92,7 +92,7 @@ class TestRLModule(unittest.TestCase):
             state = module.get_state()
             self.assertIsInstance(state, dict)
 
-            module2 = PPOTorchRLModule.from_model_config_dict(
+            module2 = PPOTorchRLModule.from_config_dict(
                 env.observation_space,
                 env.action_space,
                 model_config=MODEL_DEFAULTS,
@@ -116,7 +116,7 @@ class TestRLModule(unittest.TestCase):
                     env = gym.make(env_name)
 
                     model_config["vf_share_layers"] = shared_encoder
-                    module = PPOTorchRLModule.from_model_config_dict(
+                    module = PPOTorchRLModule.from_config_dict(
                         env.observation_space,
                         env.action_space,
                         model_config=model_config,
@@ -162,7 +162,7 @@ class TestRLModule(unittest.TestCase):
                 env = gym.make(env_name)
 
                 model_config["vf_share_layers"] = shared_encoder
-                module = PPOTorchRLModule.from_model_config_dict(
+                module = PPOTorchRLModule.from_config_dict(
                     env.observation_space,
                     env.action_space,
                     model_config=model_config,

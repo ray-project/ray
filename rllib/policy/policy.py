@@ -376,10 +376,14 @@ class Policy(metaclass=ABCMeta):
     def make_rl_module(self) -> "RLModule":
         """Returns the RL Module.
 
-        If RLModule API is enabled (self.config._enable_rllib_module_api=True), this
-        method should be implemented and should return the RLModule instance to use for
-        this Policy. Otherwise, RLlib will error out.
+        If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
+        this method should be implemented and should return the RLModule instance to
+        use for this Policy. Otherwise, RLlib will error out.
         """
+        module_class: RLModule = self.config["rl_module_class"]
+        return module_class.from_config_dict(
+            self.observation_space, self.action_space, model_config=self.config["model"]
+        )
 
     @DeveloperAPI
     def init_view_requirements(self):

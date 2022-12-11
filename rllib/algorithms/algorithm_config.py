@@ -77,6 +77,7 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.core.rl_module import RLModule
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,23 @@ class _NotProvided:
 # in the call.
 NotProvided = _NotProvided()
 
+
+
+
+def _resolve_class_path(module) -> Type:
+    """Resolves a class path to a class.
+
+    If the given module is already a class, it is returned as is.
+    If the given module is a string, it is imported and the class is returned
+    """
+    if isinstance(module, Type):
+        return module
+    
+    if isinstance(module, str):
+        import importlib
+        module = module.rsplit(".", 1)
+        module = importlib.import_module(module[0])
+        return getattr(module, module[1])
 
 class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
@@ -795,6 +813,11 @@ class AlgorithmConfig:
                 # based on rollout worker parameters. This is for backwards
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
+
+        # resolve rl_module class
+        if self.rl_module_class is None:
+            rl_module_class = self.get_rl_module_class(framework_str=self.framework_str)
+            self.rl_module_class = _resolve_class_path(rl_module_class)
 
     def build(
         self,
@@ -2449,6 +2472,18 @@ class AlgorithmConfig:
                     "Try setting `rollout_fragment_length` to 'auto' OR "
                     f"{suggested_rollout_fragment_length}."
                 )
+    
+    @classmethod
+    def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
+        """Returns the RLModule class to use for this algorithm.
+
+        Override this method in the sub-class to return the RLModule class type given 
+        the input framework.
+
+        Returns:
+            The RLModule class to use for this algorithm.
+        """
+        raise NotImplementedError
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

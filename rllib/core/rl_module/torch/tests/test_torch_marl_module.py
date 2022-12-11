@@ -97,7 +97,7 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         model_config = copy.deepcopy(MODEL_DEFAULTS)
-        config1 = PPOTorchRLModule.from_model_config_dict(
+        config1 = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=model_config,
@@ -105,7 +105,7 @@ class TestMARLModule(unittest.TestCase):
         )
 
         model_config["vf_share_layers"] = False
-        config2 = PPOTorchRLModule.from_model_config_dict(
+        config2 = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=model_config,
@@ -131,7 +131,7 @@ class TestMARLModule(unittest.TestCase):
         assert isinstance(env.action_space, (gym.spaces.Box, gym.spaces.Discrete))
         assert isinstance(env.observation_space, (gym.spaces.Box, gym.spaces.Discrete))
 
-        marl_module = PPOTorchRLModule.from_model_config_dict(
+        marl_module = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),
@@ -151,7 +151,7 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
-        module = PPOTorchRLModule.from_model_config_dict(
+        module = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),
@@ -165,7 +165,7 @@ class TestMARLModule(unittest.TestCase):
             set(module[DEFAULT_POLICY_ID].get_state().keys()),
         )
 
-        module2 = PPOTorchRLModule.from_model_config_dict(
+        module2 = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),
@@ -183,7 +183,7 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        config = PPOTorchRLModule.from_model_config_dict(
+        config = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),
@@ -209,7 +209,7 @@ class TestMARLModule(unittest.TestCase):
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 env_class = make_multi_agent(env_name)
                 env = env_class({"num_agents": 2})
-                module = PPOTorchRLModule.from_model_config_dict(
+                module = PPOTorchRLModule.from_config_dict(
                     env.observation_space,
                     env.action_space,
                     model_config=copy.deepcopy(MODEL_DEFAULTS),
@@ -262,7 +262,7 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        module = PPOTorchRLModule.from_model_config_dict(
+        module = PPOTorchRLModule.from_config_dict(
             env.observation_space,
             env.action_space,
             model_config=copy.deepcopy(MODEL_DEFAULTS),

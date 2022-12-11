@@ -15,7 +15,6 @@ from ray.rllib.policy.torch_mixins import (
     KLCoeffMixin,
     LearningRateSchedule,
 )
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -27,7 +26,6 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
 torch, nn = try_import_torch()
 
@@ -84,21 +82,6 @@ class PPOTorchPolicyWithRLModule(
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
-
-    @override(Policy)
-    def make_rl_module(self):
-        """Returns the RLModule to use for this policy.
-
-        This implementation will be replaced with model catalog calls in the future.
-        For now we basically create the barebones of a fully connected network to match
-        the behavior of what is used to be in the old policy. This is a temporary
-        solution to get RLModules working with PPO.
-
-        """
-
-        return PPOTorchRLModule.from_model_config_dict(
-            self.observation_space, self.action_space, model_config=self.config["model"]
-        )
 
     @override(TorchPolicyV2)
     def loss(
