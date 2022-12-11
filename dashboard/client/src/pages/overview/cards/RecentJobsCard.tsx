@@ -1,4 +1,4 @@
-import { createStyles, makeStyles, Paper, Typography } from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
@@ -35,7 +35,7 @@ export const RecentJobsCard = () => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
-  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]);
+  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
     <OverviewCard className={classes.root}>
