@@ -47,6 +47,7 @@ class TestRNNSequencing(unittest.TestCase):
             unroll_ids=unroll_ids,
             agent_indices=agent,
             dynamic_max=False,
+            padding="zero",
         )
         expected_f_pad = [[1, 1, 2, 2, 2, 0, 3, 0]]
         expected_seq_lens = [2, 2, 1, 1]
@@ -65,6 +66,22 @@ class TestRNNSequencing(unittest.TestCase):
             agent_indices=agent,
             dynamic_max=True,
         )
+        check(f_pad, expected_f_pad)
+        check(s_lens, expected_seq_lens)
+        check(s_init, expected_states)
+
+        # With padding="last"
+        f_pad, s_init, s_lens = chop_into_sequences(
+            feature_columns=feats,
+            state_columns=states,
+            max_seq_len=max_seq_len,
+            episode_ids=ep_ids,
+            unroll_ids=unroll_ids,
+            agent_indices=agent,
+            dynamic_max=False,
+            padding="last",
+        )
+        expected_f_pad = [[1, 1, 2, 2, 2, 2, 3, 3]]
         check(f_pad, expected_f_pad)
         check(s_lens, expected_seq_lens)
         check(s_init, expected_states)

@@ -39,6 +39,7 @@ def pad_batch_to_sequences_of_same_size(
     feature_keys: Optional[List[str]] = None,
     view_requirements: Optional[ViewRequirementsDict] = None,
     _enable_rl_module_api: bool = False,
+    padding: str = "zero",
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -62,8 +63,10 @@ def pad_batch_to_sequences_of_same_size(
         view_requirements: An optional Policy ViewRequirements dict to
             be able to infer whether e.g. dynamic max'ing should be
             applied over the seq_lens.
-        _enable_rl_module_api: This is a temporary flag to enable the new RLModule API. 
+        _enable_rl_module_api: This is a temporary flag to enable the new RLModule API.
             After a complete rollout of the new API, this flag will be removed.
+        padding: Padding type to use. Either "zero" or "last". Zero padding
+            will pad with zeros, last padding will pad with the last value.
     """
     # If already zero-padded, skip.
     if batch.zero_padded:
@@ -83,19 +86,21 @@ def pad_batch_to_sequences_of_same_size(
     states_already_reduced_to_init = False
 
     # RNN/attention net case. Figure out whether we should apply dynamic
-    # max'ing over the list of sequence lengths. 
+    # max'ing over the list of sequence lengths.
     if _enable_rl_module_api and ("state_in" in batch or "state_out" in batch):
-        # TODO (Kourosh): This is a temporary fix to enable the new RLModule API. 
-        # We should think of a more elegant solution once we have confirmed that other 
+        # TODO (Kourosh): This is a temporary fix to enable the new RLModule API.
+        # We should think of a more elegant solution once we have confirmed that other
         # parts of the API are stable and user-friendly.
         seq_lens = batch.get(SampleBatch.SEQ_LENS)
 
-        # state_in is a nested dict of tensors of states. We need to retreive the 
-        # length of the inner most tensor (which should be already the same as the 
+        # state_in is a nested dict of tensors of states. We need to retreive the
+        # length of the inner most tensor (which should be already the same as the
         # length of other tensors) and compare it to len(seq_lens).
         state_ins = tree.flatten(batch["state_in"])
         if state_ins:
-            assert all(len(state_in) == len(state_ins[0]) for state_in in state_ins), "All state_in tensors should have the same batch_dim size."
+            assert all(
+                len(state_in) == len(state_ins[0]) for state_in in state_ins
+            ), "All state_in tensors should have the same batch_dim size."
 
             # if the batch dim of states is the same as the number of sequences
             if len(state_ins[0]) == len(seq_lens):
@@ -104,7 +109,9 @@ def pad_batch_to_sequences_of_same_size(
             # TODO (Kourosh): What is the use-case of DynamicMax functionality?
             dynamic_max = True
 
-    elif not _enable_rl_module_api and ("state_in_0" in batch or "state_out_0" in batch):
+    elif not _enable_rl_module_api and (
+        "state_in_0" in batch or "state_out_0" in batch
+    ):
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
         if batch.get(SampleBatch.SEQ_LENS) is not None and len(
@@ -154,6 +161,7 @@ def pad_batch_to_sequences_of_same_size(
         states_already_reduced_to_init=states_already_reduced_to_init,
         shuffle=shuffle,
         handle_nested_data=True,
+        padding=padding,
     )
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
@@ -251,6 +259,7 @@ def chop_into_sequences(
     states_already_reduced_to_init=False,
     handle_nested_data=False,
     _extra_padding=0,
+    padding: str = "zero",
 ):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -274,6 +283,8 @@ def chop_into_sequences(
             If False, assumes that all items in `feature_columns` are
             only np.ndarrays (no nested structured of np.ndarrays).
         _extra_padding: Add extra padding to the end of sequences.
+        padding: Padding type to use. Either "zero" or "last". Zero padding
+            will pad with zeros, last padding will pad with the last value.
 
     Returns:
         f_pad: Padded feature columns. These will be of shape
@@ -346,7 +357,13 @@ def chop_into_sequences(
                 for seq_offset in range(len_):
                     f_pad[seq_base + seq_offset] = f[i]
                     i += 1
+
+                if padding == "last":
+                    for seq_offset in range(len_, max_seq_len):
+                        f_pad[seq_base + seq_offset] = f[i - 1]
+
                 seq_base += max_seq_len
+
             assert i == len(f), f
             feature_sequences[-1].append(f_pad)
 
@@ -369,9 +386,7 @@ def chop_into_sequences(
                     s_init.append(s[i])
                     i += len_
                 initial_state_flat.append(np.array(s_init))
-            initial_states.append(
-                tree.unflatten_as(state_column, initial_state_flat)
-            )
+            initial_states.append(tree.unflatten_as(state_column, initial_state_flat))
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))

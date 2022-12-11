@@ -690,7 +690,10 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False)
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
             self._lazy_tensor_dict(batch)
             self._loaded_batches[0] = [batch]
@@ -714,7 +717,10 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False)
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
 
         # 3) Load splits into the given buffer (consisting of n GPUs).
@@ -845,6 +851,9 @@ class TorchPolicyV2(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
                 _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
 
         postprocessed_batch.set_training(True)
