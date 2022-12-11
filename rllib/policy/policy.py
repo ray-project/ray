@@ -457,8 +457,11 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s
+                if self.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state
+                else:
+                    for i, s in enumerate(state):
+                        input_dict[f"state_in_{i}"] = s
             if prev_action is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action
             if prev_reward is not None:
@@ -505,7 +508,8 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return (
             single_action,
-            [s[0] for s in state_out],
+            # [s[0] for s in state_out],
+            tree.map_structure(lambda x: x[0], state_out),
             tree.map_structure(lambda x: x[0], info),
         )
 

@@ -337,6 +337,8 @@ def check_compute_single_action(
         state_in = None
         if include_state:
             state_in = model.get_initial_state()
+            # TODO (Kourosh): Why do we have this logic? If state_in is None doesn't 
+            # that mean the policy does not need any input states already?
             if not state_in:
                 state_in = []
                 i = 0
@@ -356,8 +358,11 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                for i, s in enumerate(state_in):
-                    input_dict[f"state_in_{i}"] = s
+                if what.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state_in
+                else:
+                    for i, s in enumerate(state_in):
+                        input_dict[f"state_in_{i}"] = s
             input_dict_batched = SampleBatch(
                 tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
             )
@@ -404,7 +409,7 @@ def check_compute_single_action(
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
         if state_out:
-            for si, so in zip(state_in, state_out):
+            for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
                 check(list(si.shape), so.shape)
 
         if unsquash is None:
