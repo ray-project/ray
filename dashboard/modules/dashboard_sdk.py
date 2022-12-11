@@ -202,6 +202,7 @@ class SubmissionClient:
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Optional[str] = None,
     ):
 
         # Remove any trailing slashes
@@ -212,6 +213,7 @@ class SubmissionClient:
                 f'them from the requested submission address of "{address}".'
             )
 
+        self._verify = verify
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )
@@ -287,6 +289,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            verify=self._verify,
             **kwargs,
         )
 
