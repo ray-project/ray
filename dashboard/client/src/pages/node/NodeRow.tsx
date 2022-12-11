@@ -40,7 +40,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
  */
-const NodeRow = ({
+export const NodeRow = ({
   node,
   expanded,
   onExpandButtonClick,
@@ -170,7 +170,7 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
+export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
   const classes = rowStyles();
 
   const { ip, mem, logUrl } = node;
