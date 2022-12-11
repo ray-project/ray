@@ -38,6 +38,7 @@ def pad_batch_to_sequences_of_same_size(
     batch_divisibility_req: int = 1,
     feature_keys: Optional[List[str]] = None,
     view_requirements: Optional[ViewRequirementsDict] = None,
+    _enable_rl_module_api: bool = False,
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -61,6 +62,8 @@ def pad_batch_to_sequences_of_same_size(
         view_requirements: An optional Policy ViewRequirements dict to
             be able to infer whether e.g. dynamic max'ing should be
             applied over the seq_lens.
+        _enable_rl_module_api: This is a temporary flag to enable the new RLModule API. 
+            After a complete rollout of the new API, this flag will be removed.
     """
     # If already zero-padded, skip.
     if batch.zero_padded:
@@ -80,8 +83,28 @@ def pad_batch_to_sequences_of_same_size(
     states_already_reduced_to_init = False
 
     # RNN/attention net case. Figure out whether we should apply dynamic
-    # max'ing over the list of sequence lengths.
-    if "state_in_0" in batch or "state_out_0" in batch:
+    # max'ing over the list of sequence lengths. 
+    if _enable_rl_module_api and ("state_in" in batch or "state_out" in batch):
+        # TODO (Kourosh): This is a temporary fix to enable the new RLModule API. 
+        # We should think of a more elegant solution once we have confirmed that other 
+        # parts of the API are stable and user-friendly.
+        seq_lens = batch.get(SampleBatch.SEQ_LENS)
+
+        # state_in is a nested dict of tensors of states. We need to retreive the 
+        # length of the inner most tensor (which should be already the same as the 
+        # length of other tensors) and compare it to len(seq_lens).
+        state_ins = tree.flatten(batch["state_in"])
+        if state_ins:
+            assert all(len(state_in) == len(state_ins[0]) for state_in in state_ins), "All state_in tensors should have the same batch_dim size."
+
+            # if the batch dim of states is the same as the number of sequences
+            if len(state_ins[0]) == len(seq_lens):
+                states_already_reduced_to_init = True
+
+            # TODO (Kourosh): What is the use-case of DynamicMax functionality?
+            dynamic_max = True
+
+    elif not _enable_rl_module_api and ("state_in_0" in batch or "state_out_0" in batch):
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
         if batch.get(SampleBatch.SEQ_LENS) is not None and len(
@@ -111,15 +134,14 @@ def pad_batch_to_sequences_of_same_size(
     state_keys = []
     feature_keys_ = feature_keys or []
     for k, v in batch.items():
-        if k.startswith("state_in_"):
+        if k.startswith("state_in"):
             state_keys.append(k)
         elif (
             not feature_keys
-            and not k.startswith("state_out_")
+            and not k.startswith("state_out")
             and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
-
     feature_sequences, initial_states, seq_lens = chop_into_sequences(
         feature_columns=[batch[k] for k in feature_keys_],
         state_columns=[batch[k] for k in state_keys],
@@ -133,7 +155,6 @@ def pad_batch_to_sequences_of_same_size(
         shuffle=shuffle,
         handle_nested_data=True,
     )
-
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
     for i, k in enumerate(state_keys):
@@ -333,16 +354,24 @@ def chop_into_sequences(
         initial_states = state_columns
     else:
         initial_states = []
-        for s in state_columns:
-            # Skip unnecessary copy.
-            if not isinstance(s, np.ndarray):
-                s = np.array(s)
-            s_init = []
-            i = 0
-            for len_ in seq_lens:
-                s_init.append(s[i])
-                i += len_
-            initial_states.append(np.array(s_init))
+        for state_column in state_columns:
+            if isinstance(state_column, list):
+                state_column = np.array(state_column)
+            initial_state_flat = []
+            # state_column may have a nested structure (e.g. LSTM state).
+            for s in tree.flatten(state_column):
+                # Skip unnecessary copy.
+                if not isinstance(s, np.ndarray):
+                    s = np.array(s)
+                s_init = []
+                i = 0
+                for len_ in seq_lens:
+                    s_init.append(s[i])
+                    i += len_
+                initial_state_flat.append(np.array(s_init))
+            initial_states.append(
+                tree.unflatten_as(state_column, initial_state_flat)
+            )
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))
