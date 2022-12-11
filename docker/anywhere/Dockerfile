@@ -3,16 +3,15 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 RUN apt-get update
 RUN apt-get install --assume-yes --no-install-recommends ca-certificates curl gpg build-essential libssl-dev libzstd-dev git cmake linux-headers-virtual libpthread*
-
 WORKDIR /root
-
+## building n2n
 RUN cd /root && \
 git clone --depth 1 --branch 3.1.1 https://github.com/ntop/n2n.git && \
 cd n2n && mkdir build && cd build && \
 cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" "-DN2N_OPTION_USE_PTHREAD=ON" && \
 cmake --build . && \
 cmake --install .
-
+## building crate crate
 RUN cd /root && mkdir -p crate \ 
 #    groupadd crate \
 #    && useradd -u 1000 -g crate -d crate crate \
@@ -33,7 +32,6 @@ RUN cd /root && mkdir -p crate \
 
 
 
-
 #FROM rayproject/ray:latest
 FROM rayproject/ray:2.1.0-py38-gpu
 
@@ -46,10 +44,13 @@ ENV DDNS_LOGIN=username
 ENV KEY=randomstring
 ENV DDNS_PASSWORD=password
 ENV DDNS_HOST=nexus.usethetools.com
+
 ENV N2N_COMMUNITY=community
 ENV N2N_FEDERATION=clusteranywhere
 ENV RANDOMSTRING=ZXCVBA
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
+### building ceph
+RUN wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add - | echo deb https://download.ceph.com/debian-quincy/ focal main | sudo tee /etc/apt/sources.list.d/ceph.list
 RUN sudo apt-get update && sudo apt-get install -y net-tools openssl libzstd1 dyndns && sudo rm -rf /var/lib/apt/lists/* && sudo apt-get clean
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
