@@ -85,7 +85,7 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
-            .experimental(_enable_rl_module_api=True)
+            .rl_module()
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -142,7 +142,7 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=0,
                 enable_connectors=True,
             )
-            .experimental(_enable_rl_module_api=True)
+            .rl_module()
         )
         obs = np.array(0)
 

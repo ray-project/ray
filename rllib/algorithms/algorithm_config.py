@@ -29,6 +29,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    ExperimentalAPI,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -395,12 +396,15 @@ class AlgorithmConfig:
         self.seed = None
         self.worker_cls = None
 
+        # `self.rl_module()`
+        self.rl_module_class = None
+        self._enable_rl_module_api = False
+
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
-        self._enable_rl_module_api = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -1993,6 +1997,32 @@ class AlgorithmConfig:
 
         return self
 
+    @ExperimentalAPI
+    def rl_module(
+        self,
+        *,
+        rl_module_class: Optional[Type] = NotProvided,
+        _enable_rl_module_api: bool = True,
+    ) -> "AlgorithmConfig":
+        """Sets the config's RLModule settings.
+
+        Args:
+            rl_module_class: The RLModule class to use for this config.
+            _enable_rl_module_api: Whether to enable the RLModule API for this config.
+                By default if you call `config.rl_module(rl_module=MyRLModule)`, the
+                RLModule API will be enabled. If you want to disable it, you can call
+                `config.rl_module(_enable_rl_module_api=False)`.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        if rl_module_class is not NotProvided:
+            self.rl_module_class = rl_module_class
+
+        self._enable_rl_module_api = _enable_rl_module_api
+
+        return self
+
     def experimental(
         self,
         *,
@@ -2000,7 +2030,6 @@ class AlgorithmConfig:
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
-        _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2026,9 +2055,6 @@ class AlgorithmConfig:
                 If True, the execution plan API will not be used. Instead,
                 a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
-            _enable_rl_module_api: Experimental flag.
-                If True, the RLlib Module API will be used for creating the neural
-                network modules instead of the ModelV2 API.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2043,8 +2069,6 @@ class AlgorithmConfig:
             self._disable_action_flattening = _disable_action_flattening
         if _disable_execution_plan_api is not NotProvided:
             self._disable_execution_plan_api = _disable_execution_plan_api
-        if _enable_rl_module_api is not NotProvided:
-            self._enable_rl_module_api = _enable_rl_module_api
 
         return self
 
