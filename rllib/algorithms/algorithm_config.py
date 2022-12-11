@@ -123,8 +123,6 @@ class _NotProvided:
 NotProvided = _NotProvided()
 
 
-
-
 def _resolve_class_path(module) -> Type:
     """Resolves a class path to a class.
 
@@ -133,12 +131,14 @@ def _resolve_class_path(module) -> Type:
     """
     if isinstance(module, Type):
         return module
-    
+
     if isinstance(module, str):
         import importlib
+
         module = module.rsplit(".", 1)
         module = importlib.import_module(module[0])
         return getattr(module, module[1])
+
 
 class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
@@ -2472,12 +2472,12 @@ class AlgorithmConfig:
                     "Try setting `rollout_fragment_length` to 'auto' OR "
                     f"{suggested_rollout_fragment_length}."
                 )
-    
+
     @classmethod
     def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
         """Returns the RLModule class to use for this algorithm.
 
-        Override this method in the sub-class to return the RLModule class type given 
+        Override this method in the sub-class to return the RLModule class type given
         the input framework.
 
         Returns:

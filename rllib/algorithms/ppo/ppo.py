@@ -119,7 +119,10 @@ class PPOConfig(PGConfig):
     @override(AlgorithmConfig)
     def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
         if framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
             return PPOTorchRLModule
         else:
             raise ValueError(f"The framework {framework_str} is not supported.")
