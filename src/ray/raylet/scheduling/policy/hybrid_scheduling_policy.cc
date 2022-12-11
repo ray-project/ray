@@ -140,8 +140,10 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
   int top_k = RayConfig::instance().scheduler_top_k_absolute();
   if (top_k <= 0) {
     top_k = std::max(
-        static_cast<uint64_t>(RayConfig::instance().max_pending_lease_requests_per_scheduling_category()),
-        static_cast<uint64_t>(RayConfig::instance().scheduler_top_k_fraction() * nodes_.size()));
+        static_cast<uint64_t>(
+            RayConfig::instance().max_pending_lease_requests_per_scheduling_category()),
+        static_cast<uint64_t>(RayConfig::instance().scheduler_top_k_fraction() *
+                              nodes_.size()));
   }
   if (!available_nodes.empty()) {
     // First prioritize available nodes.
@@ -152,8 +154,10 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
   } else if (!feasible_nodes.empty() && !require_node_available) {
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
-    return GetBestNode(
-        feasible_nodes, !force_spillback && local_node_is_feasible, top_k, spread_threshold);
+    return GetBestNode(feasible_nodes,
+                       !force_spillback && local_node_is_feasible,
+                       top_k,
+                       spread_threshold);
   } else {
     return scheduling::NodeID::Nil();
   }
