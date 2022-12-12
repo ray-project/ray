@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 import gym
-import pytest
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 from typing import Any, List, Mapping, Union
 import unittest
 
@@ -13,17 +13,11 @@ from ray.rllib.offline.dataset_reader import (
     get_dataset_and_shards,
 )
 
-import ray
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TFRLModule
-from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
-from ray.rllib.models.tf.tf_action_dist import (
-    Categorical,
-    Deterministic,
-)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -150,7 +144,7 @@ class BCTFModule(TFRLModule):
         )
 
     def output_specs(self) -> ModelSpec:
-        return ModelSpec({"action_dist": ActionDistribution})
+        return ModelSpec({"action_dist": tfp.distributions.Distribution})
 
     def input_specs_exploration(self) -> ModelSpec:
         obs_dim = self.config.input_dim
@@ -184,7 +178,7 @@ class BCTFModule(TFRLModule):
         obs = batch[SampleBatch.OBS]
         action_logits = self.policy(obs)
         action_logits_inference = tf.argmax(action_logits, axis=-1)
-        action_dist = Deterministic(action_logits_inference, None)
+        action_dist = tfp.distributions.Deterministic(action_logits_inference)
         return {"action_dist": action_dist}
 
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -193,7 +187,15 @@ class BCTFModule(TFRLModule):
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
         action_logits = self.policy(obs)
-        action_dist = Categorical(action_logits)
+
+        action_dist = tfp.distributions.Categorical(logits=action_logits)
+        return {"action_dist": action_dist}
+
+    def call(self, batch, training=False):
+        obs = batch[SampleBatch.OBS]
+        action_logits = self.policy(obs)
+
+        action_dist = tfp.distributions.Categorical(logits=action_logits)
         return {"action_dist": action_dist}
 
     def is_distributed(self) -> bool:
@@ -216,12 +218,10 @@ class BCTFOptimizer(RLOptimizer):
     def __init__(self, module, config):
         super().__init__(module, config)
 
-    def compute_loss(
-        self, batch: NestedDict, fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def compute_loss(self, batch: NestedDict, fwd_out) -> Mapping[str, Any]:
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
-        loss = -tf.math.reduce_mean(action_dist.logp(batch[SampleBatch.ACTIONS]))
+        loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
         loss_dict = {
             "total_loss": loss,
         }
@@ -299,6 +299,16 @@ class BCTFTrainer:
         results.update(loss_numpy)
         return results
 
+    @tf.function
+    def _do_update_fn(self, batch: SampleBatch) -> Mapping[str, Any]:
+        with tf.GradientTape() as tape:
+            # fwd_out = self._module.forward_train(batch)
+            fwd_out = self._module(batch)
+            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+        gradients = self.compute_gradients(loss, tape)
+        self.apply_gradients(gradients)
+        return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
+
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
 
@@ -310,12 +320,18 @@ class BCTFTrainer:
         """
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        with tf.GradientTape() as tape:
-            fwd_out = self._module.forward_train(batch)
-            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
-        gradients = self.compute_gradients(loss, tape)
-        post_processed_gradients = self.on_after_compute_gradients(gradients)
-        self.apply_gradients(post_processed_gradients)
+        # with tf.GradientTape() as tape:
+        #     fwd_out = self._module.forward_train(batch)
+        #     loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+        # gradients = self.compute_gradients(loss, tape)
+        # post_processed_gradients = self.on_after_compute_gradients(gradients)
+        # self.apply_gradients(post_processed_gradients)
+        # tf.config.run_functions_eagerly(True)
+        infos = self._do_update_fn(batch)
+        # assert False
+        loss = infos["loss"]
+        fwd_out = infos["fwd_out"]
+        post_processed_gradients = infos["post_processed_gradients"]
         results = self.compile_results(batch, fwd_out, loss, post_processed_gradients)
         return results
 
@@ -358,51 +374,9 @@ class BCTFTrainer:
 
 class TestRLOptimizerTF(unittest.TestCase):
     def test_rl_optimizer_example_tf(self):
-        ray.init()
-        tf.random.set_seed(1)
-        env = gym.make("CartPole-v1")
-        module_config = FCConfig(
-            input_dim=sum(env.observation_space.shape),
-            output_dim=sum(env.action_space.shape or [env.action_space.n]),
-            hidden_layers=[32],
-        )
-        module_for_inference = BCTFModule(module_config)
+        _test()
 
-        trainer = BCTFTrainer({"module_config": module_config})
-        trainer.set_state({"module_state": module_for_inference.get_state()})
-
-        # path = "s3://air-example-data/rllib/cartpole/large.json"
-        path = "tests/data/cartpole/large.json"
-        input_config = {"format": "json", "paths": path}
-        dataset, _ = get_dataset_and_shards(
-            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-        )
-        batch_size = 500
-        ioctx = IOContext(
-            config=(
-                AlgorithmConfig()
-                .training(train_batch_size=batch_size)
-                .offline_data(actions_in_input_normalized=True)
-            ),
-            worker_index=0,
-        )
-        reader = DatasetReader(dataset, ioctx)
-        num_epochs = 100
-        total_timesteps_of_training = 1000000
-        inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-        for _ in range(num_epochs):
-            for _ in range(inter_steps):
-                batch = reader.next()
-                trainer.update(batch)
-            module_for_inference.set_state(trainer.get_state()["module_state"])
-            avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
-            if avg_return > 50:
-                break
-        assert (
-            avg_return > 50
-        ), f"Return for training behavior cloning is too low: avg_return={avg_return}!"
-
-    def test_rl_optimizer_set_state_get_state_torch(self):
+    def test_rl_optimizer_set_state_get_state_tf(self):
         env = gym.make("CartPole-v1")
         module_config = FCConfig(
             input_dim=sum(env.observation_space.shape),
@@ -456,7 +430,48 @@ class TestRLOptimizerTF(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    import sys
+def _test():
+    tf.random.set_seed(1)
+    env = gym.make("CartPole-v1")
+    module_config = FCConfig(
+        input_dim=sum(env.observation_space.shape),
+        output_dim=sum(env.action_space.shape or [env.action_space.n]),
+        hidden_layers=[32],
+    )
+    module_for_inference = BCTFModule(module_config)
 
-    sys.exit(pytest.main(["-v", __file__]))
+    trainer = BCTFTrainer({"module_config": module_config})
+    # trainer.set_state({"module_state": module_for_inference.get_state()})
+
+    # path = "s3://air-example-data/rllib/cartpole/large.json"
+    path = "tests/data/cartpole/large.json"
+    input_config = {"format": "json", "paths": path}
+    dataset, _ = get_dataset_and_shards(
+        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    )
+    batch_size = 500
+    ioctx = IOContext(
+        config=(
+            AlgorithmConfig()
+            .training(train_batch_size=batch_size)
+            .offline_data(actions_in_input_normalized=True)
+        ),
+        worker_index=0,
+    )
+    reader = DatasetReader(dataset, ioctx)
+    num_epochs = 100
+    total_timesteps_of_training = 1000000
+    inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
+    for _ in range(num_epochs):
+        for _ in range(inter_steps):
+            batch = reader.next()
+            trainer.update(batch)
+        module_for_inference.set_state(trainer.get_state()["module_state"])
+        avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
+        if avg_return > 50:
+            break
+    assert avg_return > 50
+
+
+if __name__ == "__main__":
+    unittest.main()
