@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 import asyncio
 import os
-import pathlib
 import signal
 import sys
-import time
 from typing import Optional, Union
 
 import click
@@ -28,7 +26,6 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -287,113 +284,44 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
-    sys.path.insert(0, app_dir)
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
+    if "env_vars" not in final_runtime_env:
+        final_runtime_env["env_vars"] = {}
+    final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
 
-    # If address is specified through either the command or through the RAY_ADDRESS
-    # environment variable, use Ray Job Submission to run serve. Otherwise, connect
-    # to local ray clusters.
-    if address is None or address == "auto":
-        final_runtime_env = parse_runtime_env_args(
-            runtime_env=runtime_env,
-            runtime_env_json=runtime_env_json,
-            working_dir=working_dir,
-        )
+    from ray.serve import run_script
 
-        if pathlib.Path(config_or_import_path).is_file():
-            config_path = config_or_import_path
-            cli_logger.print(f'Deploying from config file: "{config_path}".')
+    # Use Ray Job Submission to run serve.
+    client = JobSubmissionClient(address)
+    submission_id = client.submit_job(
+        entrypoint=(
+            f"python {run_script.__file__} "
+            f"--config-or-import-path={config_or_import_path} "
+            f"--host={host} "
+            f"--port={port} "
+            f"--app-dir={app_dir} "
+            + ("--blocking " if blocking else "")
+            + ("--gradio " if gradio else "")
+        ),
+        # Setting the runtime_env will set defaults for the deployments.
+        runtime_env=final_runtime_env,
+    )
 
-            with open(config_path, "r") as config_file:
-                config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
-            is_config = True
-        else:
-            import_path = config_or_import_path
-            cli_logger.print(f'Deploying from import path: "{import_path}".')
-            node = import_attr(import_path)
-            is_config = False
+    async def print_logs():
+        async for lines in client.tail_job_logs(submission_id):
+            print(lines, end="")
 
-        # Setting the runtime_env here will set defaults for the deployments.
-        ray.init(
-            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
-        )
+    def interrupt_handler():
+        client.stop_job(submission_id)
 
-        if is_config:
-            client = _private_api.serve_start(
-                detached=True,
-                http_options={
-                    "host": config.host,
-                    "port": config.port,
-                    "location": "EveryNode",
-                },
-            )
-        else:
-            client = _private_api.serve_start(
-                detached=True,
-                http_options={"host": host, "port": port, "location": "EveryNode"},
-            )
-
-        try:
-            if is_config:
-                client.deploy_app(config, _blocking=gradio)
-                cli_logger.success("Submitted deploy config successfully.")
-                if gradio:
-                    handle = serve.get_deployment("DAGDriver").get_handle()
-            else:
-                handle = serve.run(node, host=host, port=port)
-                cli_logger.success("Deployed Serve app successfully.")
-
-            if gradio:
-                from ray.serve.experimental.gradio_visualize_graph import (
-                    GraphVisualizer,
-                )
-
-                visualizer = GraphVisualizer()
-                visualizer.visualize_with_gradio(handle)
-            else:
-                if blocking:
-                    while True:
-                        # Block, letting Ray print logs to the terminal.
-                        time.sleep(10)
-
-        except KeyboardInterrupt:
-            cli_logger.info("Got KeyboardInterrupt, shutting down...")
-            serve.shutdown()
-            sys.exit()
-
-    else:
-        final_runtime_env = parse_runtime_env_args(
-            runtime_env=runtime_env,
-            runtime_env_json=runtime_env_json,
-            working_dir=working_dir,
-        )
-        if "env_vars" not in final_runtime_env:
-            final_runtime_env["env_vars"] = {}
-        final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
-
-        client = JobSubmissionClient(address)
-        submission_id = client.submit_job(
-            entrypoint=(
-                f"serve run {config_or_import_path} "
-                "--address=auto "
-                f"--host={host} "
-                f"--port={port} "
-                + ("--blocking " if blocking else "")
-                + ("--gradio " if gradio else "")
-            ),
-            runtime_env=final_runtime_env,
-        )
-
-        async def print_logs():
-            async for lines in client.tail_job_logs(submission_id):
-                print(lines, end="")
-
-        def interrupt_handler():
-            client.stop_job(submission_id)
-
-        loop = asyncio.get_event_loop()
-        loop.add_signal_handler(signal.SIGINT, interrupt_handler)
-        loop.run_until_complete(print_logs())
-        loop.close()
+    loop = asyncio.get_event_loop()
+    loop.add_signal_handler(signal.SIGINT, interrupt_handler)
+    loop.run_until_complete(print_logs())
+    loop.close()
 
 
 @cli.command(help="Get the current config of the running Serve app.")
