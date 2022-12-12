@@ -28,6 +28,7 @@ from ray.air.integrations.wandb import (
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
+    WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
 )
@@ -221,6 +222,22 @@ class TestWandbLogger:
         logger = WandbTestExperimentLogger(project="test_project")
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
+
+    def test_wandb_logger_run_location_external_hook(self, monkeypatch):
+        # No project
+        with pytest.raises(ValueError):
+            logger = WandbTestExperimentLogger(api_key="1234")
+            logger.setup()
+
+        # Project and group env vars from external hook
+        monkeypatch.setenv(
+            WANDB_POPULATE_RUN_LOCATION_HOOK,
+            "ray._private.test_utils.wandb_populate_run_location_hook",
+        )
+        logger = WandbTestExperimentLogger(api_key="1234")
+        logger.setup()
+        assert os.environ[WANDB_PROJECT_ENV_VAR] == "test_project"
+        assert os.environ[WANDB_GROUP_ENV_VAR] == "test_group"
 
     def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
