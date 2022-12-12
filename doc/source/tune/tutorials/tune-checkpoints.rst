@@ -1,72 +1,135 @@
-A Guide To Using Checkpoints
-============================
-
-.. _tune-two-types-of-ckpt:
-
-Two different types of Tune checkpoints
----------------------------------------
-
-There are mainly two types of checkpoints that Tune maintains: experiment-level checkpoints and trial-level
-checkpoints.
-
-Experiment Checkpoints
-~~~~~~~~~~~~~~~~~~~~~~
-
-Experiment-level checkpoints save the experiment state. This includes the state of the searcher,
-the list of trials and their statuses (e.g. PENDING, RUNNING, TERMINATED, ERROR), and
-metadata pertaining to each trial (e.g. hyperparameter configuration, trial logdir, etc).
-
-The experiment-level checkpoint is periodically saved by the driver on the head node.
-By default, the frequency at which it is saved is automatically
-adjusted so that at most 5% of the time is spent saving experiment checkpoints,
-and the remaining time is used for handling training results and scheduling.
-This time can also be adjusted with the
-:ref:`TUNE_GLOBAL_CHECKPOINT_S environment variable <tune-env-vars>`.
-
-The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
-can be resumed from if it is interrupted or failed.
-It is also used to load tuning results after a Ray Tune experiment has finished.
-
-Trial Checkpoints
-~~~~~~~~~~~~~~~~~
-
-Trial-level checkpoints capture the per-trial state. They are saved by the :ref:`trainable <tune-key-concepts-trainables>` itself.
-This often includes the model and optimizer states. Here are a few uses of trial checkpoints:
-
-- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
-  last state. No training time is lost.
-- Some searchers/schedulers pause trials to free resources so that other trials can train in
-  the meantime. This only makes sense if the trials can then continue training from the latest state.
-- The checkpoint can be later used for other downstream tasks like batch inference.
-
-Everything that is saved by ``session.report()`` (if using the Function API) or
-``Trainable.save_checkpoint`` (if using the Class API) is a **trial-level checkpoint.**
-See :ref:`checkpointing with the Function API <tune-function-checkpointing>` and
-:ref:`checkpointing with the Class API <tune-trainable-save-restore>`
-for examples of saving and loading trial-level checkpoints.
-
 .. _tune-checkpoint-syncing:
 
-Synchronizing checkpoints in a multi-node Tune experiment
----------------------------------------------------------
+A Guide To Tune Checkpoint Synchronization
+==========================================
 
+This user guide covers how to configure synchronization of experiment data including
+**experiment and trial checkpoints** between nodes, when running a multi-node experiment.
+See :ref:`tune-two-types-of-ckpt` for an overview of these two types of Tune checkpoints.
+
+Why is synchronization needed?
+------------------------------
+
+To motivate the need for synchronization, we'll start by examining the differences
+between how experiment and trial data is saved
+when running on a single-node vs. multi-node Tune experiment.
+
+When running a Tune experiment with 2 trials locally on a single node,
+the resulting experiment log directory may look something like this:
+
+.. code-block::
+
+    ~/ray_results/experiment_name/
+        experiment_state-2022-12-06_09-26-55.json      <- Experiment state
+        basic-variant-state-2022-12-06_09-26-55.json   <- Searcher state
+
+        trainable_2e5ff_00000/
+            params.json
+            params.pkl
+            progress.csv
+            result.json
+
+            checkpoint_000000/                         <- Trial checkpoint directory
+                dict_checkpoint.pkl
+            checkpoint_000001/
+                dict_checkpoint.pkl
+
+        trainable_2e5ff_00001/
+            params.json
+            params.pkl
+            progress.csv
+            result.json
+
+            checkpoint_000000/
+                dict_checkpoint.pkl
+            checkpoint_000001/
+                dict_checkpoint.pkl
+
+In the simplest case, all trials are run on the same node (machine), and all checkpoints and data
+will be saved to the same local directory.
+
+The files saved at the top-level experiment directory include the experiment checkpoint
+data, and the files saved within ``checkpoint_00000x`` folders within each trial directories
+are the trial checkpoint data.
+
+When a Tune experiment is being run on more than one node, this data will be split
+across multiple filesystems.
 Experiment checkpoints are stored on the driver node (the head node),
 and trial checkpoints are stored on the node where the trials are executed.
-If you are training on more than one node, this means that some trial checkpoints may
-be on the head node and others are not.
+**If you are training on more than one node, this means that some trial checkpoints may
+be on the head node and others are not.**
 
-When trials are restored (e.g. after a failure or when the experiment was paused), they may be scheduled on
-different nodes, but still would need access to the latest checkpoint. To make sure this works, Ray Tune
-comes with facilities to synchronize checkpoints between nodes, so that there is a
-consolidated directory that experiment and trial checkpoints can be accessed from.
+Without any synchronization, running 2 trials on 2 machines would end up with log
+directories on each node looking like:
 
-Generally we consider three cases:
+.. code-block::
+
+    Head Node:
+
+    ~/ray_results/experiment_name/
+        experiment_state-2022-12-06_09-26-55.json      <- Experiment state
+        basic-variant-state-2022-12-06_09-26-55.json   <- Searcher state
+
+        trainable_2e5ff_00000/      <- Trial 0 runs on the head node
+            params.json
+            params.pkl
+            progress.csv
+            result.json
+
+            checkpoint_000000/
+                dict_checkpoint.pkl
+            checkpoint_000001/
+                dict_checkpoint.pkl
+
+        trainable_2e5ff_00001/      <- Trial 1 runs on the worker node
+            params.json
+            params.pkl
+            progress.csv
+            result.json
+
+    Worker Node:
+
+    ~/ray_results/experiment_name/
+        trainable_2e5ff_00001/
+            checkpoint_000000/
+                dict_checkpoint.pkl
+            checkpoint_000001/
+                dict_checkpoint.pkl
+
+
+When trials are restored (e.g. after a node failure or when the experiment was paused), they may be scheduled on
+different nodes, but still would need access to the latest checkpoint.
+Furthermore, for an entire experiment to be restored (e.g. after a user interrupt),
+Tune needs to be able to access the latest experiment state, along with all trial checkpoints
+to start from where the experiment left off.
+
+To enable this fault tolerance functionality, Ray Tune
+comes with facilities to synchronize checkpoints between nodes to provide a
+consolidated directory that experiment and all trial checkpoints can be accessed from.
+
+Synchronization Options
+-----------------------
+
+Generally, we consider three cases:
 
 1. When using a shared directory (e.g. via NFS)
 2. When using cloud storage (e.g. S3 or GCS)
 3. When using neither
 
 The default option here is 3, which will be automatically used if nothing else is configured.
+
+.. note::
+
+    Although we are considering shared filesystem and cloud storage and solutions to
+    synchronization between multiple nodes, these can also be used for single-node
+    experiments. This can be useful to persist your experiment results in external storage
+    if, for example, the instance you run your experiment on clears its local directory
+    after termination.
+
+.. seealso::
+
+    See :class:`~ray.tune.syncer.SyncConfig` for the full set of configuration options as well as more details.
+
 
 Using a shared directory
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -92,20 +155,22 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
     tuner.fit()
 
 Note that the driver (on the head node) will have access to all checkpoints locally (in the
-shared directory) for further processing.
+shared directory) for further processing. The experiment directory will look exactly like
+the local single-node case, except the path will be under ``"/path/to/shared/storage/my_experiment_name"``
+in the shared filesystem.
 
 
 .. _tune-cloud-checkpointing:
 
 Using cloud storage
 ~~~~~~~~~~~~~~~~~~~
-Using cloud storage is similar to using a shared filesystem: the only difference is
-that the consolidated directory (including all logs and checkpoints) lives in the cloud storage.
+Using cloud storage (e.g. S3 or GCS) is similar to using a shared filesystem: the only difference is
+that the consolidated directory (including all logs and checkpoints) lives in the cloud.
 
-If all nodes have access to cloud storage, e.g. S3 or GCS, remote trials can directly upload their
-trial checkpoints to the cloud storage.
+Because all nodes have access to cloud storage, **remote trials will directly upload their
+trial checkpoints to the cloud storage.**
 This approach is especially useful when training a large number of distributed trials,
-where the default syncing behavior (see below) with many worker nodes can introduce significant overhead.
+where :ref:`the default syncing behavior <tune-default-syncing>` with many worker nodes can introduce significant overhead.
 
 For this case, we tell Ray Tune to store experiment and trial checkpoints at a remote ``upload_dir``:
 
@@ -133,13 +198,17 @@ if you want to implement custom syncing logic.
 See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
 for more details and examples.
 
-The consolidated experiment data will be available in the cloud bucket at ``s3://bucket-name/sub-path/experiment_name``.
-This means that the driver (on the head node) will not have access to all checkpoints locally. If you want to process
+The consolidated experiment data will be available in the cloud bucket at ``s3://bucket-name/sub-path/experiment_name``,
+and the experiment directory structure will look exactly like the local single-node case.
+
+The driver (on the head node) will not have access to all checkpoints locally. If you want to process
 e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
 
 Experiment restoration should also be done using the experiment directory at the cloud storage
 URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
 
+
+.. _tune-default-syncing:
 
 Default syncing (no shared/cloud storage)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -179,15 +248,15 @@ Setting the sync period to a lower number will pull checkpoints from remote node
 This will lead to more robust trial recovery, but it will also lead to more synchronization overhead.
 
 As in the first case, the driver (on the head node) will have access to all checkpoints locally
-for further processing.
+for further processing, and the experiment directory will be identical to the local single-node case.
 
 .. warning::
     Please note that this approach is likely the least efficient one - you should always try to use
     shared or cloud storage if possible when training on a multi-node cluster.
 
 
-Checkpointing examples
-----------------------
+Examples
+--------
 
 Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
 
@@ -273,7 +342,7 @@ There are a few options for restoring an experiment:
 Please see the documentation of
 :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
-.. _tune-default-syncing:
+.. _tune-default-syncing-example:
 
 A simple example using default checkpoint syncing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -330,3 +399,48 @@ This experiment can be resumed from the head node:
         resume_errored=True
     )
     tuner.fit()
+
+
+.. _tune-two-types-of-ckpt:
+
+Appendix: Two Types of Tune Checkpoints
+---------------------------------------
+
+The guide above mentioned the two main types of checkpoints that Tune maintains: experiment-level checkpoints and trial-level
+checkpoints.
+
+Experiment Checkpoints
+~~~~~~~~~~~~~~~~~~~~~~
+
+Experiment-level checkpoints save the experiment state. This includes the state of the searcher,
+the list of trials and their statuses (e.g. PENDING, RUNNING, TERMINATED, ERROR), and
+metadata pertaining to each trial (e.g. hyperparameter configuration, trial logdir, etc).
+
+The experiment-level checkpoint is periodically saved by the driver on the head node.
+By default, the frequency at which it is saved is automatically
+adjusted so that at most 5% of the time is spent saving experiment checkpoints,
+and the remaining time is used for handling training results and scheduling.
+This time can also be adjusted with the
+:ref:`TUNE_GLOBAL_CHECKPOINT_S environment variable <tune-env-vars>`.
+
+The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
+can be resumed from if it is interrupted or failed.
+It is also used to load tuning results after a Ray Tune experiment has finished.
+
+Trial Checkpoints
+~~~~~~~~~~~~~~~~~
+
+Trial-level checkpoints capture the per-trial state. They are saved by the :ref:`trainable <tune-key-concepts-trainables>` itself.
+This often includes the model and optimizer states. Here are a few uses of trial checkpoints:
+
+- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
+  last state. No training time is lost.
+- Some searchers/schedulers pause trials to free resources so that other trials can train in
+  the meantime. This only makes sense if the trials can then continue training from the latest state.
+- The checkpoint can be later used for other downstream tasks like batch inference.
+
+Everything that is saved by ``session.report()`` (if using the Function API) or
+``Trainable.save_checkpoint`` (if using the Class API) is a **trial-level checkpoint.**
+See :ref:`checkpointing with the Function API <tune-function-checkpointing>` and
+:ref:`checkpointing with the Class API <tune-trainable-save-restore>`
+for examples of saving and loading trial-level checkpoints.
