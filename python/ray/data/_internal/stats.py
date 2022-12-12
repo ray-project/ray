@@ -166,6 +166,7 @@ class DatasetStats:
     memory."""
 
     # Keys/labels used in internal self.stage_stats
+    BLOCK_EXECUTION_SUMMARY = "block_execution_summary_str"
     WALL_TIME = "wall_time"
     CPU_TIME = "cpu_time"
     PEAK_HEAP_MEMORY = "memory"
@@ -369,7 +370,7 @@ class DatasetStats:
                 if not exec_stats:
                     exec_summary_str += " in {}s".format(rounded_total)
             exec_summary_str += "\n"
-        stage_summary_stats["block_execution_summary_str"] = exec_summary_str
+        stage_summary_stats[DatasetStats.BLOCK_EXECUTION_SUMMARY] = exec_summary_str
 
         if exec_stats:
             wall_time_stats = {
@@ -449,7 +450,7 @@ class DatasetStats:
         """
         indent = "\t" if is_substage else ""
         stage_stats = self.stage_stats.get(stage_name, {})
-        out = stage_stats.get("block_execution_summary_str", "")
+        out = stage_stats.get(DatasetStats.BLOCK_EXECUTION_SUMMARY, "")
 
         wall_time_stats = stage_stats.get(DatasetStats.WALL_TIME, {})
         if wall_time_stats:
