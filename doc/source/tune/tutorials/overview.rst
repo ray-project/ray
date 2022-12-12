@@ -65,7 +65,7 @@ Tune Feature Guides
 
     .. link-button:: tune-checkpoints
         :type: ref
-        :text: Working with Checkpoints
+        :text: A Guide to Checkpoint Synchronization
         :classes: btn-link btn-block stretched-link
 
     ---
