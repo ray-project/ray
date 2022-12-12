@@ -620,7 +620,7 @@ By default, syncing occurs whenever one of the following conditions are met:
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
