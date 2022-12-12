@@ -170,7 +170,7 @@ class RuntimeEnvAgent(
         dashboard_agent: The DashboardAgent object contains global config.
     """
 
-    log_filename = "runtime_env_agent.log"
+    LOG_FILENAME = "runtime_env_agent.log"
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -219,7 +219,7 @@ class RuntimeEnvAgent(
         )
 
         self._logger = default_logger
-        self._logging_params.update(filename=self.log_filename)
+        self._logging_params.update(filename=self.LOG_FILENAME)
         setup_component_logger(
             logger_name=RUNTIME_ENV_AGENT_LOGGER_NAME, **self._logging_params
         )
