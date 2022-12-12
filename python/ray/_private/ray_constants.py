@@ -193,6 +193,7 @@ LOGGER_FORMAT_STDERR = (
 )
 
 AGENT_LOGGER_NAME = "agent_logger"
+RUNTIME_ENV_AGENT_LOGGER_NAME = "runtime_env_agent_logger"
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"

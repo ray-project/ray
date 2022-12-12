@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+    RUNTIME_ENV_AGENT_LOGGER_NAME,
 )
 
 import ray.dashboard.consts as dashboard_consts
@@ -39,7 +40,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
-RUNTIME_ENV_AGENT_LOGGER_NAME = "runtime_env_agent_logger"
 default_logger = logging.getLogger(RUNTIME_ENV_AGENT_LOGGER_NAME)
 
 # TODO(edoakes): this is used for unit tests. We should replace it with a
