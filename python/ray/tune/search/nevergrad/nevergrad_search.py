@@ -176,7 +176,7 @@ class NevergradSearch(Searcher):
                     "pass a class of the `Optimizer` or a instance of "
                     "the `ConfiguredOptimizer`."
                 )
-            
+
             self._parameters = space
             self._nevergrad_opt = optimizer
         elif (
@@ -198,7 +198,9 @@ class NevergradSearch(Searcher):
 
     def _setup_nevergrad(self):
         if self._opt_factory:
-            self._nevergrad_opt = self._opt_factory(self._space, **self._optimizer_kwargs)
+            self._nevergrad_opt = self._opt_factory(
+                self._space, **self._optimizer_kwargs
+            )
 
         # nevergrad.tell internally minimizes, so "max" => -1
         if self._mode == "max":
