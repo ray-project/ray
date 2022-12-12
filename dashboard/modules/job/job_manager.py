@@ -377,7 +377,9 @@ class JobSupervisor:
                 elif sys.platform != "win32":
                     os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     try:
-                        await asyncio.wait_for(polling_task, self.WAIT_FOR_JOB_TERMINATION_S)
+                        await asyncio.wait_for(
+                            polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                        )
                     except TimeoutError:
                         polling_task.cancel()
                         child_process.kill()
