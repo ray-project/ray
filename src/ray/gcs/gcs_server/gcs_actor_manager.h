@@ -283,8 +283,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -419,12 +417,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
-
-  /// Delete non-detached actor information from durable storage once the associated job
-  /// finishes.
-  ///
-  /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
 
   /// Get the created actors.
   ///
@@ -635,10 +627,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
-  /// Run a function on a delay. This is useful for guaranteeing data will be
-  /// accessible for a minimum amount of time.
-  std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-      run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
