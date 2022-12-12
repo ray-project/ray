@@ -126,9 +126,15 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
   /// Test only functions.
-  size_t GetNumTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
+  size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    return num_task_events_dropped_;
+    return num_status_task_events_dropped_;
+  }
+
+  /// Test only functions.
+  size_t GetNumProfileTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    return num_profile_task_events_dropped_;
   }
 
   /// Test only functions.
@@ -164,8 +170,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// A iterator into buffer_ that determines which element to be overwritten.
   size_t next_idx_to_overwrite_ GUARDED_BY(mutex_) = 0;
 
-  /// Number of task events dropped since the last report flush.
-  size_t num_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  /// Number of profile task events dropped since the last report flush.
+  size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+
+  /// Number of status task events dropped since the last report flush.
+  size_t num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
 
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
