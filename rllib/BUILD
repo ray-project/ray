@@ -2103,10 +2103,10 @@ py_test(
 )
 
 py_test(
-    name = "policy/tests/test_torch_utils",
-    tags = ["team:rllib", "policy"],
+    name = "utils/tests/test_torch_utils",
+    tags = ["team:rllib", "policutils"],
     size = "small",
-    srcs = ["policy/tests/test_torch_utils.py"]
+    srcs = ["utils/tests/test_torch_utils.py"]
 )
 
 # Schedules
