@@ -1,9 +1,9 @@
 import numpy as np
 import gym
-from gym.spaces import Box, Discrete, MultiDiscrete
+from gym.spaces import Discrete, MultiDiscrete
 import logging
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type, Tuple
+from typing import Dict, List, Tuple
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2

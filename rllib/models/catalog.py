@@ -296,10 +296,14 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif dist_type in (
-            MultiActionDistribution,
-            TorchMultiActionDistribution,
-        ) or isinstance(action_space, (Tuple, Dict)):
+        elif (
+            dist_type
+            in (
+                MultiActionDistribution,
+                TorchMultiActionDistribution,
+            )
+            or isinstance(action_space, (Tuple, Dict))
+        ):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -650,9 +654,7 @@ class ModelCatalog:
 
                 wrapped_cls = v2_class
                 if model_config.get("use_lstm"):
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper
-                    )
+                    v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, LSTMWrapper)
                     v2_class._wrapped_forward = wrapped_cls.forward
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
