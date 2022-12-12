@@ -177,6 +177,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
+    # Deprecated in anticipation of RLModules API
+    "_use_default_native_models": DEPRECATED_VALUE,
+
 }
 # __sphinx_doc_end__
 # fmt: on
