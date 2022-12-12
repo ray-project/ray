@@ -375,14 +375,21 @@ class JobSupervisor:
                     polling_task.cancel()
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     try:
-                        await asyncio.wait_for(
-                            polling_task, self.WAIT_FOR_JOB_TERMINATION_S
-                        )
-                    except TimeoutError:
-                        polling_task.cancel()
-                        child_process.kill()
+                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                    except ProcessLookupError:
+                        # Process already completed.
+                        pass
+                    else:
+                        # Wait for job to terminate, otherwise kill process forcefully
+                        # after timeout.
+                        try:
+                            await asyncio.wait_for(
+                                polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                            )
+                        except TimeoutError:
+                            polling_task.cancel()
+                            child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
