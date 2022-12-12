@@ -27,7 +27,7 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 Python CPU Profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "Flame Graph"
+The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
 actions for active workers and actors.
 
 .. image:: /images/profile.png
@@ -41,7 +41,7 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
    :align: center
    :width: 60%
 
-Clicking "Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
+Clicking "CPU Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
 parameter to enable native profiling.
