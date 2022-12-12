@@ -102,15 +102,13 @@ class RLModule(abc.ABC):
     """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: Mapping[str, Any] = None) -> None:
-        self.config = config or {}
-        self.setup()
-        # self._input_specs_train = self.input_specs_train()
-        # self._output_specs_train = self.output_specs_train()
-        # self._input_specs_exploration = self.input_specs_exploration()
-        # self._output_specs_exploration = self.output_specs_exploration()
-        # self._input_specs_inference = self.input_specs_inference()
-        # self._output_specs_inference = self.output_specs_inference()
+    def __init__(self) -> None:
+        self._input_specs_train = self.input_specs_train()
+        self._output_specs_train = self.output_specs_train()
+        self._input_specs_exploration = self.input_specs_exploration()
+        self._output_specs_exploration = self.output_specs_exploration()
+        self._input_specs_inference = self.input_specs_inference()
+        self._output_specs_inference = self.output_specs_inference()
 
     @classmethod
     def from_config_dict(
@@ -133,12 +131,6 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
-    def setup(self) -> None:
-        """Called once during initialization.
-
-        Override this method to perform any setup logic.
-        """
-        pass
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.

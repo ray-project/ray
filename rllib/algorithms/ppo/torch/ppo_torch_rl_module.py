@@ -91,8 +91,9 @@ class PPOModuleConfig(RLModuleConfig):
 
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
-
-        super().__init__(config)
+        self.config = config
+        self.setup()
+        super().__init__()
 
     def setup(self) -> None:
 
@@ -147,7 +148,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = encoder_out.get("state_out", [])
+        output["state_out"] = encoder_out.get("state_out", {})
         return output
 
     @override(RLModule)
@@ -203,7 +204,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         # compute the value function
         output[SampleBatch.VF_PREDS] = self.vf(encoder_out["embedding"]).squeeze(-1)
-        output["state_out"] = encoder_out.get("state_out", [])
+        output["state_out"] = encoder_out.get("state_out", {})
         return output
 
     @override(RLModule)
@@ -264,7 +265,7 @@ class PPOTorchRLModule(TorchRLModule):
             "entropy": entropy,
         }
 
-        output["state_out"] = encoder_out.get("state_out", [])
+        output["state_out"] = encoder_out.get("state_out", {})
         return output
 
     def __get_action_dist_type(self):
