@@ -46,6 +46,7 @@ def alloc_mem(bytes):
     return mem
 
 
+
 @ray.remote
 def task_with_nested_actor(
     first_fraction, second_fraction, leaker, actor_allocation_first=True
@@ -251,6 +252,88 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         ray.get(ref1, timeout=120)
         ray.get(ref2, timeout=120)
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_deadlock_six_sets_of_task_with_nested_task(
+    ray_with_memory_monitor,
+):
+    """task_with_nested_task allocates a block of memory, then runs
+    a nested task which also allocates a block memory.
+    This test runs six instances of task_with_nested_task."""
+
+    _, policy = ray_with_memory_monitor
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        (memory_usage_threshold - 0.05) / 2
+    )
+    nested_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
+        - 2 * parent_bytes
+    )
+
+    num_instances = 6
+    refs = [
+        task_with_nested_task.options(max_retries=-1).remote(
+            parent_bytes, nested_bytes
+        ) for _ in range(num_instances)
+    ]
+
+    if policy == LIFO_POLICY:
+        with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+            for ref in refs:
+                ray.get(ref, timeout=120)
+    else:
+        for ref in refs:
+            ray.get(ref, timeout=120)
+            
+            
+@ray.remote
+def n_nested_tasks(n, task_bytes):
+    dummy = alloc_mem(task_bytes[0])
+    time.sleep(10)
+    if n > 1:
+        ray.get(
+            n_nested_tasks.options(max_retries=-1).remote(
+                n - 1, task_bytes[1:]
+            )
+        )
+    return dummy[0]
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_deadlock_two_sets_of_six_nested_tasks(
+    ray_with_memory_monitor,
+):
+    """task_with_nested_task allocates a block of memory, then runs
+    a nested task which also allocates a block memory. This is repeated
+    six times. This test runs two instances of this nesting."""
+
+    _, policy = ray_with_memory_monitor
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        (memory_usage_threshold - 0.05) / 6
+    )
+    nested_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
+        - 6 * parent_bytes
+    )
+
+    ref1 = n_nested_tasks.options(max_retries=-1).remote(
+        6, [parent_bytes] + [nested_bytes] * 5
+    )
+    ref2 = n_nested_tasks.options(max_retries=-1).remote(
+        6, [parent_bytes] + [nested_bytes] * 5
+    )
+
+    if policy == LIFO_POLICY:
+        with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+            ray.get(ref1, timeout=300)
+            ray.get(ref2, timeout=300)
+    else:
+        ray.get(ref1, timeout=300)
+        ray.get(ref2, timeout=300)
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
