@@ -39,7 +39,6 @@ from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
@@ -1745,5 +1744,5 @@ def wandb_populate_run_location_hook():
     Example external hook to populate W&B project and group env vars in
     WandbIntegrationTest.testWandbLoggerConfig
     """
-    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
-    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+    os.environ["WANDB_PROJECT_NAME"] = "test_project"
+    os.environ["WANDB_GROUP_NAME"] = "test_group"
