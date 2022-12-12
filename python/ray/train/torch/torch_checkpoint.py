@@ -4,11 +4,16 @@ import io
 import torch
 import warnings
 
+from torch.nn import Module
+
 import ray.cloudpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
-from ray.air._internal.torch_utils import load_torch_model
+from ray.air._internal.torch_utils import (
+    load_torch_model,
+    consume_prefix_in_state_dict_if_present_not_in_place,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -28,11 +33,19 @@ class TorchCheckpoint(Checkpoint):
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
-        from torch.nn.parallel import DistributedDataParallel
 
         for k, v in data_dict.items():
-            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
+            # Only check for attribute as we want to support
+            # DDP, FSDP and any future approaches
+            if isinstance(v, Module) and hasattr(v, "module"):
                 data_dict[k] = v.module
+            elif isinstance(v, dict):
+                # We could limit this only to the MODEL_KEY, but we'd
+                # miss any extra user-specified keys. This should be a
+                # noop with anything but DDP/FSDP module state dicts.
+                data_dict[k] = consume_prefix_in_state_dict_if_present_not_in_place(
+                    v, "module."
+                )
 
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
