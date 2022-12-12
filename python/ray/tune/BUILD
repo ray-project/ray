@@ -442,7 +442,7 @@ py_test(
 
 py_test(
     name = "test_tuner_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],

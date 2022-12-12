@@ -559,6 +559,8 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=resume,
+                search_alg=self._tune_config.search_alg,
+                scheduler=self._tune_config.scheduler,
             ),
             **self._tuner_kwargs,
         }
