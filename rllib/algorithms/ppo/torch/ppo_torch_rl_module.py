@@ -91,9 +91,9 @@ class PPOModuleConfig(RLModuleConfig):
 
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
+        super().__init__()
         self.config = config
         self.setup()
-        super().__init__()
 
     def setup(self) -> None:
 

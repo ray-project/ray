@@ -94,7 +94,7 @@ def do_rollouts(
 
 class BCTorchModule(TorchRLModule):
     def __init__(self, config: FCConfig) -> None:
-        super().__init__(config)
+        super().__init__()
         self.policy = FullyConnectedEncoder(config)
 
     @override(RLModule)

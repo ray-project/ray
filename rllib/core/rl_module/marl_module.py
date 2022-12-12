@@ -31,8 +31,8 @@ class MultiAgentRLModule(RLModule):
     """
 
     def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
         super().__init__()
+        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
 
     @abc.abstractclassmethod
     def from_multi_agent_config(

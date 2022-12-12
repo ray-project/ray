@@ -8,10 +8,10 @@ from ray.rllib.core.rl_module.rl_module import ModuleID
 torch, nn = try_import_torch()
 
 
-class TorchRLModule(RLModule, nn.Module):
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
+class TorchRLModule(nn.Module, RLModule):
+    def __init__(self) -> None:
         nn.Module.__init__(self)
-        RLModule.__init__(self, rl_modules)
+        RLModule.__init__(self)
 
     @override(nn.Module)
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:

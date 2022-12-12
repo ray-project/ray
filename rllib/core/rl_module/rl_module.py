@@ -101,14 +101,30 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self) -> None:
-        self._input_specs_train = self.input_specs_train()
-        self._output_specs_train = self.output_specs_train()
-        self._input_specs_exploration = self.input_specs_exploration()
-        self._output_specs_exploration = self.output_specs_exploration()
-        self._input_specs_inference = self.input_specs_inference()
-        self._output_specs_inference = self.output_specs_inference()
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of RLModule.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
+
+    def __post_init__(self):
+        """Called after the __init__ method of the subclass.
+        
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
+        # self._input_specs_train = self.input_specs_train()
+        # self._output_specs_train = self.output_specs_train()
+        # self._input_specs_exploration = self.input_specs_exploration()
+        # self._output_specs_exploration = self.output_specs_exploration()
+        # self._input_specs_inference = self.input_specs_inference()
+        # self._output_specs_inference = self.output_specs_inference()
+        pass
 
     @classmethod
     def from_config_dict(
