@@ -544,16 +544,18 @@ class GcsRpcClient {
         gcs_is_down_ = true;
       } else {
         if (absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) >=
-                  ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
-            RAY_LOG(ERROR)
-              << "Failed to connect to GCS within "
-              << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds. "
-              << "GCS may have been killed. It's either GCS is terminated by `ray stop` or "
-              << "is killed unexpectedly. If it is killed unexpectedly, "
-              << "see the log file gcs_server.out. "
-              << "https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure. "
-              << "The program will terminate.";
-            std::_Exit(EXIT_FAILURE);
+            ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
+          RAY_LOG(ERROR) << "Failed to connect to GCS within "
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                         << " seconds. "
+                         << "GCS may have been killed. It's either GCS is terminated by "
+                            "`ray stop` or "
+                         << "is killed unexpectedly. If it is killed unexpectedly, "
+                         << "see the log file gcs_server.out. "
+                         << "https://docs.ray.io/en/master/ray-observability/"
+                            "ray-logging.html#logging-directory-structure. "
+                         << "The program will terminate.";
+          std::_Exit(EXIT_FAILURE);
         }
       }
       break;
