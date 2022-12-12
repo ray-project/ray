@@ -223,7 +223,7 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
           title="Profile the Python worker for 5 seconds (default) and display a flame graph."
           rel="noreferrer"
         >
-          Flame&nbsp;Graph
+          CPU&nbsp;Flame&nbsp;Graph
         </a>
         <br />
       </TableCell>
