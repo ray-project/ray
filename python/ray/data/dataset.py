@@ -3392,6 +3392,7 @@ class Dataset(Generic[T]):
         block = output.build()
         return _block_to_df(block)
 
+    @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
@@ -3409,6 +3410,7 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
 
+    @DeveloperAPI
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
@@ -3435,6 +3437,7 @@ class Dataset(Generic[T]):
             for block in self.get_internal_block_refs()
         ]
 
+    @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
@@ -4201,6 +4204,13 @@ class Dataset(Generic[T]):
         raise AttributeError(
             "Use `ds.count()` to compute the length of a distributed Dataset. "
             "This may be an expensive operation."
+        )
+
+    def __iter__(self):
+        raise TypeError(
+            "`Dataset` objects aren't iterable. To iterate records, call "
+            "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
+            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
         )
 
     def _block_num_rows(self) -> List[int]:
