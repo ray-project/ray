@@ -74,7 +74,7 @@ Model-free On-policy RL:
 - `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__   
 - `Advantage Actor-Critic (A2C, A3C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
 - `Vanilla Policy Gradient (PG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
-- `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
+- `Model-agnostic Meta-Learning (MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__
 
 Model-free Off-policy RL:
 
@@ -86,7 +86,7 @@ Model-free Off-policy RL:
 
 Model-based RL: 
 
-- `Image-only Dreamer (contrib/Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__ 
+- `Image-only Dreamer (Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__
 - `Model-Based Meta-Policy-Optimization (MB-MPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
 
 Derivative-free algorithms: 
@@ -113,8 +113,8 @@ Multi-agent:
 Others:  
 
 - `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
-- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
+- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__
+- `Random encoders (RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
 
 A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
