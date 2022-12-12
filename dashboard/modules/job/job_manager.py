@@ -381,13 +381,22 @@ class JobSupervisor:
                         # Process already completed.
                         pass
                     else:
-                        # Wait for job to terminate, otherwise kill process forcefully
-                        # after timeout.
+                        # Wait for job to terminate gracefully, otherwise kill process
+                        # forcefully after timeout.
                         try:
                             await asyncio.wait_for(
                                 polling_task, self.WAIT_FOR_JOB_TERMINATION_S
                             )
+                            logger.info(
+                                f"Job {self._job_id} has been terminated gracefully."
+                            )
                         except TimeoutError:
+                            logger.warning(
+                                f"Attempt to gracefully terminate job {self._job_id} "
+                                "through SIGTERM has timed out after "
+                                f"{self.WAIT_FOR_JOB_TERMINATION_S} seconds. Job is "
+                                "now being force-killed."
+                            )
                             polling_task.cancel()
                             child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
