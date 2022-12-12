@@ -239,7 +239,7 @@ class InvalidValuesTest(unittest.TestCase):
         out = tune.run(
             _invalid_objective,
             search_alg=NevergradSearch(
-                optimizer=ng.optimizers.NGOpt4, optimizer_kwargs=dict(budget=16)
+                optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16)
             ),
             config=self.config,
             mode="max",
