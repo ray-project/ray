@@ -43,6 +43,7 @@ class BaseNodeLauncher:
         provider,
         pending,
         event_summarizer,
+        session_name: str,
         node_provider_availability_tracker: NodeProviderAvailabilityTracker,
         prom_metrics=None,
         node_types=None,
@@ -53,7 +54,9 @@ class BaseNodeLauncher:
         self.pending = pending
         self.event_summarizer = event_summarizer
         self.node_provider_availability_tracker = node_provider_availability_tracker
-        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics(
+            session_name=session_name
+        )
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
@@ -173,6 +176,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
         queue,
         pending,
         event_summarizer,
+        session_name: str,
         node_provider_availability_tracker,
         prom_metrics=None,
         node_types=None,
@@ -186,6 +190,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
             provider=provider,
             pending=pending,
             event_summarizer=event_summarizer,
+            session_name=session_name,
             node_provider_availability_tracker=node_provider_availability_tracker,
             prom_metrics=prom_metrics,
             node_types=node_types,

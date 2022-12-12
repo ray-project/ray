@@ -134,6 +134,7 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        session_name: str,
         log_dir: str = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
@@ -149,6 +150,7 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
+        self._session_name = session_name
         worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=self.gcs_address)
 
@@ -187,7 +189,7 @@ class Monitor:
         else:
             self.event_logger = None
 
-        self.prom_metrics = AutoscalerPrometheusMetrics()
+        self.prom_metrics = AutoscalerPrometheusMetrics(session_name=session_name)
         if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
@@ -232,6 +234,7 @@ class Monitor:
             autoscaling_config,
             self.load_metrics,
             self.gcs_node_info_stub,
+            self._session_name,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
             prom_metrics=self.prom_metrics,
@@ -384,10 +387,12 @@ class Monitor:
                                 resource_name, 0
                             )
                             self.prom_metrics.cluster_resources.labels(
-                                resource=resource_name
+                                resource=resource_name,
+                                SessionName=self.prom_metrics.session_name,
                             ).set(total)
                             self.prom_metrics.pending_resources.labels(
-                                resource=resource_name
+                                resource=resource_name,
+                                SessionName=self.prom_metrics.session_name,
                             ).set(pending)
 
                     for msg in self.event_summarizer.summary():
@@ -606,6 +611,12 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+    parser.add_argument(
+        "--session-name",
+        required=True,
+        type=str,
+        help="The session name of the cluster where the autoscaler is deployed on.",
+    )
 
     args = parser.parse_args()
     setup_component_logger(
@@ -634,6 +645,7 @@ if __name__ == "__main__":
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
+        session_name=args.session_name,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )

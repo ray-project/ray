@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from typing import List
+from typing import List, Dict
 
 
 @dataclass
@@ -39,6 +39,8 @@ class Panel:
         id: Integer id used to reference the graph from Metrics.tsx.
         unit: The unit to display on the y-axis of the graph.
         targets: List of query targets.
+        sort_legend_by: Sort the legends. current is the default meaning
+            it is sorted by the current values.
     """
 
     title: str
@@ -46,6 +48,7 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
+    sort_legend_by: str = "current"
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -117,14 +120,23 @@ GRAFANA_PANELS = [
         title="Scheduler CPUs (logical slots)",
         description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
+        sort_legend_by=None,
         targets=[
             Target(
                 expr='sum(ray_resources{{Name="CPU",State="USED",{global_filters}}}) by (instance)',
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
+                expr='sum(ray_resources{{Name="CPU",State="AVAILABLE",{global_filters}}}) by (instance)',
+                legend="Available",
+            ),
+            Target(
                 expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
                 legend="MAX",
+            ),
+            Target(
+                expr='sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})',
+                legend="Pending",
             ),
         ],
     ),
@@ -149,14 +161,23 @@ GRAFANA_PANELS = [
         title="Scheduler GPUs (logical slots)",
         description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
         unit="GPUs",
+        sort_legend_by=None,
         targets=[
             Target(
                 expr='ray_resources{{Name="GPU",State="USED",{global_filters}}}',
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
+                expr='sum(ray_resources{{Name="GPU",State="AVAILABLE",{global_filters}}}) by (instance)',
+                legend="Available",
+            ),
+            Target(
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
+            ),
+            Target(
+                expr='sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})',
+                legend="Pending",
             ),
         ],
     ),
@@ -352,7 +373,6 @@ PANEL_TEMPLATE = {
         "min": False,
         "rightSide": False,
         "show": True,
-        "sort": "current",
         "sortDesc": True,
         "total": False,
         "values": True,
@@ -379,6 +399,22 @@ PANEL_TEMPLATE = {
             "$$hashKey": "object:78",
             "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
             "hiddenSeries": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "Available",
+            "dashes": False,
+            "color": "#FFFFFF",
+            "fill": 0,
+            "stack": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "Pending",
+            "dashes": False,
+            "fill": 0,
+            "stack": True,
+            "fillGradient": 7,
         },
     ],
     "spaceLength": 10,
@@ -446,6 +482,8 @@ def _generate_grafana_panels() -> List[dict]:
         template["gridPos"]["y"] = i // 2
         template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
+        if panel.sort_legend_by:
+            template["legend"]["sort"] = panel.sort_legend_by
         panels.append(template)
     return panels
 
