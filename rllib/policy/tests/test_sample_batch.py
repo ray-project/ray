@@ -1,17 +1,19 @@
 import copy
-
-import numpy as np
+import functools
 import os
 import unittest
-import tree
 
+import numpy as np
+import torch.cuda
+import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
 from ray.rllib.utils.compression import is_compressed
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 class TestSampleBatch(unittest.TestCase):
@@ -520,6 +522,25 @@ class TestSampleBatch(unittest.TestCase):
             self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
             s = SampleBatch(input_dict)
             self.assertEqual(s.count, length)
+
+    def test_interceptors(self):
+        # Tests whether interceptors work as intended
+
+        some_array = np.array([1, 2, 3])
+        batch = SampleBatch({SampleBatch.OBS: some_array})
+
+        device = torch.device("cpu")
+
+        self.assertTrue(batch[SampleBatch.OBS] is some_array)
+
+        self.assertTrue(batch[SampleBatch.OBS] is some_array)
+        batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor,
+                              device=device)
+        )
+
+        self.assertTrue(batch[SampleBatch.OBS] is some_array)
+
 
 
 if __name__ == "__main__":
