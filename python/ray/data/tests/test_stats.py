@@ -422,7 +422,7 @@ DatasetPipeline iterator time breakdown:
     )
 
 
-def test__calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
+def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
@@ -431,29 +431,27 @@ def test__calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats(
-        blocks=block_meta_list, is_substage=False
-    )
+    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
 
-    assert calculated_stats["output_num_rows"] == {
+    assert calculated_stats[DatasetStats.OUTPUT_NUM_ROWS] == {
         "min": min(block_params["num_rows"]),
         "max": max(block_params["num_rows"]),
         "mean": np.mean(block_params["num_rows"]),
         "sum": sum(block_params["num_rows"]),
     }
-    assert calculated_stats["output_size_bytes"] == {
+    assert calculated_stats[DatasetStats.OUTPUT_SIZE_BYTES] == {
         "min": min(block_params["size_bytes"]),
         "max": max(block_params["size_bytes"]),
         "mean": np.mean(block_params["size_bytes"]),
         "sum": sum(block_params["size_bytes"]),
     }
-    assert calculated_stats["wall_time"] == {
+    assert calculated_stats[DatasetStats.WALL_TIME] == {
         "min": min(block_params["wall_time"]),
         "max": max(block_params["wall_time"]),
         "mean": np.mean(block_params["wall_time"]),
         "sum": sum(block_params["wall_time"]),
     }
-    assert calculated_stats["cpu"] == {
+    assert calculated_stats[DatasetStats.CPU_TIME] == {
         "min": min(block_params["cpu_time"]),
         "max": max(block_params["cpu_time"]),
         "mean": np.mean(block_params["cpu_time"]),
@@ -461,7 +459,7 @@ def test__calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     }
 
     node_counts = Counter(block_params["node_id"])
-    assert calculated_stats["node_count"] == {
+    assert calculated_stats[DatasetStats.NODE_COUNT] == {
         "min": min(node_counts.values()),
         "max": max(node_counts.values()),
         "mean": np.mean(list(node_counts.values())),
@@ -469,7 +467,7 @@ def test__calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     }
 
 
-def test__summarize_blocks(ray_start_regular_shared, stage_two_block):
+def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
@@ -478,9 +476,7 @@ def test__summarize_blocks(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats(
-        blocks=block_meta_list, is_substage=False
-    )
+    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
     stats.stage_stats["read"] = calculated_stats
     summarized_str = stats._summarize_blocks("read", False)
     summarized_lines = summarized_str.split("\n")
@@ -544,6 +540,31 @@ def test__summarize_blocks(ray_start_regular_shared, stage_two_block):
         )
         == summarized_lines[6]
     )
+
+
+def test_get_total_stats(ray_start_regular_shared, stage_two_block):
+    """Tests a set of similar getter methods which pull aggregated
+    statistics values after calculating stage-level stats:
+    `DatasetStats.get_total_wall_time()`,
+    `DatasetStats.get_total_cpu_time()`,
+    `DatasetStats.get_max_heap_memory()`."""
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
+    wall_time_stats = calculated_stats.get(DatasetStats.WALL_TIME)
+    assert stats.get_total_wall_time() == wall_time_stats.get("sum")
+
+    cpu_time_stats = calculated_stats.get(DatasetStats.CPU_TIME)
+    assert stats.get_total_cpu_time() == cpu_time_stats.get("sum")
+
+    peak_memory_stats = calculated_stats.get(DatasetStats.PEAK_HEAP_MEMORY)
+    assert stats.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
 if __name__ == "__main__":
