@@ -47,7 +47,7 @@ def _deserialize_ndarray(b64_string: str) -> np.ndarray:
 
 @DeveloperAPI
 def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
-    """Serialize a gym Space into JSON-serializable dict.
+    """Serialize a gym Space into a JSON-serializable dict.
 
     Args:
         space: gym.spaces.Space
@@ -74,6 +74,13 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         if hasattr(sp, "start"):
             d["start"] = sp.start
         return d
+
+    def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
+        return {
+            "space": "multi-binary",
+            "n": sp.n,
+            "dtype": sp.dtype.str,
+        }
 
     def _multi_discrete(sp: gym.spaces.MultiDiscrete) -> Dict:
         return {
@@ -137,6 +144,8 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _box(space)
     elif isinstance(space, gym.spaces.Discrete):
         return _discrete(space)
+    elif isinstance(space, gym.spaces.MultiBinary):
+        return _multi_binary(space)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         return _multi_discrete(space)
     elif isinstance(space, gym.spaces.Tuple):
@@ -195,7 +204,10 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _discrete(d: Dict) -> gym.spaces.Discrete:
         return gym.spaces.Discrete(**__common(d))
 
-    def _multi_discrete(d: Dict) -> gym.spaces.Discrete:
+    def _multi_binary(d: Dict) -> gym.spaces.MultiBinary:
+        return gym.spaces.MultiBinary(**__common(d))
+
+    def _multi_discrete(d: Dict) -> gym.spaces.MultiDiscrete:
         ret = d.copy()
         ret.update(
             {
@@ -231,6 +243,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     space_map = {
         "box": _box,
         "discrete": _discrete,
+        "multi-binary": _multi_binary,
         "multi-discrete": _multi_discrete,
         "tuple": _tuple,
         "dict": _dict,
