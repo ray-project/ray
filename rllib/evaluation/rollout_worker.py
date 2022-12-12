@@ -552,6 +552,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.total_rollout_fragment_length: int = (
             configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
+        # Remember if we are deailing with an Atari env.
+        self.is_atari = False
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
@@ -623,6 +625,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 and not self.config.model.get("custom_preprocessor")
                 and self.config.preprocessor_pref == "deepmind"
             ):
+                self.is_atari = True
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -1999,7 +2002,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 if not policy and not restore_states:
                     # TODO(jungong) : revisit this. It will be nicer to create
                     # connectors as the last step of Policy.__init__().
-                    create_connectors_for_policy(new_policy, merged_conf)
+                    create_connectors_for_policy(
+                        new_policy,
+                        merged_conf,
+                        is_atari=self.is_atari,
+                        preprocessing_enabled=self.preprocessing_enabled,
+                    )
                 maybe_get_filters_for_syncing(self, name)
             else:
                 filter_shape = tree.map_structure(

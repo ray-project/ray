@@ -34,14 +34,16 @@ def get_agent_connectors_from_config(
 ) -> AgentConnectorPipeline:
     connectors = []
 
-    if config["clip_rewards"] is True:
+    # In addition to when specified, we turn on reward clipping by default
+    # for Atari environments.
+    if config["clip_rewards"] is True or ctx.is_atari:
         connectors.append(ClipRewardAgentConnector(ctx, sign=True))
     elif type(config["clip_rewards"]) == float:
         connectors.append(
             ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
         )
 
-    if not config["_disable_preprocessor_api"]:
+    if ctx.preprocessing_enabled:
         connectors.append(ObsPreprocessorConnector(ctx))
 
     # Filters should be after observation preprocessing
@@ -83,14 +85,29 @@ def get_action_connectors_from_config(
 
 
 @PublicAPI(stability="alpha")
-def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
+def create_connectors_for_policy(
+    policy: "Policy",
+    config: TrainerConfigDict,
+    *,
+    is_atari: bool = False,
+    preprocessing_enabled: bool = True,
+):
     """Util to create agent and action connectors for a Policy.
 
     Args:
         policy: Policy instance.
         config: Trainer config dict.
+        is_atari: Whether the environment is an Atari environment.
+            Note that this bit is not provided by our config dict,
+            and is only computed during worker initialization.
+        preprocessing_enabled: Whether preprocessing is enabled.
+            Note that the final value of this config bit is not
+            provided by our config dict, and is only computed during
+            worker initialization.
     """
-    ctx: ConnectorContext = ConnectorContext.from_policy(policy)
+    ctx: ConnectorContext = ConnectorContext.from_policy(
+        policy, is_atari=is_atari, preprocessing_enabled=preprocessing_enabled,
+    )
 
     assert (
         policy.agent_connectors is None and policy.agent_connectors is None
@@ -99,9 +116,9 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_config(ctx, config)
 
-    logger.info("Using connectors:")
-    logger.info(policy.agent_connectors.__str__(indentation=4))
-    logger.info(policy.action_connectors.__str__(indentation=4))
+    print("Using connectors:")
+    print(policy.agent_connectors.__str__(indentation=4))
+    print(policy.action_connectors.__str__(indentation=4))
 
 
 @PublicAPI(stability="alpha")

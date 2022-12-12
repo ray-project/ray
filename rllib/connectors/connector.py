@@ -42,15 +42,23 @@ class ConnectorContext:
         action_space: gym.Space = None,
         view_requirements: Dict[str, ViewRequirement] = None,
         is_policy_recurrent: bool = False,
+        is_atari: bool = False,
+        preprocessing_enabled: bool = True,
     ):
         """Construct a ConnectorContext instance.
 
         Args:
+            config: Algorithm config dict.
             initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
+            observation_space: a policy's observation space.
             action_space_struct: a policy's action space, in python
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
+            view_requirements: a policy's view requirements.
+            is_policy_recurrent: whether the policy is recurrent.
+            is_atari: whether the policy is for an Atari env.
+            preprocessing_enabled: whether automatic preprocessing is enabled.
         """
         self.config = config or {}
         self.initial_states = initial_states or []
@@ -58,13 +66,26 @@ class ConnectorContext:
         self.action_space = action_space
         self.view_requirements = view_requirements
         self.is_policy_recurrent = is_policy_recurrent
+        self.is_atari = is_atari
+        self.preprocessing_enabled = preprocessing_enabled
 
     @staticmethod
-    def from_policy(policy: "Policy") -> "ConnectorContext":
+    def from_policy(
+        policy: "Policy",
+        *,
+        is_atari: bool = False,
+        preprocessing_enabled: bool = True,
+    ) -> "ConnectorContext":
         """Build ConnectorContext from a given policy.
 
         Args:
             policy: Policy
+            is_atari: Whether the policy is for an Atari env.
+                Note that this config is not available from the policy today.
+            preprocessing_enabled: Whether automatic preprocessing is enabled
+                for this policy. Note that this config is also not available from
+                the policy itself, since preprocessing happens before sample batches
+                arrive at the policy.
 
         Returns:
             A ConnectorContext instance.
@@ -76,6 +97,8 @@ class ConnectorContext:
             action_space=policy.action_space,
             view_requirements=policy.view_requirements,
             is_policy_recurrent=policy.is_recurrent(),
+            is_atari=is_atari,
+            preprocessing_enabled=preprocessing_enabled,
         )
 
 
