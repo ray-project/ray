@@ -1,11 +1,10 @@
 import os
 
 from abc import ABC
-from unittest.mock import patch
 
 import ray
 
-from ray.util.spark import _init_ray_cluster, RayClusterOnSpark
+from ray.util.spark.cluster_init import _init_ray_cluster, RayClusterOnSpark
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
@@ -45,7 +44,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                     assert worker_res['CPU'] == self.num_cpus_per_spark_task
 
     def test_basic_ray_app(self):
-        with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False):
+        with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False) as cluster:
             @ray.remote
             def f(x):
                 return x * x
@@ -54,28 +53,30 @@ class RayOnSparkCPUClusterTestBase(ABC):
             results = ray.get(futures)
             assert results == [i * i for i in range(32)]
 
+        # assert temp dir is removed.
+        time.sleep(5)
+        assert not os.path.exists(cluster.temp_dir)
+
     def test_ray_cluster_shutdown(self):
         with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False) as cluster:
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
-            def fake_shutdown(_):
-                pass
-
-            with patch.object(RayClusterOnSpark, "shutdown", fake_shutdown):
-                cluster._cancel_background_spark_job()
-                time.sleep(20)
+            cluster._cancel_background_spark_job()
+            time.sleep(20)
 
             assert len(self.get_ray_worker_resources_list()) == 0
 
-        time.sleep(3)  # wait ray head node exit.
+        time.sleep(5)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         hostname, port = cluster.address.split(":")
         assert not check_port_open(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False) as cluster:
+            # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
+            cluster.spark_job_is_canceled = False
             time.sleep(5)
 
             # assert ray head node exit by checking head port being closed.
@@ -185,3 +186,4 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
             .config("spark.task.maxFailures", "1") \
             .config("spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path) \
             .getOrCreate()
+

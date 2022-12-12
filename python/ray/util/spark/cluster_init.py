@@ -7,8 +7,10 @@ import threading
 import logging
 import uuid
 from packaging.version import Version
+from typing import Optional, Dict
 
 from ray.util.annotations import PublicAPI
+from ray._private.storage import _load_class
 
 from .utils import (
     exec_cmd,
@@ -19,13 +21,13 @@ from .utils import (
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
     get_avail_mem_per_ray_worker_node,
-    get_dbutils,
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
-    _display_databricks_driver_proxy_url,
     gen_cmd_exec_failure_msg,
     setup_sigterm_on_parent_death,
 )
+from .start_hook_base import RayOnSparkStartHook
+from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
 
 if not sys.platform.startswith("linux"):
     raise RuntimeError("Ray on spark only supports running on Linux.")
@@ -41,6 +43,9 @@ try:
         raise RuntimeError(_spark_dependency_error)
 except ImportError:
     raise RuntimeError(_spark_dependency_error)
+
+
+RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 
 
 @PublicAPI(stability="alpha")
@@ -59,14 +64,23 @@ class RayClusterOnSpark:
         num_workers_node: The number of workers in the ray cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, num_workers_node):
+    def __init__(
+            self,
+            address,
+            head_proc,
+            spark_job_group_id,
+            num_workers_node,
+            temp_dir,
+    ):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
+        self.num_worker_nodes = num_workers_node
+        self.temp_dir = temp_dir
+
         self.ray_context = None
         self.is_shutdown = False
         self.spark_job_is_canceled = False
-        self.num_worker_nodes = num_workers_node
         self.background_job_exception = None
 
     def _cancel_background_spark_job(self):
@@ -331,7 +345,13 @@ def _init_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    _logger.warning("Test version 013.")
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    elif is_in_databricks_runtime():
+        start_hook = DefaultDatabricksRayOnSparkStartHook()
+    else:
+        start_hook = RayOnSparkStartHook()
+
     head_options = head_options or {}
     worker_options = worker_options or {}
 
@@ -438,10 +458,7 @@ def _init_ray_cluster(
     # TODO: Set individual temp dir for ray worker nodes, and auto GC temp data when ray node exits
     #  See https://github.com/ray-project/ray/issues/28876#issuecomment-1322016494
     if ray_temp_root_dir is None:
-        if is_in_databricks_runtime():
-            ray_temp_root_dir = "/local_disk0/tmp"
-        else:
-            ray_temp_root_dir = "/tmp"
+        ray_temp_root_dir = start_hook.get_default_temp_dir()
     ray_temp_dir = os.path.join(
         ray_temp_root_dir, f"ray-{ray_head_port}-{temp_dir_unique_suffix}"
     )
@@ -482,6 +499,7 @@ def _init_ray_cluster(
     )
 
     # wait ray head node spin up.
+    time.sleep(5)
     for _ in range(_RAY_HEAD_STARTUP_TIMEOUT):
         time.sleep(1)
         if ray_head_proc.poll() is not None:
@@ -506,12 +524,7 @@ def _init_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    if is_in_databricks_runtime():
-        _display_databricks_driver_proxy_url(
-            spark.sparkContext,
-            ray_dashboard_port,
-            "Ray Cluster Dashboard"
-        )
+    start_hook.on_ray_dashboard_created(ray_dashboard_port)
 
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -620,6 +633,7 @@ def _init_ray_cluster(
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
         num_workers_node=num_worker_nodes,
+        temp_dir=ray_temp_dir,
     )
 
     def background_job_thread_fn():
@@ -672,19 +686,14 @@ def _init_ray_cluster(
             target=inheritable_thread_target(background_job_thread_fn), args=()
         ).start()
 
-        time.sleep(_BACKGROUND_JOB_STARTUP_WAIT)  # wait background spark task starting.
+        # wait background spark task starting.
+        for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
+            time.sleep(1)
+            if ray_cluster_handler.background_job_exception is not None:
+                raise RuntimeError("Ray workers failed to start.") \
+                    from ray_cluster_handler.background_job_exception
 
-        if is_in_databricks_runtime():
-            try:
-                get_dbutils().entry_point.registerBackgroundSparkJobGroup(
-                    spark_job_group_id
-                )
-            except Exception:
-                _logger.warning(
-                    "Register ray cluster spark job as background job failed. You need to manually "
-                    "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
-                    "python REPL."
-                )
+        start_hook.on_spark_background_job_created(spark_job_group_id)
         return ray_cluster_handler
     except Exception:
         # If driver side setup ray-cluster routine raises exception, it might result in part of ray
@@ -699,17 +708,17 @@ _active_ray_cluster = None
 
 @PublicAPI(stability="alpha")
 def init_ray_cluster(
-    num_worker_nodes=None,
-    total_cpus=None,
-    total_gpus=None,
-    total_heap_memory_bytes=None,
-    total_object_store_memory_bytes=None,
-    object_store_memory_per_node=None,
-    head_options=None,
-    worker_options=None,
-    ray_temp_root_dir=None,
-    safe_mode=True,
-):
+    num_worker_nodes: Optional[int] = None,
+    total_cpus: Optional[int] = None,
+    total_gpus: Optional[int] = None,
+    total_heap_memory_bytes: Optional[int] = None,
+    total_object_store_memory_bytes: Optional[int] = None,
+    object_store_memory_per_node: Optional[int] = None,
+    head_options: Optional[Dict] = None,
+    worker_options: Optional[Dict] = None,
+    ray_temp_root_dir: Optional[str] = None,
+    safe_mode: Optional[bool] = True,
+) -> None:
     """
     Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
     application's driver side node.
@@ -776,7 +785,7 @@ def init_ray_cluster(
 
 
 @PublicAPI(stability="alpha")
-def shutdown_ray_cluster():
+def shutdown_ray_cluster() -> None:
     """
     Shut down the active ray cluster.
     """

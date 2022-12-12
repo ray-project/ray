@@ -18,24 +18,6 @@ def is_in_databricks_runtime():
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
 
 
-class _NoDbutilsError(Exception):
-    pass
-
-
-def get_dbutils():
-    try:
-        import IPython
-
-        ip_shell = IPython.get_ipython()
-        if ip_shell is None:
-            raise _NoDbutilsError
-        return ip_shell.ns_table["user_global"]["dbutils"]
-    except ImportError:
-        raise _NoDbutilsError
-    except KeyError:
-        raise _NoDbutilsError
-
-
 def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
     cmd_str = " ".join(cmd)
     tail_output = "".join(tail_output_deque)
@@ -346,22 +328,3 @@ def setup_sigterm_on_parent_death():
         _logger.warning(
             f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}."
         )
-
-
-def _display_databricks_driver_proxy_url(spark_context, port, title):
-    from dbruntime.display import displayHTML
-    driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
-    commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
-    orgId = commandContextTags.apply("orgId")
-    clusterId = commandContextTags.apply("clusterId")
-
-    template = "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
-    proxy_url = template.format(orgId=orgId, clusterId=clusterId, port=port)
-
-    displayHTML(f"""
-      <div style="margin-bottom: 16px">
-          <a href="{proxy_url}">
-              Open {title} in a new tab
-          </a>
-      </div>
-    """)
