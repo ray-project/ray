@@ -4679,7 +4679,7 @@
 ##################
 
 - name: chaos_many_tasks_no_object_store
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_tasks_no_object_store
@@ -4702,7 +4702,7 @@
     file_manager: sdk
 
 - name: chaos_many_actors
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_actors
