@@ -263,8 +263,10 @@ message TaskEvents {
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped task events due to buffer size limit on workers.
-  int32 num_task_events_dropped = 2;
+  // Number of dropped profile task events due to buffer size limit on workers.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of dropped status task events due to buffer size limit on workers.
+  int32 num_status_task_events_dropped = 4;
 }
 
 message ResourceTableData {
