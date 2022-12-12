@@ -62,6 +62,17 @@ class SyncConfig:
     happens via uploading/downloading from this remote storage - no syncing will
     happen between nodes.
 
+    There are a few scenarios where syncing takes place:
+
+    (1) The Tune driver (on the head node) syncing the experiment directory to the cloud
+        (which includes experiment state such as searcher state, the list of trials
+        and their statuses, and trial metadata)
+    (2) Workers directly syncing trial checkpoints to the cloud
+    (3) Workers syncing their trial directories to the head node
+        (this is the default option when no cloud storage is used)
+
+    See :ref:`tune-checkpoint-syncing` for more details.
+
     Args:
         upload_dir: Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
@@ -74,30 +85,31 @@ class SyncConfig:
             Defaults to ``"auto"`` (auto detect), which assigns a default syncer
             that uses pyarrow to handle cloud storage syncing when ``upload_dir``
             is provided.
-        sync_on_checkpoint: If *True*, sync-down of the trial directory to the head node
-            will happen on every trial checkpoint.
-            If *False*, syncing from the worker trial directory to head node is
-            best-effort and happens approximately every ``sync_period`` seconds.
+        sync_period: Minimum time in seconds to wait between two sync operations.
+            A smaller ``sync_period`` will have more up-to-date data at the sync
+            location but introduces more syncing overhead.
+            Defaults to 5 minutes.
+            **Note**: This applies to (1) and (3). Trial checkpoints are uploaded
+            to the cloud synchronously on every checkpoint.
+        sync_timeout: Maximum time in seconds to wait for a sync process
+            to finish running. This is used to catch hanging sync operations
+            so that experiment execution can continue and the syncs can be retried.
+            Defaults to 30 minutes.
+            **Note**: Currently, this timeout only affects cloud syncing: (1) and (2).
+        sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
+            to the head node will be forced on every trial checkpoint, irrespective
+            of the ``sync_period``.
             Defaults to True.
             **Note**: This is ignored if ``upload_dir`` is specified, since this
-            only applies to worker-to-head-node syncing.
-        sync_period: Minimum time in seconds to wait between syncs.
-            Defaults to 5 minutes.
-            **Note**: This applies to both cloud storage syncing and
-            worker-to-head-node syncing.
-        sync_timeout: Maximum time in seconds to wait for a sync process
-            to finish running.
-            Defaults to 30 minutes.
-            **Note**: Currently, this timeout only affects syncing up/down to
-            cloud storage.
+            only applies to worker-to-head-node syncing (3).
     """
 
     upload_dir: Optional[str] = None
     syncer: Optional[Union[str, "Syncer"]] = "auto"
-
-    sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
+
+    sync_on_checkpoint: bool = True
 
     def __post_init__(self):
         if self.upload_dir and self.syncer is None:
@@ -645,7 +657,7 @@ class SyncerCallback(Callback):
 
         # Always run if force=True
         # Otherwise, only run if we should sync (considering sync period)
-        # or if there is no sync currently still running.
+        # and if there is no sync currently still running.
         if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
