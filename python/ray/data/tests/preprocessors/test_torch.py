@@ -1,5 +1,6 @@
 import numpy as np
-import torchvision
+import torch
+from torchvision import transforms
 
 import ray
 from ray.data.preprocessors import TorchVisionPreprocessor
@@ -29,7 +30,7 @@ class TestTorchVisionPreprocessor:
                 {"image": np.zeros((32, 32, 3)), "label": 1},
             ]
         )
-        transform = torchvision.transforms.ToTensor()
+        transform = transforms.ToTensor()
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         transformed_dataset = preprocessor.transform(dataset)
@@ -40,6 +41,33 @@ class TestTorchVisionPreprocessor:
         assert all(image.shape == (3, 32, 32) for image in transformed_images)
         assert all(image.dtype == np.double for image in transformed_images)
 
+    def test_batch_transform_images(self):
+        dataset = ray.data.from_items(
+            [
+                {"image": np.zeros((32, 32, 3)), "label": 0},
+                {"image": np.zeros((32, 32, 3)), "label": 1},
+            ]
+        )
+        transform = transforms.Compose(
+            [
+                transforms.Lambda(
+                    lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2)
+                ),
+                transforms.Resize(64),
+            ]
+        )
+        preprocessor = TorchVisionPreprocessor(
+            columns=["image"], transform=transform, batched=True
+        )
+
+        transformed_dataset = preprocessor.transform(dataset)
+
+        transformed_images = [
+            record["image"] for record in transformed_dataset.take_all()
+        ]
+        assert all(image.shape == (3, 64, 64) for image in transformed_images)
+        assert all(image.dtype == np.double for image in transformed_images)
+
     def test_transform_ragged_images(self):
         dataset = ray.data.from_items(
             [
@@ -47,7 +75,7 @@ class TestTorchVisionPreprocessor:
                 {"image": np.zeros((32, 32, 3)), "label": 1},
             ]
         )
-        transform = torchvision.transforms.ToTensor()
+        transform = transforms.ToTensor()
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         transformed_dataset = preprocessor.transform(dataset)

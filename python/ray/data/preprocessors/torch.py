@@ -11,13 +11,17 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TorchVisionPreprocessor(Preprocessor):
-    """Apply a TorchVision transform to an image column.
+    """Apply a `TorchVision transform <https://pytorch.org/vision/stable/transforms.html>`_
+    to image columns.
 
     Examples:
         >>> import ray
         >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
         >>> dataset  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
+
+        :class:`TorchVisionPreprocessor` passes ndarrays to your transform. To convert
+        ndarrays to Torch tensors, add ``ToTensor`` to your pipeline.
 
         >>> from torchvision import transforms
         >>> from ray.data.preprocessors import TorchVisionPreprocessor
@@ -29,10 +33,27 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> preprocessor.transform(dataset)  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
 
+        For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
+        with a ``Lambda``.
+
+        >>> transform = transforms.Compose([
+        ...     transforms.Lambda(
+        ...         lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2))
+        ...     ),
+        ...     transforms.Resize((224, 224))
+        ... ])
+        >>> preprocessor = TorchVisionPreprocessor(
+        ...     ["image"], transform=transform, batched=True
+        ... )
+        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
+        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+
     Args:
         columns: The columns to apply the TorchVision transform to.
         transform: The TorchVision transform you want to apply. This transform should
             accept an ``np.ndarray`` as input and return a ``torch.Tensor`` as output.
+        batched: If ``True``, apply ``transform`` to batches of shape
+            :math:`(B, H, W, C)`. Otherwise, apply ``transform`` to individual images.
     """  # noqa: E501
 
     _is_fittable = False
@@ -41,9 +62,11 @@ class TorchVisionPreprocessor(Preprocessor):
         self,
         columns: List[str],
         transform: Callable[["np.ndarray"], "torch.Tensor"],
+        batched: bool = False,
     ):
         self._columns = columns
         self._fn = transform
+        self._batched = batched
 
     def __repr__(self) -> str:
         return (
@@ -55,6 +78,8 @@ class TorchVisionPreprocessor(Preprocessor):
         self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
     ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         def transform(batch: np.ndarray) -> np.ndarray:
+            if self._batched:
+                return self._fn(batch).numpy()
             return np.array([self._fn(array).numpy() for array in batch])
 
         if isinstance(np_data, dict):
