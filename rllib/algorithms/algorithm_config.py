@@ -815,7 +815,7 @@ class AlgorithmConfig:
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
         # resolve rl_module class
-        if self.rl_module_class is None:
+        if self._enable_rl_module_api and self.rl_module_class is None:
             rl_module_class = self.get_rl_module_class(framework_str=self.framework_str)
             self.rl_module_class = _resolve_class_path(rl_module_class)
 
