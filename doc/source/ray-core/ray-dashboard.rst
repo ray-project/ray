@@ -115,6 +115,23 @@ There is also a convenient button to open the grafana UI from the dashboard. The
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
     :align: center
 
+Event View
+~~~~~~~~~~
+
+.. note:: 
+
+  The event view feature is experimental.
+
+The event view lets you see a list of events associated with a specific type (e.g., autoscaler or job) in a chronological order. The equivalent information is also accessible via CLI commands ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>`.
+
+There are 2 types of events that are available.
+
+- **Job**: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
+- **Autoscaler**: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/event.png
+    :align: center
+
 Advanced Usage
 --------------
 
