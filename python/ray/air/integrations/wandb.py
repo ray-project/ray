@@ -41,6 +41,13 @@ WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
 # It doesn't take in any arguments and returns the W&B API key.
 # Example: "your.module.wandb_setup_api_key_hook".
 WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
+# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
+# to populate environment variables to specify the location
+# (project and group) of the W&B run.
+# It doesn't take in any arguments and doesn't return anything, but it does populate
+# WANDB_PROJECT_NAME and WANDB_GROUP_NAME.
+# Example: "your.module.wandb_populate_run_location_hook".
+WANDB_POPULATE_RUN_LOCATION_HOOK = "WANDB_POPULATE_RUN_LOCATION_HOOK"
 # Hook that is invoked after running wandb.init in WandbLoggerCallback
 # to process information about the W&B run.
 # It takes in a W&B run object and doesn't return anything.
@@ -468,9 +475,24 @@ class WandbLoggerCallback(LoggerCallback):
         )
         _set_api_key(self.api_key_file, self.api_key)
 
-        # Try to get project and group from environment variables if not
-        # passed through WandbLoggerCallback.
+        if (
+            not self.project
+            and not os.environ.get(WANDB_PROJECT_ENV_VAR)
+            and os.environ.get(WANDB_POPULATE_RUN_LOCATION_HOOK)
+        ):
+            # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
+            # from external hook
+            try:
+                _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+            except Exception as e:
+                logger.exception(
+                    f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
+                    f"populate {WANDB_PROJECT_ENV_VAR} and {WANDB_GROUP_ENV_VAR}: {e}",
+                    exc_info=e,
+                )
         if not self.project and os.environ.get(WANDB_PROJECT_ENV_VAR):
+            # Try to get project and group from environment variables if not
+            # passed through WandbLoggerCallback.
             self.project = os.environ.get(WANDB_PROJECT_ENV_VAR)
         if not self.project:
             raise ValueError(
