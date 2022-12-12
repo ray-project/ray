@@ -2102,6 +2102,13 @@ py_test(
     srcs = ["utils/exploration/tests/test_random_encoder.py"]
 )
 
+py_test(
+    name = "policy/tests/test_torch_utils",
+    tags = ["team:rllib", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_torch_utils.py"]
+)
+
 # Schedules
 py_test(
     name = "test_schedules",
