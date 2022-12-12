@@ -1215,7 +1215,10 @@ def _process_policy_eval_results(
             else:
                 action_to_send = action
 
-            env_id: int = eval_data[i].env_id
+            try:#TODO
+                env_id: int = eval_data[i].env_id
+            except Exception as e:
+                raise e
             agent_id: AgentID = eval_data[i].agent_id
             episode: Episode = active_episodes[env_id]
             _assert_episode_not_faulty(episode)

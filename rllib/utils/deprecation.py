@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Union
 
 from ray.util import log_once
-from ray.util.annotations import _mark_annotated
+#from ray.util.annotations import _mark_annotated
 
 logger = logging.getLogger(__name__)
 
