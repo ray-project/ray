@@ -298,10 +298,14 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif dist_type in (
-            MultiActionDistribution,
-            TorchMultiActionDistribution,
-        ) or isinstance(action_space, (Tuple, Dict)):
+        elif (
+            dist_type
+            in (
+                MultiActionDistribution,
+                TorchMultiActionDistribution,
+            )
+            or isinstance(action_space, (Tuple, Dict))
+        ):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -481,34 +485,20 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import (
                         AttentionWrapper,
-                        Keras_AttentionWrapper,
                     )
                     from ray.rllib.models.tf.recurrent_net import (
                         LSTMWrapper,
-                        Keras_LSTMWrapper,
                     )
 
                     wrapped_cls = model_cls
-                    # Wrapped (custom) model is itself a keras Model ->
-                    # wrap with keras LSTM/GTrXL (attention) wrappers.
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        model_cls = (
-                            Keras_LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else Keras_AttentionWrapper
-                        )
-                        model_config["wrapped_cls"] = wrapped_cls
-                    # Wrapped (custom) model is ModelV2 ->
-                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
-                    else:
-                        forward = wrapped_cls.forward
-                        model_cls = ModelCatalog._wrap_if_needed(
-                            wrapped_cls,
-                            LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else AttentionWrapper,
-                        )
-                        model_cls._wrapped_forward = forward
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls,
+                        LSTMWrapper
+                        if model_config.get("use_lstm")
+                        else AttentionWrapper,
+                    )
+                    model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -659,32 +649,20 @@ class ModelCatalog:
 
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
-                    Keras_AttentionWrapper,
                 )
                 from ray.rllib.models.tf.recurrent_net import (
                     LSTMWrapper,
-                    Keras_LSTMWrapper,
                 )
 
                 wrapped_cls = v2_class
                 if model_config.get("use_lstm"):
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_LSTMWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, LSTMWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, LSTMWrapper)
+                    v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_AttentionWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, AttentionWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper
+                    )
+                    v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)

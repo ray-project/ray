@@ -12,7 +12,7 @@ import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import (
