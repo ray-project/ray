@@ -40,7 +40,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
  */
-const NodeRow = ({
+export const NodeRow = ({
   node,
   expanded,
   onExpandButtonClick,
@@ -133,7 +133,10 @@ const NodeRow = ({
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
             {memoryConverter(objectStoreTotalMemory)}(
-            {(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}
+            {(
+              (raylet.objectStoreUsedMemory / objectStoreTotalMemory) *
+              100
+            ).toFixed(1)}
             %)
           </PercentageBar>
         )}
@@ -167,7 +170,7 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
+export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
   const classes = rowStyles();
 
   const { ip, mem, logUrl } = node;
@@ -236,7 +239,7 @@ const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
         {mem && (
           <PercentageBar num={memoryInfo.rss} total={mem[0]}>
             {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            {((memoryInfo.rss / mem[0]) * 100).toFixed(1)}
             %)
           </PercentageBar>
         )}

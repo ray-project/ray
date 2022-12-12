@@ -276,7 +276,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range_table(5)
+    ds = ray.data.range_table(5, parallelism=1)
 
     # Test the default 1GiB window size.
     def checker(shard, results):
