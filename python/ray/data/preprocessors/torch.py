@@ -34,7 +34,7 @@ class TorchVisionPreprocessor(Preprocessor):
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
-        with a ``Lambda``.
+        with a batch-supporting ``Lambda``.
 
         >>> transform = transforms.Compose([
         ...     transforms.Lambda(
