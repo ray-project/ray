@@ -162,18 +162,6 @@ Note that CPU quantities will be rounded up to the nearest integer
 before being relayed to Ray.
 The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
-:::{warning}
-Due to a  [bug](https://github.com/ray-project/kuberay/pull/497) in KubeRay 0.3.0,
-the following piece of configuration is required to advertise the presence of GPUs
-to Ray.
-```yaml
-rayStartParams:
-    num-gpus: "1"
-```
-Future releases of KubeRay will not require this. (GPU quantities will be correctly auto-detected
-from container limits.)
-:::
-
 On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
 For this reason, it is best when possible to **set resource requests equal to resource limits**.
 
