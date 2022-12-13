@@ -12,6 +12,13 @@ from ray.serve.schema import ServeApplicationSchema
 
 
 def main():
+    """
+    This is the Job that gets submitted to the Ray Cluster when `serve run` is executed.
+
+    Loads the Serve app (either from a YAML config file or a direct import path), starts
+    Serve and runs the app. By default, the code blocks until a SIGINT signal is
+    received, at which point Serve is shutdown and the process exits.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-or-import-path")
     parser.add_argument("--host")
