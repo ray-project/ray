@@ -58,7 +58,7 @@ def exec_cmd(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        **kwargs
+        **kwargs,
     )
 
     tail_output_deque = collections.deque(maxlen=100)
@@ -78,17 +78,22 @@ def exec_cmd(
 
     return_code = process.wait()
     if return_code != 0:
-        raise RuntimeError(gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque))
+        raise RuntimeError(
+            gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque)
+        )
 
 
 def check_port_open(host, port):
     import socket
     from contextlib import closing
+
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
 
 
-def get_random_unused_port(host, min_port=1024, max_port=65535, max_retries=100, exclude_list=None):
+def get_random_unused_port(
+    host, min_port=1024, max_port=65535, max_retries=100, exclude_list=None
+):
     """
     Get random unused port.
     """
@@ -102,7 +107,9 @@ def get_random_unused_port(host, min_port=1024, max_port=65535, max_retries=100,
             continue
         if not check_port_open(host, port):
             return port
-    raise RuntimeError(f"Get available port between range {min_port} and {max_port} failed.")
+    raise RuntimeError(
+        f"Get available port between range {min_port} and {max_port} failed."
+    )
 
 
 def get_spark_session():
@@ -169,9 +176,7 @@ def _calc_mem_per_ray_worker_node(
                 available_shared_mem_per_node,
             )
         )
-    heap_mem_bytes = (
-        available_physical_mem_per_node - object_store_bytes
-    )
+    heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
     return heap_mem_bytes, object_store_bytes
 
 
@@ -236,7 +241,11 @@ def get_target_spark_tasks(
                 )
 
             calculated_tasks.append(
-                int(math.ceil(total_heap_memory_bytes / ray_worker_node_heap_memory_bytes))
+                int(
+                    math.ceil(
+                        total_heap_memory_bytes / ray_worker_node_heap_memory_bytes
+                    )
+                )
             )
 
         if total_object_store_memory_bytes is not None:
@@ -285,13 +294,21 @@ def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
                 shared_mem_bytes,
                 object_store_memory_per_node,
             )
-            return ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes, None
+            return (
+                ray_worker_node_heap_mem_bytes,
+                ray_worker_node_object_store_bytes,
+                None,
+            )
         except Exception as e:
             return -1, -1, repr(e)
 
     # Running memory inference routine on spark executor side since the spark worker nodes may
     # have a different machine configuration compared to the spark driver node.
-    inferred_ray_worker_node_heap_mem_bytes, inferred_ray_worker_node_object_store_bytes, err = (
+    (
+        inferred_ray_worker_node_heap_mem_bytes,
+        inferred_ray_worker_node_object_store_bytes,
+        err,
+    ) = (
         spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
     )
 
@@ -299,7 +316,10 @@ def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
         raise RuntimeError(
             f"Inferring ray worker available memory failed, error: {err}"
         )
-    return inferred_ray_worker_node_heap_mem_bytes, inferred_ray_worker_node_object_store_bytes
+    return (
+        inferred_ray_worker_node_heap_mem_bytes,
+        inferred_ray_worker_node_object_store_bytes,
+    )
 
 
 def get_spark_task_assigned_physical_gpus(gpu_addr_list):
@@ -325,6 +345,4 @@ def setup_sigterm_on_parent_death():
         # Set the parent process death signal of the command process to SIGTERM.
         libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
     except OSError as e:
-        _logger.warning(
-            f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}."
-        )
+        _logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")

@@ -65,12 +65,12 @@ class RayClusterOnSpark:
     """
 
     def __init__(
-            self,
-            address,
-            head_proc,
-            spark_job_group_id,
-            num_workers_node,
-            temp_dir,
+        self,
+        address,
+        head_proc,
+        spark_job_group_id,
+        num_workers_node,
+        temp_dir,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -91,7 +91,9 @@ class RayClusterOnSpark:
         import ray
 
         if self.background_job_exception is not None:
-            raise RuntimeError("Ray workers has exited.") from self.background_job_exception
+            raise RuntimeError(
+                "Ray workers has exited."
+            ) from self.background_job_exception
 
         if self.is_shutdown:
             raise RuntimeError(
@@ -105,13 +107,9 @@ class RayClusterOnSpark:
             last_progress_move_time = time.time()
             while True:
                 time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
-                cur_alive_worker_count = len(
-                    [
-                        node
-                        for node in ray.nodes()
-                        if node["Alive"]
-                    ]
-                ) - 1  # Minus 1 means excluding the head node.
+                cur_alive_worker_count = (
+                    len([node for node in ray.nodes() if node["Alive"]]) - 1
+                )  # Minus 1 means excluding the head node.
 
                 if cur_alive_worker_count == self.num_worker_nodes:
                     return
@@ -266,7 +264,9 @@ def _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_start
         if os.path.exists(port_alloc_file):
             with open(port_alloc_file, mode="r") as fp:
                 port_alloc_data = fp.read()
-            port_alloc_table = [line.split(" ") for line in port_alloc_data.strip().split("\n")]
+            port_alloc_table = [
+                line.split(" ") for line in port_alloc_data.strip().split("\n")
+            ]
             port_alloc_table = [
                 (int(pid_str), int(slot_index_str))
                 for pid_str, slot_index_str in port_alloc_table
@@ -448,7 +448,10 @@ def _init_ray_cluster(
         ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
     )
     ray_dashboard_agent_port = get_random_unused_port(
-        ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port, ray_dashboard_port]
+        ray_head_ip,
+        min_port=9000,
+        max_port=10000,
+        exclude_list=[ray_head_port, ray_dashboard_port],
     )
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
@@ -518,9 +521,7 @@ def _init_ray_cluster(
         cmd_exec_failure_msg = gen_cmd_exec_failure_msg(
             ray_head_node_cmd, ray_head_proc.returncode, tail_output_deque
         )
-        raise RuntimeError(
-            "Start Ray head node failed!\n" + cmd_exec_failure_msg
-        )
+        raise RuntimeError("Start Ray head node failed!\n" + cmd_exec_failure_msg)
 
     _logger.info("Ray head node started.")
 
@@ -554,8 +555,12 @@ def _init_ray_cluster(
 
         context = TaskContext.get()
 
-        worker_port_range_begin, worker_port_range_end = \
+        (
+            worker_port_range_begin,
+            worker_port_range_end,
+        ) = (
             _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_startup()
+        )
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
@@ -603,7 +608,9 @@ def _init_ray_cluster(
                 [str(gpu_id) for gpu_id in available_physical_gpus]
             )
 
-        _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}")
+        _worker_logger.info(
+            f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
+        )
 
         # `preexec_fn=setup_sigterm_on_parent_death` handles the case:
         # If a user cancels the PySpark job, the worker process gets killed, regardless of
@@ -624,9 +631,7 @@ def _init_ray_cluster(
         # NB: Not reachable.
         yield 0
 
-    spark_job_group_id = (
-        f"ray-cluster-job-head-{ray_head_ip}-port-{ray_head_port}"
-    )
+    spark_job_group_id = f"ray-cluster-job-head-{ray_head_ip}-port-{ray_head_port}"
 
     ray_cluster_handler = RayClusterOnSpark(
         address=f"{ray_head_ip}:{ray_head_port}",
@@ -690,8 +695,9 @@ def _init_ray_cluster(
         for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
             time.sleep(1)
             if ray_cluster_handler.background_job_exception is not None:
-                raise RuntimeError("Ray workers failed to start.") \
-                    from ray_cluster_handler.background_job_exception
+                raise RuntimeError(
+                    "Ray workers failed to start."
+                ) from ray_cluster_handler.background_job_exception
 
         start_hook.on_spark_background_job_created(spark_job_group_id)
         return ray_cluster_handler

@@ -517,3 +517,13 @@ py_test_module_list(
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test_module_list(
+  files = [
+    "spark/test_ray_on_spark.py",
+    "spark/test_utils.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)

@@ -10,7 +10,7 @@ import signal
 _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     arg_list = sys.argv[1:]
 
     temp_dir_arg_prefix = "--temp-dir="
@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     for arg in arg_list:
         if arg.startswith(temp_dir_arg_prefix):
-            temp_dir = arg[len(temp_dir_arg_prefix):]
+            temp_dir = arg[len(temp_dir_arg_prefix) :]
 
     if temp_dir is None:
         raise ValueError("Please explicitly set --temp-dir option.")

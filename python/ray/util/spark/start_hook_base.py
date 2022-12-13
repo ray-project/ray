@@ -1,5 +1,4 @@
 class RayOnSparkStartHook:
-
     def get_default_temp_dir(self):
         return "/tmp"
 

@@ -25,6 +25,7 @@ def get_dbutils():
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
     from dbruntime.display import displayHTML
+
     driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
     commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
     orgId = commandContextTags.apply("orgId")
@@ -33,25 +34,24 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     template = "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
     proxy_url = template.format(orgId=orgId, clusterId=clusterId, port=port)
 
-    displayHTML(f"""
+    displayHTML(
+        f"""
       <div style="margin-bottom: 16px">
           <a href="{proxy_url}">
               Open {title} in a new tab
           </a>
       </div>
-    """)
+    """
+    )
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-
     def get_default_temp_dir(self):
         return "/local_disk0/tmp"
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(
-            get_spark_session().sparkContext,
-            port,
-            "Ray Cluster Dashboard"
+            get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
 
     def on_spark_background_job_created(self, job_group_id):
