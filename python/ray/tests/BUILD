@@ -526,4 +526,8 @@ py_test_module_list(
   size = "large",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )
