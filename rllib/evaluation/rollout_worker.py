@@ -553,6 +553,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
         # Remember if we are deailing with an Atari env.
+        # TODO(jungong) : is_atari and preprocessing_enabled should probably be
+        # available on Policy instances as well.
         self.is_atari = False
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
