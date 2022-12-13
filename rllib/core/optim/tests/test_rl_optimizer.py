@@ -60,8 +60,10 @@ def do_rollouts(
     _returns = []
     _rollouts = []
     for _ in range(num_rollouts):
-        obs = env.reset()
-        _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
+        obs, info = env.reset()
+        _obs, _next_obs, _actions, _rewards, _terminateds, _truncateds = (
+            [], [], [], [], [], []
+        )
         _return = -0
         for _ in range(env._max_episode_steps):
             _obs.append(obs)
@@ -69,22 +71,24 @@ def do_rollouts(
                 {"obs": to_tensor(obs)[None]}
             )
             action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-            next_obs, reward, done, _ = env.step(action)
+            next_obs, reward, terminated, truncated, _ = env.step(action)
             _next_obs.append(next_obs)
             _actions.append([action])
             _rewards.append([reward])
-            _dones.append([done])
+            _terminateds.append([terminated])
+            _truncateds.append([truncated])
             _return += reward
-            if done:
+            if terminated or truncated:
                 break
             obs = next_obs
         batch = SampleBatch(
             {
-                "obs": _obs,
-                "next_obs": _next_obs,
-                "actions": _actions,
-                "rewards": _rewards,
-                "dones": _dones,
+                SampleBatch.OBS: _obs,
+                SampleBatch.NEXT_OBS: _next_obs,
+                SampleBatch.ACTIONS: _actions,
+                SampleBatch.REWARDS: _rewards,
+                SampleBatch.TERMINATEDS: _terminateds,
+                SampleBatch.TRUNCATEDS: _truncateds,
             }
         )
         _returns.append(_return)
