@@ -116,9 +116,9 @@ def create_connectors_for_policy(
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_config(ctx, config)
 
-    print("Using connectors:")
-    print(policy.agent_connectors.__str__(indentation=4))
-    print(policy.action_connectors.__str__(indentation=4))
+    logger.info("Using connectors:")
+    logger.info(policy.agent_connectors.__str__(indentation=4))
+    logger.info(policy.action_connectors.__str__(indentation=4))
 
 
 @PublicAPI(stability="alpha")
