@@ -3,10 +3,13 @@ env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:~/.mujoco/mujoco210/bin"}
 debian_packages:
   - unzip
   - zip
+
+  # Needed to run MuJoCo with gymnasium.
   - libosmesa6-dev
   - libgl1-mesa-glx
   - libglfw3
   - patchelf
+  # End: MuJoCo.
 
 python:
   pip_packages:
