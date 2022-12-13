@@ -3488,7 +3488,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1gpu_4cpus.yaml
+    cluster_compute: 1gpu_4cpuse.yaml
 
   run:
     timeout: 18000
