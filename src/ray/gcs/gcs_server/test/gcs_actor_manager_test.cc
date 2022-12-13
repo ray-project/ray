@@ -156,7 +156,6 @@ class GcsActorManagerTest : public ::testing::Test {
         gcs_publisher_,
         *runtime_env_mgr_,
         *function_manager_,
-        nullptr,
         [](const ActorID &actor_id) {},
         [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
           if (skip_delay_) {

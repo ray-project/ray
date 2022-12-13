@@ -92,7 +92,6 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         mock_placement_group_scheduler_,
         gcs_table_storage_,
         *gcs_resource_manager_,
-        nullptr,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {

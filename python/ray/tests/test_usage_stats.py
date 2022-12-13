@@ -183,6 +183,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         assert result == {
+            "key": "val",
             "_test1": "val1",
             "_test2": "val2",
             "actor_num_created": "0",
