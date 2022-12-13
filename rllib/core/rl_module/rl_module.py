@@ -2,14 +2,13 @@ import abc
 from dataclasses import dataclass
 import gym
 import tree  # pip install dm-tree
-from typing import Mapping, Any, Type, TYPE_CHECKING, Union
+from typing import Mapping, Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
-    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
@@ -108,13 +107,14 @@ class RLModule(abc.ABC):
                 previous_init(self, *args, **kwargs)
                 if type(self) == cls:
                     self.__post_init__()
+
             return new_init
 
         cls.__init__ = init_decorator(cls.__init__)
 
     def __post_init__(self):
         """Called after the __init__ method of the subclass.
-        
+
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
@@ -127,14 +127,57 @@ class RLModule(abc.ABC):
         pass
 
     @classmethod
-    def from_config_dict(
+    def from_model_config(
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config: Mapping[str, Any],
         return_config: bool = False,
     ) -> Union["RLModule", Mapping[str, Any]]:
-        """Creates a RLModule instance from a config dict.
+        """Creates a RLModule instance from a model config dict and spaces.
+
+        The model config dict is the same as the one passed to the AlgorithmConfig
+        object that contains global model configurations parameters.
+
+        This method can also be used to create a config dict for the module constructor
+        so it can be re-used to create multiple instances of the module.
+
+        Example:
+
+        .. code-block:: python
+
+            class MyModule(RLModule):
+                def __init__(self, input_dim, output_dim):
+                    self.input_dim, self.output_dim = input_dim, output_dim
+
+                @classmethod
+                def from_config_dict(
+                    cls,
+                    observation_space: gym.Space,
+                    action_space: gym.Space,
+                    model_config: Mapping[str, Any],
+                    return_config: bool = False,
+                ):
+                    return cls(
+                        input_dim=observation_space.shape[0],
+                        output_dim=action_space.n
+                    )
+
+            module = MyModule.from_config_dict(
+                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
+                action_space=gym.spaces.Discrete(2),
+                model_config={},
+            )
+
+            module_config = MyModule.from_config_dict(
+                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
+                action_space=gym.spaces.Discrete(2),
+                model_config={},
+                return_config=True,
+            )
+
+            module = MyModule.from_config(module_config)
+
 
         Args:
             observation_space: The observation space of the env.
@@ -147,6 +190,31 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @classmethod
+    def from_config(cls, config: Any) -> "RLModule":
+        """Creates a RLModule instance from a config object.
+
+        Example:
+
+        .. code-block:: python
+
+            class MyModule(RLModule):
+                def __init__(self, config):
+                    self.config = config
+
+                @classmethod
+                def from_config(cls, config):
+                    return cls(config)
+
+            module = MyModule.from_config({"foo": 42})
+
+        Args:
+            config: The config object.
+
+        Returns:
+            The RLModule instance.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -308,15 +376,9 @@ class RLModule(abc.ABC):
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""
-        return self.get_multi_agent_class()({DEFAULT_POLICY_ID: self})
-
-    @classmethod
-    @OverrideToImplementCustomLogic
-    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
-        """Returns the multi-agent wrapper class for this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule
+        return MultiAgentRLModule.from_config({DEFAULT_POLICY_ID: self})
 
     def __get_default_view_requirements(self):
         obs_space = self.config.observation_space
