@@ -328,6 +328,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        async_fetch_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -462,6 +463,8 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            async_fetch_batch: If True, will use a separate thread to fetch
+                formatted batches from blocks. For non-CPU bound UDFs, this can improve performance, allowing batch fetching compute to be overlapped with the UDF. Defaults to False.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -546,9 +549,13 @@ class Dataset(Generic[T]):
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+            batcher = Batcher(
+                batch_size,
+                batch_format=batch_format,
+                ensure_copy=batch_size is not None,
+            )
 
-            if context.async_fetch_batch:
+            if async_fetch_batch:
                 batcher = AsyncBatcher(base_batcher=batcher)
 
             def validate_batch(batch: Block) -> None:
@@ -588,14 +595,14 @@ class Dataset(Generic[T]):
                 batcher.add(block)
                 while batcher.has_batch():
                     start_time = time.time()
-                    batch = batcher.next_batch(batch_format=batch_format)
+                    batch = batcher.next_batch()
                     print(f"next_batch time: {time.time()-start_time}")
                     yield from process_next_batch(batch)
 
             # Process any last remainder batch.
             batcher.done_adding()
             if batcher.has_any():
-                batch = batcher.next_batch(batch_format=batch_format)
+                batch = batcher.next_batch()
                 yield from process_next_batch(batch)
 
             # Yield remainder block from output buffer.
@@ -2632,6 +2639,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
         drop_last: bool = False,
+        async_fetch_batch: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
@@ -2658,6 +2666,10 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
+            async_fetch_batch: If True, will use a separate thread to fetch
+                formatted batches from blocks. For non-CPU bound UDFs, this can
+                improve performance, allowing batch fetching compute to be
+                overlapped with the UDF. Defaults to False.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
@@ -2686,6 +2698,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            async_fetch_batch=async_fetch_batch,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )

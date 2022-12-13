@@ -86,10 +86,6 @@ OK_PREFIX = "✔️ "
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = 4096
 
-# Whether to asynchronously fetch formatted batches from blocks.
-# For non-CPU bound UDFs (like GPU prediction), this allows batch 
-DEFAULT_ASYNC_FETCH_BATCH = False
-
 
 @DeveloperAPI
 class DatasetContext:
@@ -119,7 +115,6 @@ class DatasetContext:
         min_parallelism: int,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
-        async_fetch_batch: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -142,7 +137,6 @@ class DatasetContext:
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
-        self.async_fetch_batch = async_fetch_batch
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -180,7 +174,6 @@ class DatasetContext:
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
-                    async_fetch_batch=DEFAULT_ASYNC_FETCH_BATCH,
                 )
 
             return _default_context

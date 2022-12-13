@@ -1,31 +1,21 @@
 import collections
 import itertools
-from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union, Dict
-
-import numpy as np
+from typing import Iterable, Iterator, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher, AsyncBatcher
+from ray.data._internal.batcher import (
+    Batcher,
+    BatchType,
+    ShufflingBatcher,
+    AsyncBatcher,
+)
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-if TYPE_CHECKING:
-    import pandas
-    import pyarrow
-
-
-# An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union[
-    "pandas.DataFrame",
-    "pyarrow.Table",
-    np.ndarray,
-    Dict[str, np.ndarray],
-    list,
-]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
@@ -38,6 +28,7 @@ def batch_blocks(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
+    async_fetch_batch: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
 ) -> Iterator[BatchType]:
@@ -63,6 +54,10 @@ def batch_blocks(
             select ``pandas.DataFrame`` or "pyarrow" to select
             ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
+        async_fetch_batch: If True, will use a separate thread to fetch
+                formatted batches from blocks. For non-CPU bound UDFs,
+                his can improve performance, allowing batch fetching
+                compute to be overlapped with the UDF. Defaults to False.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -79,12 +74,12 @@ def batch_blocks(
             shuffle_seed=shuffle_seed,
         )
     else:
-        batcher = Batcher(batch_size=batch_size)
+        batcher = Batcher(batch_size=batch_size, batch_format=batch_format)
+
+    if async_fetch_batch:
+        batcher = AsyncBatcher(base_batcher=batcher)
 
     context = DatasetContext.get_current()
-    
-    if context.async_fetch_batch:
-        batcher = AsyncBatcher(base_batcher=batcher)
 
     def get_batches(block: Optional[ObjectRef[Block]] = None) -> Iterator[BatchType]:
         if block is not None:
@@ -99,18 +94,18 @@ def batch_blocks(
         while batcher.has_batch():
             # While the batcher has full batches, yield batches.
             with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch(batch_format=batch_format)
+                batch = batcher.next_batch()
             with stats.iter_user_s.timer():
                 yield batch
         # Handle remainder batches.
         if block is None and not drop_last and batcher.has_any():
             with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch(batch_format=batch_format)
+                batch = batcher.next_batch()
             with stats.iter_user_s.timer():
                 yield batch
 
     block_window = []  # Handle empty sliding window gracefully.
-    
+
     if (
         prefetch_blocks > 0
         and context.actor_prefetcher_enabled

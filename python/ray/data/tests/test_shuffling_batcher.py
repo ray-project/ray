@@ -1,5 +1,4 @@
 import pytest
-import sys
 
 import pyarrow as pa
 
@@ -126,6 +125,7 @@ def test_shuffling_batcher():
         should_batch_be_full=False,
         should_have_batch_after=False,
     )
+
 
 if __name__ == "__main__":
     import sys
