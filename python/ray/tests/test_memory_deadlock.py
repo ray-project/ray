@@ -21,7 +21,6 @@ DEPTH_POLICY = "group_by_depth"
 @pytest.fixture(params=[LIFO_POLICY, DEPTH_POLICY])
 def ray_with_memory_monitor(shutdown_only, request):
     with ray.init(
-        address="local",
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
@@ -272,3 +271,6 @@ def test_churn_long_running(
     )
     with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(allocate_memory.options(max_retries=-1).remote(small_bytes), timeout=45)
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
