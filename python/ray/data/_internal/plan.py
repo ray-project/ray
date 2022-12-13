@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     UDF,
@@ -261,17 +262,26 @@ class ExecutionPlan:
         metadata = blocks.get_metadata(fetch_if_missing=False)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
+
+        # TODO(scott): apply schema unification here? instead of
+        # kicking out upon first block with valid schema
+        schemas_to_unify = []
         for m in metadata:
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
+                schemas_to_unify.append(m.schema)
+        if schemas_to_unify:
+            return unify_schemas(schemas_to_unify)
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
         # For lazy block lists, this launches read tasks and fetches block metadata
         # until we find valid block schema.
+        schemas_to_unify = []
         for _, m in blocks.iter_blocks_with_metadata():
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
+                schemas_to_unify.append(m.schema)
+        if schemas_to_unify:
+            return unify_schemas(schemas_to_unify)
         return None
 
     def meta_count(self) -> Optional[int]:

@@ -3,6 +3,7 @@ import re
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorArray, ArrowVariableShapedTensorType
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
@@ -417,6 +418,15 @@ DatasetPipeline iterator time breakdown:
 * Total time: T
 """
     )
+
+def test_tensor(ray_start_regular_shared):
+    import numpy as np
+    ds = ray.data.from_items([{"spam": np.zeros((32, 32, 3))}, {"spam": np.zeros((64, 64, 3))}])
+    print(ds.schema().types)
+    print(ds.schema().types[0].storage_type)
+    new_type = ds.schema().types[0].storage_type
+    assert ds.schema().types == ArrowVariableShapedTensorType(dtype=new_type, ndim=3)
+    
 
 
 if __name__ == "__main__":
