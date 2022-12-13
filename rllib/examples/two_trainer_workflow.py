@@ -53,10 +53,10 @@ parser.add_argument(
     "be achieved within --stop-timesteps AND --stop-iters.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=400, help="Number of iterations to train."
+    "--stop-iters", type=int, default=600, help="Number of iterations to train."
 )
 parser.add_argument(
-    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+    "--stop-timesteps", type=int, default=200000, help="Number of timesteps to train."
 )
 # 600.0 = 4 (num_agents) x 150.0
 parser.add_argument(
