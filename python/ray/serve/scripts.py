@@ -184,24 +184,19 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app (from the specified import path or YAML config) on a "
-        "cluster as a Ray Job. The app must be importable by Serve at runtime.\n\n"
+        "Runs the Serve app specified in config_or_import_path on a cluster as a Ray "
+        "Job. config_or_import_path is either a filepath to a YAML config file on the "
+        "Ray Cluster, or an import path on the Ray Cluster for a deployment node of "
+        "the pattern containing_module:deployment_node.\n\n"
         "If using a YAML config, existing deployments with no code changes "
         "will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object.\n\n"
-        "By default, this will block and periodically log status. If you "
+        "Any import path, whether directly specified as the command argument or "
+        "inside a config file, must lead to a FunctionNode or ClassNode object.\n\n"
+        "By default, this command will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
 )
-@click.argument(
-    "config_or_import_path",
-    help=(
-        "Either a filepath to a YAML config file on the Ray Cluster, or an import path "
-        "on the Ray Cluster for a deployment node of the pattern "
-        "containing_module:deployment_node, where deployment_node must be either a "
-        "FunctionNode or ClassNode object."
-    ),
-)
+@click.argument("config_or_import_path")
 @click.option(
     "--runtime-env",
     type=str,
