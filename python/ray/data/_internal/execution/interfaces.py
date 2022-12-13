@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -107,7 +107,7 @@ class PhysicalOperator:
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
 
-    def get_stats(self) -> Dict[str, List[BlockMetadata]]:
+    def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 

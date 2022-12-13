@@ -7,11 +7,13 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator
 
 import ray
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, List
+from ray.data._internal.stats import StatsDict
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import get_compute
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage, Stage
+from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
     Executor,
@@ -34,12 +36,8 @@ def execute_to_legacy_block_list(
         The output as a legacy block list.
     """
     dag = _to_operator_dag(plan, owns_blocks)
-    blocks, metadata = [], []
-    for ref_bundle in executor.execute(dag):
-        for block, meta in ref_bundle.blocks:
-            blocks.append(block)
-            metadata.append(meta)
-    return BlockList(blocks, metadata, owned_by_consumer=True)
+    bundles = executor.execute(dag)
+    return _bundles_to_block_list(bundles)
 
 
 def _to_operator_dag(plan: ExecutionPlan, owns_blocks: bool) -> PhysicalOperator:
@@ -95,19 +93,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         return MapOperator(do_read, inputs, name="DoRead")
     else:
-        output = []
-        for block, meta in blocks.iter_blocks_with_metadata():
-            output.append(
-                RefBundle(
-                    [
-                        (
-                            block,
-                            meta,
-                        )
-                    ],
-                    owns_blocks=owns_blocks,
-                )
-            )
+        output = _block_list_to_bundles(blocks, owns_blocks)
         return InputDataBuffer(output)
 
 
@@ -145,5 +131,49 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             compute_strategy=get_compute(stage.compute),
             ray_remote_args=stage.ray_remote_args,
         )
+    elif isinstance(stage, AllToAllStage):
+        fn = stage.fn
+        block_udf = stage.block_udf
+        remote_args = stage.ray_remote_args
+
+        def bulk_fn(refs: List[RefBundle]) -> (List[RefBundle], StatsDict):
+            owns_blocks = all(b.owns_blocks for b in refs)
+            block_list = _bundles_to_block_list(refs)
+            block_list, stats_dict = fn(block_list, owns_blocks, block_udf, remote_args)
+            output = _block_list_to_bundles(block_list, owns_blocks=True)
+            return output, stats_dict
+
+        return AllToAllOperator(
+            bulk_fn,
+            input_op,
+            name=stage.name,
+            num_outputs=stage.num_blocks,
+        )
     else:
         raise NotImplementedError
+
+
+def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
+    blocks, metadata = [], []
+    for ref_bundle in bundles:
+        for block, meta in ref_bundle.blocks:
+            blocks.append(block)
+            metadata.append(meta)
+    return BlockList(blocks, metadata, owned_by_consumer=True)
+
+
+def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBundle]:
+    output = []
+    for block, meta in blocks.iter_blocks_with_metadata():
+        output.append(
+            RefBundle(
+                [
+                    (
+                        block,
+                        meta,
+                    )
+                ],
+                owns_blocks=owns_blocks,
+            )
+        )
+    return output

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 @ray.remote(num_returns="dynamic")
-def _run_one_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]):
+def _map_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]):
     """Remote function for a single operator task.
 
     Args:
@@ -30,7 +30,7 @@ def _run_one_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Bl
     stats = BlockExecStats.builder()
     for b_out in fn(blocks, input_metadata):
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
-        m_out.exec_stats=stats.build()
+        m_out.exec_stats = stats.build()
         output_metadata.append(m_out)
         yield b_out
         stats = BlockExecStats.builder()
@@ -63,7 +63,7 @@ class MapOperatorTasksImpl:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
-        generator_ref = _run_one_task.options(**self._ray_remote_args).remote(
+        generator_ref = _map_task.options(**self._ray_remote_args).remote(
             self._transform_fn, bundle.input_metadata, *input_blocks
         )
         task = _TaskState(bundle)

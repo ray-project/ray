@@ -8,3 +8,7 @@ ds = ds.map(lambda x: x + 1, num_cpus=0.5)
 ds = ds.map(lambda x: x + 1)
 ds.show()
 print(ds.stats())
+
+ds = ds.random_shuffle()
+print(ds.show())
+print(ds.stats())

@@ -2,6 +2,7 @@ from typing import List, Iterator, Any, Dict, Callable, Optional
 
 import ray
 from ray.data.block import Block, BlockMetadata
+from ray.data._internal.stats import StatsDict
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
@@ -102,5 +103,5 @@ class MapOperator(PhysicalOperator):
     def notify_task_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.task_completed(task)
 
-    def get_stats(self) -> Dict[str, List[BlockMetadata]]:
+    def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
