@@ -1,7 +1,10 @@
 import ray
 
 
-ds = ray.data.range(10)
+ds = ray.data.range(10).lazy()
 ds.show()
-ds.map(lambda x: x + 1).show()
-# print(ds.stats())
+ds = ds.map(lambda x: x + 1)
+ds = ds.map(lambda x: x + 1, num_cpus=0.5)
+ds = ds.map(lambda x: x + 1)
+ds.show()
+print(ds.stats())

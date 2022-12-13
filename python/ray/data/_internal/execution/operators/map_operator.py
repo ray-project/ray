@@ -1,7 +1,7 @@
 from typing import List, Iterator, Any, Dict, Callable, Optional
 
 import ray
-from ray.data.block import Block
+from ray.data.block import Block, BlockMetadata
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
@@ -46,6 +46,7 @@ class MapOperator(PhysicalOperator):
         self._transform_fn = transform_fn
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
+        self._output_metadata: List[BlockMetadata] = []
         if isinstance(self._strategy, TaskPoolStrategy):
             self._execution_state = MapOperatorTasksImpl(self)
         elif isinstance(self._strategy, ActorPoolStrategy):
@@ -90,10 +91,16 @@ class MapOperator(PhysicalOperator):
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
-        return self._execution_state.get_next()
+        bundle = self._execution_state.get_next()
+        for _, meta in bundle.blocks:
+            self._output_metadata.append(meta)
+        return bundle
 
     def get_tasks(self) -> List[ray.ObjectRef]:
         return self._execution_state.get_tasks()
 
     def notify_task_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.task_completed(task)
+
+    def get_stats(self) -> Dict[str, List[BlockMetadata]]:
+        return {self._name: self._output_metadata}

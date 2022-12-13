@@ -130,12 +130,12 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
         block_fn = stage.block_fn
         # TODO: pass the following via object store instead of closure capture
-        fn = stage.fn
-        fn_args = stage.fn_args or ()
+        fn_args = (stage.fn,) if stage.fn else ()
+        fn_args = fn_args + (stage.fn_args or ())
         fn_kwargs = stage.fn_kwargs or {}
 
         def do_map(blocks: Iterator[Block], _) -> Iterator[Block]:
-            for output_block in block_fn(blocks, fn, *fn_args, **fn_kwargs):
+            for output_block in block_fn(blocks, *fn_args, **fn_kwargs):
                 yield output_block
 
         return MapOperator(

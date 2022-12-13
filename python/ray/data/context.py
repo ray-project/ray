@@ -67,7 +67,9 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
-DEFAULT_NEW_EXECUTION_BACKEND = True
+DEFAULT_NEW_EXECUTION_BACKEND = bool(
+    os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND")
+)
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True

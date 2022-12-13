@@ -4,7 +4,7 @@ import ray
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
@@ -27,10 +27,13 @@ def _run_one_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Bl
         as the last generator return.
     """
     output_metadata = []
+    stats = BlockExecStats.builder()
     for b_out in fn(blocks, input_metadata):
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out.exec_stats=stats.build()
         output_metadata.append(m_out)
         yield b_out
+        stats = BlockExecStats.builder()
     yield output_metadata
 
 

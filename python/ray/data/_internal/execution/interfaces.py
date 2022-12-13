@@ -107,6 +107,10 @@ class PhysicalOperator:
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
 
+    def get_stats(self) -> Dict[str, List[BlockMetadata]]:
+        """Return recorded execution stats for use with DatasetStats."""
+        raise NotImplementedError
+
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")
 
