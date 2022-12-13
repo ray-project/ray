@@ -272,5 +272,6 @@ def test_churn_long_running(
     with pytest.raises(ray.exceptions.GetTimeoutError) as _:
         ray.get(allocate_memory.options(max_retries=-1).remote(small_bytes), timeout=45)
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
