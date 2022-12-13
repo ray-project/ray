@@ -97,13 +97,14 @@ topNavContentLeft.append(documentationLink)
 //-- The Learn menu
 learnMenu = document.createElement("div")
 learnMenu.setAttribute("class", "menu")
-learnMenu.innerHTML = "<a href='#'>Learn" + downCaret + "</a>"
+learnMenu.innerHTML = "<a href='#'>Resources" + downCaret + "</a>"
 learnList = document.createElement("ul")
 learnList.innerHTML += "<li><a href='https://discuss.ray.io/'><span class='primary'>Discussion Forum</span><span class='secondary'>Get your Ray questions answered</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events'><span class='primary'>Events</span><span class='secondary'>Webinars, meetups, office hours</span></a></li>"
-learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span></a></li>"
-learnList.innerHTML += "<li><a href='" + getNavURL("/ray-overview/ray-libraries.html") + "'><span class='primary'>Ecosystem</span></a></li>"
+learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span><span class='secondary'>Real-world workload examples</span></a></li>"
+learnList.innerHTML += "<li><a href='" + getNavURL("/ray-overview/ray-libraries.html") + "'><span class='primary'>Ecosystem</span><span class='secondary'>Libraries integrated with Ray</span></a></li>"
+learnList.innerHTML += "<li><a href='https://www.ray.io/community'><span class='primary'>Community</span><span class='secondary'>Connect with us</span></a></li>"
 learnMenu.append(learnList)
 topNavContentLeft.append(learnMenu)
 
@@ -117,10 +118,10 @@ topNavContentLeft.append(learnMenu)
 // topNavContentLeft.append(ecosystemLink)
 
 //-- The Community link
-communityLink = document.createElement("a")
-communityLink.innerText = "Community"
-communityLink.setAttribute("href", "https://www.ray.io/community")
-topNavContentLeft.append(communityLink)
+// communityLink = document.createElement("a")
+// communityLink.innerText = "Community"
+// communityLink.setAttribute("href", "https://www.ray.io/community")
+// topNavContentLeft.append(communityLink)
 
 topNavContent.append(topNavContentLeft)
 
