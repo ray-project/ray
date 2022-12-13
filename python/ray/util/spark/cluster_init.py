@@ -47,6 +47,8 @@ except ImportError:
 
 RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 
+MAX_NUM_WORKER_NODES = -1
+
 
 @PublicAPI(stability="alpha")
 class RayClusterOnSpark:
@@ -323,11 +325,7 @@ def _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_start
 
 
 def _init_ray_cluster(
-    num_worker_nodes=None,
-    total_cpus=None,
-    total_gpus=None,
-    total_heap_memory_bytes=None,
-    total_object_store_memory_bytes=None,
+    num_worker_nodes,
     object_store_memory_per_node=None,
     head_options=None,
     worker_options=None,
@@ -355,23 +353,6 @@ def _init_ray_cluster(
     head_options = head_options or {}
     worker_options = worker_options or {}
 
-    num_worker_nodes_specified = num_worker_nodes is not None
-    total_resources_req_specified = (
-        total_cpus is not None
-        or total_gpus is not None
-        or total_heap_memory_bytes is not None
-        or total_object_store_memory_bytes is not None
-    )
-
-    if (num_worker_nodes_specified and total_resources_req_specified) or (
-        not num_worker_nodes_specified and not total_resources_req_specified
-    ):
-        raise ValueError(
-            "You should specify either 'num_worker_nodes' argument or an argument group of "
-            "'total_cpus', 'total_gpus', 'total_heap_memory_bytes' and "
-            "'total_object_store_memory_bytes'."
-        )
-
     spark = get_spark_session()
 
     # Environment configurations within the Spark Session that dictate how many cpus and gpus to
@@ -386,26 +367,15 @@ def _init_ray_cluster(
         ray_worker_node_object_store_mem_bytes,
     ) = get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node)
 
-    if total_gpus is not None and num_spark_task_gpus == 0:
-        raise ValueError(
-            "The spark cluster is not configured with available GPUs. Start a GPU instance cluster "
-            "to set the 'total_gpus' argument"
-        )
-
     max_concurrent_tasks = get_max_num_concurrent_tasks(spark.sparkContext)
-
-    num_worker_nodes = get_target_spark_tasks(
-        max_concurrent_tasks,
-        num_spark_task_cpus,
-        num_spark_task_gpus,
-        ray_worker_node_heap_mem_bytes,
-        ray_worker_node_object_store_mem_bytes,
-        num_worker_nodes,
-        total_cpus,
-        total_gpus,
-        total_heap_memory_bytes,
-        total_object_store_memory_bytes,
-    )
+    if num_worker_nodes == -1:
+        # num_worker_nodes=-1 represents using all available spark task slots
+        num_spark_tasks = max_concurrent_tasks
+    elif num_worker_nodes <= 0:
+        raise ValueError(
+            "The value of 'num_worker_nodes' argument must be either a positive integer or "
+            "'ray.util.spark.MAX_NUM_WORKER_NODES'."
+        )
 
     insufficient_resources = []
 
@@ -714,11 +684,7 @@ _active_ray_cluster = None
 
 @PublicAPI(stability="alpha")
 def init_ray_cluster(
-    num_worker_nodes: Optional[int] = None,
-    total_cpus: Optional[int] = None,
-    total_gpus: Optional[int] = None,
-    total_heap_memory_bytes: Optional[int] = None,
-    total_object_store_memory_bytes: Optional[int] = None,
+    num_worker_nodes: int,
     object_store_memory_per_node: Optional[int] = None,
     head_options: Optional[Dict] = None,
     worker_options: Optional[Dict] = None,
@@ -745,13 +711,7 @@ def init_ray_cluster(
             will use all available spark tasks slots (and resources allocated to the spark
             application) on the spark cluster.
             To create a spark cluster that is intended to be used exclusively as a shared ray
-            cluster, it is recommended to set this argument to `-1`.
-        total_cpus: The total cpu core count for the ray cluster to utilize.
-        total_gpus: The total gpu count for the ray cluster to utilize.
-        total_heap_memory_bytes: The total amount of heap memory (in bytes) for the ray cluster
-            to utilize.
-        total_object_store_memory_bytes: The total amount of object store memory (in bytes) for
-            the ray cluster to utilize.
+            cluster, it is recommended to set this argument to `ray.spark.utils.MAX_NUM_WORKER_NODES`.
         object_store_memory_per_node: Object store memory available to per-ray worker node, but
                                       it cannot exceed
                                       "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker"
@@ -774,10 +734,6 @@ def init_ray_cluster(
         )
     cluster = _init_ray_cluster(
         num_worker_nodes=num_worker_nodes,
-        total_cpus=total_cpus,
-        total_gpus=total_gpus,
-        total_heap_memory_bytes=total_heap_memory_bytes,
-        total_object_store_memory_bytes=total_object_store_memory_bytes,
         object_store_memory_per_node=object_store_memory_per_node,
         head_options=head_options,
         worker_options=worker_options,
