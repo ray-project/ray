@@ -1797,6 +1797,13 @@ py_test(
     srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
 )
 
+py_test(
+    name = "test_rl_optimizer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

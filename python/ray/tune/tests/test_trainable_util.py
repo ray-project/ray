@@ -5,6 +5,7 @@ import pytest
 import sys
 import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import ray
@@ -61,7 +62,7 @@ class TrainableUtilTest(unittest.TestCase):
         )
         df = a.dataframe()
         checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])._local_path
-        assert checkpoint_dir.endswith("/checkpoint_000001/")
+        assert Path(checkpoint_dir).stem == "checkpoint_000001"
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir, "0/my/nested/chkpt")
