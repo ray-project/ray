@@ -122,6 +122,7 @@ class _NotProvided:
 # in the call.
 NotProvided = _NotProvided()
 
+
 # TODO (Kourosh): Move this to rllib.utils.importlib
 def _resolve_class_path(module) -> Type:
     """Resolves a class path to a class.
