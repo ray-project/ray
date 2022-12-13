@@ -110,11 +110,9 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
-        sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
-        patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
-        ],
+        url = "https://github.com/redis/hiredis/archive/refs/tags/v1.1.0.tar.gz",
+        strip_prefix= "hiredis-1.1.0",
+        sha256 = "fe6d21741ec7f3fc9df409d921f47dfc73a4d8ff64f4ac6f1d95f951bf7f53d6",
     )
 
     auto_http_archive(
@@ -149,6 +147,22 @@ def ray_deps_setup():
         strip_prefix = None,
         url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
         sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
+    )
+
+    auto_http_archive(
+        name = "libuv",
+        strip_prefix = "libuv-1.44.2",
+        url = "https://github.com/libuv/libuv/archive/refs/tags/v1.44.2.tar.gz",
+        sha256 = "e6e2ba8b4c349a4182a33370bb9be5e23c51b32efb9b9e209d0e8556b73a48da",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.libuv",
+    )
+
+    auto_http_archive(
+        name = "redispp",
+        strip_prefix = "redis-plus-plus-1.3.6",
+        url = "https://github.com/sewenew/redis-plus-plus/archive/refs/tags/1.3.6.tar.gz",
+        sha256 = "87dcadca50c6f0403cde47eb1f79af7ac8dd5a19c3cad2bb54ba5a34f9173a3e",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.redispp",
     )
 
     auto_http_archive(
