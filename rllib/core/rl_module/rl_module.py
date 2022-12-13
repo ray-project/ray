@@ -13,9 +13,9 @@ from ray.rllib.utils.annotations import (
 
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.nested_dict import NestedDict
-
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -222,6 +222,12 @@ class RLModule(abc.ABC):
         """
         return {}
 
+    @property
+    def view_requirements(self) -> Mapping[str, ViewRequirement]:
+        """Returns the view requirements of the module."""
+        vr = self.__get_default_view_requirements()
+        return vr
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
         """Returns the output specs of the forward_inference method.
@@ -350,3 +356,27 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule.from_config({DEFAULT_POLICY_ID: self})
+
+    def __get_default_view_requirements(self):
+        obs_space = self.config.observation_space
+        act_space = self.config.action_space
+        return {
+            SampleBatch.OBS: ViewRequirement(space=obs_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=obs_space,
+                used_for_compute_actions=False,
+            ),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=act_space, used_for_compute_actions=False
+            ),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
+            SampleBatch.T: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.UNROLL_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
+        }
