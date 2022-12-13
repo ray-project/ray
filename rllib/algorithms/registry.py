@@ -181,21 +181,21 @@ def _import_r2d2():
 
 
 def _import_random_agent():
-    from ray.rllib.algorithms.random_agent.random_agent import RandomAgent
+    import ray.rllib.algorithms.random_agent as random_agent
 
-    return RandomAgent, RandomAgent.get_default_config()
+    return random_agent.RandomAgent, random_agent.RandomAgent.get_default_config()
+
+
+def _import_rnnsac():
+    from ray.rllib.algorithms import sac
+
+    return sac.RNNSAC, sac.RNNSAC.get_default_config()
 
 
 def _import_sac():
     import ray.rllib.algorithms.sac as sac
 
     return sac.SAC, sac.SAC.get_default_config()
-
-
-def _import_rnnsac():
-    from ray.rllib.algorithms import sac
-
-    return sac.RNNSAC, sac.RNNSAC().get_default_config()
 
 
 def _import_simple_q():
@@ -213,7 +213,7 @@ def _import_slate_q():
 def _import_td3():
     import ray.rllib.algorithms.td3 as td3
 
-    return td3.TD3, td3.TD3().get_default_config()
+    return td3.TD3, td3.TD3.get_default_config()
 
 
 ALGORITHMS = {
