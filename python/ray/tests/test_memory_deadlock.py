@@ -46,6 +46,7 @@ def alloc_mem(bytes):
     return mem
 
 
+
 @ray.remote
 def task_with_nested_actor(
     first_fraction, second_fraction, leaker, actor_allocation_first=True
@@ -251,7 +252,6 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         ray.get(ref1, timeout=120)
         ray.get(ref2, timeout=120)
 
-
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
@@ -274,8 +274,9 @@ def test_deadlock_six_sets_of_task_with_nested_task(
 
     num_instances = 6
     refs = [
-        task_with_nested_task.options(max_retries=-1).remote(parent_bytes, nested_bytes)
-        for _ in range(num_instances)
+        task_with_nested_task.options(max_retries=-1).remote(
+            parent_bytes, nested_bytes
+        ) for _ in range(num_instances)
     ]
 
     if policy == LIFO_POLICY:
@@ -285,16 +286,19 @@ def test_deadlock_six_sets_of_task_with_nested_task(
     else:
         for ref in refs:
             ray.get(ref, timeout=120)
-
-
+            
+            
 @ray.remote
 def n_nested_tasks(n, task_bytes):
     dummy = alloc_mem(task_bytes[0])
     time.sleep(10)
     if n > 1:
-        ray.get(n_nested_tasks.options(max_retries=-1).remote(n - 1, task_bytes[1:]))
+        ray.get(
+            n_nested_tasks.options(max_retries=-1).remote(
+                n - 1, task_bytes[1:]
+            )
+        )
     return dummy[0]
-
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
@@ -330,7 +334,6 @@ def test_deadlock_two_sets_of_six_nested_tasks(
     else:
         ray.get(ref1, timeout=300)
         ray.get(ref2, timeout=300)
-
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
