@@ -10,8 +10,6 @@ DEFAULT_POLICY_ID = "default_policy"
 
 
 class TestMARLModule(unittest.TestCase):
-
-
     def test_from_config(self):
 
         env_class = make_multi_agent("CartPole-v0")
@@ -19,10 +17,7 @@ class TestMARLModule(unittest.TestCase):
         module1 = DiscreteBCTorchModule.from_env(env)
         module2 = DiscreteBCTorchModule.from_env(env)
 
-        multi_agent_dict = {
-            "module1": module1,
-            "module2": module2
-        }
+        multi_agent_dict = {"module1": module1, "module2": module2}
         marl_module = MultiAgentRLModule.from_config(multi_agent_dict)
 
         self.assertEqual(set(marl_module.keys()), {"module1", "module2"})
