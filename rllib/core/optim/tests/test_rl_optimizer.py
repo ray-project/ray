@@ -2,8 +2,10 @@ import gym
 import pytest
 import numpy as np
 import torch
-from typing import Any, List, Mapping, Union
+from typing import Any, Mapping, Union
 import unittest
+
+import ray
 
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.offline import IOContext
@@ -11,25 +13,10 @@ from ray.rllib.offline.dataset_reader import (
     DatasetReader,
     get_dataset_and_shards,
 )
-
-import ray
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import FCNet, FCConfig
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.rl_module.torch.tests.test_torch_rl_module import (
-    to_numpy,
-    to_tensor,
-)
-from ray.rllib.models.distributions import Distribution
-from ray.rllib.models.specs.specs_dict import ModelSpec
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.torch.torch_distributions import (
-    TorchDeterministic,
-    TorchCategorical,
-)
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.torch.bc_optimizer import BCTorchOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
@@ -66,9 +53,9 @@ def do_rollouts(
         for _ in range(env._max_episode_steps):
             _obs.append(obs)
             fwd_out = module_for_inference.forward_inference(
-                {"obs": to_tensor(obs)[None]}
+                {"obs": torch.tensor(obs)[None]}
             )
-            action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
+            action = convert_to_numpy(fwd_out["action_dist"].sample().squeeze(0))
             next_obs, reward, done, _ = env.step(action)
             _next_obs.append(next_obs)
             _actions.append([action])
@@ -92,116 +79,14 @@ def do_rollouts(
     return np.mean(_returns), _returns, _rollouts
 
 
-class BCTorchModule(TorchRLModule):
-    def __init__(self, config: FCConfig) -> None:
-        super().__init__(config)
-        self.policy = FCNet(config)
-
-    @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpec:
-        return ModelSpec(self._default_inputs())
-
-    @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
-        return ModelSpec(self._default_inputs())
-
-    @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
-        return ModelSpec(
-            dict(self._default_inputs(), **{"actions": TorchTensorSpec("b")}),
-        )
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
-
-    @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
-
-    @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
-
-    @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        with torch.no_grad():
-            action_logits = self.policy(obs)
-        action_logits_inference = torch.argmax(action_logits, dim=-1)
-        action_dist = TorchDeterministic(action_logits_inference)
-        return {"action_dist": action_dist}
-
-    @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        with torch.no_grad():
-            return self._forward_train(batch)
-
-    @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_dist = TorchCategorical(logits=action_logits)
-        return {"action_dist": action_dist}
-
-    @override(TorchRLModule)
-    def get_state(self) -> Mapping[str, Any]:
-        return {"policy": self.policy.state_dict()}
-
-    @override(TorchRLModule)
-    def set_state(self, state: Mapping[str, Any]) -> None:
-        self.policy.load_state_dict(state["policy"])
-
-    def _default_inputs(self) -> dict:
-        obs_dim = self.config.input_dim
-        return {
-            "obs": TorchTensorSpec("b, do", do=obs_dim),
-        }
-
-    def _default_outputs(self) -> dict:
-        return {"action_dist": Distribution}
-
-
-class BCTorchOptimizer(RLOptimizer):
-    def __init__(self, module, config):
-        super().__init__(module, config)
-
-    @override(RLOptimizer)
-    def compute_loss(
-        self, batch: NestedDict, fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        """Compute a loss"""
-        action_dist = fwd_out["action_dist"]
-        loss = -action_dist.logp(batch[SampleBatch.ACTIONS]).mean()
-        loss_dict = {
-            "total_loss": loss,
-        }
-        return loss_dict
-
-    @override(RLOptimizer)
-    def _configure_optimizers(self) -> List[torch.optim.Optimizer]:
-        return {
-            "module": torch.optim.SGD(
-                self.module.parameters(), lr=self._config.get("lr", 1e-3)
-            )
-        }
-
-    @override(RLOptimizer)
-    def get_state(self):
-        return {key: optim.state_dict() for key, optim in self.get_optimizers().items()}
-
-    @override(RLOptimizer)
-    def set_state(self, state: Mapping[Any, Any]) -> None:
-        assert set(state.keys()) == set(self.get_state().keys()) or not state
-        for key, optim_dict in state.items():
-            self.get_optimizers()[key].load_state_dict(optim_dict)
-
-
+# TODO (avnishn): This RLTrainer has to be properly implemented once the RLTrainerActor
+# is implemented on master.
 class BCTorchTrainer:
-    def __init__(self, config: Mapping[str, any]) -> None:
-        module_config = config["module_config"]
+    """This class is a demonstration on how to use RLOptimizer and RLModule together."""
+
+    def __init__(self, env: gym.Space) -> None:
         optimizer_config = {}
-        self._module = BCTorchModule(module_config)
+        self._module = DiscreteBCTorchModule.from_env(env)
         self._rl_optimizer = BCTorchOptimizer(self._module, optimizer_config)
 
     @staticmethod
@@ -317,17 +202,12 @@ class TestRLOptimizer(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rl_optimizer_example_torch(self):
+    def test_rl_optimizer_in_behavioral_clonning(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
-        module_config = FCConfig(
-            input_dim=sum(env.observation_space.shape),
-            output_dim=sum(env.action_space.shape or [env.action_space.n]),
-            hidden_layers=[32],
-        )
-        module_for_inference = BCTorchModule(module_config)
+        module_for_inference = DiscreteBCTorchModule.from_env(env)
 
-        trainer = BCTorchTrainer({"module_config": module_config})
+        trainer = BCTorchTrainer(env)
         trainer.set_state({"module_state": module_for_inference.get_state()})
 
         # path = "s3://air-example-data/rllib/cartpole/large.json"
@@ -349,12 +229,19 @@ class TestRLOptimizer(unittest.TestCase):
         num_epochs = 100
         total_timesteps_of_training = 1000000
         inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-        for _ in range(num_epochs):
+        for epoch_i in range(num_epochs):
+            total_loss = 0
             for _ in range(inter_steps):
                 batch = reader.next()
-                trainer.update(batch)
+                results = trainer.update(batch)
+                total_loss += results["total_loss"] / inter_steps
+
             module_for_inference.set_state(trainer.get_state()["module_state"])
             avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
+            print(
+                f"[epoch = {epoch_i}] avg_total_loss: "
+                f"{total_loss}, avg_return: {avg_return}"
+            )
             if avg_return > 50:
                 break
         assert (
@@ -363,18 +250,11 @@ class TestRLOptimizer(unittest.TestCase):
 
     def test_rl_optimizer_set_state_get_state_torch(self):
         env = gym.make("CartPole-v1")
-        module_config = FCConfig(
-            input_dim=sum(env.observation_space.shape),
-            output_dim=sum(env.action_space.shape or [env.action_space.n]),
-            hidden_layers=[32],
-        )
-        module = BCTorchModule(module_config)
+        module = DiscreteBCTorchModule.from_env(env)
         optim1 = BCTorchOptimizer(module, {"lr": 0.1})
         optim2 = BCTorchOptimizer(module, {"lr": 0.2})
 
-        assert isinstance(
-            optim1.get_state(), dict
-        ), "rl_optimizer.get_state() should return a dict"
+        self.assertIsInstance(optim1.get_state(), dict)
         check(
             optim1.get_state()["module"]["param_groups"][0]["lr"],
             optim2.get_state()["module"]["param_groups"][0]["lr"],
