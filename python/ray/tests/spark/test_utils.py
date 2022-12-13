@@ -1,10 +1,11 @@
 from unittest.mock import patch
 import os
+import sys
 
 import pytest
 from ray.util.spark.utils import (
     get_spark_task_assigned_physical_gpus,
-    _calc_mem_per_ray_worker,
+    _calc_mem_per_ray_worker_node,
     get_target_spark_tasks,
 )
 
@@ -18,12 +19,12 @@ def test_get_spark_task_assigned_physical_gpus():
         assert get_spark_task_assigned_physical_gpus([0, 2]) == [2, 6]
 
 
-def test_calc_mem_per_ray_worker():
-    assert _calc_mem_per_ray_worker(4, 1000000, 400000, 0.4) == (120000, 80000)
-    assert _calc_mem_per_ray_worker(6, 1000000, 400000, 0.4) == (80000, 53333)
-    assert _calc_mem_per_ray_worker(4, 800000, 600000, 0.2) == (128000, 32000)
-    assert _calc_mem_per_ray_worker(4, 800000, 600000, 0.5) == (80000, 80000)
-    assert _calc_mem_per_ray_worker(8, 2000000, 600000, 0.3) == (140000, 60000)
+def test_calc_mem_per_ray_worker_node():
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 0.4) == (120000, 80000)
+    assert _calc_mem_per_ray_worker_node(6, 1000000, 400000, 0.4) == (80000, 53333)
+    assert _calc_mem_per_ray_worker_node(4, 800000, 600000, 0.2) == (128000, 32000)
+    assert _calc_mem_per_ray_worker_node(4, 800000, 600000, 0.5) == (80000, 80000)
+    assert _calc_mem_per_ray_worker_node(8, 2000000, 600000, 0.3) == (140000, 60000)
 
 
 def test_target_spark_tasks():
@@ -89,3 +90,10 @@ def test_target_spark_tasks():
             total_heap_memory_bytes=_mem_in_gbs(400),
             total_object_store_memory_bytes=_mem_in_gbs(80),
         )
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
