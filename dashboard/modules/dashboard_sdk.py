@@ -241,7 +241,9 @@ class SubmissionClient:
         try:
             r = self._do_request("GET", url)
             if r.status_code == 404:
-                raise RuntimeError(version_error_message)
+                raise RuntimeError(
+                    "Version check returned 404. " + version_error_message
+                )
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
