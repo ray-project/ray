@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:~/.mujoco/mujoco210/bin"}
+env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin"}
 debian_packages:
   - unzip
   - zip
