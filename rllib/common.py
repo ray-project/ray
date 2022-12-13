@@ -11,6 +11,8 @@ import requests
 from ray.tune.experiment.config_parser import _make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+STOP_ARG_NAMES = ["--stop", "-s"]
+
 
 class FrameworkEnum(str, Enum):
     """Supported frameworks for RLlib, used for CLI argument validation."""
@@ -216,7 +218,7 @@ class CLIArguments:
 
     # Train arguments
     # __cli_train_start__
-    Stop = typer.Option(None, "--stop", "-s", help=get_help("stop"))
+    Stop = typer.Option(None, *STOP_ARG_NAMES, help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
     )

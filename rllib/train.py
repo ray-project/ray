@@ -14,7 +14,7 @@ from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import FrameworkEnum, SupportedFileType
+from ray.rllib.common import FrameworkEnum, SupportedFileType, STOP_ARG_NAMES
 from ray.rllib.common import download_example_file, get_file_type
 
 
@@ -266,6 +266,15 @@ def run(
         config = json.loads(config)
         resources_per_trial = json_to_resources(resources_per_trial)
 
+        if stop is None:
+            print(
+                "\nNo stopping condition set. You can set one by specifying {"
+                "}.".format(STOP_ARG_NAMES[0])
+            )
+            stop = {}
+        else:
+            stop = json.loads(stop)
+
         # Load a single experiment from configuration
         experiments = {
             experiment_name: {  # i.e. log to ~/ray_results/default
@@ -280,7 +289,7 @@ def run(
                 "resources_per_trial": (
                     resources_per_trial and resources_to_json(resources_per_trial)
                 ),
-                "stop": json.loads(stop),
+                "stop": stop,
                 "config": dict(config, env=env),
                 "restore": restore,
                 "num_samples": num_samples,
