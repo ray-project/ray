@@ -50,18 +50,21 @@ def take_table(
 def unify_schemas(
     schemas: List["pyarrow.Schema"],
 ) -> "pyarrow.Schema":
-    # schemas_to_unify = []
+    schemas_to_unify = []
     for col_idx in range(len(schemas[0].types)):
         column_types = [s.types[col_idx] for s in schemas]
         if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
-            dtype = column_types[col_idx].storage_type
-            new_type = ArrowVariableShapedTensorType(dtype=dtype, ndim = len(column_types))
+            new_type = ArrowVariableShapedTensorType(
+                dtype=column_types[0].storage_type.value_type,
+                ndim =len(column_types[0].shape),
+            )
             for schema in schemas:
                 var_shaped_col = schema.field(col_idx).with_type(new_type)
                 schema = schema.set(col_idx, var_shaped_col)
+        schemas_to_unify.append(schema)
         
     # Let Arrow unify the schema of non-tensor extension type columns.
-    return pyarrow.unify_schemas(schemas)
+    return pyarrow.unify_schemas(schemas_to_unify)
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
