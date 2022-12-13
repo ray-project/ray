@@ -692,6 +692,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
+    framework: Optional[str] = None,
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
@@ -699,6 +700,8 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
+        framework: The framework to use for running this test. If None,
+            run the test on all frameworks.
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
@@ -734,12 +737,15 @@ def run_learning_tests_from_yaml(
         return experiment["config"].get("evaluation_interval", None) is not None
 
     # Loop through all collected files and gather experiments.
-    # Augment all by `torch` framework.
+    # Set correct framework(s).
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
+            # If framework given as arg, use that framework.
+            if framework is not None:
+                frameworks = [framework]
             # If framework explicitly given, only test for that framework.
             # Some algos do not have both versions available.
             if "frameworks" in e:
