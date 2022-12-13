@@ -115,6 +115,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
+  first_time_prefetch_ = true;
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -1371,6 +1372,19 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           << ", memory_object_ids " << memory_object_ids.size()
           << ", plasma_object_ids " << plasma_object_ids.size()
           << ", ready " << ready.size();
+    }
+
+    if (RayConfig::instance().core_worker_prefetch_waits()
+        && ids.size() == 10 * 1000
+        && first_time_prefetch_
+        ) {
+        // I might have to batch these if this is too large.
+        RAY_RETURN_NOT_OK(plasma_store_provider_->FetchFromPlasmaStore(
+            ids,
+            /*in_direct_call*/ worker_context_.CurrentTaskIsDirectCall(),
+            /*task_id*/ worker_context_.GetCurrentTaskID()
+        ));
+        first_time_prefetch_ = false;
     }
 
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
