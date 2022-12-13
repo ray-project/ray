@@ -25,7 +25,7 @@ def count_by_type(info: RayContext) -> Dict:
     return task_events_info
 
 
-def test_status_task_events(shutdown_only):
+def test_status_task_events_metrics(shutdown_only):
     info = ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
 
     # Start a task
