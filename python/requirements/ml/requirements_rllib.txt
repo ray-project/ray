@@ -4,10 +4,13 @@
 # ---------------------
 # Atari
 autorom[accept-rom-license]
-gymnasium[atari]==0.26.3
+gymnasium[atari,mujoco]==0.26.3
 # TODO(sven): Still needed for Atari (need to be wrapped by gymnasium as it does NOT support Atari yet)
 gym==0.26.2
+# For testing Atari envs with gymnasium.
 ale-py==0.8.0
+# For testing MuJoCo envs with gymnasium.
+mujoco-py<2.2,>=2.1
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
@@ -18,8 +21,6 @@ mlagents_envs==0.28.0
 pettingzoo==1.22.1; python_version >= '3.7'
 pymunk==6.2.1
 supersuit==3.7.0; python_version >= '3.7'
-# For testing in MuJoCo envs.
-mujoco-py<2.2,>=2.1
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.9.0
