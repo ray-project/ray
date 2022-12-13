@@ -631,28 +631,10 @@ message AddTaskEventDataReply {
   GcsStatus status = 1;
 }
 
-message GetTaskEventsRequest {
-  // Get task events of certain type.
-  optional TaskEventType event_type = 1;
-  // Get task events from a job.
-  optional string job_id = 2;
-}
-
-message GetTaskEventsReply {
-  GcsStatus status = 1;
-  // Task events returned.
-  repeated TaskEvents events_by_task = 2;
-  // Number of events dropped at GCS and worker for the queried events.
-  int32 num_events_dropped = 3;
-}
-
 // Service for task info access.
 service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
-
-  // Get task events.
-  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

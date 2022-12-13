@@ -33,9 +33,10 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// When the maximal number of task events tracked specified by
 /// `RAY_task_events_max_num_task_in_gcs` is exceeded, older events (approximately by
 /// insertion order) will be dropped.
+/// TODO(https://github.com/ray-project/ray/issues/31071): track per job.
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
-/// services. All handling of all rpc will be posted to the single thread it owns.
+/// services. All handling of all rpc should be posted to the single thread it owns.
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
@@ -56,33 +57,34 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param send_reply_callback Callback to invoke when sending reply.
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
-
-  ///  Handles a GetTaskEvents request.
-  ///
-  /// \param request gRPC Request.
-  /// \param reply gRPC Reply.
-  /// \param send_reply_callback Callback to invoke when sending reply.
-  void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
-                           rpc::GetTaskEventsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {
-    RAY_LOG(FATAL) << "Unimplemented!";
-  };
+                              rpc::SendReplyCallback send_reply_callback)
+      LOCKS_EXCLUDED(mutex_) override;
 
   /// Stops the event loop and the thread of the task event handler.
   ///
+  /// After this is called, no more requests will be handled.
   /// This function returns when the io thread is joined.
-  void Stop();
+  void Stop() LOCKS_EXCLUDED(mutex_);
 
   /// Returns the io_service.
   ///
   /// \return Reference to its io_service.
   instrumented_io_context &GetIoContext() { return io_service_; }
 
+  /// Return string of debug state.
+  ///
+  /// \return Debug string
+  std::string DebugString() LOCKS_EXCLUDED(mutex_);
+
+  /// Record metrics.
+  void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+
   /// A storage component that stores the task events.
   ///
   /// This is an in-memory storage component that supports adding and getting of task
   /// events.
+  ///
+  /// This class is not thread-safe.
   ///
   /// It merges events from a single task attempt (same task id and attempt number) into
   /// a single rpc::TaskEvents entry, as reported by multiple rpc calls from workers.
@@ -107,14 +109,21 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \param task_event Task event to be added to the storage.
     /// \return absl::nullptr if the `task_event` is added without replacement, else the
     /// replaced task event.
-    absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents task_event);
+    absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents &&task_event);
 
     /// Get task events.
     ///
-    /// \param job_id Getting task events from this `job_id` only.
+    /// \param job_id Getting task events from this `job_id` only if not nullopt.
+    /// Otherwise all task events will be returned.
     /// \return A vector of task events.
     std::vector<rpc::TaskEvents> GetTaskEvents(
         absl::optional<JobID> job_id = absl::nullopt) = delete;
+
+    /// Get the number of task events stored.
+    size_t GetTaskEventsCount() const { return task_events_.size(); }
+
+    /// Get the total number of bytes of task events stored.
+    uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
@@ -134,17 +143,20 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   };
 
  private:
+  /// Mutex guarding all fields that will be accessed by main_io as well.
+  absl::Mutex mutex_;
+
   /// Total number of task events reported.
-  uint32_t total_num_task_events_reported_ = 0;
+  uint32_t total_num_task_events_reported_ GUARDED_BY(mutex_) = 0;
 
   /// Total number of status task events dropped on the worker.
-  uint32_t total_num_status_task_events_dropped_ = 0;
+  uint32_t total_num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
 
   /// Total number of profile task events dropped on the worker.
-  uint32_t total_num_profile_task_events_dropped_ = 0;
+  uint32_t total_num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
 
   // Pointer to the underlying task events storage.
-  std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
+  std::unique_ptr<GcsTaskManagerStorage> task_event_storage_ GUARDED_BY(mutex_);
 
   /// Its own separate IO service separated from the main service.
   instrumented_io_context io_service_;
