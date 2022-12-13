@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import pytest
 import numpy as np
 import torch

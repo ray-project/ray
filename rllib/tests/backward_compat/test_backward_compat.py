@@ -37,7 +37,9 @@ class TestBackwardCompatibility(unittest.TestCase):
 
         # TODO: Once checkpoints are python version independent (once we stop using
         #  pickle), add 1.0 here as well.
-        for v in ["0.1"]:
+        # Broken due to gymnasium move (old gym envs not recoverable via pickle due to
+        # gym version conflict (gym==0.23.x not compatible with gym==0.26.x)).
+        for v in []:  # "0.1"
             v = version.Version(v)
             for fw in framework_iterator(with_eager_tracing=True):
                 path_to_checkpoint = os.path.join(
