@@ -22,7 +22,6 @@ from .utils import (
     get_spark_task_assigned_physical_gpus,
     get_avail_mem_per_ray_worker_node,
     get_max_num_concurrent_tasks,
-    get_target_spark_tasks,
     gen_cmd_exec_failure_msg,
     setup_sigterm_on_parent_death,
 )
