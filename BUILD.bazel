@@ -2080,20 +2080,6 @@ cc_test(
 )
 
 cc_test(
-    name = "usage_reporter_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/usage_reporter_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "gcs_resource_manager_test",
     size = "small",
     srcs = [

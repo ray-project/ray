@@ -90,20 +90,20 @@ void GcsWorkerManager::HandleReportWorkerFailure(
 
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
       request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
-    const char *key = "";
+    usage::TagKey key;
     int count = 0;
     if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
       worker_crash_system_error_count_ += 1;
-      key = "worker_crash_system_error";
+      key = usage::TagKey::WORKER_CRASH_SYSTEM_ERROR;
       count = worker_crash_system_error_count_;
     } else if (request.worker_failure().exit_type() ==
                rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
       worker_crash_oom_count_ += 1;
-      key = "worker_crash_oom";
+      key = usage::TagKey::WORKER_CRASH_OOM;
       count = worker_crash_oom_count_;
     }
     if (usage_stats_client_) {
-      usage_stats_client_->RecordExtraUsageTag(key, std::to_string(count));
+      usage_stats_client_->RecordExtraUsageCounter(key, count);
     }
   }
 }
