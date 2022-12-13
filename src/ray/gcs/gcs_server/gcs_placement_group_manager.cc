@@ -141,13 +141,13 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
-    std::shared_ptr<GcsUsageReporter> usage_reporter,
+    UsageStatsClient *usage_stats_client,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),
-      usage_reporter_(usage_reporter),
+      usage_stats_client_(usage_stats_client),
       get_ray_namespace_(get_ray_namespace) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
@@ -933,8 +933,10 @@ void GcsPlacementGroupManager::RecordMetrics() const {
                                                      "Registered");
   ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
                                                      "Infeasible");
-  usage_reporter_->ReportCounter(usage::TagKey::PG_NUM_CREATED,
-                                 lifetime_num_placement_groups_created_);
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
+                                                 lifetime_num_placement_groups_created_);
+  }
   placement_group_state_counter_->FlushOnChangeCallbacks();
 }
 

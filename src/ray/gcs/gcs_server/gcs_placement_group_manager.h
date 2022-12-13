@@ -25,11 +25,11 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/usage_reporter.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
@@ -232,7 +232,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                            std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
-                           std::shared_ptr<GcsUsageReporter> usage_reporter,
+                           UsageStatsClient *usage_stats_client,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
@@ -466,7 +466,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
-  std::shared_ptr<GcsUsageReporter> usage_reporter_;
+  UsageStatsClient *usage_stats_client_;
 
   /// Get ray namespace.
   std::function<std::string(const JobID &)> get_ray_namespace_;

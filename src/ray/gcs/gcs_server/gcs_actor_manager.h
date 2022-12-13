@@ -21,11 +21,11 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/usage_reporter.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -283,7 +283,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      std::shared_ptr<GcsUsageReporter> usage_reporter,
+      UsageStatsClient *usage_stats_client,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
@@ -638,7 +638,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
 
-  std::shared_ptr<GcsUsageReporter> usage_reporter_;
+  UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
