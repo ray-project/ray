@@ -135,6 +135,8 @@ message PushTaskReply {
   bool is_retryable_error = 5;
   // Whether the result contains an application-level error.
   bool is_application_error = 6;
+  // Whether the task was cancelled before it started running (i.e. while queued).
+  bool was_cancelled_before_running = 7;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

@@ -276,7 +276,7 @@ class NodeUpdater:
 
                     try:
                         # Run outside of the container
-                        self.cmd_runner.run("uptime", timeout=5, run_env="host")
+                        self.cmd_runner.run("uptime", timeout=10, run_env="host")
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:

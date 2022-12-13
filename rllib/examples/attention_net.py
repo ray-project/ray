@@ -195,12 +195,7 @@ if __name__ == "__main__":
             total_reward = 0
             # start with all zeros as state
             num_transformers = config["model"]["attention_num_transformer_units"]
-            attention_dim = config["model"]["attention_dim"]
-            memory = config["model"]["attention_memory_inference"]
-            init_state = state = [
-                np.zeros([memory, attention_dim], np.float32)
-                for _ in range(num_transformers)
-            ]
+            state = algo.get_policy().get_initial_state()
             # run one iteration until done
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:

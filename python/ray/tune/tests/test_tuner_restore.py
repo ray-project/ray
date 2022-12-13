@@ -16,6 +16,8 @@ from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
+from ray.tune.schedulers.async_hyperband import ASHAScheduler
+from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -265,8 +267,8 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir):
             ),
         },
     )
-    # Catch the FailOnStats erro
-    with pytest.raises(tune.TuneError):
+    # Catch the FailOnStats error
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -324,7 +326,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
         },
     )
     # Catch the FailOnStats error
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -638,7 +640,7 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     assert len(tuner.get_results().errors) == 1
 
     # Continuing to fit should fail if we didn't re-specify the trainable
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
     fail_marker.unlink()
@@ -744,6 +746,58 @@ def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
     results = tuner.fit()
     assert not results.errors
     assert results[0].metrics["score"] == 1
+
+
+def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
+    """Check that a restored Tune experiment uses the original searcher/scheduler."""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    class MockSearcher(OptunaSearch):
+        def on_trial_result(self, trial_id: str, result: dict):
+            super().on_trial_result(trial_id, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+
+    class MockScheduler(ASHAScheduler):
+        def on_trial_result(self, runner, trial, result):
+            decision = super().on_trial_result(runner, trial, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+            return decision
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        run_config=RunConfig(local_dir=str(tmpdir), name="exp_name"),
+        tune_config=TuneConfig(
+            search_alg=MockSearcher(),
+            scheduler=MockScheduler(),
+            metric="it",
+            mode="max",
+        ),
+        param_space={"a": tune.uniform(0, 1), "failing_hanging": (fail_marker, None)},
+    )
+    tuner.fit()
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    tuner = Tuner.restore(str(tmpdir / "exp_name"), resume_errored=True)
+    tuner.fit()
+    searcher = tuner._local_tuner._tune_config.search_alg
+    scheduler = tuner._local_tuner._tune_config.scheduler
+    assert isinstance(searcher, MockSearcher)
+    assert isinstance(scheduler, MockScheduler)
+    # Searcher state should get loaded correctly
+    # Total of 3 reported results (1 from before failure, 2 after restore)
+    assert searcher._test_result_counter == 3
+    # Make sure that the restored scheduler is at least used
+    assert (
+        hasattr(scheduler, "_test_result_counter")
+        and scheduler._test_result_counter > 0
+    )
 
 
 if __name__ == "__main__":

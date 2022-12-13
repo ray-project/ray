@@ -1,5 +1,4 @@
-# cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
 region: us-west-2
 
 max_workers: 0

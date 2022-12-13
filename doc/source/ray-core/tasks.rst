@@ -79,6 +79,33 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
         ray::Task(SlowFunction).Remote();
       }
 
+
+Specifying required resources
+-----------------------------
+
+You can specify resource requirements in tasks (see :ref:`resource-requirements` for more details.)
+
+.. tabbed:: Python
+
+    .. literalinclude:: doc_code/tasks.py
+        :language: python
+        :start-after: __resource_start__
+        :end-before: __resource_end__
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        // Specify required resources.
+        Ray.task(MyRayApp::myFunction).setResource("CPU", 4.0).setResource("GPU", 2.0).remote();
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Specify required resources.
+        ray::Task(MyFunction).SetResource("CPU", 4.0).SetResource("GPU", 2.0).Remote();
+
 .. _ray-object-refs:
 
 Passing object refs to Ray tasks
@@ -161,6 +188,8 @@ works as follows.
 
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
+.. _ray-task-returns:
+
 Multiple returns
 ----------------
 
@@ -196,6 +225,16 @@ Ray tasks can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel
         :end-before: __cancel_end__
 
 
+Scheduling
+----------
+For each task, Ray will choose a node to run it
+and the scheduling decision is based on a few factors like
+:ref:`the task's resource requirements <ray-scheduling-resources>`,
+:ref:`the specified scheduling strategy <ray-scheduling-strategies>`
+and :ref:`locations of task arguments <ray-scheduling-locality>`.
+See :ref:`Ray scheduling <ray-scheduling>` for more details.
+
+
 More about Ray Tasks
 --------------------
 
@@ -205,4 +244,3 @@ More about Ray Tasks
     tasks/nested-tasks.rst
     tasks/generators.rst
     tasks/fault-tolerance.rst
-    tasks/scheduling.rst

@@ -53,9 +53,6 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
         self.cluster_env["env_vars"][
-            "RAY_memory_monitor_interval_ms"
-        ] = self.cluster_env["env_vars"].get("RAY_memory_monitor_interval_ms", "250")
-        self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
         ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
 

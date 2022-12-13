@@ -9,8 +9,8 @@ from ray.tests.test_memory_pressure import (
     allocate_memory,
     Leaker,
     get_additional_bytes_to_reach_memory_usage_pct,
-    memory_usage_threshold_fraction,
-    memory_monitor_interval_ms,
+    memory_usage_threshold,
+    memory_monitor_refresh_ms,
 )
 
 
@@ -20,8 +20,8 @@ def ray_with_memory_monitor(shutdown_only):
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
+            "memory_usage_threshold": memory_usage_threshold,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 0,
@@ -66,7 +66,7 @@ def test_churn_long_running(
     ray_with_memory_monitor,
 ):
     long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction - 0.1
+        memory_usage_threshold - 0.1
     )
     ray.get(
         allocate_memory.options(max_retries=0).remote(
@@ -74,7 +74,7 @@ def test_churn_long_running(
         )
     )
     small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 0.2
+        memory_usage_threshold + 0.2
     )
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=0).remote(small_bytes))
@@ -88,12 +88,10 @@ def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
     task_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction - 0.1
+        memory_usage_threshold - 0.1
     )
     nested_task_bytes = (
-        get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction + 0.2
-        )
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.2)
         - task_bytes
     )
     with pytest.raises(ray.exceptions.RayTaskError) as _:
@@ -115,8 +113,8 @@ def test_deadlock_task_with_nested_actor_with_actor_first(
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             task_with_nested_actor.remote(
-                first_fraction=memory_usage_threshold_fraction - 0.1,
-                second_fraction=memory_usage_threshold_fraction + 0.25,
+                first_fraction=memory_usage_threshold - 0.1,
+                second_fraction=memory_usage_threshold + 0.25,
                 leaker=leaker,
                 actor_allocation_first=True,
             )
@@ -134,8 +132,8 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             task_with_nested_actor.remote(
-                first_fraction=memory_usage_threshold_fraction - 0.1,
-                second_fraction=memory_usage_threshold_fraction + 0.25,
+                first_fraction=memory_usage_threshold - 0.1,
+                second_fraction=memory_usage_threshold + 0.25,
                 leaker=leaker,
                 actor_allocation_first=False,
             )
@@ -174,12 +172,10 @@ def test_deadlock_actor_with_nested_task(
 ):
     leaker = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote()
     actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction - 0.1
+        memory_usage_threshold - 0.1
     )
     nested_task_bytes = (
-        get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction + 0.1
-        )
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
         - actor_bytes
     )
     with pytest.raises(ray.exceptions.RayTaskError) as _:
@@ -203,12 +199,10 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
         barrier
     )
     parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        (memory_usage_threshold_fraction - 0.05) / 2
+        (memory_usage_threshold - 0.05) / 2
     )
     nested_bytes = (
-        get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction + 0.1
-        )
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
         - 2 * parent_bytes
     )
     ref1 = leaker1.perform_allocations.remote(parent_bytes, nested_bytes)
@@ -245,12 +239,10 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     This test runs two instances of task_with_nested_task.
     We expect the second one to fail."""
     parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        (memory_usage_threshold_fraction - 0.05) / 2
+        (memory_usage_threshold - 0.05) / 2
     )
     nested_bytes = (
-        get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction + 0.1
-        )
+        get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold + 0.1)
         - 2 * parent_bytes
     )
 

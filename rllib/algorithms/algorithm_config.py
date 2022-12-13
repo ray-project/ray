@@ -3,7 +3,17 @@ import gym
 from gym.spaces import Space
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Container,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -12,6 +22,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -28,6 +39,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
+    AgentID,
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
@@ -162,6 +174,64 @@ class AlgorithmConfig:
         config_obj.update_from_dict(config_dict)
         return config_obj
 
+    @classmethod
+    def overrides(cls, **kwargs):
+        """Generates and validates a set of config key/value pairs (passed via kwargs).
+
+        Validation whether given config keys are valid is done immediately upon
+        construction (by comparing against the properties of a default AlgorithmConfig
+        object of this class).
+        Allows combination with a full AlgorithmConfig object to yield a new
+        AlgorithmConfig object.
+
+        Used anywhere, we would like to enable the user to only define a few config
+        settings that would change with respect to some main config, e.g. in multi-agent
+        setups and evaluation configs.
+
+        Examples:
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> from ray.rllib.policy.policy import PolicySpec
+            >>> config = (
+            ...     PPOConfig()
+            ...     .multi_agent(
+            ...         policies={
+            ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
+            ...         },
+            ...     )
+            ... )
+
+            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            >>> from ray.rllib.algorithms.pg import PGConfig
+            >>> config = (
+            ...     PGConfig()
+            ...     .evaluation(
+            ...         evaluation_num_workers=1,
+            ...         evaluation_interval=1,
+            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
+            ...     )
+            ... )
+
+        Returns:
+            A dict mapping valid config property-names to values.
+
+        Raises:
+            KeyError: In case a non-existing property name (kwargs key) is being
+            passed in. Valid property names are taken from a default AlgorithmConfig
+            object of `cls`.
+        """
+        default_config = cls()
+        config_overrides = {}
+        for key, value in kwargs.items():
+            if not hasattr(default_config, key):
+                raise KeyError(
+                    f"Invalid property name {key} for config class {cls.__name__}!"
+                )
+            # Allow things like "lambda" as well.
+            key = cls._translate_special_keys(key, warn_deprecated=True)
+            config_overrides[key] = value
+
+        return config_overrides
+
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
@@ -267,11 +337,11 @@ class AlgorithmConfig:
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_map_cache = None
         self.policy_mapping_fn = (
             lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
         )
         self.policies_to_train = None
+        self.policy_states_are_swappable = False
         self.observation_fn = None
         self.count_steps_by = "env_steps"
 
@@ -330,6 +400,7 @@ class AlgorithmConfig:
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
+        self._enable_rl_module_api = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -344,6 +415,12 @@ class AlgorithmConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        self.min_time_s_per_reporting = DEPRECATED_VALUE
+        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
+        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
+        self.input_evaluation = DEPRECATED_VALUE
+        self.policy_map_cache = DEPRECATED_VALUE
+
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
@@ -358,7 +435,6 @@ class AlgorithmConfig:
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.input_evaluation = DEPRECATED_VALUE
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
 
@@ -458,9 +534,9 @@ class AlgorithmConfig:
                     for k in [
                         "policies",
                         "policy_map_capacity",
-                        "policy_map_cache",
                         "policy_mapping_fn",
                         "policies_to_train",
+                        "policy_states_are_swappable",
                         "observation_fn",
                         "count_steps_by",
                     ]
@@ -615,6 +691,14 @@ class AlgorithmConfig:
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+
+        # RLModule API only works with connectors.
+        if not self.enable_connectors and self._enable_rl_module_api:
+            raise ValueError(
+                "RLModule API only works with connectors. "
+                "Please enable connectors via "
+                "`config.rollouts(enable_connectors=True)`."
+            )
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
@@ -1446,6 +1530,7 @@ class AlgorithmConfig:
             # instead of creating an empty dict.
             if evaluation_config is None:
                 self.evaluation_config = None
+            # Update (don't replace) the existing overrides with the provided ones.
             else:
                 from ray.rllib.algorithms.algorithm import Algorithm
 
@@ -1601,13 +1686,21 @@ class AlgorithmConfig:
         self,
         *,
         policies=NotProvided,
-        policy_map_capacity=NotProvided,
-        policy_map_cache=NotProvided,
-        policy_mapping_fn=NotProvided,
-        policies_to_train=NotProvided,
-        observation_fn=NotProvided,
-        count_steps_by=NotProvided,
+        policy_map_capacity: Optional[int] = NotProvided,
+        policy_mapping_fn: Optional[
+            Callable[[AgentID, "Episode"], PolicyID]
+        ] = NotProvided,
+        policies_to_train: Optional[
+            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+        ] = NotProvided,
+        policy_states_are_swappable: Optional[bool] = NotProvided,
+        observation_fn: Optional[Callable] = NotProvided,
+        count_steps_by: Optional[str] = NotProvided,
+        # Deprecated args:
         replay_mode=DEPRECATED_VALUE,
+        # Now done via Ray object store, which has its own cloud-supported
+        # spillover mechanism.
+        policy_map_cache=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
@@ -1622,9 +1715,6 @@ class AlgorithmConfig:
                 observation- and action spaces of the policies, and any extra config.
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
-            policy_map_cache: Where to store overflowing (least-recently used) policies?
-                Could be a directory (str) or an S3 location. None for using the
-                default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
                 is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
@@ -1636,6 +1726,19 @@ class AlgorithmConfig:
                 or not, given the particular batch). This allows you to have a policy
                 trained only on certain data (e.g. when playing against a certain
                 opponent).
+            policy_states_are_swappable: Whether all Policy objects in this map can be
+                "swapped out" via a simple `state = A.get_state(); B.set_state(state)`,
+                where `A` and `B` are policy instances in this map. You should set
+                this to True for significantly speeding up the PolicyMap's cache lookup
+                times, iff your policies all share the same neural network
+                architecture and optimizer types. If True, the PolicyMap will not
+                have to garbage collect old, least recently used policies, but instead
+                keep them in memory and simply override their state with the state of
+                the most recently accessed one.
+                For example, in a league-based training setup, you might have 100s of
+                the same policies in your map (playing against each other in various
+                combinations), but all of them share the same state structure
+                (are "swappable").
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
@@ -1681,9 +1784,6 @@ class AlgorithmConfig:
         if policy_map_capacity is not NotProvided:
             self.policy_map_capacity = policy_map_capacity
 
-        if policy_map_cache is not NotProvided:
-            self.policy_map_cache = policy_map_cache
-
         if policy_mapping_fn is not NotProvided:
             # Attempt to create a `policy_mapping_fn` from config dict. Helpful
             # is users would like to specify custom callable classes in yaml files.
@@ -1693,6 +1793,12 @@ class AlgorithmConfig:
 
         if observation_fn is not NotProvided:
             self.observation_fn = observation_fn
+
+        if policy_map_cache != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(policy_map_cache=..)",
+                error=True,
+            )
 
         if replay_mode != DEPRECATED_VALUE:
             deprecation_warning(
@@ -1729,6 +1835,9 @@ class AlgorithmConfig:
                         "to add its ID to that list."
                     )
             self.policies_to_train = policies_to_train
+
+        if policy_states_are_swappable is not None:
+            self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
 
@@ -1887,10 +1996,11 @@ class AlgorithmConfig:
     def experimental(
         self,
         *,
-        _tf_policy_handles_more_than_one_loss=NotProvided,
-        _disable_preprocessor_api=NotProvided,
-        _disable_action_flattening=NotProvided,
-        _disable_execution_plan_api=NotProvided,
+        _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
+        _disable_preprocessor_api: Optional[bool] = NotProvided,
+        _disable_action_flattening: Optional[bool] = NotProvided,
+        _disable_execution_plan_api: Optional[bool] = NotProvided,
+        _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -1916,6 +2026,9 @@ class AlgorithmConfig:
                 If True, the execution plan API will not be used. Instead,
                 a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
+            _enable_rl_module_api: Experimental flag.
+                If True, the RLlib Module API will be used for creating the neural
+                network modules instead of the ModelV2 API.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1930,6 +2043,8 @@ class AlgorithmConfig:
             self._disable_action_flattening = _disable_action_flattening
         if _disable_execution_plan_api is not NotProvided:
             self._disable_execution_plan_api = _disable_execution_plan_api
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
 
         return self
 
@@ -1981,20 +2096,21 @@ class AlgorithmConfig:
             assert self.evaluation_config is None
             return None
 
-        # Convert AlgorithmConfig into dict (for later updating from dict).
         evaluation_config = self.evaluation_config
+        # Already an AlgorithmConfig -> copy and use as-is.
         if isinstance(evaluation_config, AlgorithmConfig):
-            evaluation_config = evaluation_config.to_dict()
-
+            eval_config_obj = evaluation_config.copy(copy_frozen=False)
         # Create unfrozen copy of self to be used as the to-be-returned eval
         # AlgorithmConfig.
-        eval_config_obj = self.copy(copy_frozen=False)
+        else:
+            eval_config_obj = self.copy(copy_frozen=False)
+            # Update with evaluation override settings:
+            eval_config_obj.update_from_dict(evaluation_config or {})
+
         # Switch on the `in_evaluation` flag and remove `evaluation_config`
         # (set to None).
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
-        # Update with evaluation settings:
-        eval_config_obj.update_from_dict(evaluation_config or {})
 
         # Evaluation duration unit: episodes.
         # Switch on `complete_episode` rollouts. Also, make sure
@@ -2239,9 +2355,15 @@ class AlgorithmConfig:
                     )
                 policies[pid].action_space = act_space
 
-            # Config is None -> Set to {}.
-            if policies[pid].config is None:
-                policies[pid].config = {}
+            # Create entire AlgorithmConfig object from the provided override.
+            # If None, use {} as override.
+            if not isinstance(policies[pid].config, AlgorithmConfig):
+                assert policies[pid].config is None or isinstance(
+                    policies[pid].config, dict
+                )
+                policies[pid].config = self.copy(copy_frozen=False).update_from_dict(
+                    policies[pid].config or {}
+                )
 
         # If container given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.

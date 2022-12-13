@@ -85,7 +85,11 @@ def create_iterator(
     backend_executor = ActorWrapper(backend_executor_actor)
     backend_executor.start(init_hook)
 
-    checkpoint_strategy = CheckpointConfig(num_to_keep=0)
+    class _CheckpointConfig(CheckpointConfig):
+        def __post_init__(self):
+            pass
+
+    checkpoint_strategy = _CheckpointConfig(num_to_keep=0)
 
     return TrainingIterator(
         backend_executor=backend_executor,
