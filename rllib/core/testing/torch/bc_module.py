@@ -7,6 +7,8 @@ from torch.distributions import Categorical
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
@@ -27,31 +29,29 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
-    # @override(RLModule)
-    # def input_specs_exploration(self) -> ModelSpec:
-    #     return ModelSpec(self._default_inputs())
+    @override(RLModule)
+    def input_specs_exploration(self) -> ModelSpec:
+        return ModelSpec(self._default_inputs())
 
-    # @override(RLModule)
-    # def input_specs_inference(self) -> ModelSpec:
-    #     return ModelSpec(self._default_inputs())
+    @override(RLModule)
+    def input_specs_inference(self) -> ModelSpec:
+        return ModelSpec(self._default_inputs())
 
-    # @override(RLModule)
-    # def input_specs_train(self) -> ModelSpec:
-    #     return ModelSpec(
-    #         dict(self._default_inputs(), **{"actions": TorchTensorSpec("b")}),
-    #     )
+    @override(RLModule)
+    def input_specs_train(self) -> ModelSpec:
+        return ModelSpec(self._default_inputs())
 
-    # @override(RLModule)
-    # def output_specs_exploration(self) -> ModelSpec:
-    #     return ModelSpec(self._default_outputs())
+    @override(RLModule)
+    def output_specs_exploration(self) -> ModelSpec:
+        return ModelSpec(self._default_outputs())
 
-    # @override(RLModule)
-    # def output_specs_inference(self) -> ModelSpec:
-    #     return ModelSpec(self._default_outputs())
+    @override(RLModule)
+    def output_specs_inference(self) -> ModelSpec:
+        return ModelSpec(self._default_outputs())
 
-    # @override(RLModule)
-    # def output_specs_train(self) -> ModelSpec:
-    #     return ModelSpec(self._default_outputs())
+    @override(RLModule)
+    def output_specs_train(self) -> ModelSpec:
+        return ModelSpec(self._default_outputs())
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -104,10 +104,10 @@ class DiscreteBCTorchModule(TorchRLModule):
             return_config=return_config,
         )
 
-    # def _default_inputs(self) -> dict:
-    #     return {
-    #         "obs": TorchTensorSpec("b, do", do=self.input_dim),
-    #     }
+    def _default_inputs(self) -> dict:
+        return {
+            "obs": TorchTensorSpec("b, do", do=self.input_dim),
+        }
 
-    # def _default_outputs(self) -> dict:
-    #     return {"action_dist": Distribution}
+    def _default_outputs(self) -> dict:
+        return {"action_dist": torch.distributions.Categorical}

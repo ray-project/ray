@@ -86,7 +86,7 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         config = DiscreteBCTorchModule.from_env(env, return_config=True)
-        module = MultiAgentRLModule.from_config(
+        module = MultiAgentRLModule.from_multi_agent_config(
             {DEFAULT_POLICY_ID: (DiscreteBCTorchModule, config)}
         )
 
