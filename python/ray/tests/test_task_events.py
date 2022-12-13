@@ -1,8 +1,5 @@
 from collections import defaultdict
-import pytest
 from typing import Dict
-import numpy as np
-import sys
 
 import ray
 from ray._private.test_utils import (
