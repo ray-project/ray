@@ -120,7 +120,6 @@ class PPOTorchRLModule(TorchRLModule):
 
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
 
-
     @classmethod
     @override(RLModule)
     def from_model_config(
@@ -228,7 +227,6 @@ class PPOTorchRLModule(TorchRLModule):
     @override(RLModule)
     def from_config(cls, config: PPOModuleConfig) -> "PPOTorchRLModule":
         return PPOTorchRLModule(config)
-
 
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.config.encoder_config, LSTMConfig):

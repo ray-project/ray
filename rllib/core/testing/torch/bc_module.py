@@ -56,7 +56,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         with torch.no_grad():
-            self._forward_train(batch)
+            return self._forward_train(batch)
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -100,7 +100,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         return cls.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"hidden_dim": 64},
+            model_config={"hidden_dim": 32},
             return_config=return_config,
         )
 
