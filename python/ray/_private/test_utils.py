@@ -1744,5 +1744,7 @@ def wandb_populate_run_location_hook():
     Example external hook to populate W&B project and group env vars in
     WandbIntegrationTest.testWandbLoggerConfig
     """
-    os.environ["WANDB_PROJECT_NAME"] = "test_project"
-    os.environ["WANDB_GROUP_NAME"] = "test_group"
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
