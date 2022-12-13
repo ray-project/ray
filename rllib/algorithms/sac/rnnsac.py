@@ -49,7 +49,7 @@ class RNNSACConfig(SACConfig):
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
-        },
+        }
         self.burn_in = DEPRECATED_VALUE
 
         # fmt: on
