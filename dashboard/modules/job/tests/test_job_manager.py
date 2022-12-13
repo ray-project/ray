@@ -21,7 +21,11 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.dashboard.modules.job.job_manager import (
+    JobManager,
+    JobSupervisor,
+    generate_job_id,
+)
 from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
@@ -814,7 +818,7 @@ while True:
 @pytest.mark.asyncio
 async def test_stop_job_timeout(job_manager):
     """
-    Stop job should send SIGTERM first, then if 3 second timeout occurs, send SIGKILL.
+    Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
     """
     entrypoint = """python -c \"
 import sys
@@ -841,7 +845,10 @@ while True:
         lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
     )
     await async_wait_for_condition_async_predicate(
-        check_job_stopped, job_manager=job_manager, job_id=job_id, timeout=3
+        check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S,
     )
 
 
