@@ -69,7 +69,7 @@ class BatcherInterface(abc.ABC):
         """Get the next batch from the block buffer with the provided batch format.
 
         Returns:
-            A batch represented as a Block.
+            A formatted batch of data.
         """
         raise NotImplementedError()
 
@@ -146,7 +146,7 @@ class Batcher(BatcherInterface):
         """Get the next batch from the block buffer.
 
         Returns:
-            A batch represented as a Block.
+            A formatted batch of data.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
         # If no batch size, short-circuit.
@@ -336,7 +336,7 @@ class ShufflingBatcher(BatcherInterface):
         """Get the next shuffled batch from the shuffle buffer.
 
         Returns:
-            A batch represented as a Block.
+            A formatted batch of data.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
         # Add rows in the builder to the shuffle buffer.
@@ -452,11 +452,11 @@ class AsyncBatcher(BatcherInterface):
             next_batch = self.base_batcher.next_batch()
             self.buffer.put(next_batch)
 
-    def next_batch(self) -> Block:
+    def next_batch(self) -> BatchType:
         """Get the next batch from the block buffer.
 
         Returns:
-            A batch represented as a Block.
+            A formatted batch of data.
         """
         # If assert statement passes, then there must be at least some
         # data in the base batcher.
