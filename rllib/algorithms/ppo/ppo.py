@@ -10,7 +10,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -39,6 +39,9 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module import RLModule
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,17 @@ class PPOConfig(PGConfig):
 
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
+    def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
+        if framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return PPOTorchRLModule
+        else:
+            raise ValueError(f"The framework {framework_str} is not supported.")
 
     @override(AlgorithmConfig)
     def training(

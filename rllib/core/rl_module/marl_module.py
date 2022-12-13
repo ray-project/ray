@@ -1,6 +1,5 @@
-import abc
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict
+from typing import Iterator, Mapping, Any, Union, Dict, Tuple, Type
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override
@@ -28,21 +27,62 @@ class MultiAgentRLModule(RLModule):
     the multi-agent module. For example, a multi-agent module can include a shared
     encoder network that is used by all the individual RLModules. It is up to the user
     to decide how to implement this class.
+
+    The default implementation assumes the data communicated as input and output of
+    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
+    loops through each `module_id`, and runs the forward pass of the corresponding
+    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
+    It also assumes that the underlying RLModules do not share any parameters or
+    communication with one another. The behavior of modules with such advanced
+    communication would be undefined by default. To share parameters or communication
+    between the underlying RLModules, you should implement your own
+    `MultiAgentRLModule`.
     """
 
     def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
         super().__init__()
+        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
 
-    @abc.abstractclassmethod
+    @classmethod
     def from_multi_agent_config(
-        self, config: Mapping[str, Any]
+        cls, config: Mapping[ModuleID, Tuple[Type, Any]]
     ) -> "MultiAgentRLModule":
         """Creates a MultiAgentRLModule from a multi-agent config.
 
-        No assumption on the config format is made in this base class. The user is
-        responsible for implementing this method.
+        # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
+
+        Args:
+            config: A Mapping from module_id to each RLModule config. Each RLModule
+                config value should be a tuple in the following order:
+                `module_class`: The RLModule class Type or full path separate by `.`.
+                    (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
+                `module_config`: The config object for the RLModule.
+
+            Returns:
+                The MultiAgentRLModule.
         """
+        multiagent_module = cls()
+
+        for module_id, module_spec in config.items():
+            module_cls, module_config = module_spec
+            module = module_cls.from_config(module_config)
+            multiagent_module.add_module(module_id, module)
+
+        return multiagent_module
+
+    @classmethod
+    @override(RLModule)
+    def from_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
+        """Creates a MultiAgentRLModule from a config.
+
+        Args:
+            config: The config dict. It is a mapping from module_id to each RLModule
+            instances.
+
+        Returns:
+            The MultiAgentRLModule.
+        """
+        return cls(config)
 
     def keys(self) -> Iterator[ModuleID]:
         """Returns an iteratable of module ids."""
@@ -175,7 +215,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self._run_forward_pass("forward_train", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_train", batch, module_id, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
@@ -192,7 +232,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_inference", batch, module_id, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
@@ -209,79 +249,9 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
-
-    def _run_forward_pass(
-        self,
-        forward_fn_name: str,
-        batch: MultiAgentBatch,
-        module_id: ModuleID = "",
-        **kwargs,
-    ) -> Dict[ModuleID, Mapping[str, Any]]:
-        if module_id:
-            self._check_module_exists(module_id)
-            module_ids = [module_id]
-        else:
-            module_ids = self.keys()
-
-        outputs = {}
-        for module_id in module_ids:
-            rl_module = self._rl_modules[module_id]
-            forward_fn = getattr(rl_module, forward_fn_name)
-            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
-
-        return outputs
-
-    def _check_module_exists(self, module_id: ModuleID) -> None:
-        if module_id not in self._rl_modules:
-            raise ValueError(
-                f"Module with module_id {module_id} not found. "
-                f"Available modules: {set(self.keys())}"
-            )
-
-
-@PublicAPI(stability="alpha")
-class DefaultMultiAgentRLModule(MultiAgentRLModule):
-    """The default implementation for multi-agent RLModules.
-
-    The default implementation assumes the data communicated as input and output of
-    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
-    loops through each `module_id`, and runs the forward pass of the corresponding
-    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
-    It also assumes that the underlying RLModules do not share any parameters or
-    communication with one another. The behavior of modules with such advanced
-    communication would be undefined by default. To share parameters or communication
-    between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
-    """
-
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        super().__init__(rl_modules)
-
-    @classmethod
-    @override(MultiAgentRLModule)
-    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
-        """Creates a MultiAgentRLModule from a multi-agent config.
-
-        # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
-
-        Args:
-            config: A Mapping from module_id to each RLModule config. Each RLModule
-                config value should be a tuple in the following order:
-                `module_class`: The RLModule class Type or full path separate by `.`.
-                    (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
-                `module_config`: The config object for the RLModule.
-
-            Returns:
-                The MultiAgentRLModule.
-        """
-        ma_module = cls()
-
-        for module_id, module_spec in config.items():
-            module = cls._build_module_from_spec(module_spec)
-            ma_module.add_module(module_id, module)
-
-        return ma_module
+        return self.__run_forward_pass(
+            "forward_exploration", batch, module_id, **kwargs
+        )
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -313,26 +283,33 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
-    @classmethod
-    def _build_module_from_spec(
-        cls, module_spec: Union[RLModule, Mapping[str, Any]]
-    ) -> RLModule:
-        """Builds a module from the given module spec.
-
-        Args:
-            module_spec: a tuple "module_class" and "module_config".
-        Returns:
-            The built module.
-        Raises:
-            ValueError: If the module spec is invalid.
-        """
-        mod_class, mod_config = module_spec
-        if mod_class is None:
-            raise ValueError(
-                "`module_class` is missing in the module spec of the module"
-            )
-        module = mod_class(config=mod_config)
-        return module
-
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
+
+    def __run_forward_pass(
+        self,
+        forward_fn_name: str,
+        batch: MultiAgentBatch,
+        module_id: ModuleID = "",
+        **kwargs,
+    ) -> Dict[ModuleID, Mapping[str, Any]]:
+        if module_id:
+            self._check_module_exists(module_id)
+            module_ids = [module_id]
+        else:
+            module_ids = self.keys()
+
+        outputs = {}
+        for module_id in module_ids:
+            rl_module = self._rl_modules[module_id]
+            forward_fn = getattr(rl_module, forward_fn_name)
+            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
+
+        return outputs
+
+    def _check_module_exists(self, module_id: ModuleID) -> None:
+        if module_id not in self._rl_modules:
+            raise ValueError(
+                f"Module with module_id {module_id} not found. "
+                f"Available modules: {set(self.keys())}"
+            )
