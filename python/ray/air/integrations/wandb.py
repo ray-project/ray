@@ -150,6 +150,12 @@ def _setup_wandb(
         api_key_file = os.path.expanduser(api_key_file)
 
     _set_api_key(api_key_file, wandb_config.pop("api_key", None))
+    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
+    wandb_config["group"] = (
+        os.environ.get(WANDB_GROUP_ENV_VAR)
+        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
+        else wandb_config.get("group")
+    )
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -175,7 +181,9 @@ def _setup_wandb(
 
     _wandb = _wandb or wandb
 
-    return _wandb.init(**wandb_init_kwargs)
+    run = _wandb.init(**wandb_init_kwargs)
+    _run_wandb_process_run_info_hook(run)
+    return run
 
 
 def _is_allowed_type(obj):
@@ -231,6 +239,31 @@ def _clean_log(obj: Any):
         return fallback
 
 
+def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
+    """Get W&B project from environment variable or external hook if not passed
+    as and argument."""
+    if (
+        not project
+        and not os.environ.get(WANDB_PROJECT_ENV_VAR)
+        and os.environ.get(WANDB_POPULATE_RUN_LOCATION_HOOK)
+    ):
+        # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
+        # from external hook
+        try:
+            _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+        except Exception as e:
+            logger.exception(
+                f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
+                f"populate {WANDB_PROJECT_ENV_VAR} and {WANDB_GROUP_ENV_VAR}: {e}",
+                exc_info=e,
+            )
+    if not project and os.environ.get(WANDB_PROJECT_ENV_VAR):
+        # Try to get project and group from environment variables if not
+        # passed through WandbLoggerCallback.
+        project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+    return project
+
+
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
@@ -265,6 +298,17 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
             "`WandbLoggerCallback` class as arguments, "
             "or run `wandb login` from the command line".format(WANDB_ENV_VAR)
         )
+
+
+def _run_wandb_process_run_info_hook(run: Any) -> None:
+    """Run external hook to process information about wandb run"""
+    if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
+        try:
+            _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+        except Exception as e:
+            logger.exception(
+                f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
+            )
 
 
 class _QueueItem(enum.Enum):
@@ -317,14 +361,7 @@ class _WandbLoggingActor:
         run = self._wandb.init(*self.args, **self.kwargs)
         run.config.trial_log_path = self._logdir
 
-        # Run external hook to process information about wandb run
-        if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
-            try:
-                _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
-            except Exception as e:
-                logger.exception(
-                    f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
-                )
+        _run_wandb_process_run_info_hook(run)
 
         while True:
             item_type, item_content = self.queue.get()
@@ -475,25 +512,7 @@ class WandbLoggerCallback(LoggerCallback):
         )
         _set_api_key(self.api_key_file, self.api_key)
 
-        if (
-            not self.project
-            and not os.environ.get(WANDB_PROJECT_ENV_VAR)
-            and os.environ.get(WANDB_POPULATE_RUN_LOCATION_HOOK)
-        ):
-            # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
-            # from external hook
-            try:
-                _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
-            except Exception as e:
-                logger.exception(
-                    f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
-                    f"populate {WANDB_PROJECT_ENV_VAR} and {WANDB_GROUP_ENV_VAR}: {e}",
-                    exc_info=e,
-                )
-        if not self.project and os.environ.get(WANDB_PROJECT_ENV_VAR):
-            # Try to get project and group from environment variables if not
-            # passed through WandbLoggerCallback.
-            self.project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+        self.project = _get_wandb_project(self.project)
         if not self.project:
             raise ValueError(
                 "Please pass the project name as argument or through "
