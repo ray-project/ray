@@ -15,7 +15,13 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDeterministic,
     TorchDiagGaussian,
 )
-from ray.rllib.core.rl_module.encoder import FCNet, FCConfig, LSTMConfig
+from ray.rllib.core.rl_module.encoder import (
+    FCNet,
+    FCConfig,
+    LSTMConfig,
+    IdentityEncoder,
+    LSTMEncoder,
+)
 
 
 torch, nn = try_import_torch()
@@ -81,12 +87,14 @@ class PPOModuleConfig(RLModuleConfig):
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
+        shared_encoder: Whether to share the encoder between the pi and value
     """
 
     pi_config: FCConfig = None
     vf_config: FCConfig = None
     encoder_config: FCConfig = None
     free_log_std: bool = False
+    shared_encoder: bool = True
 
 
 class PPOTorchRLModule(TorchRLModule):
@@ -100,9 +108,14 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
 
-        self.encoder = None
-        if self.config.encoder_config:
-            self.encoder = self.config.encoder_config.build()
+        if self.config.shared_encoder:
+            self.shared_encoder = self.config.encoder_config.build()
+            self.encoder_pi = IdentityEncoder(self.config.encoder_config)
+            self.encoder_vf = IdentityEncoder(self.config.encoder_config)
+        else:
+            self.shared_encoder = IdentityEncoder(self.config.encoder_config)
+            self.encoder_pi = self.config.encoder_config.build()
+            self.encoder_vf = self.config.encoder_config.build()
 
         self.pi = FCNet(
             input_dim=self.config.pi_config.input_dim,
@@ -148,32 +161,23 @@ class PPOTorchRLModule(TorchRLModule):
         free_log_std = model_config["free_log_std"]
         use_lstm = model_config["use_lstm"]
 
-        if vf_share_layers or use_lstm:
-            if use_lstm:
-                encoder_config = LSTMConfig(
-                    hidden_dim=model_config["lstm_cell_size"],
-                    batch_first=not model_config["_time_major"],
-                    output_dim=model_config["lstm_cell_size"],
-                    num_layers=1,
-                )
-            else:
-                encoder_config = FCConfig(
-                    hidden_layers=fcnet_hiddens,
-                    activation=activation,
-                    output_dim=model_config["fcnet_hiddens"][-1],
-                )
-            pi_config = FCConfig()
-            vf_config = FCConfig()
+        if use_lstm:
+            assert vf_share_layers, "LSTM not supported with vf_share_layers=False"
+            encoder_config = LSTMConfig(
+                hidden_dim=model_config["lstm_cell_size"],
+                batch_first=not model_config["_time_major"],
+                output_dim=model_config["lstm_cell_size"],
+                num_layers=1,
+            )
         else:
-            pi_config = FCConfig(
+            encoder_config = FCConfig(
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
+                output_dim=model_config["fcnet_hiddens"][-1],
             )
-            vf_config = FCConfig(
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-            )
-            encoder_config = None
+
+        pi_config = FCConfig()
+        vf_config = FCConfig()
 
         assert isinstance(
             observation_space, gym.spaces.Box
@@ -188,11 +192,8 @@ class PPOTorchRLModule(TorchRLModule):
         )
 
         # build pi network
-        if encoder_config is None:
-            pi_config.input_dim = observation_space.shape[0]
-        else:
-            encoder_config.input_dim = observation_space.shape[0]
-            pi_config.input_dim = encoder_config.output_dim
+        encoder_config.input_dim = observation_space.shape[0]
+        pi_config.input_dim = encoder_config.output_dim
 
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
@@ -200,11 +201,7 @@ class PPOTorchRLModule(TorchRLModule):
             pi_config.output_dim = action_space.shape[0] * 2
 
         # build vf network
-        if encoder_config is None:
-            vf_config.input_dim = observation_space.shape[0]
-        else:
-            vf_config.input_dim = encoder_config.output_dim
-
+        vf_config.input_dim = encoder_config.output_dim
         vf_config.output_dim = 1
 
         config_ = PPOModuleConfig(
@@ -215,6 +212,7 @@ class PPOTorchRLModule(TorchRLModule):
             pi_config=pi_config,
             vf_config=vf_config,
             free_log_std=free_log_std,
+            shared_encoder=vf_share_layers,
         )
 
         if return_config:
@@ -231,7 +229,10 @@ class PPOTorchRLModule(TorchRLModule):
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.config.encoder_config, LSTMConfig):
             # TODO (Kourosh): How does this work in RLlib today?
-            return self.encoder.get_inital_state()
+            if isinstance(self.shared_encoder, LSTMEncoder):
+                return self.shared_encoder.get_inital_state()
+            else:
+                return self.encoder_pi.get_inital_state()
         return {}
 
     @override(RLModule)
@@ -244,10 +245,9 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = {"embedding": batch[SampleBatch.OBS]}
-        if self.encoder:
-            encoder_out = self.encoder(batch)
-        action_logits = self.pi(encoder_out["embedding"])
+        encoder_out = self.shared_encoder(batch)
+        encoder_out_pi = self.encoder_pi(encoder_out)
+        action_logits = self.pi(encoder_out_pi["embedding"])
 
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
@@ -256,20 +256,12 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = encoder_out.get("state_out", {})
+        output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return ModelSpec(
-            {
-                SampleBatch.OBS: (
-                    self.encoder.input_specs()
-                    if self.encoder
-                    else self.pi.input_specs()
-                )
-            }
-        )
+        return self.shared_encoder.input_spec()
 
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
@@ -294,10 +286,10 @@ class PPOTorchRLModule(TorchRLModule):
         policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        encoder_out = {"embedding": batch[SampleBatch.OBS]}
-        if self.encoder:
-            encoder_out = self.encoder(batch)
-        action_logits = self.pi(encoder_out["embedding"])
+        encoder_out = self.shared_encoder(batch)
+        encoder_out_pi = self.encoder_pi(encoder_out)
+        encoder_out_vf = self.encoder_vf(encoder_out)
+        action_logits = self.pi(encoder_out_pi["embedding"])
 
         output = {}
         if self._is_discrete:
@@ -311,8 +303,8 @@ class PPOTorchRLModule(TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist
 
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out["embedding"]).squeeze(-1)
-        output["state_out"] = encoder_out.get("state_out", {})
+        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf["embedding"]).squeeze(-1)
+        output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
     @override(RLModule)
@@ -323,17 +315,11 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        obs_specs = (
-            self.encoder.input_specs() if self.encoder else self.pi.input_specs()
-        )
-        spec = ModelSpec(
-            {
-                SampleBatch.OBS: obs_specs,
-                SampleBatch.NEXT_OBS: obs_specs,
-                SampleBatch.ACTIONS: action_spec,
-            }
-        )
-
+        spec_dict = self.shared_encoder.input_spec()
+        spec_dict.update({SampleBatch.ACTIONS: action_spec})
+        if SampleBatch.OBS in spec_dict:
+            spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
+        spec = ModelSpec(spec_dict)
         return spec
 
     @override(RLModule)
@@ -350,12 +336,12 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = {"embedding": batch[SampleBatch.OBS]}
-        if self.encoder:
-            encoder_out = self.encoder(batch)
+        encoder_out = self.shared_encoder(batch)
+        encoder_out_pi = self.encoder_pi(encoder_out)
+        encoder_out_vf = self.encoder_vf(encoder_out)
 
-        action_logits = self.pi(encoder_out["embedding"])
-        vf = self.vf(encoder_out["embedding"])
+        action_logits = self.pi(encoder_out_pi["embedding"])
+        vf = self.vf(encoder_out_vf["embedding"])
 
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
@@ -373,7 +359,7 @@ class PPOTorchRLModule(TorchRLModule):
             "entropy": entropy,
         }
 
-        output["state_out"] = encoder_out.get("state_out", {})
+        output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
     def __get_action_dist_type(self):

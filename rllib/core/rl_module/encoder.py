@@ -130,8 +130,12 @@ class LSTMEncoder(Encoder):
                 # bxt is just a name for better readability to indicated padded batch
                 SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
                 "state_in": {
-                    "h": TorchTensorSpec("b, h", h=config.hidden_dim),
-                    "c": TorchTensorSpec("b, h", h=config.hidden_dim),
+                    "h": TorchTensorSpec(
+                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                    ),
+                    "c": TorchTensorSpec(
+                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                    ),
                 },
             }
         )
@@ -154,17 +158,15 @@ class LSTMEncoder(Encoder):
         # states are batch-first when coming in
         states = tree.map_structure(lambda x: x.transpose(0, 1), states)
 
-        try:
-            x = add_time_dimension(
-                x,
-                seq_lens=input_dict[SampleBatch.SEQ_LENS],
-                framework="torch",
-                time_major=not self.config.batch_first,
-            )
-            states_o = {}
-            x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
-        except RuntimeError:
-            breakpoint()
+        x = add_time_dimension(
+            x,
+            seq_lens=input_dict[SampleBatch.SEQ_LENS],
+            framework="torch",
+            time_major=not self.config.batch_first,
+        )
+        states_o = {}
+        x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
+
         x = self.linear(x)
         x = x.view(-1, x.shape[-1])
 
@@ -172,3 +174,17 @@ class LSTMEncoder(Encoder):
             "embedding": x,
             "state_out": tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
+
+
+class IdentityEncoder(Encoder):
+    def __init__(self, config: EncoderConfig) -> None:
+        super().__init__(config)
+
+    def input_spec(self):
+        return ModelSpec()
+
+    def output_spec(self):
+        return ModelSpec()
+
+    def _forward(self, input_dict):
+        return input_dict

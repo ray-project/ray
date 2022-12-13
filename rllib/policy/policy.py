@@ -559,7 +559,7 @@ class Policy(metaclass=ABCMeta):
         """
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+        state_batches = [s for k, s in input_dict.items() if k.startswith("state_in")]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,

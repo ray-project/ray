@@ -105,6 +105,7 @@ class TestPPO(unittest.TestCase):
                             use_lstm=lstm,
                             lstm_use_prev_action=lstm,
                             lstm_use_prev_reward=lstm,
+                            vf_share_layers=lstm,
                         )
                     )
 
