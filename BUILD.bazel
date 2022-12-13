@@ -547,7 +547,6 @@ cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
-        "//src/ray/protobuf:usage_cc_proto",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
@@ -2160,6 +2159,7 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
     ],
 )
 
