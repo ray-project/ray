@@ -381,7 +381,7 @@ class Policy(metaclass=ABCMeta):
         use for this Policy. Otherwise, RLlib will error out.
         """
         module_class: RLModule = self.config["rl_module_class"]
-        return module_class.from_config_dict(
+        return module_class.from_model_config(
             self.observation_space, self.action_space, model_config=self.config["model"]
         )
 
