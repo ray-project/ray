@@ -106,7 +106,9 @@ def create_connectors_for_policy(
             worker initialization.
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(
-        policy, is_atari=is_atari, preprocessing_enabled=preprocessing_enabled,
+        policy,
+        is_atari=is_atari,
+        preprocessing_enabled=preprocessing_enabled,
     )
 
     assert (
