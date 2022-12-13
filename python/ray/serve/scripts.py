@@ -27,15 +27,10 @@ from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
 
-APP_DIR_HELP_STR = (
-    "Local directory to look for the IMPORT_PATH (will be inserted into "
-    "PYTHONPATH). Defaults to '.', meaning that an object in ./main.py "
-    "can be imported as 'main.object'. Not relevant if you're importing "
-    "from an installed module."
-)
 RAY_INIT_ADDRESS_HELP_STR = (
-    "Address to use for ray.init(). Can also be specified "
-    "using the RAY_ADDRESS environment variable."
+    "Address of the Ray Cluster to run the Serve app on. If no address is specified, "
+    "a local Ray Cluster will be started. Can also be specified using the RAY_ADDRESS "
+    "environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "Address to use to query the Ray dashboard agent (defaults to "
@@ -189,23 +184,31 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app from the specified import path (e.g. "
-        "my_script:my_bound_deployment) or YAML config.\n\n"
+        "Runs the Serve app (from the specified import path or YAML config) on a "
+        "cluster as a Ray Job. The app must be importable by Serve at runtime.\n\n"
         "If using a YAML config, existing deployments with no code changes "
         "will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object. "
+        "Any import path must lead to a FunctionNode or ClassNode object.\n\n"
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
 )
-@click.argument("config_or_import_path")
+@click.argument(
+    "config_or_import_path",
+    help=(
+        "Either a filepath to a YAML config file on the Ray Cluster, or an import path "
+        "on the Ray Cluster for a deployment node of the pattern "
+        "containing_module:deployment_node, where deployment_node must be either a "
+        "FunctionNode or ClassNode object."
+    ),
+)
 @click.option(
     "--runtime-env",
     type=str,
     default=None,
     required=False,
     help="Path to a local YAML file containing a runtime_env definition. "
-    "This will be passed to ray.init() as the default for deployments.",
+    "This will be passed to Ray Jobs as the default for deployments.",
 )
 @click.option(
     "--runtime-env-json",
@@ -213,7 +216,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="JSON-serialized runtime_env dictionary. This will be passed to "
-    "ray.init() as the default for deployments.",
+    "Ray Jobs as the default for deployments.",
 )
 @click.option(
     "--working-dir",
@@ -224,7 +227,7 @@ def deploy(config_file_name: str, address: str):
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
-        "specified. This will be passed to ray.init() as the default for "
+        "specified. This will be passed to Ray Jobs as the default for "
         "deployments."
     ),
 )
@@ -233,7 +236,12 @@ def deploy(config_file_name: str, address: str):
     "-d",
     default=".",
     type=str,
-    help=APP_DIR_HELP_STR,
+    help=(
+        "Directory on the Ray Cluster to look for the IMPORT_PATH (will be inserted "
+        "into PYTHONPATH). Defaults to '.', meaning that a deployment node `app_node` "
+        "in working_directory/main.py on the Ray Cluster can be run using "
+        "`main:app_node`. Not relevant if you're importing from an installed module."
+    ),
 )
 @click.option(
     "--address",
@@ -284,6 +292,9 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
+    if address is None and not ray.is_initialized():
+        ray.init(namespace=SERVE_NAMESPACE)
+
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
@@ -417,7 +428,12 @@ def shutdown(address: str, yes: bool):
     "-d",
     default=".",
     type=str,
-    help=APP_DIR_HELP_STR,
+    help=(
+        "Local directory to look for the IMPORT_PATH (will be inserted into "
+        "PYTHONPATH). Defaults to '.', meaning that an object in ./main.py "
+        "can be imported as 'main.object'. Not relevant if you're importing "
+        "from an installed module."
+    ),
 )
 @click.option(
     "--kubernetes_format",
