@@ -150,7 +150,7 @@ class RLModule(abc.ABC):
                     self.input_dim, self.output_dim = input_dim, output_dim
 
                 @classmethod
-                def from_config_dict(
+                def from_model_config(
                     cls,
                     observation_space: gym.Space,
                     action_space: gym.Space,
@@ -162,13 +162,13 @@ class RLModule(abc.ABC):
                         output_dim=action_space.n
                     )
 
-            module = MyModule.from_config_dict(
+            module = MyModule.from_model_config(
                 observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
                 action_space=gym.spaces.Discrete(2),
                 model_config={},
             )
 
-            module_config = MyModule.from_config_dict(
+            module_config = MyModule.from_model_config(
                 observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
                 action_space=gym.spaces.Discrete(2),
                 model_config={},
