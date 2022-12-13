@@ -1476,12 +1476,9 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
-<<<<<<< HEAD
                 "dashboard_used": "False",
-=======
                 "actor_num_created": "0",
                 "pg_num_created": "0",
->>>>>>> 6956cd2000 (add)
             }
             assert num_nodes == 2
             return True
