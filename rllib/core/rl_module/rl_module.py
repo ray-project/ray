@@ -1,12 +1,12 @@
 import abc
-from typing import Mapping, Any, Type, TYPE_CHECKING
+import gym
+from typing import Mapping, Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
-    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
@@ -14,6 +14,7 @@ from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
+
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -77,10 +78,24 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: Mapping[str, Any] = None) -> None:
-        self.config = config or {}
-        self.setup()
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of RLModule.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
+
+    def __post_init__(self):
+        """Called after the __init__ method of the subclass.
+
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
         self._input_specs_train = self.input_specs_train()
         self._output_specs_train = self.output_specs_train()
         self._input_specs_exploration = self.input_specs_exploration()
@@ -88,12 +103,95 @@ class RLModule(abc.ABC):
         self._input_specs_inference = self.input_specs_inference()
         self._output_specs_inference = self.output_specs_inference()
 
-    def setup(self) -> None:
-        """Called once during initialization.
+    @classmethod
+    def from_model_config(
+        cls,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        model_config: Mapping[str, Any],
+        return_config: bool = False,
+    ) -> Union["RLModule", Mapping[str, Any]]:
+        """Creates a RLModule instance from a model config dict and spaces.
 
-        Override this method to perform any setup logic.
+        The model config dict is the same as the one passed to the AlgorithmConfig
+        object that contains global model configurations parameters.
+
+        This method can also be used to create a config dict for the module constructor
+        so it can be re-used to create multiple instances of the module.
+
+        Example:
+
+        .. code-block:: python
+
+            class MyModule(RLModule):
+                def __init__(self, input_dim, output_dim):
+                    self.input_dim, self.output_dim = input_dim, output_dim
+
+                @classmethod
+                def from_config_dict(
+                    cls,
+                    observation_space: gym.Space,
+                    action_space: gym.Space,
+                    model_config: Mapping[str, Any],
+                    return_config: bool = False,
+                ):
+                    return cls(
+                        input_dim=observation_space.shape[0],
+                        output_dim=action_space.n
+                    )
+
+            module = MyModule.from_config_dict(
+                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
+                action_space=gym.spaces.Discrete(2),
+                model_config={},
+            )
+
+            module_config = MyModule.from_config_dict(
+                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
+                action_space=gym.spaces.Discrete(2),
+                model_config={},
+                return_config=True,
+            )
+
+            module = MyModule.from_config(module_config)
+
+
+        Args:
+            observation_space: The observation space of the env.
+            action_space: The action space of the env.
+            model_config: The model config dict.
+            return_config: If True, instead of returning the RLModule instance,
+                return the config dict that was used to create the RLModule. In this
+                case passing the config dict to the RLModule constructor will be on the
+                caller of this method.
         """
-        pass
+        raise NotImplementedError
+
+    @classmethod
+    def from_config(cls, config: Any) -> "RLModule":
+        """Creates a RLModule instance from a config object.
+
+        Example:
+
+        .. code-block:: python
+
+            class MyModule(RLModule):
+                def __init__(self, config):
+                    self.config = config
+
+                @classmethod
+                def from_config(cls, config):
+                    return cls(config)
+
+            module = MyModule.from_config({"foo": 42})
+
+        Args:
+            config: The config object.
+
+        Returns:
+            The RLModule instance.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -227,12 +325,6 @@ class RLModule(abc.ABC):
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""
-        return self.get_multi_agent_class()({DEFAULT_POLICY_ID: self})
-
-    @classmethod
-    @OverrideToImplementCustomLogic
-    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
-        """Returns the multi-agent wrapper class for this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule
+        return MultiAgentRLModule.from_config({DEFAULT_POLICY_ID: self})
