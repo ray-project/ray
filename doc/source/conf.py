@@ -204,12 +204,13 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
-    "show_navbar_depth": 0,
+    "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
         "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
+    "announcement": "<div class='topnav'></div>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -221,10 +222,6 @@ html_title = f"Ray {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
-
-# The name of an image file (relative to this directory) to place at the top
-# of the sidebar.
-html_logo = "images/ray_logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -324,7 +321,7 @@ def setup(app):
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
-    app.add_js_file("js/try-anyscale.js", defer="defer")
+    app.add_js_file("js/top-navigation.js", defer="defer")
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
