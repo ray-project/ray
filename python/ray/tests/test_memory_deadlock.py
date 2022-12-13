@@ -27,7 +27,7 @@ def ray_with_memory_monitor(shutdown_only, request):
             "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
-            "task_oom_retries": 15,
+            "task_oom_retries": 50,
             "min_memory_free_bytes": -1,
             "worker_killing_policy": request.param,
         },
