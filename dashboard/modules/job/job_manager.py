@@ -379,6 +379,10 @@ class JobSupervisor:
                         os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
                     except ProcessLookupError:
                         # Process already completed.
+                        logger.info(
+                            f"Job {self._job_id} completed on its own before it could "
+                            "be manually terminated."
+                        )
                         pass
                     else:
                         # Wait for job to terminate gracefully, otherwise kill process
@@ -390,7 +394,7 @@ class JobSupervisor:
                             logger.info(
                                 f"Job {self._job_id} has been terminated gracefully."
                             )
-                        except TimeoutError:
+                        except asyncio.TimeoutError:
                             logger.warning(
                                 f"Attempt to gracefully terminate job {self._job_id} "
                                 "through SIGTERM has timed out after "
