@@ -197,6 +197,43 @@ Here is an overview of the available batch formats:
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
 
+Converting between the underlying Datasets data representations (Arrow, Pandas, and
+Python lists) and the requested batch format (``"default"``, ``"pandas"``,
+``"pyarrow"``, ``"numpy"``) may incur data copies; which conversions cause data copying
+is given in the below table:
+
+
+.. list-table:: Data Format Conversion Costs
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Dataset Format x Batch Format
+     - ``"default"``
+     - ``"pandas"``
+     - ``"numpy"``
+     - ``"pyarrow"``
+   * - ``"pandas"``
+     - Zero-copy
+     - Zero-copy
+     - Copy*
+     - Copy*
+   * - ``"arrow"``
+     - Copy*
+     - Copy*
+     - Zero-copy*
+     - Zero-copy
+   * - ``"simple"``
+     - Zero-copy
+     - Copy
+     - Copy
+     - Copy
+
+.. note::
+  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
+  represented in our tensor extension type (unless data is boolean). Copies **always**
+  occur when converting boolean data from/to Arrow to/from Pandas/NumPy, since Arrow
+  bitpacks boolean data while Pandas/NumPy does not.
+
 .. tip::
 
    Prefer using vectorized operations on the ``pandas.DataFrame``,
@@ -204,6 +241,14 @@ Here is an overview of the available batch formats:
    example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
    instead of iterating over each row of a batch and summing up values of that column,
    use ``df_batch["col_foo"].sum()``.
+
+.. tip::
+
+  If the UDF for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` does **not**
+  mutate its input, we can prevent an unnecessary data batch copy by specifying
+  ``zero_copy_batch=True``, which will provide the UDF with zero-copy, read-only
+  batches. See the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` docstring for
+  more information.
 
 .. _transform_datasets_batch_output_types:
 
