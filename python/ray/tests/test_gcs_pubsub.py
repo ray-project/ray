@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import threading
+import re
 
 from ray._private.gcs_pubsub import (
     GcsPublisher,
@@ -187,10 +188,13 @@ def test_two_subscribers(ray_start_regular):
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
+    log_str_pattern = re.compile("^log ([0-9]+)$")
+
     def receive_logs():
         while len(logs) < num_messages:
             log_batch = log_subscriber.poll()
-            logs.append(log_batch)
+            if log_str_pattern.match(log_batch["lines"][0]):
+                logs.append(log_batch)
 
     t2 = threading.Thread(target=receive_logs)
     t2.start()
