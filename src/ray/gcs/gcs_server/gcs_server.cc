@@ -180,6 +180,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // since we need to know the port the rpc server listens on.
   InitUsageStatsClient();
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
@@ -420,7 +422,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       gcs_publisher_,
       *runtime_env_manager_,
       *function_manager_,
-      usage_stats_client_.get(),
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -465,7 +466,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
-      usage_stats_client_.get(),
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
       });

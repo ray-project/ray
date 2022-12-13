@@ -283,7 +283,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      UsageStatsClient *usage_stats_client,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
@@ -448,6 +447,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   // Visible for testing.
   int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
     return actor_state_counter_->Get(std::make_pair(state, name));
+  }
+
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
   }
 
  private:

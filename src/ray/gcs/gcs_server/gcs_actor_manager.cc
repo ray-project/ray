@@ -209,7 +209,6 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsPublisher> gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
-    UsageStatsClient *usage_stats_client,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
@@ -221,7 +220,6 @@ GcsActorManager::GcsActorManager(
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
-      usage_stats_client_(usage_stats_client),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);

@@ -232,7 +232,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                            std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
-                           UsageStatsClient *usage_stats_client,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
@@ -365,6 +364,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Record internal metrics of the placement group manager.
   void RecordMetrics() const;
+
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
+  }
 
  private:
   /// Push a placement group to pending queue.

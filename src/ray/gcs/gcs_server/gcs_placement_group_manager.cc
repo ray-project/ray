@@ -141,13 +141,11 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
-    UsageStatsClient *usage_stats_client,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),
-      usage_stats_client_(usage_stats_client),
       get_ray_namespace_(get_ray_namespace) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
