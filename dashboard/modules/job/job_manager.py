@@ -394,7 +394,8 @@ class JobSupervisor:
                     stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
                     if stop_signal not in ["SIGINT", "SIGTERM"]:
                         logger.warning(
-                            f"{stop_signal} not a valid stop signal. Terminating job with SIGTERM."
+                            f"{stop_signal} not a valid stop signal. Terminating job "
+                            "with SIGTERM."
                         )
                         stop_signal = "SIGTERM"
                     os.killpg(
