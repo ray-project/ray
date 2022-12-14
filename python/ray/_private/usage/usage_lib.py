@@ -619,8 +619,6 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
         logger.info(f"Failed to get extra usage tags from kv store {e}")
-    print("==============")
-    print(extra_usage_tags)
     return extra_usage_tags
 
 
