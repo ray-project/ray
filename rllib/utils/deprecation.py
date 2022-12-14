@@ -39,10 +39,11 @@ def deprecation_warning(
         old, (" Use `{}` instead.".format(new) if new else f" {help}" if help else "")
     )
 
-    if error is True:
-        raise DeprecationWarning(msg)
-    elif error and issubclass(error, Exception):
-        raise error(msg)
+    if error:
+        if issubclass(error, Exception):
+            raise error(msg)
+        else:
+            raise ValueError(msg)
     else:
         logger.warning(
             "DeprecationWarning: " + msg + " This will raise an error in the future!"

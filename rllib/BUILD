@@ -588,6 +588,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_pendulum_ppo_with_rl_module",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
@@ -1076,6 +1086,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
+)
+
+py_test(
+    name = "test_ppo_with_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
 
 # PPO Reproducibility
@@ -1784,6 +1801,13 @@ py_test(
     srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
 )
 
+py_test(
+    name = "test_rl_optimizer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -1821,17 +1845,17 @@ py_test(
 )
 
 py_test(
-    name = "test_distributions",
+    name = "test_action_distributions",
     tags = ["team:rllib", "models"],
     size = "medium",
-    srcs = ["models/tests/test_distributions.py"]
+    srcs = ["models/tests/test_action_distributions.py"]
 )
 
 py_test(
-    name = "test_distributions_v2",
+    name = "test_distributions",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/tests/test_distributions_v2.py"]
+    srcs = ["models/tests/test_distributions.py"]
 )
 
 py_test(
@@ -1988,7 +2012,7 @@ py_test(
 py_test(
     name = "policy/tests/test_policy_map",
     tags = ["team:rllib", "policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_policy_map.py"]
 )
 
@@ -2083,6 +2107,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_random_encoder.py"]
+)
+
+py_test(
+    name = "utils/tests/test_torch_utils",
+    tags = ["team:rllib", "policutils"],
+    size = "small",
+    srcs = ["utils/tests/test_torch_utils.py"]
 )
 
 # Schedules
@@ -2254,30 +2285,14 @@ py_test(
 )
 
 py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    name = "policy/tests/test_policy_checkpoint_restore",
+    main = "policy/tests/test_policy_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_tf2",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTF2"]
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore_twice_torch",
-    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceTorch"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
+    ]),
+    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
 )
 
 py_test(

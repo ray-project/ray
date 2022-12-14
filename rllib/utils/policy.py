@@ -111,14 +111,17 @@ def create_policy_for_framework(
         # and create a new session for it.
         if framework == "tf":
             with tf1.Graph().as_default():
+                # Session creator function provided manually -> Use this one to
+                # create the tf1 session.
                 if session_creator:
                     sess = session_creator()
+                # Use a default session creator, based only on our `tf_session_args` in
+                # the config.
                 else:
                     sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)
-                        )
+                        config=tf1.ConfigProto(**merged_config["tf_session_args"])
                     )
+
                 with sess.as_default():
                     # Set graph-level seed.
                     if seed is not None:

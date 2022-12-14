@@ -11,11 +11,12 @@ import {
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { Outlet, useLocation, useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { getLogDetail } from "../../service/log";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -37,9 +38,10 @@ const useStyles = makeStyles((theme) => ({
 
 type LogsProps = {
   theme?: "dark" | "light";
+  newIA?: boolean;
 };
 
-const useLogs = ({ theme }: LogsProps) => {
+const useLogs = ({ theme, newIA }: LogsProps) => {
   const { search: urlSearch } = useLocation();
   const { host, path } = useParams();
   console.log("Host: " + host);
@@ -125,7 +127,8 @@ const Logs = (props: LogsProps) => {
     endTime,
     setEnd,
   } = useLogs(props);
-  let href = "#/log/";
+  const { newIA } = props;
+  let href = newIA ? "#/new/log/" : "#/log/";
 
   if (origin) {
     if (path) {
@@ -143,7 +146,7 @@ const Logs = (props: LogsProps) => {
     <div className={classes.root} ref={el}>
       <TitleCard title="Logs Viewer">
         <Paper>
-          {!origin && <p>Please choose an url to see logs for that node</p>}
+          {!origin && <p>Select a node to view logs</p>}
           {origin && (
             <p>
               Node: {origin}
@@ -179,9 +182,15 @@ const Logs = (props: LogsProps) => {
                 .map((e: { [key: string]: string }) => (
                   <ListItem key={e.name}>
                     <a
-                      href={`#/log/${
-                        origin ? `${encodeURIComponent(origin)}/` : ""
-                      }${encodeURIComponent(e.href)}`}
+                      href={
+                        newIA
+                          ? `#/new/logs/${
+                              origin ? `${encodeURIComponent(origin)}/` : ""
+                            }${encodeURIComponent(e.href)}`
+                          : `#/log/${
+                              origin ? `${encodeURIComponent(origin)}/` : ""
+                            }${encodeURIComponent(e.href)}`
+                      }
                     >
                       {e.name}
                     </a>
@@ -298,6 +307,20 @@ const Logs = (props: LogsProps) => {
         </Paper>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Logs page for the new information architecture
+ */
+export const NewIALogsPage = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{ title: "Logs", id: "logs", path: "/new/logs" }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 
