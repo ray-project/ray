@@ -308,11 +308,11 @@ DEFINE_stats(gcs_task_manager_task_events_reported,
 
 DEFINE_stats(gcs_task_manager_task_events_dropped,
              /// Type:
-             ///     - PROFILE_DROPPED: number of profile task events dropped from both
+             ///     - PROFILE_EVENT: number of profile task events dropped from both
              ///     workers and GCS.
-             ///     - STATUS_DROPPED: number of task status updates events dropped from
+             ///     - STATUS_EVENT: number of task status updates events dropped from
              ///     both workers and GCS.
-             "Number of task events dropped per type {PROFILE_DROPPED, STATUS_DROPPED}",
+             "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
              ("Type"),
              (),
              ray::stats::GAUGE);
