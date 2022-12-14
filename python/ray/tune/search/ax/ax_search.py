@@ -385,18 +385,12 @@ class AxSearch(Searcher):
                 )
             )
 
-        # Fixed vars
-        fixed_values = [
-            {"name": "/".join(path), "type": "fixed", "value": val}
-            for path, val in resolved_vars
-        ]
-
         # Parameter name is e.g. "a/b/c" for nested dicts
         resolved_values = [
             resolve_value("/".join(path), domain) for path, domain in domain_vars
         ]
 
-        return fixed_values + resolved_values
+        return resolved_values
 
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
