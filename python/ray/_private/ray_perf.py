@@ -95,7 +95,10 @@ def main(results=None):
 
     check_optimized_build()
 
-    print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
+    print(
+        "Tip: set TESTS_TO_RUN='<test_name_1> | ...' to run a subset of benchmarks. \n"
+        "E.g. TESTS_TO_RUN='single client put gigabytes | multi client put gigabytes'"
+    )
 
     ray.init()
 
