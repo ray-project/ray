@@ -38,6 +38,7 @@ class ResourceRequest:
 
     Args:
         bundles: A list of bundles which represent the resources requirements.
+            E.g. ``[{"CPU": 1, "GPU": 1}]``.
         strategy: The scheduling strategy to acquire the bundles. This is only
             relevant if the resources are requested as placement groups.
 
