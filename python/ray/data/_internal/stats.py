@@ -266,6 +266,7 @@ class DatasetStats:
                     out += "\n"
         if len(self.stages) == 1:
             stage_name, metadata = next(iter(self.stages.items()))
+            # TODO(ekl) fix this DO NOT MERGE
             stage_uuid = (self.dataset_uuid or "NO_UUID") + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
