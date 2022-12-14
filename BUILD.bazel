@@ -2522,6 +2522,25 @@ cc_library(
 )
 
 cc_test(
+    name = "redispp_basic_test",
+    size = "small",
+    srcs = ["src/ray/gcs/store_client/test/redispp_basic_test.cc"],
+    copts = COPTS,
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":ray_common",
+        "@redispp//:libredis++",
+    ],
+)
+
+cc_test(
     name = "redis_store_client_test",
     size = "small",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
