@@ -145,16 +145,17 @@ std::string GcsTaskManager::DebugString() {
 
 void GcsTaskManager::RecordMetrics() {
   absl::MutexLock lock(&mutex_);
-  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
-      total_num_task_events_reported_, ray::stats::kGcsTaskEventReported);
-  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+  ray::stats::STATS_gcs_task_manager_task_events_reported.Record(
+      total_num_task_events_reported_);
+
+  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
       total_num_status_task_events_dropped_, ray::stats::kGcsTaskStatusEventDropped);
-  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
       total_num_profile_task_events_dropped_, ray::stats::kGcsProfileEventDropped);
 
-  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
-      task_event_storage_->GetTaskEventsCount(), ray::stats::kGcsTaskEventStored);
-  ray::stats::STATS_gcs_task_manager_task_events_bytes.Record(
+  ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
+      task_event_storage_->GetTaskEventsCount());
+  ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
       task_event_storage_->GetTaskEventsBytes());
 }
 
