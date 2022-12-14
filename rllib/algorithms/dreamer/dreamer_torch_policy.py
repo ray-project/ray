@@ -169,7 +169,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         ] = None,
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
-        """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+        """Batch format should be in the form of (s_t, a_(t-1), r_(t))
         When t=0, the resetted obs is paired with action and reward of 0.
         """
         obs = sample_batch[SampleBatch.OBS]
