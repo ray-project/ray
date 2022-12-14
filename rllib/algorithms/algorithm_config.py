@@ -817,7 +817,7 @@ class AlgorithmConfig:
 
         # resolve rl_module class
         if self._enable_rl_module_api and self.rl_module_class is None:
-            rl_module_class = self.get_rl_module_class(framework_str=self.framework_str)
+            rl_module_class = self.get_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class)
 
     def build(
@@ -2474,8 +2474,7 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    @classmethod
-    def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
+    def get_rl_module_class(self) -> Union[Type["RLModule"], str]:
         """Returns the RLModule class to use for this algorithm.
 
         Override this method in the sub-class to return the RLModule class type given
