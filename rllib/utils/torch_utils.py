@@ -127,13 +127,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types.
+            values converted to torch Tensor types. This does not convert possibly
+            nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
         if item is None:
             # Returns an empty torch tensor
-            return torch.empty([0])
+            return item
 
         # Special handling of "Repeated" values.
         if isinstance(item, RepeatedValues):
