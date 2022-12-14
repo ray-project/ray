@@ -133,7 +133,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     def mapping(item):
         if item is None:
-            # Returns an empty torch tensor
+            # Torch has no representation for `None`, so we return None
             return item
 
         # Special handling of "Repeated" values.
