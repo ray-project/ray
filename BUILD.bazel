@@ -2425,7 +2425,7 @@ cc_library(
 
 alias(
     name = "hiredis",
-    actual = "@com_github_redis_hiredis//:libhiredis",
+    actual = "@com_github_redis_hiredis//:hiredis",
 )
 
 cc_library(
