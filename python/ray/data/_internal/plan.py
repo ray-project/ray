@@ -263,8 +263,6 @@ class ExecutionPlan:
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
 
-        # TODO(scott): apply schema unification here? instead of
-        # kicking out upon first block with valid schema
         schemas_to_unify = []
         for m in metadata:
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):

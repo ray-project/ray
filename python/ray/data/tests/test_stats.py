@@ -3,7 +3,6 @@ import re
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorArray, ArrowVariableShapedTensorType
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa

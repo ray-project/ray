@@ -139,15 +139,25 @@ class ArrowTensorType(pa.PyExtensionType):
 
     @classmethod
     def _need_variable_shaped_tensor_array(
-        cls, array_types: Sequence[Union["ArrowTensorType", "ArrowVariableShapedTensorType"]],
+        cls,
+        array_types: Sequence[
+            Union["ArrowTensorType", "ArrowVariableShapedTensorType"]
+        ],
     ) -> bool:
         """
-        Whether the provided list of tensor types need a variable-shaped 
-        representation when concatenating or chunking.
+        Whether the provided list of tensor types need a variable-shaped
+        representation (i.e. `ArrowVariableShapedTensorType`) when concatenating
+        or chunking. If one or more of the tensor types in `array_types` are
+        variable-shaped and/or any of the tensor arrays have a different shape
+        than the others, a variable-shaped tensor array representation will be
+        required and this method will return True.
 
-        If one or more of the tensor types in `array_types` are variable-shaped 
-        and/or any of the tensor arrays have a different shape than the others, a variable-shaped
-        tensor array representation will be required and this method will return True.
+        Args:
+            array_types: List of tensor types to check if a variable-shaped
+            representation is required for concatenation
+
+        Returns: True if concatenating arrays with types `array_types` requires
+            a variable-shaped representation
         """
         needs_variable_shaped = False
         shape = None
