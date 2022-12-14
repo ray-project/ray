@@ -1339,7 +1339,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  //absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids(ids.begin(), ids.end());
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   if (memory_object_ids.size() != ids.size()) {
@@ -1375,19 +1376,21 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
 
     if (RayConfig::instance().core_worker_prefetch_waits()
-        && ids.size() > (9 * 1000)
-        && first_time_prefetch_
+        //&& ids.size() > (9 * 1000)
+        //&& first_time_prefetch_
         ) {
         // I might have to batch these if this is too large.
-        RAY_RETURN_NOT_OK(plasma_store_provider_->FetchFromPlasmaStore(
-            ids,
-            /*in_direct_call*/ worker_context_.CurrentTaskIsDirectCall(),
-            /*task_id*/ worker_context_.GetCurrentTaskID()
-        ));
+        //RAY_RETURN_NOT_OK(plasma_store_provider_->FetchFromPlasmaStore(
+        //    ids,
+        //    /*in_direct_call*/ worker_context_.CurrentTaskIsDirectCall(),
+        //    /*task_id*/ worker_context_.GetCurrentTaskID()
+        //));
+        RAY_LOG(WARNING) << "FetchFromPlasmaStore called first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits()
+            << ", core_worker_new_path: " << RayConfig::instance().core_worker_new_path() << ", core_worker_use_old_path: " << RayConfig::instance().core_worker_use_old_path();
         first_time_prefetch_ = false;
-        RAY_LOG(WARNING) << "FetchFromPlasmaStore called first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits();
     } else {
-        RAY_LOG(WARNING) << "FetchFromPlasmaStore skipped first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits();
+        RAY_LOG(WARNING) << "FetchFromPlasmaStore skipped first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits()
+            << ", core_worker_new_path: " << RayConfig::instance().core_worker_new_path() << ", core_worker_use_old_path: " << RayConfig::instance().core_worker_use_old_path();
     }
 
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {

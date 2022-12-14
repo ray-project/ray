@@ -729,4 +729,4 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
 RAY_CONFIG(bool, core_worker_use_old_path, true)
 RAY_CONFIG(int64_t, core_worker_new_path, 0)
-RAY_CONFIG(bool, core_worker_prefetch_waits, false)
+RAY_CONFIG(bool, core_worker_prefetch_waits, true)
