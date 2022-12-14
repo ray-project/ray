@@ -46,14 +46,14 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be job, sdk_command or client.
-#    # Uses either Ray jobs, anyscale SDK commands or the Ray client to run the actual
+#    # Type of test. Can be sdk_command or client (job to be implemented soon).
+#    # Uses either Anyscale SDK commands or the Ray client to run the actual
 #    # release test.
-#    type: job
+#    type: sdk_command
 #
 #    # File manager to use to transfer files to and from the cluster.
 #    # Can be any of [sdk, client, job].
-#    file_manager: job
+#    file_manager: sdk
 #
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
@@ -115,6 +115,8 @@
     wait_for_nodes:
       num_nodes: 0
 
+    type: sdk_command
+
   alert: default
 
 
@@ -140,6 +142,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -169,6 +173,8 @@
     wait_for_nodes:
       num_nodes: 20
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -192,6 +198,8 @@
     wait_for_nodes:
       num_nodes: 11
 
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -221,6 +229,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -243,6 +253,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -276,6 +288,8 @@
     timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -296,6 +310,8 @@
     timeout: 3600
     script: python workloads/gpu_batch_prediction.py --data-size-gb 20
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -318,6 +334,8 @@
     timeout: 10800
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -341,6 +359,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -364,6 +384,8 @@
     wait_for_nodes:
       num_nodes: 8
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -386,6 +408,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -409,6 +433,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -429,6 +455,8 @@
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -454,6 +482,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -479,6 +509,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -511,6 +543,8 @@
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -536,6 +570,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -556,6 +592,8 @@
   run:
     timeout: 3600
     script: bash file_size_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
 
 # Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
@@ -574,6 +612,8 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
@@ -595,6 +635,8 @@
 
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
+    type: sdk_command
+    file_manager: sdk
 
 #######################
 # XGBoost release tests
@@ -649,6 +691,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -675,6 +719,8 @@
     wait_for_nodes:
       num_nodes: 5
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -700,6 +746,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -726,6 +774,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -752,6 +802,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -778,6 +830,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -804,6 +858,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -830,6 +886,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -884,6 +942,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -910,6 +970,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -936,6 +998,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -961,6 +1025,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -986,6 +1052,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -1011,6 +1079,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -1278,6 +1348,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1306,6 +1378,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1334,6 +1408,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1364,6 +1440,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1393,6 +1471,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1510,6 +1590,8 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1535,6 +1617,8 @@
     wait_for_nodes:
       num_nodes: 16
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1558,6 +1642,8 @@
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1588,6 +1674,9 @@
     script: python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
+
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1626,6 +1715,8 @@
     wait_for_nodes:
       num_nodes: 16
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1648,6 +1739,8 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1674,6 +1767,8 @@
     wait_for_nodes:
       num_nodes: 16
 
+    type: sdk_command
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -1729,6 +1824,8 @@
     prepare: ray stop
     script: python workloads/actor_deaths.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1759,6 +1856,8 @@
     wait_for_nodes:
       num_nodes: 3
 
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1786,6 +1885,8 @@
     timeout: 86400
     script: python workloads/impala.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1813,6 +1914,8 @@
     prepare: ray stop
     script: python workloads/many_actor_tasks.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1840,6 +1943,8 @@
     prepare: ray stop
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1872,6 +1977,8 @@
     wait_for_nodes:
       num_nodes: 1
 
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1899,6 +2006,8 @@
     prepare: ray stop
     script: python workloads/many_tasks.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1926,6 +2035,8 @@
     prepare: ray stop
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1953,6 +2064,8 @@
     prepare: ray stop
     script: python workloads/node_failures.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1981,6 +2094,8 @@
     prepare: ray stop
     script: python workloads/pbt.py
     long_running: true
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2008,6 +2123,8 @@
     prepare: ray stop
     script: python workloads/serve.py
     long_running: true
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2038,6 +2155,8 @@
     prepare: ray stop
     script: python workloads/serve_failure.py
     long_running: true
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2067,6 +2186,8 @@
     timeout: 86400
     script: python workloads/long_running_many_jobs.py --num-clients=1
     long_running: true
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2095,6 +2216,8 @@
     timeout: 86400
     script: python workloads/pytorch_pbt_failure.py
     long_running: true
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -2128,6 +2251,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2152,6 +2277,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2173,6 +2300,7 @@
       num_nodes: 4
 
     type: job
+    file_manager: job
 
 - name: jobs_check_cuda_available
   group: Jobs tests
@@ -2191,6 +2319,7 @@
     wait_for_nodes:
       num_nodes: 2
     type: job
+    file_manager: job
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2209,6 +2338,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: job
 
 ########################
 # Runtime env tests
@@ -2234,6 +2365,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2258,6 +2391,8 @@
     wait_for_nodes:
       num_nodes: 1
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2310,6 +2445,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/single_deployment_1k_noop_replica.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2332,6 +2469,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/multi_deployment_1k_noop_replica.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2354,6 +2493,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/autoscaling_single_deployment.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2376,6 +2517,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/autoscaling_multi_deployment.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2398,6 +2541,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2421,6 +2566,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2444,6 +2591,8 @@
     timeout: 3600
     long_running: false
     script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
 
   alert: default
   stable: False
@@ -2467,6 +2616,8 @@
     timeout: 3600
     long_running: false
     script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
 
   alert: default
   stable: False
@@ -2490,6 +2641,8 @@
     timeout: 3600
     long_running: false
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
 
   alert: default
   stable: False
@@ -2513,6 +2666,8 @@
     timeout: 3600
     long_running: false
     script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
 
   alert: default
   stable: False
@@ -2537,6 +2692,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_protocol_benchmark.py --data-size=1048576
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2559,6 +2716,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2582,6 +2741,8 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_resnet_benchmark.py --gpu-env
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2608,6 +2769,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2634,6 +2797,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a2c
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2656,6 +2821,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a3c
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2678,6 +2845,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=apex
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2700,6 +2869,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=appo
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2722,6 +2893,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ppo
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2744,6 +2917,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=bc
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2766,6 +2941,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=cql
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2788,6 +2965,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ddpg
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2810,6 +2989,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=dqn
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2832,6 +3013,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=es
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2854,6 +3037,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=impala
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2876,6 +3061,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=marwil
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2899,6 +3086,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=sac
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2921,6 +3110,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=slateq
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2944,6 +3135,8 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=td3
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2967,6 +3160,8 @@
   run:
     timeout: 7200
     script: python multi_gpu_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -2989,6 +3184,8 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -3011,6 +3208,8 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_attention_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -3037,6 +3236,8 @@
     wait_for_nodes:
       num_nodes: 6
 
+    type: sdk_command
+    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -3071,6 +3272,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
     type: job
+    file_manager: job
 
 - name: shuffle_50gb
   group: core-multi-test
@@ -3089,6 +3291,8 @@
   run:
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_50gb_large_partition
   group: core-multi-test
@@ -3107,6 +3311,8 @@
   run:
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_100gb
   group: core-multi-test
@@ -3128,6 +3334,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: non_streaming_shuffle_100gb
   group: core-multi-test
@@ -3151,6 +3359,8 @@
     wait_for_nodes:
       num_nodes: 4
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: non_streaming_shuffle_50gb_large_partition
   group: core-multi-test
@@ -3171,6 +3381,8 @@
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
       --no-streaming
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: non_streaming_shuffle_50gb
   group: core-multi-test
@@ -3191,6 +3403,8 @@
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
       --no-streaming
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: stress_test_placement_group
   group: core-multi-test
@@ -3209,6 +3423,8 @@
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_1tb_1000_partition
   group: core-multi-test
@@ -3230,6 +3446,8 @@
     wait_for_nodes:
       num_nodes: 20
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
@@ -3251,6 +3469,8 @@
     wait_for_nodes:
       num_nodes: 20
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: decision_tree_autoscaling
   group: core-multi-test
@@ -3268,6 +3488,8 @@
   run:
     timeout: 3000
     script: python decision_tree/cart_with_tree.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3286,6 +3508,8 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+    type: sdk_command
+    file_manager: sdk
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3306,6 +3530,8 @@
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: pg_long_running_performance_test
   group: core-multi-test
@@ -3328,6 +3554,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: microbenchmark
   group: core-daily-test
@@ -3403,6 +3631,8 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions
       50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
@@ -3422,6 +3652,8 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
       200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: dask_on_ray_large_scale_test_no_spilling
   group: core-daily-test
@@ -3444,6 +3676,8 @@
     wait_for_nodes:
       num_nodes: 21
 
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3480,6 +3714,8 @@
     wait_for_nodes:
       num_nodes: 21
 
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3514,6 +3750,8 @@
     script: python stress_tests/test_state_api_scale.py
     wait_for_nodes:
       num_nodes: 7
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3546,6 +3784,8 @@
     script: python stress_tests/test_state_api_with_other_tests.py
       nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6"
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: stress_test_many_tasks
   group: core-daily-test
@@ -3566,6 +3806,8 @@
       num_nodes: 101
 
     script: python stress_tests/test_many_tasks.py
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3599,6 +3841,8 @@
       num_nodes: 101
 
     script: python stress_tests/test_dead_actors.py
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3658,6 +3902,9 @@
 #       num_nodes: 201
 #       timeout: 600
 #
+#     type: sdk_command
+#     file_manager: sdk
+#
 #   smoke_test:
 #     frequency: nightly
 #     cluster:
@@ -3690,6 +3937,8 @@
     timeout: 500
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
@@ -3712,6 +3961,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_nodes_actor_test
   group: core-daily-test
@@ -3732,6 +3983,8 @@
     wait_for_nodes:
       num_nodes: 251
 
+    type: sdk_command
+    file_manager: sdk
 
 
 - name: pg_autoscaling_regression_test
@@ -3750,6 +4003,8 @@
   run:
     timeout: 1200
     script: python placement_group_tests/pg_run.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: placement_group_performance_test
   group: core-daily-test
@@ -3770,6 +4025,8 @@
     wait_for_nodes:
       num_nodes: 5
 
+    type: sdk_command
+    file_manager: sdk
 
 
 #########################
@@ -3794,6 +4051,8 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: object_store
   group: core-scalability-test
@@ -3814,6 +4073,8 @@
     wait_for_nodes:
       num_nodes: 50
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_actors
   group: core-scalability-test
@@ -3834,6 +4095,8 @@
     wait_for_nodes:
       num_nodes: 65
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_actors_smoke_test
   group: core-scalability-test
@@ -3854,6 +4117,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_tasks
   group: core-scalability-test
@@ -3874,6 +4139,8 @@
     wait_for_nodes:
       num_nodes: 65
 
+    type: sdk_command
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3906,6 +4173,8 @@
     wait_for_nodes:
       num_nodes: 65
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_pgs_smoke_test
   group: core-scalability-test
@@ -3926,6 +4195,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: many_nodes
   group: core-scalability-test
@@ -3948,6 +4219,8 @@
     wait_for_nodes:
       num_nodes: 250
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: scheduling_test_many_0s_tasks_single_node
   group: core-scalability-test
@@ -3970,6 +4243,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
@@ -3992,6 +4267,8 @@
     wait_for_nodes:
       num_nodes: 32
 
+    type: sdk_command
+    file_manager: sdk
 
 # - name: scheduling_test_many_5s_tasks_single_node
 #   group: core-scalability-test
@@ -4015,6 +4292,8 @@
 #       num_nodes: 32
 #       timeout: 600
 
+#     type: sdk_command
+#     file_manager: sdk
 #   stable: false
 
 # - name: scheduling_test_many_5s_tasks_many_nodes
@@ -4039,6 +4318,8 @@
 #       num_nodes: 32
 #       timeout: 600
 
+#     type: sdk_command
+#     file_manager: sdk
 #   stable: false
 
 ###############
@@ -4064,6 +4345,8 @@
     wait_for_nodes:
       num_nodes: 2
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_data_loader
   group: core-dataset-tests
@@ -4081,6 +4364,8 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: parquet_metadata_resolution
   group: core-dataset-tests
@@ -4101,6 +4386,8 @@
     wait_for_nodes:
       num_nodes: 15
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_random_access
   group: core-dataset-tests
@@ -4119,6 +4406,8 @@
     wait_for_nodes:
       num_nodes: 15
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: pipelined_data_ingest_benchmark
   group: core-dataset-tests
@@ -4136,6 +4425,8 @@
     wait_for_nodes:
       num_nodes: 20
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: aggregate_benchmark
   group: core-dataset-tests
@@ -4151,6 +4442,8 @@
     timeout: 1800
     script: python aggregate_benchmark.py
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: read_images_benchmark_single_node
   group: core-dataset-tests
@@ -4166,6 +4459,8 @@
     timeout: 1800
     script: python read_images_benchmark.py
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: read_tfrecords_benchmark_single_node
   group: core-dataset-tests
@@ -4182,6 +4477,8 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: pipelined_training_50_gb
   group: core-dataset-tests
@@ -4202,6 +4499,8 @@
     wait_for_nodes:
       num_nodes: 15
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: pipelined_ingestion_1500_gb
   group: core-dataset-tests
@@ -4224,6 +4523,8 @@
     wait_for_nodes:
       num_nodes: 21
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: datasets_preprocess_ingest
   group: core-dataset-tests
@@ -4246,6 +4547,8 @@
     wait_for_nodes:
       num_nodes: 17
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: datasets_ingest_400G
   group: core-dataset-tests
@@ -4263,6 +4566,8 @@
   run:
     timeout: 7200
     script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: core-dataset-tests
@@ -4282,6 +4587,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_shuffle_sort_1tb
   group: core-dataset-tests
@@ -4301,6 +4608,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: core-dataset-tests
@@ -4320,6 +4629,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: core-dataset-tests
@@ -4339,6 +4650,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: core-dataset-tests
@@ -4358,13 +4671,15 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
+    type: sdk_command
+    file_manager: sdk
 
 ##################
 # Core Chaos tests
 ##################
 
 - name: chaos_many_tasks_no_object_store
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_tasks_no_object_store
@@ -4383,9 +4698,11 @@
     prepare: python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=tasks
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_many_actors
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_actors
@@ -4404,6 +4721,8 @@
     prepare: python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=actors
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: core-dataset-tests
@@ -4426,6 +4745,8 @@
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
   group: core-dataset-tests
@@ -4448,6 +4769,8 @@
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   group: core-dataset-tests
@@ -4470,6 +4793,8 @@
     script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
 
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
   group: core-dataset-tests
@@ -4492,6 +4817,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dataset_shuffle_sort_1tb
   group: core-dataset-tests
@@ -4512,6 +4839,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
   group: core-dataset-tests
@@ -4535,6 +4864,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
   group: core-dataset-tests
@@ -4558,6 +4889,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
 
 #####################
 # Observability tests
@@ -4577,6 +4910,8 @@
   run:
     timeout: 14400
     script: python mem_check.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: k8s_serve_ha_test
   group: k8s-test
@@ -4597,6 +4932,8 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
+    type: sdk_command
+    file_manager: sdk
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
@@ -4616,3 +4953,5 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
+    type: sdk_command
+    file_manager: sdk

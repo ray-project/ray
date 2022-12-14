@@ -244,6 +244,13 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
 }
 
+enum TaskEventType {
+  // Profile events.
+  PROFILE_EVENT = 0;
+  // Status update events.
+  STATUS_EVENT = 1;
+}
+
 // Represents events and state changes from a single task run.
 message TaskEvents {
   // Metadata shared by all event types.
@@ -263,8 +270,10 @@ message TaskEvents {
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped task events due to buffer size limit on workers.
-  int32 num_task_events_dropped = 2;
+  // Number of dropped profile task events due to buffer size limit on workers.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of dropped status task events due to buffer size limit on workers.
+  int32 num_status_task_events_dropped = 4;
 }
 
 message ResourceTableData {
