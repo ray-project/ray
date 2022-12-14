@@ -147,6 +147,11 @@ class BCTorchTrainer:
         torch_batch = convert_to_torch_tensor(batch)
         fwd_out = self._module.forward_train(torch_batch)
         loss = self._rl_optimizer.compute_loss(torch_batch, fwd_out)
+
+        # if loss is a tensor, wrap it in a dict
+        if isinstance(loss, torch.Tensor):
+            loss = {"total_loss": loss}
+
         gradients = self.compute_gradients(loss)
         post_processed_gradients = self.on_after_compute_gradients(gradients)
         self.apply_gradients(post_processed_gradients)
@@ -156,10 +161,10 @@ class BCTorchTrainer:
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> Mapping[str, Any]:
-        """Perform an update on self._module
+        """Perform an update on self._module.
 
-            For example compute and apply gradients to self._module if
-                necessary.
+        For example compute and apply gradients to self._module if
+        necessary.
 
         Args:
             loss: variable(s) used for optimizing self._module.
@@ -167,10 +172,14 @@ class BCTorchTrainer:
         Returns:
             A dictionary of extra information and statistics.
         """
-        # for torch
-        if isinstance(loss, dict):
-            loss = loss["total_loss"]
-        loss.backward()
+
+        if isinstance(loss, torch.Tensor):
+            loss = {"total_loss": loss}
+
+        if not isinstance(loss, dict):
+            raise ValueError("loss must be a dict or torch.Tensor")
+
+        loss["total_loss"].backward()
         grads = {n: p.grad for n, p in self._module.named_parameters()}
         return grads
 

@@ -136,9 +136,9 @@ def _resolve_class_path(module) -> Type:
     if isinstance(module, str):
         import importlib
 
-        module = module.rsplit(".", 1)
-        module = importlib.import_module(module[0])
-        return getattr(module, module[1])
+        module_path, class_name = module.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
 
 
 class AlgorithmConfig:
@@ -817,8 +817,8 @@ class AlgorithmConfig:
 
         # resolve rl_module class
         if self._enable_rl_module_api and self.rl_module_class is None:
-            rl_module_class = self.get_rl_module_class(framework_str=self.framework_str)
-            self.rl_module_class = _resolve_class_path(rl_module_class)
+            rl_module_class_path = self.get_default_rl_module_class()
+            self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
     def build(
         self,
@@ -2025,8 +2025,8 @@ class AlgorithmConfig:
     def rl_module(
         self,
         *,
-        rl_module_class: Optional[Type] = NotProvided,
-        _enable_rl_module_api: bool = True,
+        rl_module_class: Optional[Type["RLModule"]] = NotProvided,
+        _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
@@ -2043,7 +2043,15 @@ class AlgorithmConfig:
         if rl_module_class is not NotProvided:
             self.rl_module_class = rl_module_class
 
-        self._enable_rl_module_api = _enable_rl_module_api
+        if self._enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
+        else:
+            # throw a warning if the user has used this API but not enabled it.
+            logger.warning(
+                "You have called `config.rl_module(...)` but "
+                "have not enabled the RLModule API. To enable it, call "
+                "`config.rl_module(_enable_rl_module_api=True)`."
+            )
 
         return self
 
@@ -2474,15 +2482,15 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    @classmethod
-    def get_rl_module_class(cls, framework_str: str) -> Union[Type["RLModule"], str]:
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
         """Returns the RLModule class to use for this algorithm.
 
         Override this method in the sub-class to return the RLModule class type given
         the input framework.
 
         Returns:
-            The RLModule class to use for this algorithm.
+            The RLModule class to use for this algorithm either as a class type or as
+            a string (e.g. x.y.z).
         """
         raise NotImplementedError
 
