@@ -60,13 +60,19 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param reply gRPC Reply.
   /// \param send_reply_callback Callback to invoke when sending reply.
   /// Handles a AddTaskEventData request.
+  void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                              rpc::AddTaskEventDataReply *reply,
+                              rpc::SendReplyCallback send_reply_callback)
+      LOCKS_EXCLUDED(mutex_) override;
+
+  /// Handle GetTaskEvent request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
   /// \param send_reply_callback Callback to invoke when sending reply.
-  void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
-                              rpc::AddTaskEventDataReply *reply,
-                              rpc::SendReplyCallback send_reply_callback)
+  void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                           rpc::GetTaskEventsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback)
       LOCKS_EXCLUDED(mutex_) override;
 
   /// Stops the event loop and the thread of the task event handler.
@@ -130,7 +136,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Otherwise all task events will be returned.
     /// \return A vector of task events.
     std::vector<rpc::TaskEvents> GetTaskEvents(
-        absl::optional<JobID> job_id = absl::nullopt) = delete;
+        absl::optional<JobID> job_id = absl::nullopt);
 
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
@@ -149,9 +155,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
-
-    /// Index from task attempt to the index of the corresponding task event.
-    absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
 
     /// Index from task attempt to the index of the corresponding task event.
     absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
