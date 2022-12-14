@@ -239,13 +239,13 @@ class RayTrialExecutor:
 
         # Actor re-use
         self._reuse_actors = reuse_actors
-        self._max_staged_actors = 1
         self._cached_resources_to_actor = defaultdict(list)
         self._last_cached_actor_cleanup = float("-inf")
         # Protect these actors from the first cleanup
         self._newly_cached_actors = set()
 
         # Resource management
+        self._max_staged_actors = 1
         self._resource_manager = resource_manager or PlacementGroupResourceManager()
 
         # Trials for which we requested resources
@@ -382,7 +382,9 @@ class RayTrialExecutor:
 
         self._trial_to_allocated_resources[trial] = allocated_resources
 
-        # Cancel resource request
+        # We are reusing an existing actor (and its resources),
+        # so we need to cancel the resource request that we originally scheduled
+        # for this trial.
         self._resource_manager.cancel_resource_request(resource_request)
 
         return actor
