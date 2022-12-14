@@ -67,7 +67,7 @@ def unify_schemas(
                     ndim=len(column_types[0].shape),
                 )
                 schema_tensor_field_overrides[col_idx] = new_type
-        # Go through all schemas and update the types of columns from the above loop. 
+        # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
             for col_idx, col_new_type in schema_tensor_field_overrides.items():
                 var_shaped_col = schema.field(col_idx).with_type(col_new_type)

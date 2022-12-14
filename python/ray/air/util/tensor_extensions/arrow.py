@@ -156,7 +156,7 @@ class ArrowTensorType(pa.PyExtensionType):
             array_types: List of tensor types to check if a variable-shaped
             representation is required for concatenation
 
-        Returns: 
+        Returns:
             True if concatenating arrays with types `array_types` requires
             a variable-shaped representation
         """

@@ -280,11 +280,15 @@ class ExecutionPlan:
                 return unify_schemas(schemas_to_unify)
             # Otherwise, if the resulting schemas are simple types (e.g. int),
             # validate that all blocks have the same type before returning.
-            if len(set(schemas_to_unify)) == 1:
-                return schemas_to_unify[0]
-            raise Exception(
-                f"Found blocks with different types in schemas: {schemas_to_unify}",
-            )
+            first_schema = schemas_to_unify[0]
+            for s in schemas_to_unify:
+                if s != first_schema:
+                    raise Exception(
+                        "Found blocks with different types in schemas: {}".format(
+                            schemas_to_unify,
+                        )
+                    )
+            return first_schema
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
