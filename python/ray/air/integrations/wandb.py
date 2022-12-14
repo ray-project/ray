@@ -525,8 +525,14 @@ class WandbLoggerCallback(LoggerCallback):
         self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
     ):
         if not self._remote_logger_class:
+            env_vars = {}
+            # API key env variable is not set if authenticating through `wandb login`
+            if WANDB_ENV_VAR in os.environ:
+                env_vars[WANDB_ENV_VAR] = os.environ[WANDB_ENV_VAR]
             self._remote_logger_class = ray.remote(
-                num_cpus=0, **_force_on_current_node()
+                num_cpus=0,
+                **_force_on_current_node(),
+                runtime_env={"env_vars": env_vars},
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(

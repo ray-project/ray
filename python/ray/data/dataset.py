@@ -327,6 +327,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -359,10 +360,19 @@ class Dataset(Generic[T]):
             one may find directly using :py:class:`~ray.data.preprocessors.Preprocessor` to be
             more convenient.
 
-        .. tip:
+        .. tip::
             If you have a small number of big blocks, it may limit parallelism. You may
-            consider increase the number of blocks via ``.repartition()`` before
-            applying the ``.map_batches()``.
+            consider increasing the number of blocks via ``.repartition()`` before
+            applying ``.map_batches()``.
+
+        .. tip::
+            If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
+            batch copy, which can improve performance and decrease memory utilization.
+            ``fn`` will then receive zero-copy read-only batches.
+            If ``fn`` mutates its input, you will need to ensure that the batch provided
+            to ``fn`` is writable by setting ``zero_copy_batch=False`` (default). This
+            will create an extra, mutable copy of each batch before handing it to
+            ``fn``.
 
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
@@ -461,6 +471,17 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
+                batches. If this is ``True`` and no copy is required for the
+                ``batch_format`` conversion, the batch will be a zero-copy, read-only
+                view on data in Ray's object store, which can decrease memory
+                utilization and improve performance. If this is ``False``, the batch
+                will be writable, which will require an extra copy to guarantee.
+                If ``fn`` mutates its input, this will need to be ``False`` in order to
+                avoid "assignment destination is read-only" or "buffer source array is
+                read-only" errors. Default is ``False``. See
+                :ref:`batch format docs <transform_datasets_batch_formats>` for details
+                on which format conversion always require a copy.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -545,7 +566,9 @@ class Dataset(Generic[T]):
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+            batcher = Batcher(
+                batch_size, ensure_copy=not zero_copy_batch and batch_size is not None
+            )
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(
@@ -574,7 +597,26 @@ class Dataset(Generic[T]):
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
-                batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                try:
+                    batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); "
+                            "this will create a writable copy of the batch before "
+                            "giving it to fn. To elide this copy, modify your mapper "
+                            "function so it doesn't try to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
+
                 validate_batch(batch)
                 # Add output batch to output buffer.
                 output_buffer.add_batch(batch)
@@ -652,15 +694,19 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def process_batch(batch):
-            batch[col] = fn(batch)
+        def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
+            batch.loc[:, col] = fn(batch)
             return batch
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
-            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+            process_batch,
+            batch_format="pandas",
+            compute=compute,
+            zero_copy_batch=False,
+            **ray_remote_args,
         )
 
     def drop_columns(
@@ -696,7 +742,11 @@ class Dataset(Generic[T]):
         """
 
         return self.map_batches(
-            lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
+            lambda batch: batch.drop(columns=cols),
+            batch_format="pandas",
+            zero_copy_batch=True,
+            compute=compute,
+            **ray_remote_args,
         )
 
     def select_columns(
@@ -733,6 +783,7 @@ class Dataset(Generic[T]):
         """
         return self.map_batches(
             lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            zero_copy_batch=True,
             compute=compute,
             **ray_remote_args,
         )
@@ -3392,6 +3443,7 @@ class Dataset(Generic[T]):
         block = output.build()
         return _block_to_df(block)
 
+    @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
@@ -3409,6 +3461,7 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
 
+    @DeveloperAPI
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
@@ -3435,6 +3488,7 @@ class Dataset(Generic[T]):
             for block in self.get_internal_block_refs()
         ]
 
+    @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
@@ -4201,6 +4255,13 @@ class Dataset(Generic[T]):
         raise AttributeError(
             "Use `ds.count()` to compute the length of a distributed Dataset. "
             "This may be an expensive operation."
+        )
+
+    def __iter__(self):
+        raise TypeError(
+            "`Dataset` objects aren't iterable. To iterate records, call "
+            "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
+            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
         )
 
     def _block_num_rows(self) -> List[int]:

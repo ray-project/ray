@@ -173,11 +173,8 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
-  auto task_spec = GetCurrentTask();
-  if (task_spec) {
-    return task_spec->GetDepth();
-  }
-  return 0;
+  absl::ReaderMutexLock lock(&mutex_);
+  return task_depth_;
 }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
@@ -239,9 +236,12 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
   current_actor_id_ = actor_id;
 }
 
+void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
+
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
+  SetTaskDepth(task_spec.GetDepth());
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;

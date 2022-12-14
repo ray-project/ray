@@ -47,7 +47,8 @@ DEFINE_stats(
     // State: the task state, as described by rpc::TaskState proto in common.proto.
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Name", "Source"),
+    // IsRetry: whether this task is a retry.
+    ("State", "Name", "Source", "IsRetry"),
     (),
     ray::stats::GAUGE);
 

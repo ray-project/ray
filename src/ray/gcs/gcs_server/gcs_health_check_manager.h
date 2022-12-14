@@ -94,6 +94,7 @@ class GcsHealthCheckManager {
           stopped_(std::make_shared<bool>(false)),
           timer_(manager->io_service_),
           health_check_remaining_(manager->failure_threshold_) {
+      request_.set_service(node_id.Hex());
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
           boost::posix_time::milliseconds(manager_->initial_delay_ms_));
