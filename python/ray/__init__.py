@@ -70,14 +70,6 @@ def _configure_system():
                 "#m1-mac-apple-silicon-support for more details."
             )
 
-    if "OMP_NUM_THREADS" not in os.environ:
-        logger.debug(
-            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-            "degradation with many workers (issue #6998). You can "
-            "override this by explicitly setting OMP_NUM_THREADS."
-        )
-        os.environ["OMP_NUM_THREADS"] = "1"
-
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(

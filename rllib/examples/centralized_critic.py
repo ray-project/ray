@@ -93,7 +93,10 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        [(_, opponent_batch)] = list(other_agent_batches.values())
+        if policy.config["enable_connectors"]:
+            [(_, _, opponent_batch)] = list(other_agent_batches.values())
+        else:
+            [(_, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]
@@ -266,17 +269,15 @@ if __name__ == "__main__":
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
                 "pol2": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
             policy_mapping_fn=lambda agent_id, **kwargs: "pol1"

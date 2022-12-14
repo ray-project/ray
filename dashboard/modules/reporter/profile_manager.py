@@ -45,9 +45,10 @@ class CpuProfilingManager:
         self.profile_dir_path = Path(profile_dir_path)
         self.profile_dir_path.mkdir(exist_ok=True)
 
-    async def trace_dump(self, pid: int) -> (bool, str):
+    async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
         cmd = f"$(which py-spy) dump -p {pid}"
-        if sys.platform == "linux":
+        # We
+        if sys.platform == "linux" and native:
             cmd += " --native"
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd
@@ -64,7 +65,7 @@ class CpuProfilingManager:
             return True, stdout.decode("utf-8")
 
     async def cpu_profile(
-        self, pid: int, format="flamegraph", duration: float = 5
+        self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
     ) -> (bool, str):
         if format == "flamegraph":
             extension = "svg"
@@ -77,7 +78,7 @@ class CpuProfilingManager:
             f"$(which py-spy) record "
             f"-o {profile_file_path} -p {pid} -d {duration} -f {format}"
         )
-        if sys.platform == "linux":
+        if sys.platform == "linux" and native:
             cmd += " --native"
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd

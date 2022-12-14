@@ -431,10 +431,11 @@ class TuneReporterBase(ProgressReporter):
         for t in trials:
             if not t.last_result:
                 continue
-            if metric not in t.last_result:
+            metric_value = unflattened_lookup(metric, t.last_result, default=None)
+            if metric_value is None:
                 continue
-            if not best_trial or t.last_result[metric] * metric_op > best_metric:
-                best_metric = t.last_result[metric] * metric_op
+            if not best_trial or metric_value * metric_op > best_metric:
+                best_metric = metric_value * metric_op
                 best_trial = t
         return best_trial, metric
 
@@ -706,8 +707,11 @@ class CLIReporter(TuneReporterBase):
             sort_by_metric=sort_by_metric,
         )
 
+    def _print(self, msg: str):
+        print(msg)
+
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        print(self._progress_str(trials, done, *sys_info))
+        self._print(self._progress_str(trials, done, *sys_info))
 
 
 def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
@@ -984,7 +988,7 @@ def _get_progress_table_data(
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: t.last_result[metric],
+            key=lambda t: unflattened_lookup(metric, t.last_result, default=None),
         )
 
     state_tbl_order = [
@@ -1185,7 +1189,7 @@ def _best_trial_str(
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
 ):
     """Returns a readable message stating the current best trial."""
-    val = trial.last_result[metric]
+    val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = parameter_columns or list(config.keys())
     if isinstance(parameter_columns, Mapping):
@@ -1311,6 +1315,7 @@ class TrialProgressCallback(Callback):
         self, metric: Optional[str] = None, progress_metrics: Optional[List[str]] = None
     ):
         self._last_print = collections.defaultdict(float)
+        self._last_print_iteration = collections.defaultdict(int)
         self._completed_trials = set()
         self._last_result_str = {}
         self._metric = metric
@@ -1321,6 +1326,9 @@ class TrialProgressCallback(Callback):
             self._progress_metrics.add(self._metric)
         self._last_result = {}
         self._display_handle = None
+
+    def _print(self, msg: str):
+        print(msg)
 
     def on_trial_result(
         self,
@@ -1350,7 +1358,7 @@ class TrialProgressCallback(Callback):
             if print_result_str != last_result_str:
                 self.log_result(trial, trial.last_result, error=False)
             else:
-                print(f"Trial {trial} completed. " f"Last result: {print_result_str}")
+                self._print(f"Trial {trial} completed. Last result: {print_result_str}")
 
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
@@ -1367,6 +1375,8 @@ class TrialProgressCallback(Callback):
                 self.print_result(trial, result, error, done)
 
             self._last_print[trial] = time.time()
+            if TRAINING_ITERATION in result:
+                self._last_print_iteration[trial] = result[TRAINING_ITERATION]
 
     def print_result(self, trial: Trial, result: Dict, error: bool, done: bool):
         """Print the most recent results for the given trial to stdout.
@@ -1377,9 +1387,14 @@ class TrialProgressCallback(Callback):
             error: True if an error has occurred, False otherwise
             done: True if the trial is finished, False otherwise
         """
+        last_print_iteration = self._last_print_iteration[trial]
+
         if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
-            print("Result for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if result.get(TRAINING_ITERATION) != last_print_iteration:
+                self._print(f"Result for {trial}:")
+                self._print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if done:
+                self._print(f"Trial {trial} completed.")
 
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
@@ -1413,7 +1428,7 @@ class TrialProgressCallback(Callback):
                     f"with parameters={trial.config}.{info}"
                 )
 
-            print(message)
+            self._print(message)
 
     def generate_trial_table(
         self, trials: Dict[Trial, Dict], columns: List[str]

@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import requests
 import pytest
 from jsonschema import validate
 
@@ -183,6 +184,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
         }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
@@ -194,7 +196,46 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
         }
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_worker_crash_increment_stats():
+    @ray.remote
+    def crasher():
+        exit(1)
+
+    @ray.remote
+    def oomer():
+        mem = []
+        while True:
+            mem.append([0] * 1000000000)
+
+    with ray.init() as ctx:
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(crasher.options(max_retries=1).remote())
+
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(oomer.options(max_retries=0).remote())
+
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        wait_for_condition(
+            lambda: "worker_crash_system_error"
+            in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
+            timeout=4,
+        )
+
+        result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
+
+        assert "worker_crash_system_error" in result
+        assert result["worker_crash_system_error"] == "2"
+
+        assert "worker_crash_oom" in result
+        assert result["worker_crash_oom"] == "1"
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -516,14 +557,13 @@ def test_usage_lib_cluster_metadata_generation(
         )
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_usage_stats_enabled_endpoint(
     monkeypatch, ray_start_cluster, reset_usage_stats
 ):
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # Doesn't work with minimal installation
-        # since we need http server.
-        return
-
     import requests
 
     with monkeypatch.context() as m:
@@ -542,13 +582,13 @@ def test_usage_stats_enabled_endpoint(
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation "
+    "since we import serve.",
+)
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # Doesn't work with minimal installation
-        # since we import serve.
-        return
-
     address = call_ray_start
     ray.init(address=address)
 
@@ -1028,9 +1068,12 @@ provider:
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
+            "dashboard_metrics_grafana_enabled": "False",
+            "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1366,7 +1409,10 @@ def test_usage_stats_tags(
             assert tags == {
                 "key": "val",
                 "key2": "val2",
+                "dashboard_metrics_grafana_enabled": "False",
+                "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
             }
             assert num_nodes == 2
             return True
@@ -1420,6 +1466,54 @@ def test_usages_stats_available_when_dashboard_not_included(
             return read_file(temp_dir, "usage_stats")["seq_number"] > 2
 
         wait_for_condition(verify)
+
+
+def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stats):
+    """
+    Test dashboard usage metrics are correctly reported.
+    This is tested on both minimal / non minimal ray.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        addr = ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        temp_dir = pathlib.Path(ray._private.worker._global_node.get_session_dir_path())
+        webui_url = format_web_url(addr["webui_url"])
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify_dashboard_not_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
+            ]
+            return dashboard_used == "False"
+
+        wait_for_condition(verify_dashboard_not_used)
+
+        if os.environ.get("RAY_MINIMAL") == "1":
+            # In the minimal Ray, dashboard is not available.
+            return
+
+        # Open the dashboard will set the dashboard_used == "True".
+        resp = requests.get(webui_url)
+        resp.raise_for_status()
+
+        def verify_dashboard_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
+            ]
+            if os.environ.get("RAY_MINIMAL") == "1":
+                return dashboard_used == "False"
+            else:
+                return dashboard_used == "True"
+
+        wait_for_condition(verify_dashboard_used)
 
 
 if __name__ == "__main__":

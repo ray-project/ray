@@ -204,6 +204,8 @@ Instead, you can wrap the ``async`` function with a wrapper to run the task sync
     @ray.remote
     def wrapper():
         import asyncio
-        asyncio.get_event_loop().run_until_complete(f())
+        asyncio.run(f())
+        # For python < 3.7: 
+        # asyncio.get_event_loop().run_until_complete(f())
     
     

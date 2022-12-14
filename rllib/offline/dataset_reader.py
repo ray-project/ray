@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 import re
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
 
 import ray.data
@@ -12,7 +12,10 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import SampleBatchType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
@@ -65,7 +68,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int = 0
+    config: "AlgorithmConfig", num_workers: int = 0
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -96,16 +99,13 @@ def get_dataset_and_shards(
         shared would be a dummy None shard for local_worker.
     """
     # check input and input config keys
-    assert config["input"] == "dataset", (
-        f"Must specify input as dataset if"
-        f" calling `get_dataset_and_shards`. Got {config['input']}"
+    assert config.input_ == "dataset", (
+        f"Must specify config.input_ as 'dataset' if"
+        f" calling `get_dataset_and_shards`. Got {config.input_}"
     )
-    assert (
-        "input_config" in config
-    ), "Must specify input_config dict if using Dataset input."
 
     # check input config format
-    input_config = config["input_config"]
+    input_config = config.input_config
     format = input_config.get("format")
 
     supported_fmts = ["json", "parquet"]

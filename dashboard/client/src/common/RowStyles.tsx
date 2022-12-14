@@ -21,6 +21,9 @@ const rowStyles = makeStyles((theme) =>
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
     },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
+    },
   }),
 );
 

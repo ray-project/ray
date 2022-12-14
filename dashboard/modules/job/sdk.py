@@ -121,7 +121,7 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.0 or higher or downgrade the client Ray version.",
             )
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def submit_job(
         self,
         *,
@@ -175,7 +175,7 @@ class JobSubmissionClient(SubmissionClient):
 
         Raises:
             RuntimeError: If the request to the job server fails, or if the specified
-            submission_id has already been used by a job on this cluster.
+                submission_id has already been used by a job on this cluster.
         """
         if job_id:
             logger.warning(
@@ -225,7 +225,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def stop_job(
         self,
         job_id: str,
@@ -247,7 +247,7 @@ class JobSubmissionClient(SubmissionClient):
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         logger.debug(f"Stopping job with job_id={job_id}.")
         r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
@@ -294,7 +294,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_info(
         self,
         job_id: str,
@@ -312,14 +312,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose information
-            is being requested.
+                is being requested.
 
         Returns:
             The JobInfo for the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
@@ -328,7 +328,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def list_jobs(self) -> List[JobDetails]:
         """List all jobs along with their status and other information.
 
@@ -369,7 +369,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_status(self, job_id: str) -> JobStatus:
         """Get the most recent status of a job.
 
@@ -382,18 +382,18 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose status is being
-            requested.
+                requested.
 
         Returns:
             The JobStatus of the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         return self.get_job_info(job_id).status
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job.
 
@@ -406,14 +406,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose logs are being
-            requested.
+                requested.
 
         Returns:
             A string containing the full logs of the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
@@ -422,7 +422,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI(stability="stable")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Get an iterator that follows the logs of a job.
 
@@ -439,14 +439,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose logs are being
-            requested.
+                requested.
 
         Returns:
             The iterator.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers

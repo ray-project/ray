@@ -211,7 +211,7 @@ Random block order
 ~~~~~~~~~~~~~~~~~~
 
 For a low-cost way to perform a pseudo global shuffle that does not require loading the full Dataset into memory,
-you can randomize the order of the *blocks* with ``Dataset.randomize_block_order``.
+you can randomize the order of the *blocks* with :meth:`Dataset.randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
 .. code-block:: python
 

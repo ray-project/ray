@@ -2,7 +2,7 @@ import pytest
 import sys
 import threading
 from time import sleep
-
+from ray._private.test_utils import wait_for_condition
 from pytest_docker_tools import container, fetch, network
 from pytest_docker_tools import wrappers
 from http.client import HTTPConnection
@@ -49,11 +49,22 @@ redis = container(
     ),
 )
 
-header_node = container(
+head_node = container(
     image="ray_ci:v1",
     name="gcs",
     network="{gcs_network.name}",
-    command=["ray", "start", "--head", "--block", "--num-cpus", "0"],
+    command=[
+        "ray",
+        "start",
+        "--head",
+        "--block",
+        "--num-cpus",
+        "0",
+        # Fix the port of raylet to make sure raylet restarts at the same
+        # ip:port is treated as a different raylet.
+        "--node-manager-port",
+        "9379",
+    ],
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -64,7 +75,17 @@ header_node = container(
 worker_node = container(
     image="ray_ci:v1",
     network="{gcs_network.name}",
-    command=["ray", "start", "--address", "gcs:6379", "--block"],
+    command=[
+        "ray",
+        "start",
+        "--address",
+        "gcs:6379",
+        "--block",
+        # Fix the port of raylet to make sure raylet restarts at the same
+        # ip:port is treated as a different raylet.
+        "--node-manager-port",
+        "9379",
+    ],
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -74,8 +95,8 @@ worker_node = container(
 
 
 @pytest.fixture
-def docker_cluster(header_node, worker_node):
-    yield (header_node, worker_node)
+def docker_cluster(head_node, worker_node):
+    yield (head_node, worker_node)
 
 
 scripts = """
@@ -149,7 +170,7 @@ def test_ray_server_basic(docker_cluster):
     # TODO(iycheng): Update serve to better integrate with GCS HA:
     #   - Make sure no task can run in the raylet where GCS is deployed.
 
-    header, worker = docker_cluster
+    head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
     assert b"Adding 1 replica to deployment 'Counter'." in output.output
@@ -162,7 +183,7 @@ def test_ray_server_basic(docker_cluster):
     assert output.exit_code == 0
 
     # Kill the head node
-    header.kill()
+    head.kill()
 
     # Make sure serve is still working
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
@@ -179,12 +200,44 @@ def test_ray_server_basic(docker_cluster):
     sleep(5)
 
     # serve reconfig should continue once GCS is back
-    header.restart()
+    head.restart()
 
     t.join()
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_ray_nodes_liveness(docker_cluster):
+    get_nodes_script = """
+import ray
+ray.init("auto")
+print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
+"""
+    head, worker = docker_cluster
+
+    def check_alive(n):
+        output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
+        assert output.exit_code == 0
+        text = output.output.decode().strip().split("\n")[-1]
+        print("Alive nodes: ", text)
+        return n == int(text)
+
+    # Make sure two nodes are alive
+    wait_for_condition(check_alive, n=2)
+    print("head killed")
+    head.kill()
+
+    sleep(2)
+
+    head.restart()
+    # When GCS restarts, a new raylet is added
+    # and the old dead raylet is going to take a while to be marked dead.
+    # So there should be 3 alive nodes
+    wait_for_condition(check_alive, timeout=10, n=3)
+    # Later, GCS detect the old raylet dead and the alive nodes will be 2
+    wait_for_condition(check_alive, timeout=30, n=2)
 
 
 if __name__ == "__main__":

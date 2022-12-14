@@ -123,6 +123,9 @@ class GcsPlacementGroup {
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
 
+  /// Check if there are unplaced bundles.
+  bool HasUnplacedBundles() const;
+
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
@@ -403,6 +406,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   // Update placement group load information so that the autoscaler can use it.
   void UpdatePlacementGroupLoad();
+
+  /// Check if this placement group is waiting for scheduling.
+  bool IsInPendingQueue(const PlacementGroupID &placement_group_id) const;
+
+  /// Reschedule this placement group if it still has unplaced bundles.
+  bool RescheduleIfStillHasUnplacedBundles(const PlacementGroupID &placement_group_id);
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).

@@ -16,7 +16,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import uuid
 from ray._raylet import Config
 
@@ -540,6 +540,52 @@ async def async_wait_for_condition_async_predicate(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def get_metric_check_condition(
+    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+) -> Callable[[], bool]:
+    """A condition to check if a prometheus metrics reach a certain value.
+    This is a blocking check that can be passed into a `wait_for_condition`
+    style function.
+
+    Args:
+      metrics_to_check: A map of metric lable to values to check, to ensure
+        that certain conditions have been reached. If a value is None, just check
+        that the metric was emitted with any value.
+
+    Returns:
+      A function that returns True if all the metrics are emitted.
+    """
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+    def f():
+        for metric_name, metric_value in metrics_to_check.items():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            found_metric = False
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
+                        found_metric = True
+            if not found_metric:
+                print(
+                    "Didn't find metric, all metric names: ",
+                    metric_names,
+                    "all values",
+                    metric_samples,
+                )
+                return False
+        return True
+
+    return f
 
 
 def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
@@ -1263,7 +1309,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = asyncio.get_event_loop().create_future()
+            self.done = ray._private.utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1691,3 +1737,14 @@ def get_gcs_memory_used():
     }
     assert "gcs_server" in m
     return sum(m.values())
+
+
+def wandb_populate_run_location_hook():
+    """
+    Example external hook to populate W&B project and group env vars in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"

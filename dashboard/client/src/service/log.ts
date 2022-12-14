@@ -24,6 +24,8 @@ export const getLogDetail = async (url: string) => {
         const a = li.children[0] as HTMLAnchorElement;
         let href = a.href;
         if (
+          // Skip remove protocal and host at log index page
+          url !== "log_index" &&
           !li.innerText.startsWith("http://") &&
           !li.innerText.startsWith("https://")
         ) {

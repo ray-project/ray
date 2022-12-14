@@ -25,6 +25,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
+from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -317,22 +318,30 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            if self._metrics_agent.proxy_exporter_collector:
+                # proxy_exporter_collector is None
+                # if Prometheus server is not started.
+                REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid)
+        success, output = await p.trace_dump(pid, native=native)
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):
         pid = request.pid
         duration = request.duration
         format = request.format
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.cpu_profile(pid, format=format, duration=duration)
+        success, output = await p.cpu_profile(
+            pid, format=format, duration=duration, native=native
+        )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):
