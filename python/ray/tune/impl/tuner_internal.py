@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tu
 
 import ray
 import ray.cloudpickle as pickle
+from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -127,8 +128,19 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
             pickle.dump(self, fp)
 
-        with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-            pickle.dump(self.trainable, fp)
+        try:
+            with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
+                pickle.dump(self.trainable, fp)
+        except TypeError as e:
+            inspect_serializability(self.trainable)
+            msg = (
+                "The provided trainable is not serializable, which is a requirement "
+                "since the trainable is serialized and deserialized when transferred "
+                "to remote workers. See above for a trace of the non-serializable "
+                "objects that were found in your trainable."
+            )
+            raise TypeError(msg) from e
+
         self._maybe_warn_resource_contention()
 
     def get_run_config(self) -> RunConfig:
