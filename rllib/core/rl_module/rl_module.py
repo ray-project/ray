@@ -102,6 +102,7 @@ class RLModule(abc.ABC):
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
+        # This method is called after the __init__ method of the subclass.
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
@@ -114,6 +115,10 @@ class RLModule(abc.ABC):
 
     def __post_init__(self):
         """Called after the __init__ method of the subclass.
+
+        The module first calls the __init__ method of the subclass, With in the 
+        __init__ you should call the super().__init__ method. Then after the __init__ 
+        method of the subclass is called, the __post_init__ method is called.
 
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
