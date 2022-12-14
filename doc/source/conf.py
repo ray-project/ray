@@ -82,7 +82,7 @@ external_toc_path = "_toc.yml"
 html_extra_path = ["robots.txt"]
 
 # Omit prompt when using copy button
-copybutton_prompt_text = r"\$ "
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
 
