@@ -1343,8 +1343,9 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.model.update(model)
-            if model.get("_use_default_native_models"):
-                Deprecated(
+            if model.get("_use_default_native_models") != DEPRECATED_VALUE:
+                deprecation_warning(
+                    old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
                     "anymore. To get rid of this error, set `experimental("
                     "_enable_rl_module_api` to True. Native models will "
