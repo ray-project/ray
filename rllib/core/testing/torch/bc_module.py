@@ -86,7 +86,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         return cls(**config)
 
     @classmethod
-    def from_env(cls, env):
+    def from_env(cls, env: gym.Env):
         """This is used for testing purposes."""
         return cls.from_model_config(
             env.observation_space,
