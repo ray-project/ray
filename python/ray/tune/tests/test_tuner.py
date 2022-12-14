@@ -382,6 +382,18 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner.fit()
 
 
+def test_nonserializable_trainable(capsys):
+    import threading
+
+    lock = threading.Lock()
+    with pytest.raises(TypeError):
+        Tuner(lambda config: print(lock))
+
+    # Check that the `inspect_serializability` trace was printed
+    out, _ = capsys.readouterr()
+    assert "was found to be non-serializable." in out
+
+
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
 def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
