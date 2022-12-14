@@ -268,13 +268,13 @@ def test_scaling_config_validation(ray_start_4_cpus):
         train_loop_per_worker=train_func,
         train_loop_config={"x": 100},
     )
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(ValueError):
         trainer.fit()
 
     # Scaling config must be passed in through Tuner param space if not
     # included in the initial trainer
     tuner = Tuner(trainer)
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
     tuner = Tuner(trainer, param_space={"scaling_config": ScalingConfig(num_workers=1)})

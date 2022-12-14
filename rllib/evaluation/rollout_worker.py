@@ -186,9 +186,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ...     policies={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.99)),
         ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.95)),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
@@ -1995,6 +1997,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
                 if not policy and not restore_states:
+                    # TODO(jungong) : revisit this. It will be nicer to create
+                    # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:

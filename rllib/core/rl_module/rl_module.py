@@ -16,6 +16,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
 
+
 ModuleID = str
 
 
@@ -23,7 +24,7 @@ ModuleID = str
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
-    Here is the pseudo code for how the forward methods are called:
+    Here is the pseudocode for how the forward methods are called:
 
     # During Training (acting in env from each rollout worker)
     ----------------------------------------------------------
@@ -79,6 +80,27 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: Mapping[str, Any] = None) -> None:
         self.config = config or {}
+        self.setup()
+        self._input_specs_train = self.input_specs_train()
+        self._output_specs_train = self.output_specs_train()
+        self._input_specs_exploration = self.input_specs_exploration()
+        self._output_specs_exploration = self.output_specs_exploration()
+        self._input_specs_inference = self.input_specs_inference()
+        self._output_specs_inference = self.output_specs_inference()
+
+    def setup(self) -> None:
+        """Called once during initialization.
+
+        Override this method to perform any setup logic.
+        """
+        pass
+
+    def get_initial_state(self) -> NestedDict:
+        """Returns the initial state of the module.
+
+        This is used for recurrent models.
+        """
+        return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
@@ -119,7 +141,7 @@ class RLModule(abc.ABC):
         return ModelSpec()
 
     @check_specs(
-        input_spec="input_specs_inference", output_spec="output_specs_inference"
+        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
     )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
@@ -141,7 +163,7 @@ class RLModule(abc.ABC):
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_specs(
-        input_spec="input_specs_exploration", output_spec="output_specs_exploration"
+        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
     )
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
@@ -164,8 +186,11 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
+    def forward_train(
+        self,
+        batch: SampleBatchType,
+    ) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -178,7 +203,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch, **kwargs)
+        return self._forward_train(batch)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:

@@ -367,6 +367,7 @@ time.sleep(999)
     proc.kill()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows. Timing out.")
 def test_actor_task_retry(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 

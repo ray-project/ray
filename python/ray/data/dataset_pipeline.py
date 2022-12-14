@@ -762,7 +762,7 @@ class DatasetPipeline(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,

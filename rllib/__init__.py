@@ -31,10 +31,7 @@ def _setup_logger():
 def _register_all():
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.algorithms.registry import ALGORITHMS, _get_algorithm_class
-    from ray.rllib.connectors.registry import _register_all_connectors
     from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-
-    _register_all_connectors()
 
     for key, get_trainable_class_and_config in list(ALGORITHMS.items()) + list(
         CONTRIBUTED_ALGORITHMS.items()

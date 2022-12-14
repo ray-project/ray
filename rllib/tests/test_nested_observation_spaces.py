@@ -508,13 +508,13 @@ class TestNestedObservationSpaces(unittest.TestCase):
                         None,
                         TUPLE_SPACE,
                         act_space,
-                        {"model": {"custom_model": "tuple_spy"}},
+                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
                     ),
                     "dict_policy": (
                         None,
                         DICT_SPACE,
                         act_space,
-                        {"model": {"custom_model": "dict_spy"}},
+                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
                     ),
                 },
                 policy_mapping_fn=(
