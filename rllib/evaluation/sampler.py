@@ -783,31 +783,6 @@ def _process_observations(
         # Check episode termination conditions.
         if dones[env_id]["__all__"]:
             all_agents_done = True
-            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if not episode.is_faulty:
-                if atari_metrics is not None:
-                    for m in atari_metrics:
-                        outputs.append(
-                            m._replace(
-                                custom_metrics=episode.custom_metrics,
-                                hist_data=episode.hist_data,
-                            )
-                        )
-                else:
-                    outputs.append(
-                        RolloutMetrics(
-                            episode.length,
-                            episode.total_reward,
-                            dict(episode.agent_rewards),
-                            episode.custom_metrics,
-                            {},
-                            episode.hist_data,
-                            episode.media,
-                        )
-                    )
-            else:
-                # Add metrics about a faulty episode.
-                outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -994,6 +969,34 @@ def _process_observations(
                     episode=episode,
                     env_index=env_id,
                 )
+
+            #TODO: move this here
+            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
+            if not episode.is_faulty:
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        outputs.append(
+                            m._replace(
+                                custom_metrics=episode.custom_metrics,
+                                hist_data=episode.hist_data,
+                            )
+                        )
+                else:
+                    outputs.append(
+                        RolloutMetrics(
+                            episode.length,
+                            episode.total_reward,
+                            dict(episode.agent_rewards),
+                            episode.custom_metrics,
+                            {},
+                            episode.hist_data,
+                            episode.media,
+                        )
+                    )
+            else:
+                # Add metrics about a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
+            #END TEST
 
             # Terminated: Try to reset the sub environment.
             # Clean up old finished episode.
