@@ -868,6 +868,9 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles("dashboard", unique=True)
         process_info = ray._private.services.start_log_monitor(
             self._logs_dir,
             self.gcs_address,
@@ -875,6 +878,8 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -892,6 +897,9 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles("dashboard", unique=True)
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
             raise_on_failure,
@@ -905,6 +913,8 @@ class Node:
             backup_count=self.backup_count,
             port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
