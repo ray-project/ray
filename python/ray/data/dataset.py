@@ -4024,10 +4024,6 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
-        ctx = DatasetContext.get_current()
-        if ctx.new_execution_backend:
-            raise ValueError("TODO this should not execute")
-
         # We need schema to properly validate, so synchronously
         # fetch it if necessary.
         schema = self.schema(fetch_if_missing=True)
