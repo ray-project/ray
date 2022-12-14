@@ -1,4 +1,4 @@
-Fault tolerance
+Fault Tolerance
 ===============
 
 Ray is a distributed system, and that means failures can happen. Generally, failures can

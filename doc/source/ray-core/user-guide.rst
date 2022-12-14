@@ -13,8 +13,8 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     tasks
     actors
     objects
-    scheduling/index.rst
     handling-dependencies
+    scheduling/index.rst
     fault-tolerance
     patterns/index.rst
     advanced-topics

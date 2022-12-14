@@ -6,7 +6,7 @@ Actor fault tolerance
 
 Actors can fail if the actor process dies, or if the **owner** of the actor
 dies. The owner of an actor is the worker that originally created the actor by
-calling ``ActorClass.remote()``. :ref:`*Detached* actors <actor-lifetimes>` do
+calling ``ActorClass.remote()``. :ref:`Detached actors <actor-lifetimes>` do
 not have an owner process and are cleaned up when the Ray cluster is destroyed.
 
 

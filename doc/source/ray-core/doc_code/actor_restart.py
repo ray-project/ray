@@ -38,7 +38,7 @@ for _ in range(10):
         counter = ray.get(actor.increment_and_possibly_fail.remote())
         print(counter)  # Unreachable.
     except ray.exceptions.RayActorError:
-        print('FAILURE')  # Prints 10 times.
+        print("FAILURE")  # Prints 10 times.
 
 # __actor_restart_end__
 # fmt: on

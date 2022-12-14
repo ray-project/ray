@@ -18,7 +18,7 @@ except in cases of ``ray.put``.
   :end-before: __owners_end__
 
 
-Currently, Ray can automatically recover from data loss but not owner failure.
+Ray can automatically recover from data loss but not owner failure.
 
 .. _fault-tolerance-objects-reconstruction:
 
@@ -38,8 +38,8 @@ Lineage reconstruction currently has the following limitations:
 * The object, and any of its transitive dependencies, must have been generated
   by a task (actor or non-actor). This means that **objects created by
   ray.put are not recoverable**.
-* Tasks are assumed to be deterministic and idempotent. Thus, by default,
-  **objects created by actor tasks are not reconstructable**. To allow
+* Tasks are assumed to be deterministic and idempotent. Thus,
+  **by default, objects created by actor tasks are not reconstructable**. To allow
   reconstruction of actor task results, set the ``max_task_retries`` parameter
   to a non-zero value (see :ref:`actor
   fault tolerance <fault-tolerance-actors>` for more details).
