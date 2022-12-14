@@ -87,6 +87,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         config = {
@@ -97,13 +98,15 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(metric="score")
+        ax_search = AxSearch()
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
                 search_alg=ax_search,
+                metric="score",
+                mode="max",
             ),
             param_space=config,
         )
@@ -115,6 +118,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         parameters = [
@@ -125,9 +129,9 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(space=parameters, metric="score")
+        ax_search = AxSearch(space=parameters, metric="score", mode="max")
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
