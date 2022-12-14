@@ -15,7 +15,6 @@ from ray.rllib.policy.torch_mixins import (
     KLCoeffMixin,
     LearningRateSchedule,
 )
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -27,11 +26,6 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-    PPOModuleConfig,
-    FCConfig,
-)
 
 torch, nn = try_import_torch()
 
@@ -89,61 +83,6 @@ class PPOTorchPolicyWithRLModule(
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
-    @override(Policy)
-    def make_rl_module(self):
-        """Returns the RLModule to use for this policy.
-
-        This implementation will be replaced with model catalog calls in the future.
-        For now we basically create the barebones of a fully connected network to match
-        the behavior of what is used to be in the old policy. This is a temporary
-        solution to get RLModules working with PPO.
-
-        """
-
-        activation = self.config["model"]["fcnet_activation"]
-        if activation == "tanh":
-            activation = "Tanh"
-        elif activation == "relu":
-            activation = "ReLU"
-        elif activation == "linear":
-            activation = "linear"
-        else:
-            raise ValueError(f"Unsupported activation: {activation}")
-
-        fcnet_hiddens = self.config["model"]["fcnet_hiddens"]
-        vf_share_layers = self.config["model"]["vf_share_layers"]
-        free_log_std = self.config["model"]["free_log_std"]
-
-        if vf_share_layers:
-            encoder_config = FCConfig(
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-            )
-            # TODO
-            pi_config = FCConfig()
-            vf_config = FCConfig()
-        else:
-            pi_config = FCConfig(
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-            )
-            vf_config = FCConfig(
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-            )
-            encoder_config = None
-
-        config_ = PPOModuleConfig(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            encoder_config=encoder_config,
-            pi_config=pi_config,
-            vf_config=vf_config,
-            free_log_std=free_log_std,
-        )
-
-        return PPOTorchRLModule(config_)
-
     @override(TorchPolicyV2)
     def loss(
         self,
@@ -174,7 +113,7 @@ class PPOTorchPolicyWithRLModule(
             mask = sequence_mask(
                 train_batch[SampleBatch.SEQ_LENS],
                 max_seq_len,
-                time_major=model.is_time_major(),
+                time_major=self.config["model"]["_time_major"],
             )
             mask = torch.reshape(mask, [-1])
             num_valid = torch.sum(mask)
