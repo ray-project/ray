@@ -1375,7 +1375,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
 
     if (RayConfig::instance().core_worker_prefetch_waits()
-        && ids.size() == 10 * 1000
+        && ids.size() > (9 * 1000)
         && first_time_prefetch_
         ) {
         // I might have to batch these if this is too large.
@@ -1385,6 +1385,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
             /*task_id*/ worker_context_.GetCurrentTaskID()
         ));
         first_time_prefetch_ = false;
+        RAY_LOG(WARNING) << "FetchFromPlasmaStore called first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits();
+    } else {
+        RAY_LOG(WARNING) << "FetchFromPlasmaStore skipped first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits();
     }
 
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
