@@ -5,7 +5,6 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.batcher import AsyncBatcher, Batcher
-from ray.data.context import DatasetContext
 
 
 def gen_block(num_rows):
@@ -108,7 +107,7 @@ def test_async_batcher_buffer_size():
     assert async_batcher.buffer.qsize() == 4
 
 
-def map_batches_test(dataset, batch_size, sleep_time, async_fetch_batch) -> int:
+def map_batches_test(dataset, batch_size, sleep_time, prefetch_batches) -> int:
     def sleep_udf(batch):
         time.sleep(sleep_time)
         return batch
@@ -118,7 +117,7 @@ def map_batches_test(dataset, batch_size, sleep_time, async_fetch_batch) -> int:
         sleep_udf,
         batch_size=batch_size,
         batch_format="numpy",
-        async_fetch_batch=async_fetch_batch,
+        prefetch_batches=prefetch_batches,
     )
     total_time = time.time() - start_time
     return total_time
@@ -140,24 +139,24 @@ def test_async_map_batches(shutdown_only):
     dataset.map_batches(lambda x: x, batch_size=batch_size)
 
     total_time_with_prefetch = map_batches_test(
-        dataset, batch_size, sleep_time, async_fetch_batch=True
+        dataset, batch_size, sleep_time, prefetch_batches=1
     )
 
     total_time_no_prefetch = map_batches_test(
-        dataset, batch_size, sleep_time, async_fetch_batch=False
+        dataset, batch_size, sleep_time, prefetch_batches=0
     )
 
     assert total_time_with_prefetch < total_time_no_prefetch
 
 
-def iter_batches_test(dataset, batch_size, sleep_time, async_fetch_batch) -> int:
+def iter_batches_test(dataset, batch_size, sleep_time, prefetch_batches) -> int:
     def sleep_udf(batch):
         time.sleep(sleep_time)
         return batch
 
     start_time = time.time()
     for batch in dataset.iter_batches(
-        batch_size=batch_size, batch_format="numpy", async_fetch_batch=async_fetch_batch
+        batch_size=batch_size, batch_format="numpy", prefetch_batches=prefetch_batches
     ):
         sleep_udf(batch)
     total_time = time.time() - start_time
@@ -181,13 +180,11 @@ def test_async_iter_batches(shutdown_only, local_shuffle_buffer_size):
         pass
 
     total_time_with_prefetch = iter_batches_test(
-        dataset, batch_size, sleep_time, async_fetch_batch=True
+        dataset, batch_size, sleep_time, prefetch_batches=1
     )
 
-    context = DatasetContext.get_current()
-    context.async_fetch_batch = False
     total_time_no_prefetch = iter_batches_test(
-        dataset, batch_size, sleep_time, async_fetch_batch=False
+        dataset, batch_size, sleep_time, prefetch_batches=0
     )
 
     assert total_time_with_prefetch < total_time_no_prefetch

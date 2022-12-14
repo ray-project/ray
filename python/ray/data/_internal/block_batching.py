@@ -28,7 +28,7 @@ def batch_blocks(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
-    async_fetch_batch: bool = False,
+    prefetch_batches: int = 0,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
 ) -> Iterator[BatchType]:
@@ -54,10 +54,12 @@ def batch_blocks(
             select ``pandas.DataFrame`` or "pyarrow" to select
             ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
-        async_fetch_batch: If True, will use a separate thread to fetch
-                formatted batches from blocks. For non-CPU bound UDFs,
-                his can improve performance, allowing batch fetching
-                compute to be overlapped with the UDF. Defaults to False.
+        prefetch_batches: The number of batches to fetch ahead of the current batch to
+            process. If set to greater than 0, a separate thread will be used to fetch
+            the specified amount of formatted batches from blocks. This improves
+            performance for non-CPU bound UDFs, allowing batch fetching compute and
+            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
+            enabled).
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -76,8 +78,8 @@ def batch_blocks(
     else:
         batcher = Batcher(batch_size=batch_size, batch_format=batch_format)
 
-    if async_fetch_batch:
-        batcher = AsyncBatcher(base_batcher=batcher)
+    if prefetch_batches > 0:
+        batcher = AsyncBatcher(base_batcher=batcher, buffer_max_size=prefetch_batches)
 
     context = DatasetContext.get_current()
 
