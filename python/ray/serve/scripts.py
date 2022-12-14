@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 
 import click
 import yaml
@@ -96,6 +96,17 @@ def process_dict_for_yaml_dump(data):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
+
+
+def override_or_default(
+    dict: Dict[str, Any], key: str, override_value: Any, default_value: Any
+):
+    """Apply priority order: override value, original dict value, default value."""
+
+    if override_value is not None:
+        dict[key] = override_value
+    elif key not in dict:
+        dict[key] = default_value
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -246,7 +257,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--host",
     "-h",
-    default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
     help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
@@ -254,7 +264,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--port",
     "-p",
-    default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
     help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
@@ -297,9 +306,15 @@ def run(
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+            config_dict = yaml.safe_load(config_file)
+            # If host or port is specified as a CLI argument, they should take priority
+            # over config values.
+            override_or_default(config_dict, "host", host, DEFAULT_HTTP_HOST)
+            override_or_default(config_dict, "port", port, DEFAULT_HTTP_PORT)
+            config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
+        host, port = host or DEFAULT_HTTP_HOST, port or DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
