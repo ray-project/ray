@@ -25,8 +25,12 @@ namespace ray {
 namespace gcs {
 
 /// Type alias for a single task attempt, i.e. <task id and attempt number>.
+/// Type alias for a single task attempt, i.e. <task id and attempt number>.
 using TaskAttempt = std::pair<TaskID, int32_t>;
 
+/// GcsTaskManger is responsible for capturing task states change reported by
+/// TaskEventBuffer from other components.
+///
 /// GcsTaskManger is responsible for capturing task states change reported by
 /// TaskEventBuffer from other components.
 ///
@@ -50,6 +54,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           io_service_.run();
         })) {}
 
+  /// Handles a AddTaskEventData request.
+  ///
+  /// \param request gRPC Request.
+  /// \param reply gRPC Reply.
+  /// \param send_reply_callback Callback to invoke when sending reply.
   /// Handles a AddTaskEventData request.
   ///
   /// \param request gRPC Request.
@@ -98,6 +107,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
     /// ones.
+    /// Constructor
+    ///
+    /// \param max_num_task_events Max number of task events stored before replacing older
+    /// ones.
     GcsTaskManagerStorage(size_t max_num_task_events)
         : max_num_task_events_(max_num_task_events) {}
 
@@ -126,7 +139,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
     /// Max number of task events allowed in the storage.
+    /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
+
+    /// Current task events stored.
 
     /// Current task events stored.
     std::vector<rpc::TaskEvents> task_events_;
@@ -137,12 +153,27 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Index from task attempt to the index of the corresponding task event.
     absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
 
+    /// Index from task attempt to the index of the corresponding task event.
+    absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
+
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.
     uint64_t num_bytes_task_events_ = 0;
   };
 
  private:
+  /// Add a profile event to the reply.
+  ///
+  /// \param reply rpc reply.
+  /// \param task_event Task event from which the profile event will be made.
+  void AddProfileEvent(rpc::GetTaskEventsReply *reply, rpc::TaskEvents &task_event);
+
+  ///  Add a task status update event to the reply.
+  ///
+  /// \param reply rpc reply.
+  /// \param task_event Task event from which the task status updates will be made.
+  void AddStatusUpdateEvent(rpc::GetTaskEventsReply *reply, rpc::TaskEvents &task_event);
+
   /// Mutex guarding all fields that will be accessed by main_io as well.
   absl::Mutex mutex_;
 
@@ -159,7 +190,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_ GUARDED_BY(mutex_);
 
   /// Its own separate IO service separated from the main service.
+  /// Its own separate IO service separated from the main service.
   instrumented_io_context io_service_;
+
+  /// Its own IO thread from the main thread.
 
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;

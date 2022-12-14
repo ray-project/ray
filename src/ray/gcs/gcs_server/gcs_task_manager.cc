@@ -135,26 +135,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
             if (!task_event.has_profile_events()) {
               continue;
             }
-            auto profile_event = reply->add_events_by_task();
-            profile_event->set_task_id(task_event.task_id());
-            profile_event->set_attempt_number(task_event.attempt_number());
-            profile_event->mutable_profile_events()->Swap(
-                task_event.mutable_profile_events());
+            AddProfileEvent(reply, task_event);
           }
-
           reply->set_num_events_dropped(total_num_profile_task_events_dropped_);
         } else if (request.event_type() == rpc::TaskEventType::STATUS_EVENT) {
           for (auto &task_event : task_events) {
             if (!task_event.has_state_updates()) {
               continue;
             }
-            auto status_event = reply->add_events_by_task();
-            status_event->set_task_id(task_event.task_id());
-            status_event->set_attempt_number(task_event.attempt_number());
-
-            status_event->mutable_task_info()->Swap(task_event.mutable_task_info());
-            status_event->mutable_state_updates()->Swap(
-                task_event.mutable_state_updates());
+            AddStatusUpdateEvent(reply, task_event);
           }
           reply->set_num_events_dropped(total_num_status_task_events_dropped_);
         } else {
@@ -235,6 +224,23 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsCount(), ray::stats::kGcsTaskEventStored);
   ray::stats::STATS_gcs_task_manager_task_events_bytes.Record(
       task_event_storage_->GetTaskEventsBytes());
+}
+
+void GcsTaskManager::AddProfileEvent(rpc::GetTaskEventsReply *reply,
+                                     rpc::TaskEvents &task_event) {
+  auto profile_event = reply->add_events_by_task();
+  profile_event->set_task_id(task_event.task_id());
+  profile_event->set_attempt_number(task_event.attempt_number());
+  profile_event->mutable_profile_events()->Swap(task_event.mutable_profile_events());
+}
+
+void GcsTaskManager::AddStatusUpdateEvent(rpc::GetTaskEventsReply *reply,
+                                          rpc::TaskEvents &task_event) {
+  auto status_event = reply->add_events_by_task();
+  status_event->set_task_id(task_event.task_id());
+  status_event->set_attempt_number(task_event.attempt_number());
+  status_event->mutable_task_info()->Swap(task_event.mutable_task_info());
+  status_event->mutable_state_updates()->Swap(task_event.mutable_state_updates());
 }
 
 }  // namespace gcs
