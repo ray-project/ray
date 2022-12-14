@@ -221,11 +221,6 @@ class PPOTorchRLModule(TorchRLModule):
         module = PPOTorchRLModule(config_)
         return module
 
-    @classmethod
-    @override(RLModule)
-    def from_config(cls, config: PPOModuleConfig) -> "PPOTorchRLModule":
-        return PPOTorchRLModule(config)
-
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.config.encoder_config, LSTMConfig):
             # TODO (Kourosh): How does this work in RLlib today?

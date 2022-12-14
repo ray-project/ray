@@ -89,10 +89,10 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         return cls(**config)
 
-    @classmethod
-    @override(RLModule)
-    def from_config(cls, config: Mapping[str, Any]) -> "RLModule":
-        return cls(**config)
+    # @classmethod
+    # @override(RLModule)
+    # def from_config(cls, config: Mapping[str, Any]) -> "RLModule":
+    #     return cls(**config)
 
     @classmethod
     def from_env(cls, env, return_config: bool = False):

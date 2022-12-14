@@ -131,7 +131,6 @@ class RLModule(abc.ABC):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config: Mapping[str, Any],
-        return_config: bool = False,
     ) -> Union["RLModule", Mapping[str, Any]]:
         """Creates a RLModule instance from a model config dict and spaces.
 
@@ -168,52 +167,39 @@ class RLModule(abc.ABC):
                 model_config={},
             )
 
-            module_config = MyModule.from_model_config(
-                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
-                action_space=gym.spaces.Discrete(2),
-                model_config={},
-                return_config=True,
-            )
-
-            module = MyModule.from_config(module_config)
-
 
         Args:
             observation_space: The observation space of the env.
             action_space: The action space of the env.
             model_config: The model config dict.
-            return_config: If True, instead of returning the RLModule instance,
-                return the config dict that was used to create the RLModule. In this
-                case passing the config dict to the RLModule constructor will be on the
-                caller of this method.
         """
         raise NotImplementedError
 
-    @classmethod
-    def from_config(cls, config: Any) -> "RLModule":
-        """Creates a RLModule instance from a config object.
+    # @classmethod
+    # def from_config(cls, config: Any) -> "RLModule":
+    #     """Creates a RLModule instance from a config object.
 
-        Example:
+    #     Example:
 
-        .. code-block:: python
+    #     .. code-block:: python
 
-            class MyModule(RLModule):
-                def __init__(self, config):
-                    self.config = config
+    #         class MyModule(RLModule):
+    #             def __init__(self, config):
+    #                 self.config = config
 
-                @classmethod
-                def from_config(cls, config):
-                    return cls(config)
+    #             @classmethod
+    #             def from_config(cls, config):
+    #                 return cls(config)
 
-            module = MyModule.from_config({"foo": 42})
+    #         module = MyModule.from_config({"foo": 42})
 
-        Args:
-            config: The config object.
+    #     Args:
+    #         config: The config object.
 
-        Returns:
-            The RLModule instance.
-        """
-        raise NotImplementedError
+    #     Returns:
+    #         The RLModule instance.
+    #     """
+    #     raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -349,4 +335,4 @@ class RLModule(abc.ABC):
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule.from_config({DEFAULT_POLICY_ID: self})
+        return MultiAgentRLModule({DEFAULT_POLICY_ID: self})
