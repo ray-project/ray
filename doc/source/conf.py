@@ -83,8 +83,8 @@ html_extra_path = ["robots.txt"]
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
-# - Bash prompts ("$ ") 
-# - IPython prompts ("In []: ", "In [999]: ") and it's continuations 
+# - Bash prompts ("$ ")
+# - IPython prompts ("In []: ", "In [999]: ") and it's continuations
 #   ("  ...: ", "     : ")
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
