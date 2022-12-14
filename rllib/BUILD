@@ -1795,6 +1795,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"]
+)
+
+py_test(
     name = "test_marl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
