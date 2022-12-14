@@ -102,6 +102,7 @@ class RLModule(abc.ABC):
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
+        # This method is called after the __init__ method of the subclass.
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
@@ -113,7 +114,11 @@ class RLModule(abc.ABC):
         cls.__init__ = init_decorator(cls.__init__)
 
     def __post_init__(self):
-        """Called after the __init__ method of the subclass.
+        """Called automatically after the __init__ method of the subclass.
+
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
+        method of the subclass is called, the __post_init__ method is called.
 
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
@@ -131,7 +136,6 @@ class RLModule(abc.ABC):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config: Mapping[str, Any],
-        return_config: bool = False,
     ) -> Union["RLModule", Mapping[str, Any]]:
         """Creates a RLModule instance from a model config dict and spaces.
 
@@ -168,50 +172,11 @@ class RLModule(abc.ABC):
                 model_config={},
             )
 
-            module_config = MyModule.from_model_config(
-                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
-                action_space=gym.spaces.Discrete(2),
-                model_config={},
-                return_config=True,
-            )
-
-            module = MyModule.from_config(module_config)
-
 
         Args:
             observation_space: The observation space of the env.
             action_space: The action space of the env.
             model_config: The model config dict.
-            return_config: If True, instead of returning the RLModule instance,
-                return the config dict that was used to create the RLModule. In this
-                case passing the config dict to the RLModule constructor will be on the
-                caller of this method.
-        """
-        raise NotImplementedError
-
-    @classmethod
-    def from_config(cls, config: Any) -> "RLModule":
-        """Creates a RLModule instance from a config object.
-
-        Example:
-
-        .. code-block:: python
-
-            class MyModule(RLModule):
-                def __init__(self, config):
-                    self.config = config
-
-                @classmethod
-                def from_config(cls, config):
-                    return cls(config)
-
-            module = MyModule.from_config({"foo": 42})
-
-        Args:
-            config: The config object.
-
-        Returns:
-            The RLModule instance.
         """
         raise NotImplementedError
 
@@ -349,4 +314,4 @@ class RLModule(abc.ABC):
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule.from_config({DEFAULT_POLICY_ID: self})
+        return MultiAgentRLModule({DEFAULT_POLICY_ID: self})

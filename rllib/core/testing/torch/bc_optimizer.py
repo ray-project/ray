@@ -18,7 +18,7 @@ class BCTorchOptimizer(RLOptimizer):
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
         actions = batch["actions"]
-        return {"total_loss": -action_dist.log_prob(actions.view(-1)).mean()}
+        return -action_dist.log_prob(actions.view(-1)).mean()
 
     @override(RLOptimizer)
     def _configure_optimizers(self) -> List[torch.optim.Optimizer]:

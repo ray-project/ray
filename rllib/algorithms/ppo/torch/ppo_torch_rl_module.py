@@ -141,7 +141,6 @@ class PPOTorchRLModule(TorchRLModule):
         action_space: gym.Space,
         *,
         model_config: Mapping[str, Any],
-        return_config: bool = False,
     ) -> Union["RLModule", Mapping[str, Any]]:
 
         # TODO: use the new catalog to perform this logic and construct the final config
@@ -215,16 +214,8 @@ class PPOTorchRLModule(TorchRLModule):
             shared_encoder=vf_share_layers,
         )
 
-        if return_config:
-            return config_
-
         module = PPOTorchRLModule(config_)
         return module
-
-    @classmethod
-    @override(RLModule)
-    def from_config(cls, config: PPOModuleConfig) -> "PPOTorchRLModule":
-        return PPOTorchRLModule(config)
 
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.config.encoder_config, LSTMConfig):
