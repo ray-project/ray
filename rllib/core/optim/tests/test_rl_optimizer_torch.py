@@ -1,6 +1,5 @@
 import gym
 import pytest
-import numpy as np
 import torch
 from typing import Any, Mapping, Union
 import unittest
@@ -13,9 +12,9 @@ from ray.rllib.offline.dataset_reader import (
     DatasetReader,
     get_dataset_and_shards,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_optimizer import BCTorchOptimizer
+from ray.rllib.core.testing.utils import do_rollouts
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -41,50 +40,12 @@ def model_norm(model: torch.nn.Module) -> float:
     return total_norm
 
 
-def do_rollouts(
-    env: gym.Env, module_for_inference: RLModule, num_rollouts: int
-) -> SampleBatch:
-    _returns = []
-    _rollouts = []
-    for _ in range(num_rollouts):
-        obs = env.reset()
-        _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
-        _return = -0
-        for _ in range(env._max_episode_steps):
-            _obs.append(obs)
-            fwd_out = module_for_inference.forward_inference(
-                {"obs": torch.tensor(obs)[None]}
-            )
-            action = convert_to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-            next_obs, reward, done, _ = env.step(action)
-            _next_obs.append(next_obs)
-            _actions.append([action])
-            _rewards.append([reward])
-            _dones.append([done])
-            _return += reward
-            if done:
-                break
-            obs = next_obs
-        batch = SampleBatch(
-            {
-                "obs": _obs,
-                "next_obs": _next_obs,
-                "actions": _actions,
-                "rewards": _rewards,
-                "dones": _dones,
-            }
-        )
-        _returns.append(_return)
-        _rollouts.append(batch)
-    return np.mean(_returns), _returns, _rollouts
-
-
 # TODO (avnishn): This RLTrainer has to be properly implemented once the RLTrainerActor
 # is implemented on master.
 class BCTorchTrainer:
     """This class is a demonstration on how to use RLOptimizer and RLModule together."""
 
-    def __init__(self, env: gym.Space) -> None:
+    def __init__(self, env: gym.Env) -> None:
         optimizer_config = {}
         self._module = DiscreteBCTorchModule.from_env(env)
         self._rl_optimizer = BCTorchOptimizer(self._module, optimizer_config)
@@ -239,7 +200,7 @@ class TestRLOptimizer(unittest.TestCase):
                 total_loss += results["total_loss"] / inter_steps
 
             module_for_inference.set_state(trainer.get_state()["module_state"])
-            avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
+            avg_return, _, _ = do_rollouts(env, module_for_inference, 10, "torch")
             print(
                 f"[epoch = {epoch_i}] avg_total_loss: "
                 f"{total_loss}, avg_return: {avg_return}"

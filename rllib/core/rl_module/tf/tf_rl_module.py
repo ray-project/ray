@@ -1,7 +1,7 @@
+import abc
 from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -10,18 +10,22 @@ _, tf, _ = try_import_tf()
 
 
 class TFRLModule(RLModule, tf.keras.Model):
-    def __init__(self, config: Mapping[str, Any]) -> None:
+    """Base class for RLlib TF RLModules."""
+
+    def __init__(
+        self,
+    ) -> None:
         tf.keras.Model.__init__(self)
-        RLModule.__init__(self, config)
+        RLModule.__init__(self)
 
     @override(tf.keras.Model)
-    def call(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def call(self, batch: Mapping[str, Any], training=False) -> Mapping[str, Any]:
         """forward pass of the module.
 
         This is aliased to forward_train because Torch DDP requires a forward method to
         be implemented for backpropagation to work.
         """
-        return self.forward_train(batch, **kwargs)
+        return self.forward_train(batch)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -43,6 +47,7 @@ class TFRLModule(RLModule, tf.keras.Model):
         # TODO (Avnish): Implement this.
         return False
 
+    @abc.abstractmethod
     def trainable_variables(self) -> Mapping[str, Any]:
         """Returns the trainable variables of the module.
 
@@ -54,9 +59,3 @@ class TFRLModule(RLModule, tf.keras.Model):
             for more details
 
         """
-        raise NotImplementedError
-
-    @override(RLModule)
-    def get_multi_agent_class(cls) -> MultiAgentRLModule:
-        """Returns the multi-agent wrapper class for this module."""
-        raise NotImplementedError("Multi-agent not supported for TFRLModule yet")

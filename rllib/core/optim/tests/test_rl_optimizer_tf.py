@@ -1,11 +1,9 @@
-from dataclasses import dataclass, field
 import gym
-import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
-from typing import Any, List, Mapping, Union
+from typing import Any, Mapping, Union
 import unittest
 
+import ray
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.offline import IOContext
 from ray.rllib.offline.dataset_reader import (
@@ -14,204 +12,13 @@ from ray.rllib.offline.dataset_reader import (
 )
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.tf.tf_rl_module import TFRLModule
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.core.testing.utils import do_rollouts
+from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import TensorType
-
-
-def do_rollouts(
-    env: gym.Env, module_for_inference: RLModule, num_rollouts: int
-) -> SampleBatch:
-    _returns = []
-    _rollouts = []
-    for _ in range(num_rollouts):
-        obs = env.reset()
-        _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
-        _return = -0
-        for _ in range(env._max_episode_steps):
-            _obs.append(obs)
-            fwd_out = module_for_inference.forward_inference(
-                {"obs": tf.convert_to_tensor([obs], dtype=tf.float32)}
-            )
-            action = convert_to_numpy(fwd_out["action_dist"].sample())[0]
-            next_obs, reward, done, _ = env.step(action)
-            _next_obs.append(next_obs)
-            _actions.append([action])
-            _rewards.append([reward])
-            _dones.append([done])
-            _return += reward
-            if done:
-                break
-            obs = next_obs
-        batch = SampleBatch(
-            {
-                "obs": _obs,
-                "next_obs": _next_obs,
-                "actions": _actions,
-                "rewards": _rewards,
-                "dones": _dones,
-            }
-        )
-        _returns.append(_return)
-        _rollouts.append(batch)
-    return np.mean(_returns), _returns, _rollouts
-
-
-@dataclass
-class FCConfig:
-    """Configuration for a fully connected network.
-
-    Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would
-            be the last hidden layer.
-        hidden_layers: The sizes of the hidden layers.
-        activation: The activation function to use after each layer (except for the
-            output).
-        output_activation: The activation function to use for the output layer.
-    """
-
-    input_dim: int = None
-    output_dim: int = None
-    hidden_layers: List[int] = field(default_factory=lambda: [256, 256])
-    activation: tf.keras.layers.Layer = tf.keras.layers.ReLU
-    output_activation: str = None
-
-
-class TFFCNet(tf.keras.Model):
-    """A simple fully connected network.
-
-    Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would
-            be the last hidden layer.
-        hidden_layers: The sizes of the hidden layers.
-        activation: The activation function to use after each layer.
-    """
-
-    def __init__(self, config: FCConfig):
-        super().__init__()
-        self.input_dim = config.input_dim
-        self.hidden_layers = config.hidden_layers
-
-        activation_class = config.activation
-        self._layers = []
-        self._layers.append(tf.keras.Input(shape=(self.input_dim,)))
-
-        for i in range(len(self.hidden_layers)):
-            self._layers.append(activation_class())
-            self._layers.append(tf.keras.layers.Dense(self.hidden_layers[i]))
-
-        if config.output_dim is not None:
-            self._layers.append(activation_class())
-            self._layers.append(tf.keras.layers.Dense(config.output_dim))
-
-        if config.output_dim is None:
-            self.output_dim = config.hidden_layers[-1]
-        else:
-            self.output_dim = config.output_dim
-
-        self._layers = tf.keras.Sequential(self._layers)
-
-        self._input_specs = self.input_specs()
-
-    def input_specs(self):
-        return TFTensorSpecs("b, h", h=self.input_dim)
-
-    @check_specs(input_spec="_input_specs")
-    def call(self, x, training=False):
-        return self._layers(x)
-
-
-class BCTFModule(TFRLModule):
-    def __init__(self, config: FCConfig) -> None:
-        super().__init__(config)
-        self.policy = TFFCNet(config)
-
-    def input_specs(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
-        return ModelSpec(
-            {
-                "obs": TFTensorSpecs("b, do", do=obs_dim),
-                "actions": TFTensorSpecs("b"),
-            }
-        )
-
-    def output_specs(self) -> ModelSpec:
-        return ModelSpec({"action_dist": tfp.distributions.Distribution})
-
-    def input_specs_exploration(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
-        return ModelSpec(
-            {
-                "obs": TFTensorSpecs("b, do", do=obs_dim),
-            }
-        )
-
-    def input_specs_inference(self) -> ModelSpec:
-        obs_dim = self.config.input_dim
-        return ModelSpec(
-            {
-                "obs": TFTensorSpecs("b, do", do=obs_dim),
-            }
-        )
-
-    def input_specs_train(self) -> ModelSpec:
-        return self.input_specs()
-
-    def output_specs_exploration(self) -> ModelSpec:
-        return self.output_specs()
-
-    def output_specs_inference(self) -> ModelSpec:
-        return self.output_specs()
-
-    def output_specs_train(self) -> ModelSpec:
-        return self.output_specs()
-
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_logits_inference = tf.argmax(action_logits, axis=-1)
-        action_dist = tfp.distributions.Deterministic(action_logits_inference)
-        return {"action_dist": action_dist}
-
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_inference(batch)
-
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-
-        action_dist = tfp.distributions.Categorical(logits=action_logits)
-        return {"action_dist": action_dist}
-
-    def call(self, batch, training=False):
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-
-        action_dist = tfp.distributions.Categorical(logits=action_logits)
-        return {"action_dist": action_dist}
-
-    def is_distributed(self) -> bool:
-        return False
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        pass
-
-    def get_state(self) -> Mapping[str, Any]:
-        return {"policy": self.policy.get_weights()}
-
-    def set_state(self, state: Mapping[str, Any]) -> None:
-        self.policy.set_weights(state["policy"])
-
-    def trainable_variables(self) -> Mapping[str, Any]:
-        return {"policy": self.policy.trainable_variables}
 
 
 class BCTFOptimizer(RLOptimizer):
@@ -246,10 +53,11 @@ class BCTFOptimizer(RLOptimizer):
 
 
 class BCTFTrainer:
-    def __init__(self, config: Mapping[str, any]) -> None:
-        module_config = config["module_config"]
+    """This class is a demonstration on how to use RLOptimizer and RLModule together."""
+
+    def __init__(self, env: gym.Env) -> None:
         optimizer_config = {}
-        self._module = BCTFModule(module_config)
+        self._module = DiscreteBCTFModule.from_env(env)
         self._rl_optimizer = BCTFOptimizer(self._module, optimizer_config)
 
     @staticmethod
@@ -302,8 +110,7 @@ class BCTFTrainer:
     @tf.function
     def _do_update_fn(self, batch: SampleBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
-            # fwd_out = self._module.forward_train(batch)
-            fwd_out = self._module(batch)
+            fwd_out = self._module.forward_train(batch)
             loss = self._rl_optimizer.compute_loss(batch, fwd_out)
         gradients = self.compute_gradients(loss, tape)
         self.apply_gradients(gradients)
@@ -318,17 +125,14 @@ class BCTFTrainer:
         Returns:
             A dictionary of results.
         """
+        # TODO(sven): This is a hack to get around the fact that
+        # SampleBatch.count is 0 which messes with spec checking
+        # other fields of the sample batch are possibly modified
+        # by tf.function
+        batch = NestedDict(batch)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        # with tf.GradientTape() as tape:
-        #     fwd_out = self._module.forward_train(batch)
-        #     loss = self._rl_optimizer.compute_loss(batch, fwd_out)
-        # gradients = self.compute_gradients(loss, tape)
-        # post_processed_gradients = self.on_after_compute_gradients(gradients)
-        # self.apply_gradients(post_processed_gradients)
-        # tf.config.run_functions_eagerly(True)
         infos = self._do_update_fn(batch)
-        # assert False
         loss = infos["loss"]
         fwd_out = infos["fwd_out"]
         post_processed_gradients = infos["post_processed_gradients"]
@@ -373,18 +177,54 @@ class BCTFTrainer:
 
 
 class TestRLOptimizerTF(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_rl_optimizer_example_tf(self):
-        _test()
+        tf.random.set_seed(1)
+        env = gym.make("CartPole-v1")
+        module_for_inference = DiscreteBCTFModule.from_env(env)
+        trainer = BCTFTrainer(env)
+
+        # path = "s3://air-example-data/rllib/cartpole/large.json"
+        path = "tests/data/cartpole/large.json"
+        input_config = {"format": "json", "paths": path}
+        dataset, _ = get_dataset_and_shards(
+            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+        )
+        batch_size = 500
+        ioctx = IOContext(
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=batch_size)
+                .offline_data(actions_in_input_normalized=True)
+            ),
+            worker_index=0,
+        )
+        reader = DatasetReader(dataset, ioctx)
+        num_epochs = 100
+        total_timesteps_of_training = 1000000
+        inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
+        for _ in range(num_epochs):
+            for _ in range(inter_steps):
+                batch = reader.next()
+                trainer.update(batch)
+            module_for_inference.set_state(trainer.get_state()["module_state"])
+            avg_return, _, _ = do_rollouts(env, module_for_inference, 10, "tf")
+            if avg_return > 50:
+                break
+        assert avg_return > 50
 
     def test_rl_optimizer_set_state_get_state_tf(self):
         env = gym.make("CartPole-v1")
-        module_config = FCConfig(
-            input_dim=sum(env.observation_space.shape),
-            output_dim=sum(env.action_space.shape or [env.action_space.n]),
-            hidden_layers=[32],
-        )
-        trainer1 = BCTFTrainer({"module_config": module_config})
-        trainer2 = BCTFTrainer({"module_config": module_config})
+
+        trainer1 = BCTFTrainer(env)
+        trainer2 = BCTFTrainer(env)
 
         # path = "s3://air-example-data/rllib/cartpole/large.json"
         path = "tests/data/cartpole/large.json"
@@ -428,49 +268,6 @@ class TestRLOptimizerTF(unittest.TestCase):
             trainer1.get_state()["optimizer_state"]["policy"][1][0],
             trainer2.get_state()["optimizer_state"]["policy"][1][0],
         )
-
-
-def _test():
-    tf.random.set_seed(1)
-    env = gym.make("CartPole-v1")
-    module_config = FCConfig(
-        input_dim=sum(env.observation_space.shape),
-        output_dim=sum(env.action_space.shape or [env.action_space.n]),
-        hidden_layers=[32],
-    )
-    module_for_inference = BCTFModule(module_config)
-
-    trainer = BCTFTrainer({"module_config": module_config})
-    # trainer.set_state({"module_state": module_for_inference.get_state()})
-
-    # path = "s3://air-example-data/rllib/cartpole/large.json"
-    path = "tests/data/cartpole/large.json"
-    input_config = {"format": "json", "paths": path}
-    dataset, _ = get_dataset_and_shards(
-        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-    )
-    batch_size = 500
-    ioctx = IOContext(
-        config=(
-            AlgorithmConfig()
-            .training(train_batch_size=batch_size)
-            .offline_data(actions_in_input_normalized=True)
-        ),
-        worker_index=0,
-    )
-    reader = DatasetReader(dataset, ioctx)
-    num_epochs = 100
-    total_timesteps_of_training = 1000000
-    inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-    for _ in range(num_epochs):
-        for _ in range(inter_steps):
-            batch = reader.next()
-            trainer.update(batch)
-        module_for_inference.set_state(trainer.get_state()["module_state"])
-        avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
-        if avg_return > 50:
-            break
-    assert avg_return > 50
 
 
 if __name__ == "__main__":
