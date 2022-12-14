@@ -56,24 +56,25 @@ def unify_schemas(
     schemas_to_unify = []
     schema_tensor_field_overrides = {}
 
-    if type(schemas[0]) == pyarrow.Schema:
-        if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
-            for col_idx in range(len(schemas[0].types)):
-                column_types = [s.types[col_idx] for s in schemas]
-                if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
-                    new_type = ArrowVariableShapedTensorType(
-                        dtype=column_types[0].scalar_type,
-                        ndim=len(column_types[0].shape),
-                    )
-                    schema_tensor_field_overrides[col_idx] = new_type
-            for schema in schemas:
-                for col_idx, col_new_type in schema_tensor_field_overrides.items():
-                    var_shaped_col = schema.field(col_idx).with_type(col_new_type)
-                    schema = schema.set(col_idx, var_shaped_col)
-                schemas_to_unify.append(schema)
-        else:
-            schemas_to_unify = schemas
-    print("===> schemas_to_unify:", schemas_to_unify)
+    if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
+        # If we have PyArrow extension types that may potentially be variable shaped,
+        # examine the first schema to gather the columns that need type conversions.
+        for col_idx in range(len(schemas[0].types)):
+            column_types = [s.types[col_idx] for s in schemas]
+            if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
+                new_type = ArrowVariableShapedTensorType(
+                    dtype=column_types[0].scalar_type,
+                    ndim=len(column_types[0].shape),
+                )
+                schema_tensor_field_overrides[col_idx] = new_type
+        # Go through all schemas and update the types of columns from the above loop. 
+        for schema in schemas:
+            for col_idx, col_new_type in schema_tensor_field_overrides.items():
+                var_shaped_col = schema.field(col_idx).with_type(col_new_type)
+                schema = schema.set(col_idx, var_shaped_col)
+            schemas_to_unify.append(schema)
+    else:
+        schemas_to_unify = schemas
     # Let Arrow unify the schema of non-tensor extension type columns.
     return pyarrow.unify_schemas(schemas_to_unify)
 

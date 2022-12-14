@@ -263,23 +263,38 @@ class ExecutionPlan:
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
 
+        # First check if there are blocks with computed schemas, then unify
+        # valid schemas from all such blocks.
         schemas_to_unify = []
         for m in metadata:
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 schemas_to_unify.append(m.schema)
         if schemas_to_unify:
-            return unify_schemas(schemas_to_unify)
+            # Check valid PyArrow installation before attempting schema unification
+            try:
+                import pyarrow as pa
+            except ImportError:
+                pa = None
+            # If the result contains PyArrow schemas, unify them
+            if pa is not None and isinstance(schemas_to_unify[0], pa.Schema):
+                return unify_schemas(schemas_to_unify)
+            # Otherwise, if the resulting schemas are simple types (e.g. int),
+            # validate that all blocks have the same type before returning.
+            if len(set(schemas_to_unify)) == 1:
+                return schemas_to_unify[0]
+            raise Exception(
+                f"Found blocks with different types in schemas: {schemas_to_unify}",
+            )
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
         # For lazy block lists, this launches read tasks and fetches block metadata
-        # until we find valid block schema.
+        # until we find the first valid block schema. This is to minimize new
+        # computations when fetching the schema.
         schemas_to_unify = []
         for _, m in blocks.iter_blocks_with_metadata():
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                schemas_to_unify.append(m.schema)
-        if schemas_to_unify:
-            return unify_schemas(schemas_to_unify)
+                return m.schema
         return None
 
     def meta_count(self) -> Optional[int]:
