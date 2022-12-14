@@ -49,12 +49,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 
 absl::optional<rpc::TaskEvents>
 GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
-    rpc::TaskEvents events_by_task) {
-  RAY_LOG_EVERY_MS(INFO, 5000) << "GcsTaskManagerStorage currently stores "
-                               << task_events_.size()
-                               << " task event entries, approximate size="
-                               << 1.0 * num_bytes_task_events_ / 1024 / 1024 << "MiB";
-
+    rpc::TaskEvents &&events_by_task) {
   TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   int32_t attempt_number = events_by_task.attempt_number();
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
@@ -91,7 +86,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     // Change the underlying storage.
     auto &to_replaced = task_events_.at(next_idx_to_overwrite_);
     std::swap(to_replaced, events_by_task);
-    auto replaced = events_by_task;
+    auto replaced = std::move(events_by_task);
 
     // Update index.
     TaskAttempt replaced_attempt = std::make_pair<>(
@@ -174,44 +169,72 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG) << "Adding task state event:" << request.data().ShortDebugString();
   // Dispatch to the handler
-  io_service_.post(
-      [this, reply, send_reply_callback, request = std::move(request)]() {
-        auto data = request.data();
-        size_t num_to_process = data.events_by_task_size();
-        // Update counters.
-        total_num_profile_task_events_dropped_ += data.num_profile_task_events_dropped();
-        total_num_status_task_events_dropped_ += data.num_status_task_events_dropped();
+  auto data = std::move(request.data());
+  size_t num_to_process = data.events_by_task_size();
+  // Update counters.
+  total_num_profile_task_events_dropped_ += data.num_profile_task_events_dropped();
+  total_num_status_task_events_dropped_ += data.num_status_task_events_dropped();
 
-        for (auto &events_by_task : *data.mutable_events_by_task()) {
-          total_num_task_events_reported_++;
-          auto task_id = TaskID::FromBinary(events_by_task.task_id());
-          // TODO(rickyx): add logic to handle too many profile events for a single task
-          // attempt.
-          auto replaced_task_events =
-              task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
+  for (auto events_by_task : *data.mutable_events_by_task()) {
+    total_num_task_events_reported_++;
+    auto task_id = TaskID::FromBinary(events_by_task.task_id());
+    // TODO(rickyx): add logic to handle too many profile events for a single task
+    // attempt.
+    auto replaced_task_events =
+        task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
 
-          if (replaced_task_events) {
-            if (replaced_task_events->has_state_updates()) {
-              // TODO(rickyx): should we un-flatten the status updates into a list of
-              // StatusEvents? so that we could get an accurate number of status change
-              // events being dropped like profile events.
-              total_num_status_task_events_dropped_++;
-            }
-            if (replaced_task_events->has_profile_events()) {
-              total_num_profile_task_events_dropped_ +=
-                  replaced_task_events->profile_events().events_size();
-            }
-          }
-          RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
-        }
+    if (replaced_task_events) {
+      if (replaced_task_events->has_state_updates()) {
+        // TODO(rickyx): should we un-flatten the status updates into a list of
+        // StatusEvents? so that we could get an accurate number of status change
+        // events being dropped like profile events.
+        total_num_status_task_events_dropped_++;
+      }
+      if (replaced_task_events->has_profile_events()) {
+        total_num_profile_task_events_dropped_ +=
+            replaced_task_events->profile_events().events_size();
+      }
+    }
+    RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
+  }
 
-        // Processed all the task events
-        RAY_LOG(DEBUG) << "Processed all " << num_to_process << " task events";
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      },
-      "GcsTaskManager::HandleAddTaskEventData");
+  // Processed all the task events
+  RAY_LOG(DEBUG) << "Processed all " << num_to_process << " task events";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+std::string GcsTaskManager::DebugString() {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream ss;
+  ss << "GcsTaskManager: "
+     << "\n-Total num task events reported: " << total_num_task_events_reported_
+     << "\n-Total num status task events dropped: "
+     << total_num_status_task_events_dropped_
+     << "\n-Total num profile events dropped: " << total_num_profile_task_events_dropped_
+     << "\n-Total num bytes of task event stored: "
+     << 1.0 * task_event_storage_->GetTaskEventsBytes() / 1024 / 1024 << "MiB"
+     << "\n-Total num of task events stored: "
+     << task_event_storage_->GetTaskEventsCount() << "\n";
+
+  return ss.str();
+}
+
+void GcsTaskManager::RecordMetrics() {
+  absl::MutexLock lock(&mutex_);
+  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+      total_num_task_events_reported_, ray::stats::kGcsTaskEventReported);
+  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+      total_num_status_task_events_dropped_, ray::stats::kGcsTaskStatusEventDropped);
+  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+      total_num_profile_task_events_dropped_, ray::stats::kGcsProfileEventDropped);
+
+  ray::stats::STATS_gcs_task_manager_task_events_count.Record(
+      task_event_storage_->GetTaskEventsCount(), ray::stats::kGcsTaskEventStored);
+  ray::stats::STATS_gcs_task_manager_task_events_bytes.Record(
+      task_event_storage_->GetTaskEventsBytes());
 }
 
 }  // namespace gcs

@@ -299,6 +299,28 @@ DEFINE_stats(gcs_actors_count,
              (),
              ray::stats::GAUGE);
 
+/// GCS Task Manager
+DEFINE_stats(
+    gcs_task_manager_task_events_count,
+    /// Type:
+    ///     - REPORTED: total number of all task events (e.g., task status, profile)
+    ///     reported from workers to GCS.
+    ///     - STORED: total number of all task events currently stored in GCS.
+    ///     - PROFILE_DROPPED: number of profile task events dropped from both workers and
+    ///     GCS.
+    ///     - STATUS_DROPPED: number of task status updates events dropped from both
+    ///     workers and GCS.
+    "Number of task events per type {REPORTED, PROFILE_DROPPED, STATUS_DROPPED, STORED}",
+    ("Type"),
+    (),
+    ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_bytes,
+             "Number of bytes of all task events stored in GCS.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
 /// Memory Manager
 DEFINE_stats(memory_manager_worker_eviction_total,
              "Total worker eviction events broken per work type {Actor, Task}",
