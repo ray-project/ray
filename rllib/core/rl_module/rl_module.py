@@ -346,4 +346,3 @@ class RLModule(abc.ABC):
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.T: ViewRequirement(),
         }
-        
