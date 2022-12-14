@@ -7,6 +7,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
 
+# TODO: track the total size and count of non-destroyed ref bundles as a metric
 @dataclass
 class RefBundle:
     """A group of data block references and their metadata.

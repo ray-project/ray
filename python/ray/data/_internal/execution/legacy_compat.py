@@ -80,7 +80,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             ),
                         )
                     ],
-                    owns_blocks=owns_blocks,
+                    owns_blocks=True,
                 )
                 for read_task in read_tasks
             ]
@@ -159,7 +159,8 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
         for block, meta in ref_bundle.blocks:
             blocks.append(block)
             metadata.append(meta)
-    return BlockList(blocks, metadata, owned_by_consumer=True)
+    owns_blocks = all(b.owns_blocks for b in bundles)
+    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 
 def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBundle]:
