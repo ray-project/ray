@@ -1127,10 +1127,10 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
-        assert payload["extra_usage_tags"]["actor_num_created"] >= 0
-        assert payload["extra_usage_tags"]["pg_num_created"] >= 0
-        payload["extra_usage_tags"]["actor_num_created"] = 0
-        payload["extra_usage_tags"]["pg_num_created"] = 0
+        assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
+        payload["extra_usage_tags"]["actor_num_created"] = "0"
+        payload["extra_usage_tags"]["pg_num_created"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
