@@ -132,8 +132,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     def mapping(item):
         if item is None:
-            # returns None with dtype=np.obj
-            return np.asarray(item)
+            # Returns an empty torch tensor
+            return torch.empty([0])
 
         # Special handling of "Repeated" values.
         if isinstance(item, RepeatedValues):
@@ -141,7 +141,6 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
 
-        tensor = None
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             tensor = item
