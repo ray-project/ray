@@ -68,8 +68,9 @@ TEST(RayClusterModeTest, FullTest) {
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(port, password);
-    config.address = "127.0.0.1:" + std::to_string(port);
+    std::string local_ip = ray::internal::GetNodeIpAddress();
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(local_ip, port, password);
+    config.address = local_ip + ":" + std::to_string(port);
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
