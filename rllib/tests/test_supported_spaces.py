@@ -212,9 +212,9 @@ class TestSupportedSpacesPG(unittest.TestCase):
                     "fcnet_hiddens": [10],
                 },
             )
+            .experimental(_disable_preprocessor_api=True)
+            .resources(num_gpus=1)
         )
-        config["_disable_preprocessor_api"] = True
-        config["num_gpus"] = 1
         check_support("PPO", config, check_bounds=True, tf2=True)
 
 
