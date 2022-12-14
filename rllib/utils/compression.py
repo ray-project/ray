@@ -34,7 +34,7 @@ def pack(data):
         data = lz4.frame.compress(data)
         # TODO(ekl) we shouldn't need to base64 encode this data, but this
         # seems to not survive a transfer through the object store if we don't.
-        data = base64.b64encode(data).decode("ascii")
+        data = base64.b64encode(data)
     return data
 
 
