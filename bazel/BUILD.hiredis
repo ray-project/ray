@@ -18,6 +18,9 @@ cmake(
         "@boringssl//:ssl",
         "@boringssl//:crypto",
     ],
+    env = {
+        "USE_SSL": "1",
+    },
     visibility = ["//visibility:public"],
 )
 

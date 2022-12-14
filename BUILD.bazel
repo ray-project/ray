@@ -2425,7 +2425,7 @@ cc_library(
 
 alias(
     name = "hiredis",
-    actual = "@com_github_redis_hiredis//:hiredis",
+    actual = "@com_github_redis_hiredis//:libhiredis",
 )
 
 cc_library(
@@ -2446,6 +2446,8 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":hiredis",
+        "@boringssl//:ssl",
+        "@boringssl//:crypto",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
