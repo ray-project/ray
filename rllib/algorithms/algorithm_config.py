@@ -2026,7 +2026,7 @@ class AlgorithmConfig:
         self,
         *,
         rl_module_class: Optional[Type["RLModule"]] = NotProvided,
-        _enable_rl_module_api: bool = True,
+        _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
@@ -2043,7 +2043,15 @@ class AlgorithmConfig:
         if rl_module_class is not NotProvided:
             self.rl_module_class = rl_module_class
 
-        self._enable_rl_module_api = _enable_rl_module_api
+        if self._enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
+        else:
+            # throw a warning if the user has used this API but not enabled it.
+            logger.warning(
+                "You have called `config.rl_module(...)` but "
+                "have not enabled the RLModule API. To enable it, call "
+                "`config.rl_module(_enable_rl_module_api=True)`."
+            )
 
         return self
 
