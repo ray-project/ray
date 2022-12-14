@@ -176,6 +176,11 @@ class TestPPO(unittest.TestCase):
             check(np.mean(actions), 1.5, atol=0.2)
             trainer.stop()
 
+    # def test_torch_model_creation(self):
+    #
+    #
+    # def test_torch_model_creation_lstm(self):
+
 
 if __name__ == "__main__":
     import pytest

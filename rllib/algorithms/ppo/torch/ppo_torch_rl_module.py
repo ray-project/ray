@@ -17,6 +17,7 @@ from ray.rllib.models.torch.torch_distributions import (
 )
 from ray.rllib.core.rl_module.encoder import (
     FCNet,
+    FullyConnectedEncoder,
     FCConfig,
     LSTMConfig,
     IdentityEncoder,
@@ -90,11 +91,45 @@ class PPOModuleConfig(RLModuleConfig):
         shared_encoder: Whether to share the encoder between the pi and value
     """
 
-    pi_config: FCConfig = None
-    vf_config: FCConfig = None
-    encoder_config: FCConfig = None
+    shared_encoder_config: FCConfig = None
+    pi_encoder_config: FCConfig = None
+    vf_encoder_config: FCConfig = None
+    pi_head_config: FCConfig = None
+    vf_head_config: FCConfig = None
     free_log_std: bool = False
     shared_encoder: bool = True
+
+    def build_shared_encoder(self):
+        if not self.shared_encoder_config:
+            return IdentityEncoder(self.shared_encoder_config)
+        self.shared_encoder_config.input_dim = self.observation_space.shape[0]
+        return FullyConnectedEncoder(self.shared_encoder_config)
+
+    def build_pi_encoder(self):
+        if not self.pi_encoder_config:
+            return IdentityEncoder(self.pi_encoder_config)
+        return FullyConnectedEncoder(self.pi_encoder_config)
+
+    def build_vf_encoder(self):
+        if not self.vf_encoder_config:
+            return IdentityEncoder(self.vf_encoder_config)
+        return FullyConnectedEncoder(self.vf_encoder_config)
+
+    def build_pi_head(self):
+        return FCNet(
+            input_dim=self.pi_head_config.input_dim,
+            output_dim=self.pi_head_config.output_dim,
+            hidden_layers=self.pi_head_config.hidden_layers,
+            activation=self.pi_head_config.activation,
+        )
+
+    def build_vf_head(self):
+        return FCNet(
+            input_dim=self.vf_head_config.input_dim,
+            output_dim=self.vf_head_config.output_dim,
+            hidden_layers=self.vf_head_config.hidden_layers,
+            activation=self.vf_head_config.activation,
+        )
 
 
 class PPOTorchRLModule(TorchRLModule):
@@ -105,31 +140,14 @@ class PPOTorchRLModule(TorchRLModule):
 
     def setup(self) -> None:
 
-        assert self.config.pi_config, "pi_config must be provided."
-        assert self.config.vf_config, "vf_config must be provided."
+        assert self.config.pi_head_config, "pi_head_config must be provided."
+        assert self.config.vf_head_config, "vf_head_config must be provided."
 
-        if self.config.shared_encoder:
-            self.shared_encoder = self.config.encoder_config.build()
-            self.encoder_pi = IdentityEncoder(self.config.encoder_config)
-            self.encoder_vf = IdentityEncoder(self.config.encoder_config)
-        else:
-            self.shared_encoder = IdentityEncoder(self.config.encoder_config)
-            self.encoder_pi = self.config.encoder_config.build()
-            self.encoder_vf = self.config.encoder_config.build()
-
-        self.pi = FCNet(
-            input_dim=self.config.pi_config.input_dim,
-            output_dim=self.config.pi_config.output_dim,
-            hidden_layers=self.config.pi_config.hidden_layers,
-            activation=self.config.pi_config.activation,
-        )
-
-        self.vf = FCNet(
-            input_dim=self.config.vf_config.input_dim,
-            output_dim=self.config.vf_config.output_dim,
-            hidden_layers=self.config.vf_config.hidden_layers,
-            activation=self.config.vf_config.activation,
-        )
+        self.shared_encoder = self.config.build_shared_encoder()
+        self.pi_encoder = self.config.build_pi_encoder()
+        self.vf_encoder = self.config.build_vf_encoder()
+        self.pi = self.config.build_pi_head()
+        self.vf = self.config.build_vf_head()
 
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
 
@@ -203,13 +221,24 @@ class PPOTorchRLModule(TorchRLModule):
         vf_config.input_dim = encoder_config.output_dim
         vf_config.output_dim = 1
 
+        if model_config["vf_share_layers"]:
+            shared_encoder_config = encoder_config
+            pi_encoder_config = None
+            vf_encoder_config = None
+        else:
+            shared_encoder_config = None
+            pi_encoder_config = encoder_config
+            vf_encoder_config = encoder_config
+
         config_ = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
             max_seq_len=model_config["max_seq_len"],
-            encoder_config=encoder_config,
-            pi_config=pi_config,
-            vf_config=vf_config,
+            shared_encoder_config=shared_encoder_config,
+            pi_encoder_config=pi_encoder_config,
+            vf_encoder_config=vf_encoder_config,
+            pi_head_config=pi_config,
+            vf_head_config=vf_config,
             free_log_std=free_log_std,
             shared_encoder=vf_share_layers,
         )
@@ -218,12 +247,16 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if isinstance(self.config.encoder_config, LSTMConfig):
+        if (
+            isinstance(self.config.shared_encoder_config, LSTMConfig)
+            or isinstance(self.config.vf_encoder_config, LSTMConfig)
+            or isinstance(self.config.pi_encoder_config, LSTMConfig)
+        ):
             # TODO (Kourosh): How does this work in RLlib today?
             if isinstance(self.shared_encoder, LSTMEncoder):
                 return self.shared_encoder.get_inital_state()
             else:
-                return self.encoder_pi.get_inital_state()
+                return self.pi_encoder.get_inital_state()
         return {}
 
     @override(RLModule)
@@ -237,7 +270,7 @@ class PPOTorchRLModule(TorchRLModule):
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.encoder_pi(encoder_out)
+        encoder_out_pi = self.pi_encoder(encoder_out)
         action_logits = self.pi(encoder_out_pi["embedding"])
 
         if self._is_discrete:
@@ -278,8 +311,8 @@ class PPOTorchRLModule(TorchRLModule):
         policy and the new policy during training.
         """
         encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.encoder_pi(encoder_out)
-        encoder_out_vf = self.encoder_vf(encoder_out)
+        encoder_out_pi = self.pi_encoder(encoder_out)
+        encoder_out_vf = self.vf_encoder(encoder_out)
         action_logits = self.pi(encoder_out_pi["embedding"])
 
         output = {}
@@ -328,8 +361,8 @@ class PPOTorchRLModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.encoder_pi(encoder_out)
-        encoder_out_vf = self.encoder_vf(encoder_out)
+        encoder_out_pi = self.pi_encoder(encoder_out)
+        encoder_out_vf = self.vf_encoder(encoder_out)
 
         action_logits = self.pi(encoder_out_pi["embedding"])
         vf = self.vf(encoder_out_vf["embedding"])

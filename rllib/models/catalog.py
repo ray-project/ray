@@ -13,8 +13,11 @@ from ray.tune.registry import (
     _global_registry,
 )
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.catalogV3 import get_vision_net_class, get_fc_net_class, \
-    get_encoder_class
+from ray.rllib.models.catalogV3 import (
+    get_vision_net_class,
+    get_fc_net_class,
+    get_encoder_class,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
