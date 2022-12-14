@@ -7,7 +7,6 @@ from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
 
-# TODO: track the total size and count of non-destroyed ref bundles as a metric
 @dataclass
 class RefBundle:
     """A group of data block references and their metadata.
@@ -52,12 +51,20 @@ class RefBundle:
         """Size of the blocks of this bundle in bytes."""
         return sum(b[1].size_bytes for b in self.blocks)
 
-    def destroy_if_owned(self) -> None:
-        """Clears the object store memory for these blocks if owned."""
+    def destroy_if_owned(self) -> int:
+        """Clears the object store memory for these blocks if owned.
+
+        Returns:
+            The number of bytes freed.
+        """
         if self.owns_blocks:
+            size = self.size_bytes()
             ray._private.internal_api.free(
                 [b[0] for b in self.blocks], local_only=False
             )
+            return size
+        else:
+            return 0
 
 
 @dataclass
@@ -111,6 +118,14 @@ class PhysicalOperator:
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
+
+    def get_metrics(self) -> Dict[str, int]:
+        """Returns dict of metrics reported from this operator.
+
+        These should be instant values that can be queried at any time, e.g.,
+        obj_store_mem_allocated, obj_store_mem_freed.
+        """
+        return {}
 
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")

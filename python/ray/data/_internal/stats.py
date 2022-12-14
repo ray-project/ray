@@ -212,6 +212,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.extra_metrics = {}
 
     @property
     def stats_actor(self):
@@ -399,6 +400,9 @@ class DatasetStats:
                 int(np.mean(list(node_counts.values()))),
                 len(node_counts),
             )
+
+        out += indent
+        out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
 
         return out
 

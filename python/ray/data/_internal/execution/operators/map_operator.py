@@ -84,6 +84,13 @@ class MapOperator(PhysicalOperator):
         """Return extra ray remote args to use for execution."""
         return self._remote_args
 
+    def get_metrics(self) -> Dict[str, int]:
+        return {
+            "obj_store_mem_alloc": self._execution_state._obj_store_mem_alloc,
+            "obj_store_mem_freed": self._execution_state._obj_store_mem_freed,
+            "obj_store_mem_peak": self._execution_state._obj_store_mem_peak,
+        }
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)

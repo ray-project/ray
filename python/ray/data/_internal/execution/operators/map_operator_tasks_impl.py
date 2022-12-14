@@ -58,6 +58,10 @@ class MapOperatorTasksImpl:
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._next_task_index = 0
         self._next_output_index = 0
+        self._obj_store_mem_alloc = 0
+        self._obj_store_mem_freed = 0
+        self._obj_store_mem_cur = 0
+        self._obj_store_mem_peak = 0
 
     def add_input(self, bundle: RefBundle) -> None:
         input_blocks = []
@@ -70,6 +74,9 @@ class MapOperatorTasksImpl:
         self._tasks[generator_ref] = task
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
+        self._obj_store_mem_cur += bundle.size_bytes()
+        if self._obj_store_mem_cur > self._obj_store_mem_peak:
+            self._obj_store_mem_peak = self._obj_store_mem_cur
 
     def task_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         task = self._tasks.pop(ref)
@@ -78,9 +85,17 @@ class MapOperatorTasksImpl:
         block_metas = ray.get(all_refs[-1])
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         task.output = RefBundle(list(zip(block_refs, block_metas)), owns_blocks=True)
+        allocated = task.output.size_bytes()
+        self._obj_store_mem_alloc += allocated
+        self._obj_store_mem_cur += allocated
         # TODO(ekl) this isn't strictly correct if multiple operators depend on this
         # bundle, but it doesn't happen in linear dags for now.
-        task.inputs.destroy_if_owned()
+        freed = task.inputs.destroy_if_owned()
+        if freed:
+            self._obj_store_mem_freed += freed
+            self._obj_store_mem_cur -= freed
+        if self._obj_store_mem_cur > self._obj_store_mem_peak:
+            self._obj_store_mem_peak = self._obj_store_mem_cur
 
     def has_next(self) -> bool:
         i = self._next_output_index

@@ -47,9 +47,11 @@ class BulkExecutor(Executor):
             # Cache and return output.
             saved_outputs[node] = output
             node_stats = node.get_stats()
+            node_metrics = node.get_metrics()
             if node_stats:
                 self._stats = DatasetStats(stages=node_stats, parent=self._stats)
                 self._stats.time_total_s = time.perf_counter() - start_time
+                self._stats.extra_metrics = node_metrics
             return output
 
         return execute_recursive(dag)
