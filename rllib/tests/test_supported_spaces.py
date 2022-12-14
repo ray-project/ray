@@ -198,7 +198,9 @@ class TestSupportedSpacesPG(unittest.TestCase):
 
     def test_ppo_no_preprocessors_gpu(self):
         # Same test as test_ppo, but also test if we are able to move models and tensors
-        # on the same device when also no using preprocessors.
+        # on the same device when not using preprocessors.
+        # This covers a superposition of these edge cases that can lead to obscure
+        # errors
         config = (
             PPOConfig()
             .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
