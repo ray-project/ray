@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 import unittest
 from typing import Mapping
 
-from ray.rllib.core.rl_module.tf.tf_rl_module import TFRLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
 from ray.rllib.utils.test_utils import check
@@ -16,7 +16,7 @@ class TestRLModule(unittest.TestCase):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule.from_env(env)
 
-        self.assertIsInstance(module, TFRLModule)
+        self.assertIsInstance(module, TfRLModule)
 
     def test_forward_train(self):
 

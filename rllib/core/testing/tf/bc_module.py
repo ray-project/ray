@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.tf.tf_rl_module import TFRLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import ModelSpec
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
-class DiscreteBCTFModule(TFRLModule):
+class DiscreteBCTFModule(TfRLModule):
     def __init__(
         self,
         input_dim: int,
@@ -83,7 +83,7 @@ class DiscreteBCTFModule(TFRLModule):
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
 
-    @override(TFRLModule)
+    @override(TfRLModule)
     def trainable_variables(self) -> Mapping[str, Any]:
         return {"policy": self.policy.trainable_variables}
 
