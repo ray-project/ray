@@ -1801,6 +1801,13 @@ py_test(
     srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
 )
 
+py_test(
+    name = "test_rl_optimizer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -2005,7 +2012,7 @@ py_test(
 py_test(
     name = "policy/tests/test_policy_map",
     tags = ["team:rllib", "policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_policy_map.py"]
 )
 
@@ -2100,6 +2107,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_random_encoder.py"]
+)
+
+py_test(
+    name = "utils/tests/test_torch_utils",
+    tags = ["team:rllib", "policutils"],
+    size = "small",
+    srcs = ["utils/tests/test_torch_utils.py"]
 )
 
 # Schedules
