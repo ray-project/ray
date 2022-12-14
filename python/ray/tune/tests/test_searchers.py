@@ -41,7 +41,7 @@ class InvalidValuesTest(unittest.TestCase):
     """
 
     def setUp(self):
-        self.config = {"report": tune.uniform(0.0, 5.0)}
+        self.config = {"report": tune.uniform(0.0, 5.0), "list": [1, 2, 3], "num": 4}
 
     def tearDown(self):
         pass
@@ -54,11 +54,20 @@ class InvalidValuesTest(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def testAx(self):
+    def assertCorrectExperimentOutput(self, analysis):
+        best_trial = analysis.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
+        # Make sure that constant parameters aren't lost
+        # Hyperopt converts lists to tuples, so check for either
+        self.assertIn(best_trial.config["list"], ([1, 2, 3], (1, 2, 3)))
+        self.assertEqual(best_trial.config["num"], 4)
+
+    def testAxManualSetup(self):
         from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
 
-        converted_config = AxSearch.convert_search_space(self.config)
+        config = {"report": tune.uniform(0.0, 5.0)}
+        converted_config = AxSearch.convert_search_space(config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
         client.create_experiment(
@@ -78,6 +87,22 @@ class InvalidValuesTest(unittest.TestCase):
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
+    def testAx(self):
+        from ray.tune.search.ax import AxSearch
+
+        searcher = AxSearch(random_seed=4321)
+
+        out = tune.run(
+            _invalid_objective,
+            search_alg=searcher,
+            metric="_metric",
+            mode="max",
+            num_samples=4,
+            reuse_actors=False,
+            config=self.config,
+        )
+        self.assertCorrectExperimentOutput(out)
+
     def testBayesOpt(self):
         from ray.tune.search.bayesopt import BayesOptSearch
 
@@ -91,9 +116,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testBlendSearch(self):
         from ray.tune.search.flaml import BlendSearch
@@ -114,9 +137,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=16,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
@@ -130,9 +151,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testCFO(self):
         self.skipTest(
@@ -157,9 +176,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=16,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testDragonfly(self):
         from ray.tune.search.dragonfly import DragonflySearch
@@ -175,9 +192,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["point"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
@@ -192,9 +207,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
@@ -209,9 +222,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testNevergrad(self):
         from ray.tune.search.nevergrad import NevergradSearch
@@ -227,9 +238,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=16,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
@@ -246,9 +255,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testOptunaReportTooOften(self):
         from ray.tune.search.optuna import OptunaSearch
@@ -283,9 +290,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
     def testZOOpt(self):
         self.skipTest(
@@ -305,9 +310,7 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=8,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
 
 
 class AddEvaluatedPointTest(unittest.TestCase):
