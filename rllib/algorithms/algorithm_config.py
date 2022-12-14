@@ -2025,7 +2025,7 @@ class AlgorithmConfig:
     def rl_module(
         self,
         *,
-        rl_module_class: Optional[Type] = NotProvided,
+        rl_module_class: Optional[Type["RLModule"]] = NotProvided,
         _enable_rl_module_api: bool = True,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
