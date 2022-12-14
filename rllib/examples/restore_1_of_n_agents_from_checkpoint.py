@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     # Setup PPO with an ensemble of `num_policies` different policies.
     policies = {
-        f"policy_{i}": (None, obs_space, act_space, {})
+        f"policy_{i}": (None, obs_space, act_space, None)
         for i in range(args.num_policies)
     }
     policy_ids = list(policies.keys())

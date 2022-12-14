@@ -2840,7 +2840,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1gpu_24cpus.yaml
+    cluster_compute: 2gpus_64cpus.yaml
 
   run:
     timeout: 18000
@@ -3935,7 +3935,7 @@
 
   run:
     timeout: 500
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.5
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
     type: sdk_command
     file_manager: sdk
@@ -4679,7 +4679,7 @@
 ##################
 
 - name: chaos_many_tasks_no_object_store
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_tasks_no_object_store
@@ -4702,7 +4702,7 @@
     file_manager: sdk
 
 - name: chaos_many_actors
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_actors
@@ -4830,12 +4830,12 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
+    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20

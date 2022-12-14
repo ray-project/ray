@@ -53,6 +53,7 @@ def apply_grad_clipping(
     else:
         clip_value = np.inf
 
+    num_none_grads = 0
     for param_group in optimizer.param_groups:
         # Make sure we only pass params with grad != None into torch
         # clip_grad_norm_. Would fail otherwise.
@@ -66,12 +67,15 @@ def apply_grad_clipping(
                 global_norm = global_norm.cpu().numpy()
 
             grad_gnorm += min(global_norm, clip_value)
+        else:
+            num_none_grads += 1
 
-    if grad_gnorm > 0:
-        return {"grad_gnorm": grad_gnorm}
-    else:
+    # Note (Kourosh): grads could indeed be zero. This method should still return
+    # grad_gnorm in that case.
+    if num_none_grads == len(optimizer.param_groups):
         # No grads available
         return {}
+    return {"grad_gnorm": grad_gnorm}
 
 
 @Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
@@ -144,7 +148,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Numpy arrays.
         elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
-            if item.dtype == object:
+            # str type (e.g. agent_id in train batch): leave as-is.
+            if item.dtype == object or item.dtype.type is np.str_:
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:

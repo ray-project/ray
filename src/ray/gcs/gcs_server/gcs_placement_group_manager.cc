@@ -326,7 +326,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
         RAY_CHECK_OK(status);
 
         if (RescheduleIfStillHasUnplacedBundles(placement_group_id)) {
-          // Don't do callback if it still has unplaced bundles.
+          // If all the bundles are not created yet, don't complete
+          // the creation and invoke a callback.
+          // The call back will be called when all bundles are created.
           return;
         }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this

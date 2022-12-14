@@ -1,3 +1,4 @@
+import abc
 import json
 from copy import deepcopy
 from inspect import signature
@@ -5,7 +6,7 @@ from typing import List, Type, Dict, Union
 
 from dataclasses import dataclass
 
-from ray.util import placement_group, PublicAPI
+from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
 
 
@@ -24,7 +25,7 @@ def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
     return resources
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 class ResourceRequest:
     """Request for resources.
 
@@ -37,6 +38,7 @@ class ResourceRequest:
 
     Args:
         bundles: A list of bundles which represent the resources requirements.
+            E.g. ``[{"CPU": 1, "GPU": 1}]``.
         strategy: The scheduling strategy to acquire the bundles. This is only
             relevant if the resources are requested as placement groups.
 
@@ -60,10 +62,13 @@ class ResourceRequest:
         if not bundles:
             raise ValueError("Cannot initialize a ResourceRequest with zero bundles.")
 
+        # Remove empty resource keys
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
         ]
 
+        # Check if the head bundle is empty (no resources defined or all resources
+        # are 0 (and thus removed in the previous step)
         if not self._bundles[0]:
             # This is when trainable itself doesn't need resources.
             self._head_bundle_is_empty = True
@@ -118,6 +123,14 @@ class ResourceRequest:
         return self._strategy
 
     def _bind(self):
+        """Bind the args and kwargs to the `placement_group()` signature.
+
+        We bind the args and kwargs, so we can compare equality of two resource
+        requests. The main reason for this is that the `placement_group()` API
+        can evolve independently from the ResourceRequest API (e.g. adding new
+        arguments). Then, `ResourceRequest(bundles, strategy, arg=arg)` should
+        be the same as `ResourceRequest(bundles, strategy, arg)`.
+        """
         sig = signature(placement_group)
         try:
             self._bound = sig.bind(
@@ -173,7 +186,7 @@ class ResourceRequest:
 
 @DeveloperAPI
 @dataclass
-class AllocatedResource:
+class AllocatedResource(abc.ABC):
     """Base class for available resources.
 
     Internally this can point e.g. to a placement group, a placement
