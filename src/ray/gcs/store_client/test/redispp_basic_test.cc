@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <thread>
+#include <sw/redis++/redis++.h>
+
 #include <chrono>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
-
-#include <sw/redis++/redis++.h>
 using namespace ray;
 using namespace sw::redis;
 using namespace std::chrono_literals;
