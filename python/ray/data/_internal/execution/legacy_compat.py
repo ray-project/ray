@@ -80,7 +80,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             ),
                         )
                     ],
-                    owns_blocks=True,
+                    owns_blocks=owns_blocks,
                 )
                 for read_task in read_tasks
             ]
