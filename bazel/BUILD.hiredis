@@ -11,7 +11,7 @@ cmake(
     name = "libhiredis",
     cache_entries = {
         "DISABLE_TESTS": "ON",
-        "USE_SSL": "1",
+        "ENABLE_SSL": "ON",
     },
     lib_source = "//:all_srcs",
     deps = [
