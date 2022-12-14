@@ -196,6 +196,25 @@ class TestSupportedSpacesPG(unittest.TestCase):
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
 
+    def test_ppo_no_preprocessors_gpu(self):
+        # Same test as test_ppo, but also test if we are able to move models and tensors
+        # on the same device when also no using preprocessors.
+        config = (
+            PPOConfig()
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .training(
+                train_batch_size=100,
+                num_sgd_iter=1,
+                sgd_minibatch_size=50,
+                model={
+                    "fcnet_hiddens": [10],
+                },
+            )
+        )
+        config["_disable_preprocessor_api"] = True
+        config["num_gpus"] = 1
+        check_support("PPO", config, check_bounds=True, tf2=True)
+
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):
     @classmethod
