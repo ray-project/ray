@@ -216,7 +216,7 @@ class CLIArguments:
 
     # Train arguments
     # __cli_train_start__
-    Stop = typer.Option(None, "--stop", "-s", help=get_help("stop"))
+    Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
     )
