@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -5361,6 +5362,18 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     schema = ds.schema()
     ds.stats()
     assert schema == ds.schema()
+
+
+def test_ragged_tensors(ray_start_regular_shared):
+    import numpy as np
+    ds = ray.data.from_items([
+        {"spam": np.zeros((32, 32, 3))},
+        {"spam": np.zeros((64, 64, 3))},
+    ])
+    new_type = ds.schema().types[0].scalar_type
+    assert ds.schema().types == [
+        ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
+    ]
 
 
 if __name__ == "__main__":

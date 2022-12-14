@@ -419,19 +419,6 @@ DatasetPipeline iterator time breakdown:
 """
     )
 
-def test_ragged_tensors(ray_start_regular_shared):
-    import numpy as np
-    ds = ray.data.from_items([
-        {"spam": np.zeros((32, 32, 3))},
-        {"spam": np.zeros((64, 64, 3))},
-    ])
-    print(ds.schema().types)
-    new_type = ds.schema().types[0].storage_type.value_type
-    assert ds.schema().types == [
-        ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
-    ]
-    
-
 
 if __name__ == "__main__":
     import sys

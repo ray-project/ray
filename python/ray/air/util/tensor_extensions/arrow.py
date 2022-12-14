@@ -79,6 +79,11 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         return self._shape
 
+    @property
+    def scalar_type(self):
+        """Returns the type of the underlying tensor elements."""
+        return self.storage_type.value_type
+
     def to_pandas_dtype(self):
         """
         Convert Arrow extension type to corresponding Pandas dtype.
@@ -529,6 +534,12 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
     def ndim(self) -> int:
         """Return the number of dimensions in the tensor elements."""
         return self._ndim
+
+    @property
+    def scalar_type(self):
+        """Returns the type of the underlying tensor elements."""
+        data_field_index = self.storage_type.get_field_index("data")
+        return self.storage_type[data_field_index].type.value_type
 
     def __reduce__(self):
         return (

@@ -51,18 +51,26 @@ def unify_schemas(
     schemas: List["pyarrow.Schema"],
 ) -> "pyarrow.Schema":
     schemas_to_unify = []
-    for col_idx in range(len(schemas[0].types)):
-        column_types = [s.types[col_idx] for s in schemas]
-        if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
-            new_type = ArrowVariableShapedTensorType(
-                dtype=column_types[0].storage_type.value_type,
-                ndim =len(column_types[0].shape),
-            )
+    schema_tensor_field_overrides = {}
+
+    if type(schemas[0]) == pyarrow.Schema:
+        if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
+            for col_idx in range(len(schemas[0].types)):
+                column_types = [s.types[col_idx] for s in schemas]
+                if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
+                    new_type = ArrowVariableShapedTensorType(
+                        dtype=column_types[0].scalar_type,
+                        ndim =len(column_types[0].shape),
+                    )
+                    schema_tensor_field_overrides[col_idx] = new_type
             for schema in schemas:
-                var_shaped_col = schema.field(col_idx).with_type(new_type)
-                schema = schema.set(col_idx, var_shaped_col)
-        schemas_to_unify.append(schema)
-        
+                for col_idx, col_new_type in schema_tensor_field_overrides.items():
+                    var_shaped_col = schema.field(col_idx).with_type(col_new_type)
+                    schema = schema.set(col_idx, var_shaped_col)
+                schemas_to_unify.append(schema)
+        else:
+            schemas_to_unify = schemas
+    print("===> schemas_to_unify:", schemas_to_unify)
     # Let Arrow unify the schema of non-tensor extension type columns.
     return pyarrow.unify_schemas(schemas_to_unify)
 
@@ -116,7 +124,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schema.types):
         # Custom handling for extension array columns.
         cols = []
-        schema_tensor_field_overrides = {}
+        # schema_tensor_field_overrides = {}
         for col_name in schema.names:
             col_chunked_arrays = []
             for block in blocks:
@@ -133,13 +141,13 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                 col = ArrowTensorArray._chunk_tensor_arrays(
                     [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
                 )
-                if schema.field(col_name).type != col.type:
-                    # Ensure that the field's type is properly updated in the schema if
-                    # a collection of homogeneous-shaped columns resulted in a
-                    # variable-shaped tensor column once concatenated.
-                    new_field = schema.field(col_name).with_type(col.type)
-                    field_idx = schema.get_field_index(col_name)
-                    schema_tensor_field_overrides[field_idx] = new_field
+                # if schema.field(col_name).type != col.type:
+                #     # Ensure that the field's type is properly updated in the schema if
+                #     # a collection of homogeneous-shaped columns resulted in a
+                #     # variable-shaped tensor column once concatenated.
+                #     new_field = schema.field(col_name).with_type(col.type)
+                #     field_idx = schema.get_field_index(col_name)
+                #     schema_tensor_field_overrides[field_idx] = new_field
             else:
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
             cols.append(col)
