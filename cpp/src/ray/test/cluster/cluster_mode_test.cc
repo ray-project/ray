@@ -252,10 +252,16 @@ TEST(RayClusterModeTest, ActorHandleTest) {
   auto child_actor =
       actor1.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
   EXPECT_EQ(1, *child_actor->Task(&Counter::Plus1).Remote().Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>(child_actor_name);
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(2, *named_actor_obj1.Get());
 }
 
 TEST(RayClusterModeTest, PythonInvocationTest) {
-  auto py_actor_handle =
+  ray::ActorHandleXlang py_actor_handle =
       ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})
           .Remote(1);
   EXPECT_TRUE(!py_actor_handle.ID().empty());

@@ -78,9 +78,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
   }
-  if (bootstrap_ip == "127.0.0.1") {
-    bootstrap_ip = GetNodeIpAddress();
-  }
 
   std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
