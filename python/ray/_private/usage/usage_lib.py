@@ -63,9 +63,10 @@ import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
-from ray.core.generated.usage_pb2 import TagKey as TagKey
+from ray.core.generated import usage_pb2
 
 logger = logging.getLogger(__name__)
+TagKey = usage_pb2.TagKey
 
 #################
 # Internal APIs #
