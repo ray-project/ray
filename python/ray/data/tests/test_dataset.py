@@ -2663,6 +2663,34 @@ def test_map_batches_batch_mutation(
     assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_zero_copy(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
+    def mutate(df):
+        # Check that batch is read-only.
+        assert not df.values.flags.writeable
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+
+    # Apply UDF that mutates the batches, which should fail since the batch is
+    # read-only.
+    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
+        ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
+
+
 BLOCK_BUNDLING_TEST_CASES = [
     (block_size, batch_size)
     for batch_size in range(1, 8)
