@@ -114,10 +114,10 @@ class RLModule(abc.ABC):
         cls.__init__ = init_decorator(cls.__init__)
 
     def __post_init__(self):
-        """Called after the __init__ method of the subclass.
+        """Called automatically after the __init__ method of the subclass.
 
-        The module first calls the __init__ method of the subclass, With in the 
-        __init__ you should call the super().__init__ method. Then after the __init__ 
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
         method of the subclass is called, the __post_init__ method is called.
 
         This is a good place to do any initialization that requires access to the
@@ -179,32 +179,6 @@ class RLModule(abc.ABC):
             model_config: The model config dict.
         """
         raise NotImplementedError
-
-    # @classmethod
-    # def from_config(cls, config: Any) -> "RLModule":
-    #     """Creates a RLModule instance from a config object.
-
-    #     Example:
-
-    #     .. code-block:: python
-
-    #         class MyModule(RLModule):
-    #             def __init__(self, config):
-    #                 self.config = config
-
-    #             @classmethod
-    #             def from_config(cls, config):
-    #                 return cls(config)
-
-    #         module = MyModule.from_config({"foo": 42})
-
-    #     Args:
-    #         config: The config object.
-
-    #     Returns:
-    #         The RLModule instance.
-    #     """
-    #     raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.

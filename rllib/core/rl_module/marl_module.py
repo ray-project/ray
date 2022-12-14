@@ -368,6 +368,22 @@ class MultiAgentRLModule(RLModule):
         module_id: ModuleID = "",
         **kwargs,
     ) -> Dict[ModuleID, Mapping[str, Any]]:
+        """This is a helper method that runs the forward pass for the given module.
+
+        It uses forward_fn_name to get the forward pass method from the RLModule
+        (e.g. forward_train vs. forward_exploration) and runs it on the given batch.
+
+        Args:
+            forward_fn_name: The name of the forward pass method to run.
+            batch: The batch of multi-agent data (i.e. mapping from module ids to
+                SampleBaches).
+            module_id: The module ID to run the forward pass for. If not specified, all
+                modules are run.
+
+        Returns:
+            The output of the forward pass the specified modules. The output is a
+            mapping from module ID to the output of the forward pass.
+        """
         if module_id:
             self._check_module_exists(module_id)
             module_ids = [module_id]
@@ -384,7 +400,7 @@ class MultiAgentRLModule(RLModule):
 
     def _check_module_exists(self, module_id: ModuleID) -> None:
         if module_id not in self._rl_modules:
-            raise ValueError(
+            raise KeyError(
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
             )

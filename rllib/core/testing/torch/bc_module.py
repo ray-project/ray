@@ -75,7 +75,6 @@ class DiscreteBCTorchModule(TorchRLModule):
         observation_space: "gym.Space",
         action_space: "gym.Space",
         model_config: Mapping[str, Any],
-        return_config: bool = False,
     ) -> Union["RLModule", Mapping[str, Any]]:
 
         config = {
@@ -84,24 +83,15 @@ class DiscreteBCTorchModule(TorchRLModule):
             "output_dim": action_space.n,
         }
 
-        if return_config:
-            return config
-
         return cls(**config)
 
-    # @classmethod
-    # @override(RLModule)
-    # def from_config(cls, config: Mapping[str, Any]) -> "RLModule":
-    #     return cls(**config)
-
     @classmethod
-    def from_env(cls, env, return_config: bool = False):
+    def from_env(cls, env):
         """This is used for testing purposes."""
         return cls.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
-            return_config=return_config,
         )
 
     def _default_inputs(self) -> dict:

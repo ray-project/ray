@@ -117,7 +117,7 @@ class PPOConfig(PGConfig):
         self.vf_share_layers = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
-    def get_rl_module_class(self) -> Union[Type["RLModule"], str]:
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,

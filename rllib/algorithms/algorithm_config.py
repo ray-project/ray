@@ -136,9 +136,9 @@ def _resolve_class_path(module) -> Type:
     if isinstance(module, str):
         import importlib
 
-        module = module.rsplit(".", 1)
-        module = importlib.import_module(module[0])
-        return getattr(module, module[1])
+        module_path, class_name = module.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
 
 
 class AlgorithmConfig:
@@ -817,8 +817,8 @@ class AlgorithmConfig:
 
         # resolve rl_module class
         if self._enable_rl_module_api and self.rl_module_class is None:
-            rl_module_class = self.get_rl_module_class()
-            self.rl_module_class = _resolve_class_path(rl_module_class)
+            rl_module_class_path = self.get_default_rl_module_class()
+            self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
     def build(
         self,
@@ -2474,14 +2474,15 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    def get_rl_module_class(self) -> Union[Type["RLModule"], str]:
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
         """Returns the RLModule class to use for this algorithm.
 
         Override this method in the sub-class to return the RLModule class type given
         the input framework.
 
         Returns:
-            The RLModule class to use for this algorithm.
+            The RLModule class to use for this algorithm either as a class type or as
+            a string (e.g. x.y.z).
         """
         raise NotImplementedError
 
