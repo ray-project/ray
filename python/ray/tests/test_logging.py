@@ -100,6 +100,7 @@ def test_file_rename_does_not_throw_error(tmp_path):
 
     file_info.reopen_if_necessary()
 
+
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100

@@ -82,7 +82,7 @@ class LogFileInfo:
             if open_inode != new_inode:
                 self.file_handle = open(self.filename, "rb")
                 self.file_handle.seek(self.file_position)
-        except Exception as _:
+        except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
             pass
 
