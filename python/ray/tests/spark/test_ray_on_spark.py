@@ -59,7 +59,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert results == [i * i for i in range(32)]
 
         # assert temp dir is removed.
-        time.sleep(5)
+        time.sleep(4)
         assert not os.path.exists(cluster.temp_dir)
 
     def test_ray_cluster_shutdown(self):
@@ -70,11 +70,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
             cluster._cancel_background_spark_job()
-            time.sleep(20)
+            time.sleep(3)
 
             assert len(self.get_ray_worker_resources_list()) == 0
 
-        time.sleep(5)  # wait ray head node exit.
+        time.sleep(2)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         hostname, port = cluster.address.split(":")
         assert not check_port_open(hostname, int(port))
@@ -86,7 +86,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
             cluster.spark_job_is_canceled = False
-            time.sleep(5)
+            time.sleep(3)
 
             # assert ray head node exit by checking head port being closed.
             hostname, port = cluster.address.split(":")

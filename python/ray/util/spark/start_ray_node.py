@@ -7,6 +7,17 @@ import fcntl
 import signal
 
 
+# Spark on ray implementation does not directly invoke `ray start ...` script to create ray node
+# subprocess, instead, it creates a subprocess to run this `ray.util.spark.start_ray_node`
+# module, and in this module it invokes `ray start ...` script to start ray node,
+# the purpose of `start_ray_node` module is to set up a SIGTERM handler for cleaning ray temp
+# directory when ray node exits.
+# When spark driver python process dies, or spark python worker dies, because they registered
+# the PR_SET_PDEATHSIG signal, so OS will send a SIGTERM signal to its children processes, so
+# `start_ray_node` subprocess will receive a SIGTERM signal and the SIGTERM handler will do
+# cleanup work.
+
+
 _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
 

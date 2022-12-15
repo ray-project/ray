@@ -49,7 +49,6 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 MAX_NUM_WORKER_NODES = -1
 
 
-@PublicAPI(stability="alpha")
 class RayClusterOnSpark:
     """
     This class is the type of instance returned by the `init_ray_cluster` API.
@@ -150,6 +149,9 @@ class RayClusterOnSpark:
     def shutdown(self, cancel_background_job=True):
         """
         Shutdown the ray cluster created by the `init_ray_cluster` API.
+        NB: In the background thread that runs the background spark job, if spark job raise
+        unexpected error, its exception handler will also call this method, in the case,
+        it will set cancel_background_job=False to avoid recursive call.
         """
         if not self.is_shutdown:
             if self.ray_context is not None:
@@ -184,7 +186,7 @@ def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
 
 
-_RAY_HEAD_STARTUP_TIMEOUT = 40
+_RAY_HEAD_STARTUP_TIMEOUT = 5
 _BACKGROUND_JOB_STARTUP_WAIT = 30
 _RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL = 3
 
@@ -315,7 +317,7 @@ def _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_start
         raise
 
     def hold_lock_for_10s_and_release():
-        time.sleep(10)
+        time.sleep(5)
         release_lock()
 
     threading.Thread(target=hold_lock_for_10s_and_release, args=()).start()
@@ -329,7 +331,7 @@ def _init_ray_cluster(
     head_options=None,
     worker_options=None,
     ray_temp_root_dir=None,
-    safe_mode=True,
+    safe_mode=False,
 ):
     """
     This function is used in testing, it has the same arguments with
@@ -471,14 +473,7 @@ def _init_ray_cluster(
     )
 
     # wait ray head node spin up.
-    time.sleep(5)
-    for _ in range(_RAY_HEAD_STARTUP_TIMEOUT):
-        time.sleep(1)
-        if ray_head_proc.poll() is not None:
-            # ray head node process terminated.
-            break
-        if check_port_open(ray_head_ip, ray_head_port):
-            break
+    time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
 
     if not check_port_open(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
@@ -688,7 +683,7 @@ def init_ray_cluster(
     head_options: Optional[Dict] = None,
     worker_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
-    safe_mode: Optional[bool] = True,
+    safe_mode: Optional[bool] = False,
 ) -> None:
     """
     Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
@@ -713,7 +708,9 @@ def init_ray_cluster(
             cluster, it is recommended to set this argument to `ray.spark.utils.MAX_NUM_WORKER_NODES`.
         object_store_memory_per_node: Object store memory available to per-ray worker node, but
                                       it cannot exceed
-                                      "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker"
+                                      "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
+                                      The default value equals to
+                                      "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster

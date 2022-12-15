@@ -2,7 +2,7 @@ from .start_hook_base import RayOnSparkStartHook
 from .utils import get_spark_session
 import logging
 
-_logger = logging.getLogger("ray.util.spark.databricks_hook")
+_logger = logging.getLogger(__name__)
 
 
 class _NoDbutilsError(Exception):
@@ -10,6 +10,9 @@ class _NoDbutilsError(Exception):
 
 
 def get_dbutils():
+    """
+    Get databricks runtime dbutils module.
+    """
     try:
         import IPython
 
@@ -24,6 +27,12 @@ def get_dbutils():
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
+    """
+    This helper function create a proxy URL for databricks driver webapp forwarding.
+    In databricks runtime, user does not have permission to directly access web service
+    binding on driver machine port, but user can visit it by a proxy URL with following
+    format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
+    """
     from dbruntime.display import displayHTML
 
     driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
