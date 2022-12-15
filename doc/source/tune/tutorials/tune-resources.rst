@@ -18,6 +18,10 @@ of CPUs (cores) on your machine.
     )
     results = tuner.fit()
 
+.. warning::
+
+    ``tune.with_resources`` cannot be used with :ref:`Ray AIR Trainers <air-trainers>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.air.config.ScalingConfig`. The general principles outlined below still apply.
+
 You can override this per trial resources with ``tune.with_resources``. Here you can
 specify your resource requests using either a dictionary or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
@@ -60,10 +64,9 @@ object. In any case, Ray Tune will try to start a placement group for each trial
     )
     results = tuner.fit()
 
+Similarly, you can also use the ``ScalingConfig`` to specify trial resources. See :class:`~ray.air.config.ScalingConfig` for more information.
 
 Tune will allocate the specified GPU and CPU as specified by ``tune.with_resources`` to each individual trial.
-Similarly, you can also use the ``ScalingConfig`` to specify trial resources.
-See :ref:`ScalingConfig <train-config>` for more information.
 Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
