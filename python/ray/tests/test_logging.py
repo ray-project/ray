@@ -79,7 +79,7 @@ def test_reopen_changed_inode(tmp_path):
     assert file_info.file_handle.tell() == orig_file_pos
 
 
-def test_file_rename_does_not_throw_error(tmp_path):
+def test_deleted_file_does_not_throw_error(tmp_path):
     filename = tmp_path / "file"
 
     Path(filename).touch()
@@ -96,7 +96,7 @@ def test_file_rename_does_not_throw_error(tmp_path):
 
     file_info.reopen_if_necessary()
 
-    os.rename(filename, f"{filename}.1")
+    os.remove(filename)
 
     file_info.reopen_if_necessary()
 

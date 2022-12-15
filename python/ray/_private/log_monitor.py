@@ -84,7 +84,6 @@ class LogFileInfo:
                 self.file_handle.seek(self.file_position)
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
-            pass
 
     def __repr__(self):
         return (
