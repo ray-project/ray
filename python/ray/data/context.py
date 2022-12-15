@@ -68,7 +68,12 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND")
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+)
+
+# Whether to eagerly free memory. TODO: enable by default before merge (DO NOT MERGE).
+DEFAULT_EAGER_FREE = bool(
+    int(os.environ.get("RAY_DATASET_EAGER_FREE", "0"))
 )
 
 # Whether to estimate in-memory decoding data size for data source.
@@ -117,6 +122,7 @@ class DatasetContext:
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
         new_execution_backend: bool,
+        eager_free: bool,
         decoding_size_estimation: bool,
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
@@ -140,6 +146,7 @@ class DatasetContext:
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
+        self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
@@ -176,6 +183,7 @@ class DatasetContext:
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
+                    eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
                     enable_tensor_extension_casting=(
