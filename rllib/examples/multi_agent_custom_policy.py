@@ -47,6 +47,9 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--enable-rl-module-api", action="store_true", help="Use RLModule API."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -84,6 +87,11 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
+
+    if args.enable_rl_module_api:
+        config = config.rl_module(_enable_rl_module_api=True).rollouts(
+            enable_connectors=True
+        )
 
     stop = {
         "training_iteration": args.stop_iters,
