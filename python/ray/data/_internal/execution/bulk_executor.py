@@ -22,7 +22,7 @@ class BulkExecutor(Executor):
 
     def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal."""
-        logger.info("Executing DAG %s", dag)
+        logger.debug("Executing DAG %s", dag)
 
         saved_outputs: Dict[PhysicalOperator, List[RefBundle]] = {}
         self._stats = DatasetStats(stages={}, parent=None)

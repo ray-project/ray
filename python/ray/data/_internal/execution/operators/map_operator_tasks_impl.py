@@ -1,6 +1,7 @@
 from typing import Callable, Optional, List, Dict, Any, TYPE_CHECKING
 
 import ray
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
@@ -12,7 +13,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_operator import MapOperator
 
 
-@ray.remote(num_returns="dynamic")
 def _map_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]):
     """Remote function for a single operator task.
 
@@ -67,7 +67,8 @@ class MapOperatorTasksImpl:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
-        generator_ref = _map_task.options(**self._ray_remote_args).remote(
+        map_task = cached_remote_fn(_map_task, num_returns="dynamic")
+        generator_ref = map_task.options(**self._ray_remote_args).remote(
             self._transform_fn, bundle.input_metadata, *input_blocks
         )
         task = _TaskState(bundle)

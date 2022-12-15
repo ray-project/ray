@@ -41,8 +41,10 @@ class RefBundle:
             assert len(b) == 2, b
             assert isinstance(b[0], ray.ObjectRef), b
             assert isinstance(b[1], BlockMetadata), b
-            assert b[1].num_rows is not None, b
-            assert b[1].size_bytes is not None, b
+            if b[1].size_bytes is None:
+                raise ValueError(
+                    "The size in bytes of the block must be known: {}".format(b)
+                )
 
     def num_rows(self) -> int:
         """Number of rows present in this bundle."""
