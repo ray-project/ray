@@ -58,7 +58,6 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
-    "test_ray_shutdown.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_protobuf_compatibility.py"
