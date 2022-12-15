@@ -86,7 +86,7 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        if self.config["_enable_rl_module_api"]:
+        if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
             dist_class = None
         else:
@@ -920,6 +920,12 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
+        if self.config.get("_enable_rl_module_api", False):
+            # convert the tree of tensors to a tree to numpy arrays
+            return tree.map_structure(
+                lambda s: convert_to_numpy(s), self.model.get_initial_state()
+            )
+
         return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)
@@ -1049,14 +1055,10 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = {}
         if isinstance(self.model, RLModule):
-            sample_batch = input_dict
-            if state_batches:
-                sample_batch.update({"state": state_batches})
-
             if explore:
-                fwd_out = self.model.forward_exploration(sample_batch)
+                fwd_out = self.model.forward_exploration(input_dict)
             else:
-                fwd_out = self.model.forward_inference(sample_batch)
+                fwd_out = self.model.forward_inference(input_dict)
             # anything but action_dist and state_out is an extra fetch
             action_dist = fwd_out.pop("action_dist")
 
@@ -1065,7 +1067,7 @@ class TorchPolicyV2(Policy):
             else:
                 actions = action_dist.sample()
                 logp = None
-            state_out = fwd_out.pop("state_out", [])
+            state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
@@ -1110,10 +1112,6 @@ class TorchPolicyV2(Policy):
             actions, logp = self.exploration.get_exploration_action(
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
-
-        # # convert to numpy so that the type of objects in the SampleBatch are
-        # # consistent.
-        # input_dict[SampleBatch.ACTIONS] = convert_to_numpy(actions)
 
         # Add default and custom fetches.
         if not extra_fetches:

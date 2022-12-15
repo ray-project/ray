@@ -1119,6 +1119,15 @@ py_test(
     srcs = ["algorithms/r2d2/tests/test_r2d2.py"]
 )
 
+# RandomAgent
+py_test(
+    name = "test_random_agent",
+    main = "algorithms/random_agent/random_agent.py",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/random_agent/random_agent.py"]
+)
+
 # RNNSAC
 py_test(
     name = "test_rnnsac",
@@ -1165,18 +1174,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/td3/tests/test_td3.py"]
-)
-
-# --------------------------------------------------------------------
-# contrib Algorithms
-# --------------------------------------------------------------------
-
-py_test(
-    name = "random_agent",
-    tags = ["team:rllib", "algorithms_dir"],
-    main = "contrib/random_agent/random_agent.py",
-    size = "small",
-    srcs = ["contrib/random_agent/random_agent.py"]
 )
 
 
@@ -1795,10 +1792,10 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_marl_module",
+    name = "test_marl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
+    srcs = ["core/rl_module/tests/test_marl_module.py"]
 )
 
 py_test(
@@ -2107,6 +2104,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_random_encoder.py"]
+)
+
+py_test(
+    name = "utils/tests/test_torch_utils",
+    tags = ["team:rllib", "policutils"],
+    size = "small",
+    srcs = ["utils/tests/test_torch_utils.py"]
 )
 
 # Schedules

@@ -460,6 +460,13 @@ def check_compute_single_action(
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test(
                                 what,
                                 method_to_test,

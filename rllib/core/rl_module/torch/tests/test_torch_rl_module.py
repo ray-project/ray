@@ -1,188 +1,75 @@
-import unittest
 import gymnasium as gym
-import torch
-import tree
-import numpy as np
-
-
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-    get_separate_encoder_config,
-    get_shared_encoder_config,
-    get_ppo_loss,
-)
-from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
+import torch
+import unittest
+from typing import Mapping
+
+from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+
 from ray.rllib.utils.test_utils import check
-
-
-def to_numpy(tensor):
-    return tensor.detach().cpu().numpy()
-
-
-def to_tensor(array, device=None):
-    if device:
-        return torch.from_numpy(array).float().to(device)
-    return torch.from_numpy(array).float()
 
 
 class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            env = gym.make(env_name)
-            obs_dim = env.observation_space.shape[0]
-            action_dim = (
-                env.action_space.n
-                if isinstance(env.action_space, gym.spaces.Discrete)
-                else env.action_space.shape[0]
-            )
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule.from_env(env)
 
-            config_separate_encoder = get_separate_encoder_config(env)
-            module = PPOTorchRLModule(config_separate_encoder)
+        self.assertIsInstance(module, TorchRLModule)
 
-            self.assertIsInstance(module, TorchRLModule)
-            self.assertIsNone(module.encoder)
-            self.assertEqual(module.pi.layers[0].in_features, obs_dim)
-            self.assertEqual(module.vf.layers[0].in_features, obs_dim)
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                self.assertEqual(module.pi.layers[-1].out_features, action_dim)
-            else:
-                self.assertEqual(module.pi.layers[-1].out_features, action_dim * 2)
-            self.assertEqual(module.vf.layers[-1].out_features, 1)
+    def test_forward_train(self):
 
-            # with shared encoder
-            config_shared_encoder = get_shared_encoder_config(env)
-            module = PPOTorchRLModule(config_shared_encoder)
+        bsize = 1024
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule.from_env(env)
 
-            self.assertIsNotNone(module.encoder)
-            self.assertEqual(module.encoder.layers[0].in_features, obs_dim)
-            self.assertEqual(module.pi.layers[0].in_features, module.encoder.output_dim)
-            self.assertEqual(module.vf.layers[0].in_features, module.encoder.output_dim)
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                self.assertEqual(module.pi.layers[-1].out_features, action_dim)
-            else:
-                self.assertEqual(module.pi.layers[-1].out_features, action_dim * 2)
-            self.assertEqual(module.vf.layers[-1].out_features, 1)
+        obs_shape = env.observation_space.shape
+        obs = torch.randn((bsize,) + obs_shape)
+        actions = torch.stack(
+            [torch.tensor(env.action_space.sample()) for _ in range(bsize)]
+        )
+        output = module.forward_train({"obs": obs})
+
+        self.assertIsInstance(output, Mapping)
+        self.assertIn("action_dist", output)
+        self.assertIsInstance(output["action_dist"], torch.distributions.Categorical)
+
+        loss = -output["action_dist"].log_prob(actions.view(-1)).mean()
+        loss.backward()
+
+        # check that all neural net parameters have gradients
+        for param in module.parameters():
+            self.assertIsNotNone(param.grad)
+
+    def test_forward(self):
+        """Test forward inference and exploration of"""
+
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule.from_env(env)
+
+        obs_shape = env.observation_space.shape
+        obs = torch.randn((1,) + obs_shape)
+
+        # just test if the forward pass runs fine
+        module.forward_inference({"obs": obs})
+        module.forward_exploration({"obs": obs})
 
     def test_get_set_state(self):
 
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            env = gym.make(env_name)
-            config = get_shared_encoder_config(env)
-            module = PPOTorchRLModule(config)
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule.from_env(env)
 
-            state = module.get_state()
-            self.assertIsInstance(state, dict)
+        state = module.get_state()
+        self.assertIsInstance(state, dict)
 
-            module2 = PPOTorchRLModule(config)
-            state2 = module2.get_state()
-            self.assertRaises(AssertionError, lambda: check(state, state2))
+        module2 = DiscreteBCTorchModule.from_env(env)
+        state2 = module2.get_state()
+        check(state, state2, false=True)
 
-            module2.set_state(state)
-            state2_after = module2.get_state()
-            check(state, state2_after)
-
-    def test_rollouts(self):
-
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            for fwd_fn in ["forward_exploration", "forward_inference"]:
-                for shared_encoder in [False, True]:
-                    print(
-                        f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED={shared_encoder}]"
-                    )
-                    env = gym.make(env_name)
-
-                    if shared_encoder:
-                        config = get_shared_encoder_config(env)
-                    else:
-                        config = get_separate_encoder_config(env)
-                    module = PPOTorchRLModule(config)
-
-                    obs, info = env.reset()
-                    tstep = 0
-                    while tstep < 10:
-
-                        if fwd_fn == "forward_exploration":
-                            fwd_out = module.forward_exploration(
-                                {SampleBatch.OBS: to_tensor(obs)[None]}
-                            )
-                            action = to_numpy(
-                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
-                            )
-                        elif fwd_fn == "forward_inference":
-                            # check if I sample twice, I get the same action
-                            fwd_out = module.forward_inference(
-                                {SampleBatch.OBS: to_tensor(obs)[None]}
-                            )
-                            action = to_numpy(
-                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
-                            )
-                            action2 = to_numpy(
-                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
-                            )
-                            check(action, action2)
-
-                        obs, reward, terminated, truncated, info = env.step(action)
-                        print(
-                            f"obs: {obs}, action: {action}, reward: {reward}, "
-                            f"terminated: {terminated}, truncated: {truncated}, "
-                            f"info: {info}"
-                        )
-                        tstep += 1
-
-    def test_forward_train(self):
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            for shared_encoder in [False, True]:
-                print("-" * 80)
-                print(f"[ENV={env_name}] | [SHARED={shared_encoder}]")
-                env = gym.make(env_name)
-
-                if shared_encoder:
-                    config = get_shared_encoder_config(env)
-                else:
-                    config = get_separate_encoder_config(env)
-
-                module = PPOTorchRLModule(config)
-
-                # collect a batch of data
-                batch = []
-                obs, info = env.reset()
-                tstep = 0
-                while tstep < 10:
-                    fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
-                    action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-                    new_obs, reward, terminated, truncated, _ = env.step(action)
-                    batch.append(
-                        {
-                            SampleBatch.OBS: obs,
-                            SampleBatch.NEXT_OBS: new_obs,
-                            SampleBatch.ACTIONS: action,
-                            SampleBatch.REWARDS: np.array(reward),
-                            SampleBatch.TERMINATEDS: np.array(terminated),
-                            SampleBatch.TRUNCATEDS: np.array(truncated),
-                        }
-                    )
-                    obs = new_obs
-                    tstep += 1
-
-                # convert the list of dicts to dict of lists
-                batch = tree.map_structure(lambda *x: list(x), *batch)
-                # convert dict of lists to dict of tensors
-                fwd_in = {k: to_tensor(np.array(v)) for k, v in batch.items()}
-
-                # forward train
-                # before training make sure it's on the right device and it's on
-                # trianing mode
-                module.to("cpu")
-                module.train()
-                fwd_out = module.forward_train(fwd_in)
-                loss = get_ppo_loss(fwd_in, fwd_out)
-                loss.backward()
-
-                # check that all neural net parameters have gradients
-                for param in module.parameters():
-                    self.assertIsNotNone(param.grad)
+        module2.set_state(state)
+        state2_after = module2.get_state()
+        check(state, state2_after)
 
 
 if __name__ == "__main__":

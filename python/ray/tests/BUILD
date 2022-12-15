@@ -112,6 +112,7 @@ py_test_module_list(
     "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
+    "test_task_events.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
