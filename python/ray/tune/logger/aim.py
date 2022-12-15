@@ -2,10 +2,10 @@ import logging
 import numpy as np
 
 from typing import TYPE_CHECKING, Dict, Optional
-
 from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
+from aim.sdk import Run
+
 from ray.tune.logger.logger import LoggerCallback
-from ray.util.debug import log_once
 from ray.tune.result import (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
@@ -26,6 +26,10 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 class AimCallback(LoggerCallback):
     """Aim Logger.
     Logs metrics in aim format.
+    Aim is an open-source, self-hosted ML experiment tracking tool.
+    It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
+    performant and beautiful UI.
+    Source: https://github.com/aimhubio/aim
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -46,22 +50,7 @@ class AimCallback(LoggerCallback):
         self._log_system_params = log_system_params
         self._metrics = metrics
         self._log_value_warned = False
-
-        try:
-            from aim.sdk import Run
-
-            self._run_cls = Run
-            """
-            # Todo: implement the capability of images audio etc.
-            from aim import Image
-            from aim import Distribution
-            from aim.ext.resource.configs import DEFAULT_SYSTEM_TRACKING_INT
-            """
-        except ImportError:
-            if log_once("aim-install"):
-                logger.info("Please run `pip install aim` to use the AimLogger.")
-            raise
-
+        self._run_cls = Run
         self._trial_run: Dict["Trial", Run] = {}
 
     def _create_run(self, trial):
@@ -149,29 +138,6 @@ class AimCallback(LoggerCallback):
                     isinstance(value, np.ndarray) and value.size > 0
                 ):
                     valid_result[attr] = value
-
-                    """
-                    # ToDO: implement usage of audio, images etc. here..
-                    # Must be video
-                    if isinstance(value, np.ndarray) and value.ndim == 5:
-                        self._trial_writer[trial].add_video(
-                            attr, value, global_step=step, fps=20
-                        )
-                        continue
-
-                    try:
-                        self._trial_writer[trial].add_histogram(
-                            attr, value, global_step=step
-                        )
-                    # In case TensorboardX still doesn't think it's a valid value
-                    # (e.g. `[[]]`), warn and move on.
-                    except (ValueError, TypeError):
-                        if log_once("invalid_tbx_value"):
-                            logger.warning(
-                                "You are trying to log an invalid value ({}={}) "
-                                "via {}!".format(attr, value, type(self).__name__)
-                            )
-                    """
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         # cleanup in the end
