@@ -184,7 +184,7 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app specified in config_or_import_path on a cluster as a Ray "
+        "Runs a Serve app (specified in config_or_import_path) on a cluster as a Ray "
         "Job. config_or_import_path is either a filepath to a YAML config file on the "
         "Ray Cluster, or an import path on the Ray Cluster for a deployment node of "
         "the pattern containing_module:deployment_node.\n\n"
@@ -232,8 +232,8 @@ def deploy(config_file_name: str, address: str):
     default=".",
     type=str,
     help=(
-        "Directory on the Ray Cluster to look for the IMPORT_PATH (will be inserted "
-        "into PYTHONPATH). Defaults to '.', meaning that a deployment node `app_node` "
+        "Directory on the Ray Cluster in which to look for the IMPORT_PATH (will be "
+        "inserted into PYTHONPATH). Defaults to '.', i.e. a deployment node `app_node` "
         "in working_directory/main.py on the Ray Cluster can be run using "
         "`main:app_node`. Not relevant if you're importing from an installed module."
     ),
@@ -287,6 +287,7 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
+    # If no local ray instance is running, start one.
     if address is None and not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -299,6 +300,7 @@ def run(
         final_runtime_env["env_vars"] = {}
     final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
 
+    # The job to run on the cluster, which imports and runs the serve app.
     from ray.serve import run_script
 
     # Use Ray Job Submission to run serve.
@@ -322,6 +324,8 @@ def run(
             print(lines, end="")
 
     def interrupt_handler():
+        # Upon keyboard interrupt, stop job (which sends an interrupt signal to the job
+        # and shuts down serve). Then continue to stream logs until the job finishes.
         client.stop_job(submission_id)
 
     loop = asyncio.get_event_loop()
