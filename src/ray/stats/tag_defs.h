@@ -61,7 +61,5 @@ constexpr char kObjectSealed[] = "SEALED";
 constexpr char kObjectUnsealed[] = "UNSEALED";
 
 // GCS task manager tags
-constexpr char kGcsTaskEventReported[] = "REPORTED";
-constexpr char kGcsTaskEventStored[] = "STORED";
-constexpr char kGcsTaskStatusEventDropped[] = "STATUS_DROPPED";
-constexpr char kGcsProfileEventDropped[] = "PROFILE_DROPPED";
+constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
+constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";
