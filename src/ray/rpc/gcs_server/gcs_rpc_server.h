@@ -663,6 +663,7 @@ using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
+using TaskInfoHandler = TaskInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

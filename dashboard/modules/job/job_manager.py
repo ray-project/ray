@@ -304,7 +304,7 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
+    async def _polling(self, child_process: subprocess.Popen) -> int:
         try:
             while child_process is not None:
                 return_code = child_process.poll()
