@@ -4,6 +4,7 @@ from typing import Any, Mapping
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 
 
 _, tf, _ = try_import_tf()
@@ -48,7 +49,7 @@ class TfRLModule(RLModule, tf.keras.Model):
         return False
 
     @abc.abstractmethod
-    def trainable_variables(self) -> Mapping[str, Any]:
+    def trainable_variables(self) -> NestedDict[tf.Tensor]:
         """Returns the trainable variables of the module.
 
         Example:

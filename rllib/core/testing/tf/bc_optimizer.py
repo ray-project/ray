@@ -10,7 +10,9 @@ class BCTFOptimizer(RLOptimizer):
     def __init__(self, module, config):
         super().__init__(module, config)
 
-    def compute_loss(self, batch: NestedDict, fwd_out) -> Mapping[str, Any]:
+    def compute_loss(
+        self, batch: NestedDict[tf.Tensor], fwd_out: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
         loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))

@@ -1,3 +1,5 @@
+# TODO (avnishn): Merge with the torch version of this test once the
+# RLTrainer has been merged.
 import gym
 import tensorflow as tf
 from typing import Any, Mapping, Union
@@ -11,45 +13,14 @@ from ray.rllib.offline.dataset_reader import (
     get_dataset_and_shards,
 )
 
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.testing.utils import do_rollouts
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import TensorType
-
-
-class BCTFOptimizer(RLOptimizer):
-    def __init__(self, module, config):
-        super().__init__(module, config)
-
-    def compute_loss(self, batch: NestedDict, fwd_out) -> Mapping[str, Any]:
-        """Compute a loss"""
-        action_dist = fwd_out["action_dist"]
-        loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
-        loss_dict = {
-            "total_loss": loss,
-        }
-        return loss_dict
-
-    def get_state(self):
-        return {
-            key: optim.get_weights() for key, optim in self.get_optimizers().items()
-        }
-
-    def set_state(self, state: Mapping[str, Any]) -> None:
-        assert set(state.keys()) == set(self.get_state().keys()) or not state
-        for key, optim_dict in state.items():
-            self.get_optimizers()[key].set_weights(optim_dict)
-
-    def _configure_optimizers(self) -> Mapping[str, Any]:
-        return {
-            "policy": tf.keras.optimizers.Adam(
-                learning_rate=self._config.get("lr", 1e-3)
-            )
-        }
 
 
 class BCTFTrainer:
@@ -185,7 +156,7 @@ class TestRLOptimizerTF(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rl_optimizer_example_tf(self):
+    def test_rl_optimizer_in_behavioral_cloning_tf(self):
         tf.random.set_seed(1)
         env = gym.make("CartPole-v1")
         module_for_inference = DiscreteBCTFModule.from_env(env)

@@ -84,8 +84,8 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy.set_weights(state["policy"])
 
     @override(TfRLModule)
-    def trainable_variables(self) -> Mapping[str, Any]:
-        return {"policy": self.policy.trainable_variables}
+    def trainable_variables(self) -> NestedDict[tf.Tensor]:
+        return NestedDict({"policy": self.policy.trainable_variables})
 
     @classmethod
     @override(RLModule)
@@ -105,7 +105,7 @@ class DiscreteBCTFModule(TfRLModule):
         return cls(**config)
 
     @classmethod
-    def from_env(cls, env: gym.Env, return_config: bool = False):
+    def from_env(cls, env: gym.Env):
         """This is used for testing purposes."""
         return cls.from_model_config(
             env.observation_space,

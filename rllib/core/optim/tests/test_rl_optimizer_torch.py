@@ -1,3 +1,5 @@
+# TODO (avnishn): Merge with the tensorflow version of this test once the
+# RLTrainer has been merged.
 import gym
 import pytest
 import torch
@@ -174,7 +176,7 @@ class TestRLOptimizer(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rl_optimizer_in_behavioral_clonning(self):
+    def test_rl_optimizer_in_behavioral_cloning_torch(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
         module_for_inference = DiscreteBCTorchModule.from_env(env)
