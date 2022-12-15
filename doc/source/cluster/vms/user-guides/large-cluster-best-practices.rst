@@ -44,6 +44,8 @@ at a large scale.
   disk if necessary. This is most commonly needed for data processing
   workloads.
 
+.. _vms-large-cluster-configure-head-node:
+
 Configuring the head node
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 

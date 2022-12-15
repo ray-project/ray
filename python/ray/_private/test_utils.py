@@ -1737,3 +1737,14 @@ def get_gcs_memory_used():
     }
     assert "gcs_server" in m
     return sum(m.values())
+
+
+def wandb_populate_run_location_hook():
+    """
+    Example external hook to populate W&B project and group env vars in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
