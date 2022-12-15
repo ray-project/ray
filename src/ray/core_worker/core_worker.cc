@@ -903,7 +903,7 @@ Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
               " Ray does not know which task created them. "
               "If this was not how your object ID was generated, please file an issue "
               "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectNotFound(stream.str());
+    return Status::ObjectUnknownOwner(stream.str());
   }
   return Status::OK();
 }
@@ -947,7 +947,7 @@ Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
               " Ray does not know which task created them. "
               "If this was not how your object ID was generated, please file an issue "
               "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectNotFound(stream.str());
+    return Status::ObjectUnknownOwner(stream.str());
   }
 
   rpc::GetObjectStatusReply object_status;
@@ -1219,7 +1219,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 
   if (got_exception) {
     std::ostringstream stream;
-    stream << "An application is trying to access a Ray object whose owner is unknown"
+    stream << "An application is trying to access Ray objects whose owner is unknown"
            << "(" << ids_stream.str()
            << "). "
               "Please make sure that all Ray objects you are trying to access are part"
@@ -1229,7 +1229,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
               " Ray does not know which task created them. "
               "If this was not how your object ID was generated, please file an issue "
               "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectNotFound(stream.str());
+    return Status::ObjectUnknownOwner(stream.str());
   }
 
   if (!memory_object_ids.empty()) {
@@ -1394,7 +1394,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
               " Ray does not know which task created them. "
               "If this was not how your object ID was generated, please file an issue "
               "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectNotFound(stream.str());
+    return Status::ObjectUnknownOwner(stream.str());
   }
 
   absl::flat_hash_set<ObjectID> ready;

@@ -112,6 +112,7 @@ enum class StatusCode : char {
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
+  ObjectUnknownOwner = 29,
 };
 
 #if defined(__clang__)
@@ -205,6 +206,10 @@ class RAY_EXPORT Status {
 
   static Status ObjectNotFound(const std::string &msg) {
     return Status(StatusCode::ObjectNotFound, msg);
+  }
+
+  static Status ObjectUnknownOwner(const std::string &msg) {
+    return Status(StatusCode::ObjectUnknownOwner, msg);
   }
 
   static Status ObjectAlreadySealed(const std::string &msg) {

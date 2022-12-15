@@ -295,6 +295,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     absl::flat_hash_set<ObjectID> ids_to_remove;
 
     absl::MutexLock lock(&mu_);
+    // Check for existing objects and see if this get request can be fullfilled.
     for (size_t i = 0; i < object_ids.size() && count < num_objects; i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
