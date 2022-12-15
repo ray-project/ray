@@ -122,6 +122,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
+  absl::MutexLock lock(&mutex_);
+
   // Select candidate events by indexing.
   std::vector<rpc::TaskEvents> task_events;
   if (request.has_task_ids()) {
