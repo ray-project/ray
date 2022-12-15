@@ -25,7 +25,7 @@ class TFRecordDatasource(FileBasedDatasource):
         import pyarrow as pa
         import tensorflow as tf
 
-        for record in _read_records(f):
+        for record in _read_records(f, path):
             example = tf.train.Example()
             try:
                 example.ParseFromString(record)
@@ -175,10 +175,12 @@ def _value_to_feature(value: Union[bytes, float, int, List]) -> "tf.train.Featur
 # SOFTWARE.
 def _read_records(
     file: "pyarrow.NativeFile",
+    path: str,
 ) -> Iterable[memoryview]:
     length_bytes = bytearray(8)
     crc_bytes = bytearray(4)
     datum_bytes = bytearray(1024 * 1024)
+    row_count = 0
     while True:
         num_length_bytes_read = file.readinto(length_bytes)
         if num_length_bytes_read == 0:
@@ -188,14 +190,18 @@ def _read_records(
         if file.readinto(crc_bytes) != 4:
             raise ValueError("Failed to read the start token.")
         (length,) = struct.unpack("<Q", length_bytes)
-        if length > len(datum_bytes):
-            datum_bytes = datum_bytes.zfill(int(length * 1.5))
+        try:
+            if length > len(datum_bytes):
+                datum_bytes = datum_bytes.zfill(int(length * 1.5))
+        except:
+            raise Exception(f"Failed to read TFRecord file: {path}, with length: {length} and row count: {row_count}")
         datum_bytes_view = memoryview(datum_bytes)[:length]
         if file.readinto(datum_bytes_view) != length:
             raise ValueError("Failed to read the record.")
         if file.readinto(crc_bytes) != 4:
             raise ValueError("Failed to read the end token.")
         yield datum_bytes_view
+        row_count += 1
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501
