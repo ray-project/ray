@@ -97,9 +97,10 @@ class BCTFTrainer:
             A dictionary of results.
         """
         # TODO(sven): This is a hack to get around the fact that
-        # SampleBatch.count is 0 which messes with spec checking
-        # other fields of the sample batch are possibly modified
-        # by tf.function
+        # SampleBatch.count becomes 0 after decorating the function with
+        # tf.function. This messes with input spec checking. Other fields of
+        # the sample batch are possibly modified by tf.function which may lead
+        # to unwanted consequences. We'll need to further investigate this.
         batch = NestedDict(batch)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)

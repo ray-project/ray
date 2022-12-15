@@ -20,21 +20,35 @@ class TfRLModule(RLModule, tf.keras.Model):
         RLModule.__init__(self)
 
     @override(tf.keras.Model)
-    def call(self, batch: Mapping[str, Any], training=False) -> Mapping[str, Any]:
-        """forward pass of the module.
+    def call(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+        """Forward pass of the module.
 
-        This is aliased to forward_train because Torch DDP requires a forward method to
-        be implemented for backpropagation to work.
+        Note:
+            This is aliased to forward_train to follow the Keras Model API.
+
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_train().
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_train().
+
         """
         return self.forward_train(batch)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
-        return self.get_weights()
+        # self.get_weights() returns a list of numpy arrays that is a list of
+        # all of the traced weights in this TfRLModule.
+        return {"module": self.get_weights()}
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.set_weights(state_dict)
+        # self.set_weights() sets the weights of the Keras layers in this
+        # TfRLModule.
+        self.set_weights(state_dict["module"])
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
@@ -53,10 +67,10 @@ class TfRLModule(RLModule, tf.keras.Model):
         """Returns the trainable variables of the module.
 
         Example:
-            return {"module": module.trainable_variables}
+            `return {"module": module.trainable_variables}`
 
         Note:
-            see tensorflow.org/guide/autodiff#gradients_with_respect_to_a_model
-            for more details
+            See tensorflow.org/guide/autodiff#gradients_with_respect_to_a_model
+            for more details.
 
         """
