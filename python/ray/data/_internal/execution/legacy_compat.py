@@ -48,10 +48,7 @@ def _to_operator_dag(
 
     blocks, _, stages = plan._optimize()
     if allow_clear_input_blocks:
-        if plan._stages_before_snapshot:
-            # Not the first stage, always clear stage input blocks.
-            owns_blocks = True
-        elif isinstance(blocks, LazyBlockList):
+        if isinstance(blocks, LazyBlockList):
             # Always clear lazy input blocks since they can be recomputed.
             owns_blocks = True
         else:
@@ -132,6 +129,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
         block_fn = stage.block_fn
         # TODO: pass the following via object store instead of closure capture
+        # TODO: implement arg packing and passing for test_map_batches_extra_args
         fn_args = (stage.fn,) if stage.fn else ()
         fn_args = fn_args + (stage.fn_args or ())
         fn_kwargs = stage.fn_kwargs or {}

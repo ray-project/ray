@@ -71,8 +71,8 @@ DEFAULT_NEW_EXECUTION_BACKEND = bool(
     int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
 )
 
-# Whether to eagerly free memory. TODO: enable by default before merge (DO NOT MERGE).
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "0")))
+# Whether to eagerly free memory (new backend only).
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "1")))
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True

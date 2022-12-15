@@ -322,6 +322,10 @@ class ExecutionPlan:
                 blocks = execute_to_legacy_block_list(
                     executor, self, allow_clear_input_blocks=allow_clear_input_blocks
                 )
+                # TODO(ekl) this is confusing; we should be able to get rid of owned
+                # by consumer flag in favor of just properly setting "owns_blocks".
+                if not self._run_by_consumer:
+                    blocks._owned_by_consumer = False
                 stats = executor.get_stats()
 
             else:

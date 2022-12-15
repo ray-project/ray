@@ -61,7 +61,6 @@ class RefBundle:
             The number of bytes freed.
         """
         if self.owns_blocks and DatasetContext.get_current().eager_free:
-            assert False
             size = self.size_bytes()
             ray._private.internal_api.free(
                 [b[0] for b in self.blocks], local_only=False
