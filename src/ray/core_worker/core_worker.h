@@ -32,6 +32,7 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -326,6 +327,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+
+  const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
@@ -1501,6 +1504,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  /// A shared pointer between various components that emitting task state events.
+  /// e.g. CoreWorker, TaskManager.
+  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 };
 
 }  // namespace core

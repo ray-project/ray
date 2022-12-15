@@ -7,6 +7,7 @@ import time
 import tqdm
 
 from ray.experimental.state.api import summarize_tasks
+from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
@@ -72,10 +73,11 @@ def no_resource_leaks():
     help="If set, it's a smoke test",
 )
 def test(num_tasks, smoke_test):
-    ray.init(address="auto")
+    addr = ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
+    dashboard_test = DashboardTestAtScale(addr)
 
     def not_none(res):
         return res is not None
@@ -129,6 +131,7 @@ def test(num_tasks, smoke_test):
                     "perf_metric_type": "THROUGHPUT",
                 },
             ]
+        dashboard_test.update_release_test_result(results)
         json.dump(results, out_file)
 
 
