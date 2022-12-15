@@ -1,23 +1,48 @@
 import inspect
-from typing import Any, List, Mapping, Union
+from typing import Any, Mapping, Union, Type
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, ModuleID
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.utils.nested_dict import NestedDict
 
 
 class MultiAgentRLOptimizer(RLOptimizer):
     def __init__(
         self,
         module: MultiAgentRLModule,
-        rl_optimizer_classes: Union[RLOptimizer, List[RLOptimizer]],
-        optim_configs: Union[NestedDict, Mapping[str, Any]],
+        rl_optimizer_classes: Union[Type[RLOptimizer], Mapping[str, Type[RLOptimizer]]],
+        optim_configs: Mapping[str, Any],
     ):
-        # self._module = module
-        self._rl_optimizer_classes = rl_optimizer_classes
-        # self._optim_configs = optim_configs
-        # self._trainable_modules = {}
         super().__init__(module, optim_configs)
+        self._rl_optimizer_classes = rl_optimizer_classes
+
+    def add_optimizer(
+        self,
+        module_id: ModuleID,
+        optimizer_cls: Type[RLOptimizer],
+        optimizer_config: Mapping[str, Any],
+    ):
+        """Add a new optimizer to the MultiAgentRLOptimizer.
+
+        Args:
+            module_id: The module id of the module to add.
+            optimizer_cls: The optimizer class to use for the module.
+            optimizer_config: The optimizer config to use for the optimizer.
+
+        """
+        self._rl_optimizer_classes[module_id] = optimizer_cls
+        self._optimizers[module_id] = optimizer_cls(
+            self.module[module_id], optimizer_config
+        )
+
+    def remove_optimizer(self, module_id: ModuleID):
+        """Remove an optimizer from the MultiAgentRLOptimizer.
+
+        Args:
+            module_id: The module id of the module to remove.
+
+        """
+        del self._rl_optimizer_classes[module_id]
+        del self._optimizers[module_id]
 
 
 class DefaultMARLOptimizer(MultiAgentRLOptimizer):
