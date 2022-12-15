@@ -103,7 +103,7 @@ parts:
               - file: tune/tutorials/tune-stopping
                 title: "How to Stop and Resume"
               - file: tune/tutorials/tune-checkpoints
-                title: "A Guide To Tune Checkpoint Synchronization"
+                title: "Configuring Tune Checkpoint Synchronization"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/examples/tune_analyze_results

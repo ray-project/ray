@@ -250,7 +250,7 @@ This will lead to more robust trial recovery, but it will also lead to more sync
 As in the first case, the driver (on the head node) will have access to all checkpoints locally
 for further processing, and the experiment directory will be identical to the local single-node case.
 
-.. warning::
+.. tip::
     Please note that this approach is likely the least efficient one - you should always try to use
     shared or cloud storage if possible when training on a multi-node cluster.
 
