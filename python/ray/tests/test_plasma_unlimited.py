@@ -205,7 +205,7 @@ def test_fallback_allocation_failure(shutdown_only):
         print("Start put", i)
         try:
             refs.append(ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
-        except ray.exceptions.ObjectStoreFullError:
+        except ray.exceptions.OutOfDiskError:
             num_exceptions = num_exceptions + 1
     assert num_exceptions > 0
 

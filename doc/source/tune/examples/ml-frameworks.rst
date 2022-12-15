@@ -109,11 +109,3 @@ At the end of these guides you will often find links to even more examples.
         :text: A Guide To Tuning Huggingface Transformers With Tune
         :classes: btn-link btn-block stretched-link
 
-    ---
-    :img-top: /images/mlflow.png
-
-    +++
-    .. link-button:: tune-mlflow-ref
-        :type: ref
-        :text: Using MLflow Tracking & AutoLogging with Tune
-        :classes: btn-link btn-block stretched-link

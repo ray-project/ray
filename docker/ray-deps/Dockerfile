@@ -24,6 +24,4 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH
         "azure-mgmt-network==19.0.0" \
         "azure-mgmt-resource==20.0.0" \
         "msrestazure==0.6.4"; fi) \
-    $(if [ $($HOME/anaconda3/bin/python -c "import sys; print(sys.version_info.minor)") != 6 ] \
-        && [ "$AUTOSCALER" = "autoscaler" ]; then echo "kopf"; fi) \
     && $HOME/anaconda3/bin/pip uninstall ray -y && sudo rm $(basename $WHEEL_PATH)

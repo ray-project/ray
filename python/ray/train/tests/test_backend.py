@@ -8,7 +8,6 @@ import time
 import ray
 from ray.air._internal.util import StartTraceback
 from ray.air import session
-from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -18,8 +17,9 @@ from ray.train._internal.backend_executor import (
     TrainBackendError,
     TrainingWorkerError,
 )
+
 from ray.train._internal.dataset_spec import RayDatasetSpec
-from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -29,56 +29,6 @@ from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-
-@pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_4_node_4_cpu():
-    cluster = Cluster()
-    for _ in range(4):
-        cluster.add_node(num_cpus=4)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def ray_2_node_2_gpu():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=2, num_gpus=2)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def ray_2_node_4_gpu():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=2, num_gpus=4)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def gen_execute_special(special_f):
@@ -104,6 +54,18 @@ class TestBackend(Backend):
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
+
+
+original_add_workers = WorkerGroup.add_workers
+
+
+def mock_add_workers(self, num_workers):
+    original_add_workers(self, num_workers)
+    for i, worker in enumerate(self.workers):
+        metadata = WorkerMetadata(
+            node_id=0, node_ip=str(i % 2), hostname=0, gpu_ids=[0]
+        )
+        worker.metadata = metadata
 
 
 EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
@@ -167,6 +129,32 @@ def test_local_ranks(ray_start_2_cpus):
 
     e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert set(e.finish_training()) == {0, 1}
+
+
+def test_local_world_size(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return session.get_local_world_size()
+
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+        assert list(e.finish_training()) == [2, 1, 2]
+
+
+def test_node_ranks(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return session.get_node_rank()
+
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+        assert list(e.finish_training()) == [0, 1, 0]
 
 
 def test_train_failure(ray_start_2_cpus):

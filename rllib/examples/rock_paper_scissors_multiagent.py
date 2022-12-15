@@ -116,10 +116,10 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
                 "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
                 "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
                 "learned": PolicySpec(
-                    config={
-                        "model": {"use_lstm": use_lstm},
-                        "framework": args.framework,
-                    }
+                    config=AlgorithmConfig.overrides(
+                        model={"use_lstm": use_lstm},
+                        framework_str=args.framework,
+                    )
                 ),
             },
             policy_mapping_fn=select_policy,
@@ -186,7 +186,8 @@ def run_with_custom_entropy_loss(args, stop):
             return policy.policy_loss
 
     class EntropyLossPG(PG):
-        def get_default_policy_class(self, config):
+        @classmethod
+        def get_default_policy_class(cls, config):
             return EntropyPolicy
 
     run_heuristic_vs_learned(args, use_lstm=True, algorithm=EntropyLossPG)

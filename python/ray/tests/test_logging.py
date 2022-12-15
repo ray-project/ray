@@ -1,10 +1,13 @@
+import io
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import logging
 from collections import Counter, defaultdict
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -706,6 +709,45 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert not log_monitor.should_update_filenames(current)
     mock_timer.return_value = LOG_NAME_UPDATE_INTERVAL_S + 0.1
     assert log_monitor.should_update_filenames(current)
+
+
+def test_repr_inheritance():
+    """Tests that a subclass's repr is used in logging."""
+    logger = logging.getLogger(__name__)
+
+    class MyClass:
+        def __repr__(self) -> str:
+            return "ThisIsMyCustomActorName"
+
+        def do(self):
+            logger.warning("text")
+
+    class MySubclass(MyClass):
+        pass
+
+    my_class_remote = ray.remote(MyClass)
+    my_subclass_remote = ray.remote(MySubclass)
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        my_class_actor = my_class_remote.remote()
+        ray.get(my_class_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True)
+        print("", flush=True, file=sys.stderr)
+        f = f.getvalue()
+        assert "ThisIsMyCustomActorName" in f and "MySubclass" not in f
+
+    f2 = io.StringIO()
+    with redirect_stderr(f2):
+        my_subclass_actor = my_subclass_remote.remote()
+        ray.get(my_subclass_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True, file=sys.stderr)
+        f2 = f2.getvalue()
+        assert "ThisIsMyCustomActorName" in f2 and "MySubclass" not in f2
 
 
 if __name__ == "__main__":

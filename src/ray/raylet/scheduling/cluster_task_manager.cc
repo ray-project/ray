@@ -256,10 +256,6 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
-void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
-}
-
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<NodeResources> &last_reported_resources) {

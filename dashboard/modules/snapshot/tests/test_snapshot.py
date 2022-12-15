@@ -3,7 +3,6 @@ import sys
 import json
 import jsonschema
 import hashlib
-import time
 
 import pprint
 import pytest
@@ -16,6 +15,7 @@ from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
 from ray.dashboard import dashboard
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -120,30 +120,64 @@ def test_active_component_activities(ray_start_with_dashboard):
     # Verify drivers which don't have namespace starting with _ray_internal_
     # are considered active.
 
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
     driver_template = """
 import ray
 
 ray.init(address="auto", namespace="{namespace}")
+import time
+time.sleep({sleep_time_s})
     """
-    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
-    # Wait for above driver to start and finish
-    time.sleep(2)
-
-    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(
-        driver_template.format(namespace="_ray_internal_job_info_id1")
+        driver_template.format(namespace="my_namespace", sleep_time_s=0)
+    )
+
+    def jobs_over():
+        jobs_snapshot_data = requests.get(f"{webui_url}/api/snapshot").json()["data"][
+            "snapshot"
+        ]["jobs"]
+        for job_id, job in jobs_snapshot_data.items():
+            if job.get("isDead", None) is True:
+                return True
+        return False
+
+    # Wait for above driver to start and finish
+    wait_for_condition(jobs_over)
+
+    run_string_as_driver_nonblocking(
+        driver_template.format(namespace="my_namespace", sleep_time_s=5)
+    )
+    run_string_as_driver_nonblocking(
+        driver_template.format(namespace="_ray_internal_job_info_id1", sleep_time_s=5)
     )
     # Simulate the default driver that gets created by dashboard
     run_string_as_driver_nonblocking(
-        driver_template.format(namespace="_ray_internal_dashboard")
+        driver_template.format(namespace="_ray_internal_dashboard", sleep_time_s=5)
     )
 
-    # Wait 1.5 sec for drivers to start (but not finish)
-    time.sleep(1.5)
+    def jobs_started():
+        jobs_snapshot_data = requests.get(f"{webui_url}/api/snapshot").json()["data"][
+            "snapshot"
+        ]["jobs"]
+        job_names = {
+            job["config"].get("namespace", "")
+            for job_id, job in jobs_snapshot_data.items()
+            if job.get("config") is not None
+        }
+        assert job_names.issuperset(
+            {
+                "my_namespace",
+                "_ray_internal_dashboard",
+                "_ray_internal_job_info_id1",
+            }
+        )
+        return True
+
+    wait_for_condition(jobs_started)
 
     # Verify drivers are considered active after running script
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
     response = requests.get(f"{webui_url}/api/component_activities")
     response.raise_for_status()
 
@@ -153,11 +187,12 @@ ray.init(address="auto", namespace="{namespace}")
         os.path.dirname(dashboard.__file__),
         "modules/snapshot/component_activities_schema.json",
     )
-    pprint.pprint(data)
+
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
+    print(driver_ray_activity_response)
 
     assert driver_ray_activity_response.is_active == "ACTIVE"
     # Drivers with namespace starting with "_ray_internal" are not
@@ -171,6 +206,8 @@ ray.init(address="auto", namespace="{namespace}")
     jobs_snapshot_data = requests.get(f"{webui_url}/api/snapshot").json()["data"][
         "snapshot"
     ]["jobs"]
+
+    print(jobs_snapshot_data)
     # Divide endTime by 1000 to convert from milliseconds to seconds
     expected_last_activity_at = max(
         [job.get("endTime", 0) / 1000 for (job_id, job) in jobs_snapshot_data.items()]

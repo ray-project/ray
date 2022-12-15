@@ -29,6 +29,7 @@ google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
 gradio==3.5; platform_system != "Windows"
 gym-minigrid==1.0.3
+jsonpatch==1.32
 kubernetes==24.2.0
 # higher version of llvmlite breaks windows
 llvmlite==0.39.1; platform_system != "Windows"
@@ -52,6 +53,7 @@ pydantic==1.9.2
 PyOpenSSL==22.1.0
 pygame==2.1.2
 Pygments==2.13.0
+pymongo==4.3.2
 pyspark==3.1.2
 pytest==7.0.1
 pytest-asyncio==0.16.0

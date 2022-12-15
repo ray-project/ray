@@ -230,14 +230,6 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message GetGcsSchedulingStatsRequest {}
-
-message GetGcsSchedulingStatsReply {
-  GcsStatus status = 1;
-  repeated TaskSpec infeasible_tasks = 2;
-  repeated TaskSpec ready_tasks = 3;
-}
-
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
@@ -606,9 +598,6 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-  // Get current scheduling stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
-      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
@@ -633,4 +622,19 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskEventDataRequest {
+  TaskEventData data = 1;
+}
+
+message AddTaskEventDataReply {
+  GcsStatus status = 1;
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add task event data to GCS.
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////

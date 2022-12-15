@@ -101,6 +101,15 @@ projects:
     website: https://github.com/modin-project/modin
     repo: https://github.com/modin-project/modin
     image: ../images/modin.png
+  - name: Prefect Integration
+    section_title: Prefect
+    description: Prefect is an open source workflow orchestration platform in Python.
+      It allows you to easily define, track and schedule workflows in Python. This
+      integration makes it easy to run a Prefect workflow on a Ray cluster in a
+      distributed way.
+    website: https://github.com/PrefectHQ/prefect-ray
+    repo: https://github.com/PrefectHQ/prefect-ray
+    image: ../images/prefect.png
   - name: PyCaret Integration
     section_title: PyCaret
     description: PyCaret is an open source low-code machine learning library in Python

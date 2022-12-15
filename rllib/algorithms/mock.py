@@ -3,9 +3,8 @@ import pickle
 import numpy as np
 
 from ray.tune import result as tune_result
-from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class _MockTrainer(Algorithm):
@@ -13,16 +12,18 @@ class _MockTrainer(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return with_common_config(
-            {
-                "mock_error": False,
-                "persistent_error": False,
-                "test_variable": 1,
-                "num_workers": 0,
-                "user_checkpoint_freq": 0,
-                "framework": "tf",
-            }
+    def get_default_config(cls) -> AlgorithmConfig:
+        return (
+            AlgorithmConfig()
+            .framework("tf")
+            .update_from_dict(
+                {
+                    "mock_error": False,
+                    "persistent_error": False,
+                    "test_variable": 1,
+                    "user_checkpoint_freq": 0,
+                }
+            )
         )
 
     @classmethod
@@ -31,15 +32,7 @@ class _MockTrainer(Algorithm):
 
     @override(Algorithm)
     def setup(self, config):
-        # Setup our config: Merge the user-supplied config (which could
-        # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, True
-        )
-        self.config["env"] = self._env_id
-
-        self.validate_config(self.config)
-        self.callbacks = self.config["callbacks"]()
+        self.callbacks = self.config.callbacks_class()
 
         # Add needed properties.
         self.info = None
@@ -48,16 +41,16 @@ class _MockTrainer(Algorithm):
     @override(Algorithm)
     def step(self):
         if (
-            self.config["mock_error"]
+            self.config.mock_error
             and self.iteration == 1
-            and (self.config["persistent_error"] or not self.restored)
+            and (self.config.persistent_error or not self.restored)
         ):
             raise Exception("mock error")
         result = dict(
             episode_reward_mean=10, episode_len_mean=10, timesteps_this_iter=10, info={}
         )
-        if self.config["user_checkpoint_freq"] > 0 and self.iteration > 0:
-            if self.iteration % self.config["user_checkpoint_freq"] == 0:
+        if self.config.user_checkpoint_freq > 0 and self.iteration > 0:
+            if self.iteration % self.config.user_checkpoint_freq == 0:
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
         return result
 
@@ -96,27 +89,26 @@ class _SigmoidFakeData(_MockTrainer):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return with_common_config(
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlgorithmConfig().update_from_dict(
             {
                 "width": 100,
                 "height": 100,
                 "offset": 0,
                 "iter_time": 10,
                 "iter_timesteps": 1,
-                "num_workers": 0,
             }
         )
 
     def step(self):
-        i = max(0, self.iteration - self.config["offset"])
-        v = np.tanh(float(i) / self.config["width"])
-        v *= self.config["height"]
+        i = max(0, self.iteration - self.config.offset)
+        v = np.tanh(float(i) / self.config.width)
+        v *= self.config.height
         return dict(
             episode_reward_mean=v,
             episode_len_mean=v,
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
+            timesteps_this_iter=self.config.iter_timesteps,
+            time_this_iter_s=self.config.iter_time,
             info={},
         )
 
@@ -124,24 +116,23 @@ class _SigmoidFakeData(_MockTrainer):
 class _ParameterTuningTrainer(_MockTrainer):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return with_common_config(
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlgorithmConfig().update_from_dict(
             {
                 "reward_amt": 10,
                 "dummy_param": 10,
                 "dummy_param2": 15,
                 "iter_time": 10,
                 "iter_timesteps": 1,
-                "num_workers": 0,
             }
         )
 
     def step(self):
         return dict(
-            episode_reward_mean=self.config["reward_amt"] * self.iteration,
-            episode_len_mean=self.config["reward_amt"],
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
+            episode_reward_mean=self.config.reward_amt * self.iteration,
+            episode_len_mean=self.config.reward_amt,
+            timesteps_this_iter=self.config.iter_timesteps,
+            time_this_iter_s=self.config.iter_time,
             info={},
         )
 

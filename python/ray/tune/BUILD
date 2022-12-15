@@ -290,7 +290,7 @@ py_test(
 
 py_test(
     name = "test_syncer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -434,7 +434,7 @@ py_test(
 
 py_test(
     name = "test_tuner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -442,7 +442,7 @@ py_test(
 
 py_test(
     name = "test_tuner_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -733,7 +733,7 @@ py_test(
 
 py_test(
     name = "optuna_multiobjective_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "medium_instance"],
@@ -921,7 +921,7 @@ py_test(
 
 py_test(
     name = "wandb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/wandb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],

@@ -14,6 +14,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
@@ -306,6 +307,33 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             # ...
         )
 
+    .. note::
+        When restoring a Tune experiment, you need to re-specify the trainable
+        wrapped with ``tune.with_parameters``.
+        The reasoning behind this is as follows:
+
+        1. ``tune.with_parameters`` stores parameters in the object store and
+        attaches object references to the trainable, but the objects they point to
+        may not exist anymore upon restore.
+
+        2. The attached objects could be arbitrarily large, so Tune does not save the
+        object data along with the trainable.
+
+        To restore, Tune allows the trainable to be re-specified in
+        :meth:`Tuner.restore(overwrite_trainable=...) <ray.tune.tuner.Tuner.restore>`.
+        Continuing from the previous examples, here's an example of restoration:
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            data = HugeDataset(download=True)
+
+            tuner = Tuner.restore(
+                "/path/to/experiment/",
+                overwrite_trainable=tune.with_parameters(MyTrainable, data=data)
+            )
+
     """
     from ray.tune.trainable import Trainable
 
@@ -327,10 +355,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         parameter_registry.put(prefix + k, v)
 
     trainable_name = getattr(trainable, "__name__", "tune_with_parameters")
+    keys = set(kwargs.keys())
 
     if inspect.isclass(trainable):
         # Class trainable
-        keys = list(kwargs.keys())
 
         class _Inner(trainable):
             def setup(self, config):
@@ -339,17 +367,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
-
-        _Inner.__name__ = trainable_name
-        return _Inner
+        trainable_with_params = _Inner
     else:
         # Function trainable
         use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
-        keys = list(kwargs.keys())
 
         def inner(config, checkpoint_dir=None):
             fn_kwargs = {}
@@ -364,41 +385,39 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
             return trainable(config, **fn_kwargs)
 
-        inner.__name__ = trainable_name
+        trainable_with_params = inner
 
-        # If the trainable has been wrapped with `tune.with_resources`, we should
-        # keep the `_resources` attribute around
-        if hasattr(trainable, "_resources"):
-            inner._resources = trainable._resources
-
-        # Use correct function signature if no `checkpoint_dir` parameter
-        # is set
+        # Use correct function signature if no `checkpoint_dir` parameter is set
         if not use_checkpoint:
 
             def _inner(config):
                 return inner(config, checkpoint_dir=None)
 
-            _inner.__name__ = trainable_name
-
-            # Again, pass along the resource specification if it exists
-            if hasattr(inner, "_resources"):
-                _inner._resources = inner._resources
-
-            if hasattr(trainable, "__mixins__"):
-                _inner.__mixins__ = trainable.__mixins__
-            return _inner
+            trainable_with_params = _inner
 
         if hasattr(trainable, "__mixins__"):
-            inner.__mixins__ = trainable.__mixins__
+            trainable_with_params.__mixins__ = trainable.__mixins__
 
-        return inner
+        # If the trainable has been wrapped with `tune.with_resources`, we should
+        # keep the `_resources` attribute around
+        if hasattr(trainable, "_resources"):
+            trainable_with_params._resources = trainable._resources
+
+    trainable_with_params.__name__ = trainable_name
+
+    # Mark this trainable as being wrapped by saving the attached parameter names
+    trainable_with_params._attached_param_names = keys
+    return trainable_with_params
 
 
 @PublicAPI(stability="beta")
 def with_resources(
     trainable: Union[Type["Trainable"], Callable],
     resources: Union[
-        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+        Dict[str, float],
+        PlacementGroupFactory,
+        ScalingConfig,
+        Callable[[dict], PlacementGroupFactory],
     ],
 ):
     """Wrapper for trainables to specify resource requests.
@@ -415,8 +434,9 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, or callable that takes
-            in a config dict and returns a placement group factory.
+        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+            or callable that takes in a config dict and returns a placement
+            group factory.
 
     Example:
 
@@ -441,13 +461,15 @@ def with_resources(
         inspect.isclass(trainable) and not issubclass(trainable, Trainable)
     ):
         raise ValueError(
-            f"`tune.with_parameters() only works with function trainables "
+            f"`tune.with_resources() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}."
         )
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
+    elif isinstance(resources, ScalingConfig):
+        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):

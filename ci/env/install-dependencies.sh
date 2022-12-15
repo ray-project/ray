@@ -358,8 +358,11 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
   fi
 
+  SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
@@ -383,11 +386,11 @@ install_pip_packages() {
     pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
   fi
 
-  # Additional dependency for statsforecast.
+  # Additional dependency for time series libraries.
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
-  if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0"
+  if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
@@ -396,6 +399,16 @@ install_pip_packages() {
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    if [ -n "${ARROW_VERSION-}" ]; then
+      if [ "${ARROW_VERSION-}" = nightly ]; then
+        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+      else
+        pip install -U pyarrow=="${ARROW_VERSION}"
+      fi
+    fi
+    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
@@ -415,7 +428,6 @@ install_pip_packages() {
 
   # Inject our own mirror for the CIFAR10 dataset
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
     TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
     TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
 
@@ -428,8 +440,7 @@ install_pip_packages() {
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
-    # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@a1f17d81f01543196b2c23240da692d9ae310942
+    "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

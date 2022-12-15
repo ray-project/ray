@@ -43,6 +43,27 @@ TEST_F(CounterMapTest, TestBasic) {
   EXPECT_EQ(c.Get("k2"), 1);
   EXPECT_EQ(c.Total(), 1);
   EXPECT_EQ(c.Size(), 1);
+
+  // Test multi-value ops
+  c.Increment("k1", 10);
+  c.Increment("k2", 5);
+  EXPECT_EQ(c.Get("k1"), 10);
+  EXPECT_EQ(c.Get("k2"), 6);
+  EXPECT_EQ(c.Total(), 16);
+  EXPECT_EQ(c.Size(), 2);
+
+  c.Decrement("k1", 5);
+  c.Decrement("k2", 1);
+  EXPECT_EQ(c.Get("k1"), 5);
+  EXPECT_EQ(c.Get("k2"), 5);
+  EXPECT_EQ(c.Total(), 10);
+  EXPECT_EQ(c.Size(), 2);
+
+  c.Swap("k1", "k2", 5);
+  EXPECT_EQ(c.Get("k1"), 0);
+  EXPECT_EQ(c.Get("k2"), 10);
+  EXPECT_EQ(c.Total(), 10);
+  EXPECT_EQ(c.Size(), 1);
 }
 
 TEST_F(CounterMapTest, TestCallback) {

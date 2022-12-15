@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import import_attr
+from ray._private.utils import get_or_create_event_loop, import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
@@ -149,7 +149,7 @@ class ServeController:
         # Unix timestamp of latest config deployment request. Defaults to 0.
         self.deployment_timestamp = 0
 
-        asyncio.get_event_loop().create_task(self.run_control_loop())
+        get_or_create_event_loop().create_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
 
@@ -364,13 +364,16 @@ class ServeController:
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
-            previous_deployment = self.deployment_state_manager.get_deployment(name)
-            if previous_deployment is None:
-                deployment_config.num_replicas = autoscaling_config.min_replicas
+            if autoscaling_config.initial_replicas is not None:
+                deployment_config.num_replicas = autoscaling_config.initial_replicas
             else:
-                deployment_config.num_replicas = (
-                    previous_deployment.deployment_config.num_replicas
-                )
+                previous_deployment = self.deployment_state_manager.get_deployment(name)
+                if previous_deployment is None:
+                    deployment_config.num_replicas = autoscaling_config.min_replicas
+                else:
+                    deployment_config.num_replicas = (
+                        previous_deployment.deployment_config.num_replicas
+                    )
 
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:

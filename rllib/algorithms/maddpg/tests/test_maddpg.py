@@ -32,13 +32,15 @@ class TestMADDPG(unittest.TestCase):
             .multi_agent(
                 policies={
                     "pol1": PolicySpec(
-                        config={"agent_id": 0},
+                        config=maddpg.MADDPGConfig.overrides(agent_id=0),
                     ),
                     "pol2": PolicySpec(
-                        config={"agent_id": 1},
+                        config=maddpg.MADDPGConfig.overrides(agent_id=1),
                     ),
                 },
-                policy_mapping_fn=lambda aid, **kwargs: "pol2" if aid else "pol1",
+                policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
+                if agent_id
+                else "pol1",
             )
         )
 

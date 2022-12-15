@@ -611,6 +611,7 @@
   conditions:
     ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
+  parallelism: 2
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-minimal.sh 3.7
@@ -619,12 +620,15 @@
     - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat 
-      python/ray/tests/horovod/...
-      python/ray/tests/lightgbm/...
-      python/ray/tests/ml_py36_compat/...
-      python/ray/tests/xgboost/...
-      python/ray/tests/ray_lightning/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-mosaic,-needs_credentials python/ray/air/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-mosaic,-gpu_only,-gpu,-needs_credentials python/ray/train/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-mosaic python/ray/data/...
+    # Combine shards from different files
+    - >-
+      set -x;
+      {
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+      } > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)

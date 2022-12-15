@@ -22,10 +22,6 @@
 
 namespace ray {
 namespace raylet {
-namespace {
-// The max number of pending actors to report in node stats.
-const int kMaxPendingActorsToReport = 20;
-};  // namespace
 
 SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<SchedulingClass,
@@ -166,42 +162,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     }
   } else {
     data.set_resource_load_changed(true);
-  }
-}
-
-void SchedulerResourceReporter::FillPendingActorInfo(
-    rpc::GetNodeStatsReply *reply) const {
-  // Report infeasible actors.
-  int num_reported = 0;
-  for (const auto &shapes_it : infeasible_tasks_) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      const RayTask &task = work_it->task;
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        if (num_reported++ > kMaxPendingActorsToReport) {
-          break;  // Protect the raylet from reporting too much data.
-        }
-        auto infeasible_task = reply->add_infeasible_tasks();
-        infeasible_task->CopyFrom(task.GetTaskSpecification().GetMessage());
-      }
-    }
-  }
-  // Report actors blocked on resources.
-  num_reported = 0;
-  for (const auto &shapes_it :
-       boost::range::join(tasks_to_dispatch_, tasks_to_schedule_)) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      const RayTask &task = work_it->task;
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        if (num_reported++ > kMaxPendingActorsToReport) {
-          break;  // Protect the raylet from reporting too much data.
-        }
-        // TODO(scv119): we should report pending tasks instead.
-        auto ready_task = reply->add_infeasible_tasks();
-        ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
-      }
-    }
   }
 }
 

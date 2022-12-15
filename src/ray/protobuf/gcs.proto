@@ -46,6 +46,7 @@ enum TablePrefix {
   PLACEMENT_GROUP = 18;
   KV = 19;
   ACTOR_TASK_SPEC = 20;
+  TASK_STATE = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -150,6 +151,11 @@ message ActorTableData {
   ActorDeathCause death_cause = 24;
   // Quantities of the different resources required by this actor.
   map<string, double> required_resources = 28;
+  // The node id of the actor once it is created.
+  // address field can contain an address although actor is not created
+  // so we have a separate field to track this.
+  // If the actor is restarting, the node id could be incorrect.
+  optional bytes node_id = 29;
 }
 
 message ErrorTableData {
@@ -193,6 +199,74 @@ message ProfileTableData {
   // performance reasons because a single task may generate many events, and
   // we don't want each event to require a GCS command.
   repeated ProfileEvent profile_events = 4;
+}
+
+message ProfileEventEntry {
+  // The start timestamp of the event time.
+  int64 start_time = 1;
+  // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
+  // change.
+  int64 end_time = 2;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  optional string extra_data = 3;
+  // Customized event name if not a TaskStatus change point event.
+  string event_name = 4;
+}
+
+message ProfileEvents {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  string component_type = 1;
+  // An identifier for the component that generated the event.
+  bytes component_id = 2;
+  // Node IP address.
+  string node_ip_address = 3;
+  // Events.
+  repeated ProfileEventEntry events = 4;
+}
+
+// Represents task states which could be changed during task execution.
+message TaskStateUpdate {
+  // Node that runs the task.
+  optional bytes node_id = 1;
+  // Timestamp when status changes to PENDING_ARGS_AVAIL.
+  optional int64 pending_args_avail_ts = 2;
+  // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
+  optional int64 pending_node_assignment_ts = 3;
+  // Timestamp when status changes to SUBMITTED_TO_WORKER.
+  optional int64 submitted_to_worker_ts = 4;
+  // Timestamp when status changes to RUNNING.
+  optional int64 running_ts = 5;
+  // Timestamp when status changes to FINISHED.
+  optional int64 finished_ts = 6;
+  // Timestamp when status changes to FAILED.
+  optional int64 failed_ts = 7;
+}
+
+// Represents events and state changes from a single task run.
+message TaskEvents {
+  // Metadata shared by all event types.
+  bytes task_id = 1;
+  // The current retry attempt number for the task.
+  int32 attempt_number = 2;
+  // Task Info.
+  optional TaskInfoEntry task_info = 3;
+  // Task state updates.
+  optional TaskStateUpdate state_updates = 4;
+  // Task profiling events.
+  optional ProfileEvents profile_events = 5;
+}
+
+// Represents a compact list of task state events by different tasks,
+// where each task has a list of state change events.
+message TaskEventData {
+  // A batch of task state change events.
+  repeated TaskEvents events_by_task = 1;
+  // Number of dropped profile task events due to buffer size limit on workers.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of dropped status task events due to buffer size limit on workers.
+  int32 num_status_task_events_dropped = 4;
 }
 
 message ResourceTableData {
@@ -295,6 +369,8 @@ message JobTableData {
   uint64 start_time = 7;
   // The timestamp the job was ended at.
   uint64 end_time = 8;
+  // The entrypoint of the job.
+  string entrypoint = 9;
 }
 
 message WorkerTableData {

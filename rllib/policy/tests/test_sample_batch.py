@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import os
 import unittest
@@ -6,7 +8,7 @@ import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
@@ -355,7 +357,7 @@ class TestSampleBatch(unittest.TestCase):
         check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
 
     def test_to_device(self):
-        """Tests whether to_device works properly under different circumestances"""
+        """Tests whether to_device works properly under different circumstances"""
         torch, _ = try_import_torch()
 
         # sample batch includes
@@ -372,14 +374,15 @@ class TestSampleBatch(unittest.TestCase):
         s = SampleBatch(
             {
                 "a": np.array([1, 2]),
-                "b": {"c": (np.array([4, 5]), np.array([5, 6])), "e": [{"f": None}]},
+                "b": {"c": (np.array([4, 5]), np.array([5, 6]))},
                 "c": {"d": torch.Tensor([1, 2]), "g": (torch.Tensor([3, 4]), 1)},
                 "d": torch.Tensor([1.0, 2.0]).double(),
                 "e": torch.Tensor([1.0, 2.0]).double().to(cuda_if_possible),
                 "f": RepeatedValues(np.array([[1, 2, 0, 0]]), lengths=[2], max_len=4),
                 SampleBatch.SEQ_LENS: np.array([2, 3, 1]),
                 "state_in_0": np.array([1.0, 3.0, 4.0]),
-                SampleBatch.INFOS: np.array([{"a": 1}, {"b": 2}, {"c": 3}]),
+                # INFO can have arbitrary elements, others need to conform in size
+                SampleBatch.INFOS: np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]),
             }
         )
 
@@ -412,17 +415,111 @@ class TestSampleBatch(unittest.TestCase):
         check(s["f"].values, torch.from_numpy(np.asarray([[1, 2, 0, 0]])))
 
         # check infos
-        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": 2}, {"c": 3}]))
+        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]))
 
         # check c/g/1
         self.assertEqual(s["c"]["g"][1], torch.from_numpy(np.asarray(1)))
 
-        # check b/e/0/f
-        self.assertEqual(s["b"]["e"][0]["f"], np.asarray(None))
-
         with self.assertRaises(NotImplementedError):
             # should raise an error if framework is not torch
             s.to_device(cuda_if_possible, framework="tf")
+
+    def test_count(self):
+        # Tests if counts are what we would expect from different batches
+
+        input_dicts_and_lengths = [
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                3,
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1, 2, 3]]),
+                        "b": np.array([[0, 0, 1]]),
+                        "c": np.array([[4, 5, 6]]),
+                    }
+                },
+                1,
+            ),
+            (
+                {
+                    SampleBatch.INFOS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                0,  # This should have a length of zero, since we can ignore INFO
+            ),
+            (
+                {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    SampleBatch.OBS: {
+                        "a": np.array([1, 2, 3]),
+                        "b": np.array([0, 0, 1]),
+                        "c": np.array([4, 5, 6]),
+                    },
+                },
+                3,  # This should have a length of three - we count from OBS
+            ),
+            (
+                {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                },
+                0,  # This should have a length of zero, we don't attempt to count
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                    SampleBatch.SEQ_LENS: np.array([[1], [2], [3]]),
+                },
+                6,  # This should have a length of six, since we don't try to infer
+                # from inputs but count by sequence lengths
+            ),
+            (
+                {
+                    SampleBatch.NEXT_OBS: {
+                        "a": {"b": np.array([[1], [2], [3]])},
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                },
+                3,  # Test if we properly support nesting
+            ),
+        ]
+
+        for input_dict, length in input_dicts_and_lengths:
+            self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
+            s = SampleBatch(input_dict)
+            self.assertEqual(s.count, length)
 
 
 if __name__ == "__main__":

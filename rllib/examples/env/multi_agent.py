@@ -166,6 +166,68 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
+class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
+    """Multi-agent env in which sometimes, no agent acts.
+
+    At each timestep, we determine, which agents emit observations (and thereby request
+    actions). This set of observing (and action-requesting) agents could be anything
+    from the empty set to the full set of all agents.
+
+    For simplicity, all agents terminate after n timesteps.
+    """
+
+    def __init__(self, num=3):
+        super().__init__()
+        self.num_agents = num
+        self.agents = [MockEnv(25) for _ in range(self.num_agents)]
+        self._agent_ids = set(range(self.num_agents))
+        self._observations = {}
+        self.dones = set()
+        self.observation_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.dones = set()
+        self._observations = {
+            aid: self.agents[aid].reset() for aid in self._get_random_agents()
+        }
+        return self._observations
+
+    def step(self, action_dict):
+        rew, done = {}, {}
+        # Step those agents, for which we have actions from RLlib.
+        for aid, action in action_dict.items():
+            self._observations[aid], rew[aid], done[aid], _ = self.agents[aid].step(
+                action
+            )
+            if done[aid]:
+                self.dones.add(aid)
+        # Must add the __all__ flag.
+        done["__all__"] = len(self.dones) == self.num_agents
+
+        # Select some of our observations to be published next (randomly).
+        obs = {}
+        for aid in self._get_random_agents():
+            if aid not in self._observations:
+                self._observations[aid] = self.observation_space.sample()
+            obs[aid] = self._observations.pop(aid)
+
+        # Override some of the rewards. Rewards and dones should be always publishable,
+        # even if no observation/action for an agent was sent/received.
+        # An agent might get a reward because of the action of another agent. In this
+        # case, the rewards for that agent are accumulated over the in-between timesteps
+        # (in which the other agents step, but not this agent).
+        for aid in self._get_random_agents():
+            rew[aid] = np.random.rand()
+
+        return obs, rew, done, {}
+
+    def _get_random_agents(self):
+        num_observing_agents = np.random.randint(self.num_agents)
+        aids = np.random.permutation(self.num_agents)[:num_observing_agents]
+        return {aid for aid in aids if aid not in self.dones}
+
+
 class RoundRobinMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 5 steps.
 

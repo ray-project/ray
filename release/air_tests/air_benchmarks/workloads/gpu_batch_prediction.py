@@ -2,9 +2,11 @@ import click
 import time
 import json
 import os
-import numpy as np
-import pandas as pd
+from typing import Dict
 
+import numpy as np
+
+import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 
@@ -14,19 +16,20 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
-def preprocess(batch: np.ndarray) -> pd.DataFrame:
+def preprocess(image_batch: Dict[str, np.ndarray]) -> np.ndarray:
     """
-    User Pytorch code to transform user image.
+    User Pytorch code to transform user image with outer dimension of batch size.
     """
     preprocess = transforms.Compose(
         [
-            transforms.ToTensor(),
-            transforms.Resize(256),
+            # Torchvision's ToTensor does not accept outer batch dimension
             transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
+    # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
+    transposed_torch_tensor = torch.Tensor(image_batch["image"].transpose(0, 3, 1, 2))
+    return preprocess(transposed_torch_tensor).numpy()
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
@@ -58,7 +61,6 @@ def main(data_size_gb: int, smoke_test: bool = False):
     predictor.predict(
         dataset,
         num_gpus_per_worker=int(not smoke_test),
-        feature_columns=["image"],
         batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)

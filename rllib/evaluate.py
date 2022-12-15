@@ -11,7 +11,6 @@ import typer
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
@@ -19,7 +18,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.common import CLIArguments as cli
-
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
@@ -208,7 +206,8 @@ def run(
         # Use default config for given agent.
         if not algo:
             raise ValueError("Please provide an algorithm via `--algo`.")
-        _, config = get_algorithm_class(algo, return_config=True)
+        algo_cls = get_trainable_cls(algo)
+        config = algo_cls.get_default_config()
 
     # Make sure worker 0 has an Env.
     config["create_env_on_driver"] = True

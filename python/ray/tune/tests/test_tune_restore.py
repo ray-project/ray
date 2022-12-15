@@ -521,14 +521,17 @@ class SearcherTest(unittest.TestCase):
 
 class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
-        """Trainables should know the original working dir on driver through env
-        variable."""
+        """Trainables should know the original working dir through env variable."""
+
+        os.environ.pop("TUNE_ORIG_WORKING_DIR", None)
         working_dir = os.getcwd()
 
         def f(config):
             assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
 
+        ray.init(num_cpus=1)
         tune.run(f)
+        ray.shutdown()
 
 
 class TrainableCrashWithFailFast(unittest.TestCase):

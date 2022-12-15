@@ -194,13 +194,12 @@ class TestCallbacks(unittest.TestCase):
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
             # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertTrue(
-                6
-                == ray.get(
-                    algo.workers.remote_workers()[0].apply.remote(
-                        lambda w: w.callbacks._reset_counter
-                    )
-                )
+            self.assertEqual(
+                6,
+                algo.workers.foreach_worker(
+                    lambda w: w.callbacks._reset_counter,
+                    local_worker=False,
+                )[0],
             )
             algo.stop()
 

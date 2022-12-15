@@ -1,7 +1,7 @@
 """This is the module that is in charge of Ray usage report (telemetry) APIs.
 
-NOTE: Ray's usage report is currently "off by default".
-      But we are planning to make it opt-in by default.
+NOTE: Ray's usage report is currently "on by default".
+      One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
 https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
@@ -261,6 +261,41 @@ class TagKey(Enum):
 
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
+
+    # Ray Core State API
+    # NOTE(rickyxx): Currently only setting "1" for tracking existence of
+    # invocations only.
+    CORE_STATE_API_LIST_ACTORS = auto()
+    CORE_STATE_API_LIST_TASKS = auto()
+    CORE_STATE_API_LIST_JOBS = auto()
+    CORE_STATE_API_LIST_NODES = auto()
+    CORE_STATE_API_LIST_PLACEMENT_GROUPS = auto()
+    CORE_STATE_API_LIST_WORKERS = auto()
+    CORE_STATE_API_LIST_OBJECTS = auto()
+    CORE_STATE_API_LIST_RUNTIME_ENVS = auto()
+    CORE_STATE_API_LIST_CLUSTER_EVENTS = auto()
+    CORE_STATE_API_LIST_LOGS = auto()
+    CORE_STATE_API_GET_LOG = auto()
+    CORE_STATE_API_SUMMARIZE_TASKS = auto()
+    CORE_STATE_API_SUMMARIZE_ACTORS = auto()
+    CORE_STATE_API_SUMMARIZE_OBJECTS = auto()
+
+    # Dashboard
+    # {True, False}
+    # True if the dashboard page has been ever opened.
+    DASHBOARD_USED = auto()
+    # Whether a user is running ray with some third party metrics
+    # services (Ex: "True", "False")
+    DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
+    DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
+
+    # The count(int) of worker crash with exit type 'system error' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_SYSTEM_ERROR = auto()
+
+    # The count(int) of worker crash with exit type 'out-of-memory' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_OOM = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -624,6 +659,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
         except Exception as e:
             logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
+    valid_tag_keys = [tag_key.name.lower() for tag_key in TagKey]
     try:
         keys = gcs_client.internal_kv_keys(
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
@@ -635,6 +671,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             )
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
         logger.info(f"Failed to get extra usage tags from kv store {e}")
@@ -762,9 +799,6 @@ def get_cluster_config_to_report(
             # Check if we're using KubeRay >= 0.4.0.
             if usage_constant.KUBERAY_ENV in os.environ:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERAY
-            # Check if we're using the legacy Ray Operator with Ray >= 2.1.0.
-            elif usage_constant.LEGACY_RAY_OPERATOR_ENV in os.environ:
-                result.cloud_provider = usage_constant.PROVIDER_LEGACY_RAY_OPERATOR
             # Else, we're on Kubernetes but not in either of the above categories.
             else:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC

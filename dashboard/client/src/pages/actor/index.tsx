@@ -1,6 +1,7 @@
 import { Grid, makeStyles, Switch } from "@material-ui/core";
 import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
+import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import ActorTable from "../../components/ActorTable";
 import TitleCard from "../../components/TitleCard";
 import { getActors } from "../../service/actor";
@@ -32,7 +33,7 @@ const Actors = () => {
       queryActor().then(() => {
         setTimeStamp(nowTime);
         if (autoRefresh) {
-          tmo = setTimeout(refreshActor, 4000);
+          tmo = setTimeout(refreshActor, API_REFRESH_INTERVAL_MS);
         }
       });
     };

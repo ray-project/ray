@@ -3,7 +3,7 @@ debian_packages: []
 
 python:
   pip_packages:
-    - sklearn
+    - scikit-learn
   conda_packages: []
 
 post_build_cmds:

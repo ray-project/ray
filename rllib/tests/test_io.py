@@ -25,8 +25,9 @@ from ray.rllib.offline import (
     ShuffledInput,
     DatasetWriter,
 )
-from ray.rllib.offline.json_writer import _to_json
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.offline.json_writer import _to_json_dict, _to_json
+from ray.rllib.policy.sample_batch import SampleBatch, convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SAMPLES = SampleBatch(
@@ -56,7 +57,7 @@ class AgentIOTest(unittest.TestCase):
             PGConfig()
             .environment("CartPole-v1")
             .framework(fw)
-            .rollouts(rollout_fragment_length=250)
+            .training(train_batch_size=250)
             .offline_data(
                 output=output + (fw if output != "logdir" else ""),
                 output_config=output_config or {},
@@ -90,6 +91,7 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
             reader = JsonReader(self.test_dir + fw + "/*.json")
             data = reader.next()
+            data = convert_ma_batch_to_sample_batch(data)
             assert "infos" in data
 
     def test_agent_input_dir(self):
@@ -137,7 +139,9 @@ class AgentIOTest(unittest.TestCase):
                 out = []
                 with open(path) as f:
                     for line in f.readlines():
-                        data = json.loads(line)
+                        data_string = json.loads(line)
+                        data = from_json_data(data_string, None)
+                        data = convert_ma_batch_to_sample_batch(data)
                         # Data won't contain rewards as these are not included
                         # in the write_outputs run (not needed in the
                         # SampleBatch). Flip out "rewards" for "advantages"
@@ -146,7 +150,7 @@ class AgentIOTest(unittest.TestCase):
                         del data["advantages"]
                         if "value_targets" in data:
                             del data["value_targets"]
-                        out.append(data)
+                        out.append(_to_json_dict(data, []))
                 with open(path, "w") as f:
                     for data in out:
                         f.write(json.dumps(data))
@@ -164,7 +168,10 @@ class AgentIOTest(unittest.TestCase):
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
-            .evaluation(evaluation_interval=1, evaluation_config={"input": "sampler"})
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_config=PGConfig.overrides(input_="sampler"),
+            )
         )
 
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
@@ -184,7 +191,7 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PGConfig()
             .environment("CartPole-v1")
-            .rollouts(rollout_fragment_length=99)
+            .training(train_batch_size=99)
             .evaluation(off_policy_estimation_methods={})
         )
 
@@ -224,7 +231,7 @@ class AgentIOTest(unittest.TestCase):
             .multi_agent(
                 policies={"policy_1", "policy_2"},
                 policy_mapping_fn=(
-                    lambda aid, **kwargs: random.choice(["policy_1", "policy_2"])
+                    lambda agent_id, **kwargs: random.choice(["policy_1", "policy_2"])
                 ),
             )
         )
@@ -240,7 +247,7 @@ class AgentIOTest(unittest.TestCase):
             config2.output = None
             config2.evaluation(
                 evaluation_interval=1,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=PGConfig.overrides(input_="sampler"),
             )
             config2.training(train_batch_size=2000)
             config2.offline_data(input_=self.test_dir + fw)
@@ -295,7 +302,8 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PGConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=250)
+            .rollouts(num_rollout_workers=2)
+            .training(train_batch_size=500)
             .evaluation(off_policy_estimation_methods={})
         )
 

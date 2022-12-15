@@ -304,7 +304,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_1.yaml
+    cluster_compute: compute_gpu_1_g4_8xl.yaml
 
   run:
     timeout: 3600
@@ -316,30 +316,28 @@
   alert: default
 
 
-# TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
-# workspaces, re-enabled it once inline conversions are fixed
-# - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
-#   group: AIR tests
-#   working_dir: air_tests/air_benchmarks
+- name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
 
-#   frequency: nightly
-#   team: ml
-#   env: staging
+  frequency: nightly
+  team: ml
+  env: staging
 
-#   stable: false
+  stable: false
 
-#   cluster:
-#     cluster_env: app_config.yaml
-#     cluster_compute: compute_gpu_16.yaml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4_g4_12xl.yaml
 
-#   run:
-#     timeout: 10800
-#     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+  run:
+    timeout: 10800
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
 
-#     type: sdk_command
-#     file_manager: job
+    type: sdk_command
+    file_manager: job
 
-#   alert: default
+  alert: default
 
 
 - name: air_benchmark_torch_mnist_cpu_4x4
@@ -414,31 +412,6 @@
     file_manager: job
 
   alert: default
-
-- name: air_benchmark_tune_torch_mnist_large_gpu
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: weekly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_8_g4_12xl.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --strict-pack False
-
-    wait_for_nodes:
-      num_nodes: 8
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
 
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
@@ -523,6 +496,8 @@
   team: ml
   env: staging
 
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4.yaml
@@ -600,11 +575,12 @@
 
   alert: default
 
+# Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: true
+  stable: false
   env: staging
 
   frequency: nightly
@@ -619,22 +595,46 @@
     type: sdk_command
     file_manager: sdk
 
+# Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: true
+  stable: false
   env: staging
 
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: bash out_of_core_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
+
+# Test additional CPU nodes for preprocessing.
+- name: ray-data-bulk-ingest-heterogeneity-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+  env: staging
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
+
+  run:
+    wait_for_nodes:
+      num_nodes: 3
+
+    timeout: 1800
+    script: bash heterogeneity_benchmark.sh 2
     type: sdk_command
     file_manager: sdk
 
@@ -1108,6 +1108,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 4
     type: client
 
   alert: default
@@ -1132,6 +1134,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 4
     type: client
 
   alert: default
@@ -1156,6 +1160,8 @@
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1180,6 +1186,8 @@
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1203,6 +1211,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1226,6 +1236,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1250,6 +1262,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1274,6 +1288,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1298,6 +1314,8 @@
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
+    wait_for_nodes:
+      num_nodes: 9
     type: client
 
   alert: default
@@ -1778,6 +1796,8 @@
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 
@@ -1801,7 +1821,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
@@ -1823,7 +1843,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1855,10 +1875,10 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
-    cluster_env: app_config_np.yaml
+    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -1891,7 +1911,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
@@ -1920,7 +1940,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
@@ -1983,7 +2003,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
@@ -2012,7 +2032,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
@@ -2041,7 +2061,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
@@ -2132,7 +2152,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
+    prepare: ray stop
     script: python workloads/serve_failure.py
     long_running: true
     type: sdk_command
@@ -2143,6 +2163,37 @@
 
     run:
       timeout: 600
+
+  alert: long_running_tests
+
+- name: long_running_many_jobs
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: true
+
+  legacy:
+    test_name: long_running_many_jobs
+    test_suite: long_running_tests
+
+  frequency: weekly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/long_running_many_jobs.py --num-clients=1
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 1800
 
   alert: long_running_tests
 
@@ -2230,6 +2281,65 @@
     file_manager: job
 
   alert: default
+
+- name: jobs_remote_multi_node
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_remote_multi_node
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_remote_multi_node.py
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: job
+    file_manager: job
+
+- name: jobs_check_cuda_available
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_check_cuda_available
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gpu_node.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_check_cuda_available.py
+    wait_for_nodes:
+      num_nodes: 2
+    type: job
+    file_manager: job
+
+- name: jobs_specify_num_gpus
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  legacy:
+    test_name: jobs_specify_num_gpus
+    test_suite: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gpu_worker.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
+    wait_for_nodes:
+      num_nodes: 2
+
+    type: sdk_command
+    file_manager: job
 
 ########################
 # Runtime env tests
@@ -2677,7 +2787,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2701,12 +2811,12 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 32cpus.yaml
 
   run:
     timeout: 18000
@@ -2725,12 +2835,12 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1gpu_24cpus.yaml
+    cluster_compute: 2gpus_64cpus.yaml
 
   run:
     timeout: 18000
@@ -2749,7 +2859,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2773,7 +2883,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2797,7 +2907,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2821,7 +2931,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2845,7 +2955,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2869,7 +2979,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2893,7 +3003,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2917,7 +3027,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2941,7 +3051,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2966,7 +3076,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2990,7 +3100,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3015,7 +3125,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3040,7 +3150,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3064,7 +3174,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3088,7 +3198,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3112,7 +3222,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3161,8 +3271,8 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
-    type: sdk_command
-    file_manager: sdk
+    type: job
+    file_manager: job
 
 - name: shuffle_50gb
   group: core-multi-test
@@ -3384,6 +3494,7 @@
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
+  env: staging
   legacy:
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
@@ -3824,7 +3935,7 @@
 
   run:
     timeout: 500
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.6
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
     type: sdk_command
     file_manager: sdk
@@ -3925,6 +4036,7 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
   legacy:
     test_name: single_node
     test_suite: benchmark_tests
@@ -4333,11 +4445,11 @@
     type: sdk_command
     file_manager: sdk
 
-- name: read_benchmark_single_node
+- name: read_images_benchmark_single_node
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
 
-  frequency: multi
+  frequency: nightly
   team: data
   cluster:
     cluster_env: app_config.yaml
@@ -4345,7 +4457,25 @@
 
   run:
     timeout: 1800
-    script: python read_benchmark.py
+    script: python read_images_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: read_tfrecords_benchmark_single_node
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: read_tfrecords_benchmark_app.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 22 minutes.
+    timeout: 1800
+    script: python read_tfrecords_benchmark.py
 
     type: sdk_command
     file_manager: sdk
@@ -4549,7 +4679,7 @@
 ##################
 
 - name: chaos_many_tasks_no_object_store
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_tasks_no_object_store
@@ -4572,7 +4702,7 @@
     file_manager: sdk
 
 - name: chaos_many_actors
-  group: core-dataset-tests
+  group: core-nightly-test
   working_dir: nightly_tests
   legacy:
     test_name: chaos_many_actors
@@ -4700,12 +4830,12 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
+    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -4724,7 +4854,8 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    # leave oom disabled as test is marked unstable at the moment.
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -4748,7 +4879,8 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    # leave oom disabled as test is marked unstable at the moment.
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -4767,7 +4899,7 @@
   group: core-observability-test
   working_dir: dashboard
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -4777,7 +4909,6 @@
 
   run:
     timeout: 14400
-    prepare: rllib train file atari.yaml &
     script: python mem_check.py
     type: sdk_command
     file_manager: sdk
@@ -4806,7 +4937,7 @@
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
-  working_dir: cluster_tests 
+  working_dir: cluster_tests
   legacy:
     test_name: aws_cluster_launcher
     test_suite: cluster-launcher-test

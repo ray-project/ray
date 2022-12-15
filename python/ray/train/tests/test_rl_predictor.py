@@ -30,7 +30,7 @@ from ray.train.rl import RLTrainer
 # from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
 
-# from dummy_preprocessor import DummyPreprocessor
+# from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 class _DummyAlgo(Algorithm):

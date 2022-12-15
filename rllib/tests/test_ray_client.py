@@ -61,10 +61,10 @@ class TestRayClient(unittest.TestCase):
         with ray_start_client_server(ray_init_kwargs={"num_cpus": 3}):
             assert ray.util.client.ray.is_connected()
 
-            config = ppo.DEFAULT_CONFIG.copy()
+            config = ppo.PPOConfig().environment("CartPole-v1")
             # Special flag signalling `experiment` how many iters to do.
+            config = config.to_dict()
             config["train-iterations"] = 2
-            config["env"] = "CartPole-v1"
 
             from ray.rllib.examples.custom_experiment import experiment
 

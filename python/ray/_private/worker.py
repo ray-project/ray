@@ -75,7 +75,7 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.storage import _load_class
-from ray._private.utils import check_oversized_function
+from ray._private.utils import check_oversized_function, get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -486,6 +486,10 @@ class Worker:
     @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
+
+    @property
+    def task_depth(self):
+        return self.core_worker.get_task_depth()
 
     @property
     def namespace(self):
@@ -1159,7 +1163,8 @@ def init(
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
-        _memory: Amount of reservable memory resource to create.
+        _memory: Amount of reservable memory resource in bytes rounded
+            down to the nearest integer.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1262,6 +1267,16 @@ def init(
 
         usage_lib.record_library_usage("client")
         return ctx
+
+    if kwargs.get("allow_multiple"):
+        raise RuntimeError(
+            "`allow_multiple` argument is passed to `ray.init` when the "
+            "ray client is not used ("
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/cluster"
+            "/running-applications/job-submission"
+            "/ray-client.html#connect-to-multiple-ray-clusters-experimental). "
+            "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
+        )
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1426,7 +1441,10 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1536,6 +1554,7 @@ def init(
         job_id=None,
         namespace=namespace,
         job_config=job_config,
+        entrypoint=ray._private.utils.get_entrypoint_name(),
     )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1865,6 +1884,7 @@ def connect(
     runtime_env_hash: int = 0,
     startup_token: int = 0,
     ray_debugger_external: bool = False,
+    entrypoint: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1884,6 +1904,8 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
+        entrypoint: The name of the entrypoint script. Ignored unless the
+            mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1949,6 +1971,7 @@ def connect(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
+                num_retries=1,
             )
 
     driver_name = ""
@@ -2029,6 +2052,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        "" if mode != SCRIPT_MODE else entrypoint,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2078,6 +2102,7 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        code_paths = []
         if not interactive_mode:
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2085,15 +2110,15 @@ def connect(
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                worker.run_function_on_all_workers(
-                    lambda worker_info: sys.path.insert(1, script_directory)
-                )
+                code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
             worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
+                lambda worker_info: [sys.path.insert(1, path) for path in code_paths]
             )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
@@ -2916,15 +2941,17 @@ def remote(
             This is a dictionary mapping strings (resource names) to floats.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.accelerators` for accelerator types.
-        memory: The heap memory request for this task/actor.
+            See `ray.util.accelerators` for accelerator types.
+        memory: The heap memory request in bytes for this task/actor,
+            rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
             (this can be used to address memory leaks in third-party
             libraries or to reclaim resources that cannot easily be
             released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite.
+            By default this is infinite for CPU tasks and 1 for GPU tasks
+            (to force GPU tasks to release resources after finishing).
         max_restarts: Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
             unexpectedly. The minimum valid value is 0 (default),
@@ -2948,8 +2975,7 @@ def remote(
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation. This API is
-            in beta and may change before becoming stable.
+            :ref:`runtime-environments` for detailed documentation.
         retry_exceptions: Only for *remote functions*. This specifies whether
             application-level errors should be retried up to max_retries times.
             This can be a boolean or a list of exceptions that should be retried.
@@ -2963,7 +2989,9 @@ def remote(
             "DEFAULT": default hybrid scheduling;
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling.
+            placement group based scheduling;
+            `NodeAffinitySchedulingStrategy`:
+            node id based affinity scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 

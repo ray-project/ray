@@ -177,7 +177,7 @@ def test_dag_options(shared_ray_instance):
     def foo():
         pass
 
-    assert foo.bind().get_options() == {"num_gpus": 100}
+    assert foo.bind().get_options() == {"max_calls": 1, "num_gpus": 100}
     assert foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
     assert foo.options(num_cpus=500).bind().get_options() == {
         "num_gpus": 100,

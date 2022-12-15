@@ -4,7 +4,8 @@ import sys
 import time
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Dict
+from typing import Dict, Set
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import pytest
 import requests
@@ -15,7 +16,11 @@ import ray._private.state
 from ray.experimental.state.api import list_actors
 
 from ray import serve
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+    SignalActor,
+)
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
@@ -37,6 +42,32 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture()
+def ray_instance(request):
+    """Starts and stops a Ray instance for this test.
+
+    Args:
+        request: request.param should contain a dictionary of env vars and
+            their values. The Ray instance will be started with these env vars.
+    """
+
+    original_env_vars = os.environ.copy()
+
+    try:
+        requested_env_vars = request.param
+    except AttributeError:
+        requested_env_vars = {}
+
+    os.environ.update(requested_env_vars)
+
+    yield ray.init()
+
+    ray.shutdown()
+
+    os.environ.clear()
+    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -713,6 +744,70 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     serve.shutdown()
     ray.shutdown()
+
+
+class TestServeRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
+
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
+
+        serve.run(f.bind())
+
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
+
+    @pytest.mark.parametrize(
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}], indirect=True
+    )
+    def test_hanging_request(self, ray_instance):
+        """Checks that the env var mitigates the hang."""
+
+        @ray.remote
+        class PidTracker:
+            def __init__(self):
+                self.pids = set()
+
+            def add_pid(self, pid: int) -> None:
+                self.pids.add(pid)
+
+            def get_pids(self) -> Set[int]:
+                return self.pids
+
+        pid_tracker = PidTracker.remote()
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(num_replicas=2)
+        async def waiter(*args):
+            import os
+
+            ray.get(pid_tracker.add_pid.remote(os.getpid()))
+            await signal_actor.wait.remote()
+            return "Success!"
+
+        serve.run(waiter.bind())
+
+        with ThreadPoolExecutor() as pool:
+            response_fut = pool.submit(requests.get, "http://localhost:8000")
+
+            # Force request to hang
+            time.sleep(0.5)
+            ray.get(signal_actor.send.remote())
+
+            wait_for_condition(lambda: response_fut.done())
+            assert response_fut.result().text == "Success!"
+
+        # Hanging request should have been retried
+        assert len(ray.get(pid_tracker.get_pids.remote())) == 2
+
+        serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):

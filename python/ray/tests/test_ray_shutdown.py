@@ -12,6 +12,8 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
+WAIT_TIMEOUT = 20
+
 
 def get_all_ray_worker_processes():
     processes = [
@@ -21,7 +23,7 @@ def get_all_ray_worker_processes():
     result = []
     for p in processes:
         if p is not None and len(p) > 0 and "ray::" in p[0]:
-            result.append(p)
+            result.append(p[0])
     return result
 
 
@@ -48,7 +50,9 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 
     ray.shutdown()
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -77,7 +81,9 @@ tasks = [f.remote() for _ in range(num_cpus)]
     p.wait()
     time.sleep(0.1)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -109,7 +115,9 @@ def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     for worker in workers:
         cluster.remove_node(worker)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
@@ -152,7 +160,46 @@ time.sleep(100)
 
     cluster.remove_node(head)
 
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    wait_for_condition(
+        lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
+    )
+
+
+def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
+    cluster = ray_start_cluster
+    # head
+    cluster.add_node(num_cpus=0)
+
+    def get_raylet_agent_procs(worker):
+        raylet = None
+        for p in worker.live_processes():
+            if p[0] == "raylet":
+                raylet = p[1]
+        assert raylet is not None
+
+        children = psutil.Process(raylet.pid).children()
+        assert len(children) == 1
+        agent = psutil.Process(children[0].pid)
+        return raylet, agent
+
+    # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
+    worker = cluster.add_node(num_cpus=0)
+    raylet, agent = get_raylet_agent_procs(worker)
+    agent.terminate()
+    exit_code = raylet.wait()
+    # When the agent is terminated
+    assert exit_code == 0
+
+    # Make sure raylet exits gracefully upon agent terminated by SIGKILL.
+    # TODO(sang): Make raylet exits ungracefully in this case. It is currently
+    # not possible because we cannot detect the exit code of children process
+    # from cpp code.
+    worker = cluster.add_node(num_cpus=0)
+    raylet, agent = get_raylet_agent_procs(worker)
+    agent.kill()
+    exit_code = raylet.wait()
+    # When the agent is terminated
+    assert exit_code == 0
 
 
 if __name__ == "__main__":

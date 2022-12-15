@@ -343,7 +343,7 @@ and `example`, you have all the tools you need to run simple RLlib experiments f
 the command line.
 
 If you want to learn more about the capabilities of RLlib, you have to learn more about
-its [Python API](rllib-training-apis) and how to 
+its [Python API](rllib-training-api) and how to 
 [configure algorithms](rllib-algo-configuration) in the first place.
 
 

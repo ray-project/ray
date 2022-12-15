@@ -176,6 +176,7 @@ sac-repeat-after-me-env:
         initial_alpha: 0.001
         # Double batch size (2 GPUs).
         train_batch_size: 512
+        num_steps_sampled_before_learning_starts: 0
 
 sac-repeat-after-me-env-continuous:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
@@ -198,6 +199,9 @@ sac-repeat-after-me-env-continuous:
         initial_alpha: 0.001
         # Double batch size (2 GPUs).
         train_batch_size: 512
+        # start learning immediately 
+        num_steps_sampled_before_learning_starts: 0
+
 
 simpleq-cartpole-v0:
     env: CartPole-v0

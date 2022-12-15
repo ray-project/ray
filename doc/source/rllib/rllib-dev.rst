@@ -99,7 +99,7 @@ After registration, you can run and visualize training progress using ``rllib tr
 
 .. code-block:: bash
 
-    rllib train --run=contrib/RandomAgent --env=CartPole-v0
+    rllib train --run=contrib/RandomAgent --env=CartPole-v1
     tensorboard --logdir=~/ray_results
 
 Debugging your Algorithms

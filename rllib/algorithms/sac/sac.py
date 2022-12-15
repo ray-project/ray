@@ -1,7 +1,7 @@
 import logging
 from typing import Type, Dict, Any, Optional, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -13,7 +13,6 @@ from ray.rllib.utils.deprecation import (
     Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -25,13 +24,13 @@ class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
     Example:
-        >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = SACConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -84,7 +83,7 @@ class SACConfig(AlgorithmConfig):
         self.target_network_update_freq = 0
 
         # .rollout()
-        self.rollout_fragment_length = 1
+        self.rollout_fragment_length = "auto"
         self.compress_observations = False
 
         # .training()
@@ -110,23 +109,23 @@ class SACConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        twin_q: Optional[bool] = None,
-        q_model_config: Optional[Dict[str, Any]] = None,
-        policy_model_config: Optional[Dict[str, Any]] = None,
-        tau: Optional[float] = None,
-        initial_alpha: Optional[float] = None,
-        target_entropy: Optional[Union[str, float]] = None,
-        n_step: Optional[int] = None,
-        store_buffer_in_checkpoints: Optional[bool] = None,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        training_intensity: Optional[float] = None,
-        clip_actions: Optional[bool] = None,
-        grad_clip: Optional[float] = None,
-        optimization_config: Optional[Dict[str, Any]] = None,
-        target_network_update_freq: Optional[int] = None,
-        _deterministic_loss: Optional[bool] = None,
-        _use_beta_distribution: Optional[bool] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        twin_q: Optional[bool] = NotProvided,
+        q_model_config: Optional[Dict[str, Any]] = NotProvided,
+        policy_model_config: Optional[Dict[str, Any]] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        initial_alpha: Optional[float] = NotProvided,
+        target_entropy: Optional[Union[str, float]] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        store_buffer_in_checkpoints: Optional[bool] = NotProvided,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        clip_actions: Optional[bool] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        optimization_config: Optional[Dict[str, Any]] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        _deterministic_loss: Optional[bool] = NotProvided,
+        _use_beta_distribution: Optional[bool] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "SACConfig":
         """Sets the training related configuration.
@@ -138,7 +137,7 @@ class SACConfig(AlgorithmConfig):
                 MODEL_DEFAULTS. This is treated just as the top-level `model` dict in
                 setting up the Q-network(s) (2 if twin_q=True).
                 That means, you can do for different observation spaces:
-                obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
+                `obs=Box(1D)` -> `Tuple(Box(1D) + Action)` -> `concat` -> `post_fcnet`
                 obs=Box(3D) -> Tuple(Box(3D) + Action) -> vision-net -> concat w/ action
                 -> post_fcnet
                 obs=Tuple(Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action)
@@ -153,7 +152,7 @@ class SACConfig(AlgorithmConfig):
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             initial_alpha: Initial value to use for the entropy weight alpha.
             target_entropy: Target entropy lower bound. If "auto", will be set
-                to -|A| (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
+                to `-|A|` (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
@@ -162,9 +161,9 @@ class SACConfig(AlgorithmConfig):
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                 - This is True AND restoring from a checkpoint that contains no buffer
-                    data.
+                data.
                 - This is False AND restoring from a checkpoint that does contain
-                    buffer data.
+                buffer data.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -238,23 +237,23 @@ class SACConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if q_model_config is not None:
+        if q_model_config is not NotProvided:
             self.q_model_config.update(q_model_config)
-        if policy_model_config is not None:
+        if policy_model_config is not NotProvided:
             self.policy_model_config.update(policy_model_config)
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if initial_alpha is not None:
+        if initial_alpha is not NotProvided:
             self.initial_alpha = initial_alpha
-        if target_entropy is not None:
+        if target_entropy is not NotProvided:
             self.target_entropy = target_entropy
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if store_buffer_in_checkpoints is not None:
+        if store_buffer_in_checkpoints is not NotProvided:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_replay_buffer_config = deep_update(
@@ -265,26 +264,68 @@ class SACConfig(AlgorithmConfig):
                 ["replay_buffer_config"],
             )
             self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if clip_actions is not None:
+        if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if optimization_config is not None:
+        if optimization_config is not NotProvided:
             self.optimization = optimization_config
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if _deterministic_loss is not None:
+        if _deterministic_loss is not NotProvided:
             self._deterministic_loss = _deterministic_loss
-        if _use_beta_distribution is not None:
+        if _use_beta_distribution is not NotProvided:
             self._use_beta_distribution = _use_beta_distribution
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            not self.in_evaluation
+            and self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
+        if self.use_state_preprocessor != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config['use_state_preprocessor']",
+                error=False,
+            )
+            self.use_state_preprocessor = DEPRECATED_VALUE
+
+        if self.grad_clip is not None and self.grad_clip <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
+
+        if self.framework in ["tf", "tf2"] and tfp is None:
+            logger.warning(
+                "You need `tensorflow_probability` in order to run SAC! "
+                "Install it via `pip install tensorflow_probability`. Your "
+                f"tf.__version__={tf.__version__ if tf else None}."
+                "Trying to import tfp results in the following error:"
+            )
+            try_import_tfp(error=True)
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
 
 
 class SAC(DQN):
@@ -307,45 +348,11 @@ class SAC(DQN):
     def get_default_config(cls) -> AlgorithmConfig:
         return SACConfig()
 
+    @classmethod
     @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-            deprecation_warning(old="config['use_state_preprocessor']", error=False)
-            config["use_state_preprocessor"] = DEPRECATED_VALUE
-
-        if config.get("policy_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['policy_model']",
-                new="config['policy_model_config']",
-                error=True,
-            )
-            config["policy_model_config"] = config["policy_model"]
-
-        if config.get("Q_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['Q_model']",
-                new="config['q_model_config']",
-                error=True,
-            )
-            config["q_model_config"] = config["Q_model"]
-
-        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-            raise ValueError("`grad_clip` value must be > 0.0!")
-
-        if config["framework"] in ["tf", "tf2"] and tfp is None:
-            logger.warning(
-                "You need `tensorflow_probability` in order to run SAC! "
-                "Install it via `pip install tensorflow_probability`. Your "
-                f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:"
-            )
-            try_import_tfp(error=True)
-
-    @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
 

@@ -201,6 +201,7 @@ class GlobalState:
             job_info["StartTime"] = entry.start_time
             job_info["EndTime"] = entry.end_time
             job_info["IsDead"] = entry.is_dead
+            job_info["Entrypoint"] = entry.entrypoint
             results.append(job_info)
 
         return results

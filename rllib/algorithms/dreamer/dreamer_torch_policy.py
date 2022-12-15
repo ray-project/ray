@@ -230,7 +230,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         if timestep <= policy.config["prefill_timesteps"]:
             logp = None
             # Random action in space [-1.0, 1.0]
-            eps = torch.rand(1, model.action_space.shape[0], device=obs.device)
+            eps = torch.rand(bsize, model.action_space.shape[0], device=obs.device)
             action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
             # batchify the intial states to match the batch size of the obs tensor
@@ -246,7 +246,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             action = td.Normal(action, policy.config["explore_noise"]).sample()
             action = torch.clamp(action, min=-1.0, max=1.0)
 
-        policy.global_timestep += policy.config["action_repeat"]
+        policy.global_timestep += policy.config["env_config"]["frame_skip"]
 
         return action, logp, state_batches
 

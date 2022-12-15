@@ -22,30 +22,34 @@ class TestMemoryLeaks(unittest.TestCase):
 
     def test_leaky_env(self):
         """Tests, whether our diagnostics tools can detect leaks in an env."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        # Make sure we have an env to test on the local worker.
-        # Otherwise, `check_memory_leaks` will complain.
-        config["create_env_on_driver"] = True
-        config["env"] = MemoryLeakingEnv
-        config["env_config"] = {
-            "static_samples": True,
-        }
-        algo = ppo.PPO(config=config)
+        config = (
+            ppo.PPOConfig().environment(
+                MemoryLeakingEnv, env_config={"static_samples": True}
+            )
+            # Make sure we have an env to test on the local worker.
+            # Otherwise, `check_memory_leaks` will complain.
+            .rollouts(create_env_on_local_worker=True)
+        )
+        algo = config.build()
         results = check_memory_leaks(algo, to_check={"env"}, repeats=150)
         assert results["env"]
         algo.stop()
 
     def test_leaky_policy(self):
         """Tests, whether our diagnostics tools can detect leaks in a policy."""
-        config = dqn.DEFAULT_CONFIG.copy()
-        # Make sure we have an env to test on the local worker.
-        # Otherwise, `check_memory_leaks` will complain.
-        config["create_env_on_driver"] = True
-        config["env"] = "CartPole-v1"
-        config["multiagent"]["policies"] = {
-            "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
-        }
-        algo = dqn.DQN(config=config)
+        config = (
+            dqn.DQNConfig()
+            .environment("CartPole-v1")
+            # Make sure we have an env to test on the local worker.
+            # Otherwise, `check_memory_leaks` will complain.
+            .rollouts(create_env_on_local_worker=True)
+            .multi_agent(
+                policies={
+                    "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
+                }
+            )
+        )
+        algo = config.build()
         results = check_memory_leaks(algo, to_check={"policy"}, repeats=300)
         assert results["policy"]
         algo.stop()

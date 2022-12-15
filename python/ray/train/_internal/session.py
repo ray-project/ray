@@ -47,6 +47,7 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    experiment_name: Optional[str] = None
 
 
 @dataclass
@@ -65,6 +66,8 @@ class _TrainSession:
         training_func: Callable,
         world_rank: int,
         local_rank: int,
+        node_rank: int,
+        local_world_size: int,
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
@@ -80,6 +83,8 @@ class _TrainSession:
 
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.node_rank = node_rank
+        self.local_world_size = local_world_size
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!

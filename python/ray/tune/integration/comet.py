@@ -1,4 +1,4 @@
-from ray.air.callbacks.comet import CometLoggerCallback as _CometLoggerCallback
+from ray.air.integrations.comet import CometLoggerCallback as _CometLoggerCallback
 from typing import List
 
 import logging
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 callback_deprecation_message = (
     "`ray.tune.integration.comet.CometLoggerCallback` "
     "is deprecated and will be removed in "
-    "the future. Please use `ray.air.callbacks.comet.CometLoggerCallback` "
+    "the future. Please use `ray.air.integrations.comet.CometLoggerCallback` "
     "instead."
 )
 
