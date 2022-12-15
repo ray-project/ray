@@ -2297,7 +2297,7 @@ def get(
                 "Setting timeout=0 in future ray releases will raise GetTimeoutError "
                 "if the objects references are not available."
             ),
-            SyntaxWarning,
+            UserWarning,
         )
 
     worker = global_worker
