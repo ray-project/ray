@@ -70,7 +70,8 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``rllib/algorithms``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and implement the ``_init`` and ``step`` methods:
+It takes just two changes to add an algorithm to `algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/algorithms/random_agent/random_agent.py>`__.
+First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../../rllib/algorithms/random_agent/random_agent.py
    :language: python
