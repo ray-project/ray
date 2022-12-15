@@ -16,7 +16,6 @@ from ray.rllib.offline.dataset_reader import (
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_optimizer import BCTorchOptimizer
-from ray.rllib.core.testing.utils import do_rollouts
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -211,24 +210,14 @@ class TestRLOptimizer(unittest.TestCase):
         num_epochs = 100
         total_timesteps_of_training = 1000000
         inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-        for epoch_i in range(num_epochs):
-            total_loss = 0
+        for _ in range(num_epochs):
             for _ in range(inter_steps):
                 batch = reader.next()
                 results = trainer.update(batch)
-                total_loss += results["total_loss"] / inter_steps
+                if results["total_loss"] < 0.57:
+                    break
 
-            module_for_inference.set_state(trainer.get_state()["module_state"])
-            avg_return, _, _ = do_rollouts(env, module_for_inference, 10, "torch")
-            print(
-                f"[epoch = {epoch_i}] avg_total_loss: "
-                f"{total_loss}, avg_return: {avg_return}"
-            )
-            if avg_return > 50:
-                break
-        assert (
-            avg_return > 50
-        ), f"Return for training behavior cloning is too low: avg_return={avg_return}!"
+        self.assertLess(results["total_loss"], 0.57)
 
     def test_rl_optimizer_set_state_get_state_torch(self):
         env = gym.make("CartPole-v1")

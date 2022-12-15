@@ -13,7 +13,6 @@ from ray.rllib.offline.dataset_reader import (
     get_dataset_and_shards,
 )
 
-from ray.rllib.core.testing.utils import do_rollouts
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -166,11 +165,6 @@ class TestRLOptimizerTF(unittest.TestCase):
     def test_rl_optimizer_in_behavioral_cloning_tf(self):
         tf.random.set_seed(1)
         env = gym.make("CartPole-v1")
-        module_for_inference = DiscreteBCTFModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
-        )
         trainer = BCTFTrainer(env)
 
         # path = "s3://air-example-data/rllib/cartpole/large.json"
@@ -195,12 +189,11 @@ class TestRLOptimizerTF(unittest.TestCase):
         for _ in range(num_epochs):
             for _ in range(inter_steps):
                 batch = reader.next()
-                trainer.update(batch)
-            module_for_inference.set_state(trainer.get_state()["module_state"])
-            avg_return, _, _ = do_rollouts(env, module_for_inference, 10, "tf")
-            if avg_return > 50:
-                break
-        self.assertGreater(avg_return, 50)
+                results = trainer.update(batch)
+                if results["total_loss"] < 0.57:
+                    break
+
+        self.assertLess(results["total_loss"], 0.57)
 
     def test_rl_optimizer_set_state_get_state_tf(self):
         env = gym.make("CartPole-v1")
