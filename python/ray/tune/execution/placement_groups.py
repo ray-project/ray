@@ -53,21 +53,6 @@ def _get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
-def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
-    """Sum all resources in a list of resource bundles.
-
-    Args:
-        bundles: List of resource bundles.
-
-    Returns: Dict containing all resources summed up.
-    """
-    resources = {}
-    for bundle in bundles:
-        for k, v in bundle.items():
-            resources[k] = resources.get(k, 0) + v
-    return resources
-
-
 @PublicAPI(stability="beta")
 class PlacementGroupFactory(ResourceRequest):
     """Wrapper class that creates placement groups for trials.

@@ -37,7 +37,7 @@ def test_request_cancel_resources(ray_start_4_cpus):
     - Assert staging future is removed
     - Assert actual PG is removed
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
     manager.request_resources(REQUEST_2_CPU)
@@ -71,7 +71,7 @@ def test_acquire_return_resources(ray_start_4_cpus):
     - Assert that the 2 CPU resources are still not available (no new request)
         - This is also tested in includes test_request_cancel_resources
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
     # Request PG
@@ -115,7 +115,7 @@ def test_request_pending(ray_start_4_cpus):
     - Cancel request
     - Assert no resources are available again
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
     manager.request_resources(REQUEST_2_CPU)
@@ -169,7 +169,7 @@ def test_acquire_unavailable(ray_start_4_cpus):
     - Acquire
     - Assert this did work
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     assert not manager.acquire_resources(REQUEST_2_CPU)
 
     manager.request_resources(REQUEST_2_CPU)
@@ -184,7 +184,7 @@ def test_bind_two_bundles(ray_start_4_cpus):
     - Bind two remote tasks to these bundles, execute
     - Assert that resource allocation returns the correct resources: 1 CPU and 2 CPUs
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     manager.request_resources(REQUEST_1_2_CPU)
     ray.wait(manager.get_resource_futures(), num_returns=1)
 
@@ -217,7 +217,7 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
     - Bind two remote tasks to these bundles, execute
     - Assert that resource allocation returns the correct resources: 0 CPU and 2 CPUs
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     assert REQUEST_0_2_CPU.head_bundle_is_empty
     manager.request_resources(REQUEST_0_2_CPU)
     ray.wait(manager.get_resource_futures(), num_returns=1)
@@ -255,7 +255,7 @@ def test_capture_child_tasks(ray_start_4_cpus):
     there is only 1 CPU available outside (on a 4 CPU cluster). The 2 CPUs
     thus have to come from the placement group.
     """
-    manager = PlacementGroupResourceManager(update_interval=0)
+    manager = PlacementGroupResourceManager(update_interval_s=0)
     manager.request_resources(REQUEST_1_2_CPU)
     ray.wait(manager.get_resource_futures(), num_returns=1)
 
