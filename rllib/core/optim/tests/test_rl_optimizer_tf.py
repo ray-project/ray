@@ -28,7 +28,11 @@ class BCTFTrainer:
 
     def __init__(self, env: gym.Env) -> None:
         optimizer_config = {}
-        self._module = DiscreteBCTFModule.from_env(env)
+        self._module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         self._rl_optimizer = BCTFOptimizer(self._module, optimizer_config)
 
     @staticmethod
@@ -162,7 +166,11 @@ class TestRLOptimizerTF(unittest.TestCase):
     def test_rl_optimizer_in_behavioral_cloning_tf(self):
         tf.random.set_seed(1)
         env = gym.make("CartPole-v1")
-        module_for_inference = DiscreteBCTFModule.from_env(env)
+        module_for_inference = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         trainer = BCTFTrainer(env)
 
         # path = "s3://air-example-data/rllib/cartpole/large.json"
@@ -192,7 +200,7 @@ class TestRLOptimizerTF(unittest.TestCase):
             avg_return, _, _ = do_rollouts(env, module_for_inference, 10, "tf")
             if avg_return > 50:
                 break
-        assert avg_return > 50
+        self.assertGreater(avg_return, 50)
 
     def test_rl_optimizer_set_state_get_state_tf(self):
         env = gym.make("CartPole-v1")

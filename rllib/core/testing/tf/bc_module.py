@@ -104,15 +104,6 @@ class DiscreteBCTFModule(TfRLModule):
 
         return cls(**config)
 
-    @classmethod
-    def from_env(cls, env: gym.Env):
-        """This is used for testing purposes."""
-        return cls.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
-        )
-
     def _default_inputs(self) -> ModelSpec:
         obs_dim = self._input_dim
         return {"obs": TFTensorSpecs("b, do", do=obs_dim)}

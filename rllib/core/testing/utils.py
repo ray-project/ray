@@ -28,14 +28,20 @@ def do_rollouts(
         The mean return across num_rollouts, the return at each timestep, and
             the rollouts.
     """
-    _returns = []
-    _rollouts = []
+    returns = []
+    rollouts = []
     for _ in range(num_rollouts):
         obs = env.reset()
-        _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
-        _return = -0
+        obs_list, next_obs_list, actions_list, rewards_list, dones_list = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
+        ret = -0
         for _ in range(env._max_episode_steps):
-            _obs.append(obs)
+            obs_list.append(obs)
             if framework == "tf":
                 fwd_out = module_for_inference.forward_inference(
                     {"obs": tf.convert_to_tensor([obs], dtype=tf.float32)}
@@ -48,23 +54,23 @@ def do_rollouts(
                 raise ValueError(f"Unknown framework: {framework}")
             action = convert_to_numpy(fwd_out["action_dist"].sample())[0]
             next_obs, reward, done, _ = env.step(action)
-            _next_obs.append(next_obs)
-            _actions.append([action])
-            _rewards.append([reward])
-            _dones.append([done])
-            _return += reward
+            next_obs_list.append(next_obs)
+            actions_list.append([action])
+            rewards_list.append([reward])
+            dones_list.append([done])
+            ret += reward
             if done:
                 break
             obs = next_obs
         batch = SampleBatch(
             {
-                "obs": _obs,
-                "next_obs": _next_obs,
-                "actions": _actions,
-                "rewards": _rewards,
-                "dones": _dones,
+                "obs": obs_list,
+                "next_obs": next_obs_list,
+                "actions": actions_list,
+                "rewards": rewards_list,
+                "dones": dones_list,
             }
         )
-        _returns.append(_return)
-        _rollouts.append(batch)
-    return np.mean(_returns), _returns, _rollouts
+        returns.append(ret)
+        rollouts.append(batch)
+    return np.mean(returns), returns, rollouts

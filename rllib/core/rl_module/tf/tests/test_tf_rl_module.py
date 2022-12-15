@@ -14,7 +14,11 @@ class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTFModule.from_env(env)
+        module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         self.assertIsInstance(module, TfRLModule)
 
@@ -22,7 +26,11 @@ class TestRLModule(unittest.TestCase):
 
         bsize = 1024
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTFModule.from_env(env)
+        module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         obs_shape = env.observation_space.shape
         obs = tf.random.uniform((bsize,) + obs_shape)
@@ -50,7 +58,11 @@ class TestRLModule(unittest.TestCase):
         """Test forward inference and exploration of"""
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTFModule.from_env(env)
+        module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         obs_shape = env.observation_space.shape
         obs = tf.random.uniform((1,) + obs_shape)
@@ -62,12 +74,20 @@ class TestRLModule(unittest.TestCase):
     def test_get_set_state(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTFModule.from_env(env)
+        module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
-        module2 = DiscreteBCTFModule.from_env(env)
+        module2 = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         state2 = module2.get_state()
         check(state["policy"][0], state2["policy"][0], false=True)
 

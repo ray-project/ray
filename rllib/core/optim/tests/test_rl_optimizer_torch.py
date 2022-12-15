@@ -49,7 +49,11 @@ class BCTorchTrainer:
 
     def __init__(self, env: gym.Env) -> None:
         optimizer_config = {}
-        self._module = DiscreteBCTorchModule.from_env(env)
+        self._module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         self._rl_optimizer = BCTorchOptimizer(self._module, optimizer_config)
 
     @staticmethod
@@ -179,7 +183,11 @@ class TestRLOptimizer(unittest.TestCase):
     def test_rl_optimizer_in_behavioral_cloning_torch(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
-        module_for_inference = DiscreteBCTorchModule.from_env(env)
+        module_for_inference = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         trainer = BCTorchTrainer(env)
         trainer.set_state({"module_state": module_for_inference.get_state()})
@@ -224,7 +232,11 @@ class TestRLOptimizer(unittest.TestCase):
 
     def test_rl_optimizer_set_state_get_state_torch(self):
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_env(env)
+        module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         optim1 = BCTorchOptimizer(module, {"lr": 0.1})
         optim2 = BCTorchOptimizer(module, {"lr": 0.2})
 
