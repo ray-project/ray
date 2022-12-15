@@ -736,6 +736,8 @@ def run(
 
     try:
         runner.checkpoint(force=True)
+        if runner._syncer:
+            runner._syncer.wait()
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
