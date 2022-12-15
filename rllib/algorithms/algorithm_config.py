@@ -409,6 +409,7 @@ class AlgorithmConfig:
 
         # `self.checkpointing()`
         self.export_native_model_files = False
+        self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
         self.logger_creator = None
@@ -1985,6 +1986,7 @@ class AlgorithmConfig:
     def checkpointing(
         self,
         export_native_model_files: Optional[bool] = NotProvided,
+        checkpoint_trainable_policies_only: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's checkpointing settings.
 
@@ -1995,6 +1997,9 @@ class AlgorithmConfig:
                 from these files w/o requiring RLlib. These files are generated
                 by calling the tf- or torch- built-in saving utility methods on
                 the actual models.
+            checkpoint_trainable_policies_only: Whether to only add Policies to the
+                Algorithm checkpoint (in sub-directory "policies/") that are trainable
+                according to the `is_trainable_policy` callable of the local worker.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2002,6 +2007,8 @@ class AlgorithmConfig:
 
         if export_native_model_files is not NotProvided:
             self.export_native_model_files = export_native_model_files
+        if checkpoint_trainable_policies_only is not NotProvided:
+            self.checkpoint_trainable_policies_only = checkpoint_trainable_policies_only
 
         return self
 
