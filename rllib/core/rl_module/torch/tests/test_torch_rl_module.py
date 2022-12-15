@@ -1,12 +1,10 @@
 import gymnasium as gym
-from ray.rllib.policy.sample_batch import SampleBatch
 import torch
-import unittest
 from typing import Mapping
+import unittest
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-
 from ray.rllib.utils.test_utils import check
 
 
