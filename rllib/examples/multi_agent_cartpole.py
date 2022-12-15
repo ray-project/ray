@@ -56,6 +56,9 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--enable-rl-module-api", action="store_true", help="Use RLModule API."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -75,12 +78,21 @@ if __name__ == "__main__":
 
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
-        config = PPOConfig.overrides(
-            model={
-                "custom_model": ["model1", "model2"][i % 2],
-            },
-            gamma=random.choice([0.95, 0.99]),
-        )
+
+        if args.enable_rl_module_api:
+            # just change the gammas between the two policies.
+            # changing the module is not a critical part of this example.
+            # the important part is that the policies are different.
+            config = {
+                "gamma": random.choice([0.95, 0.99]),
+            }
+        else:
+            config = PPOConfig.overrides(
+                model={
+                    "custom_model": ["model1", "model2"][i % 2],
+                },
+                gamma=random.choice([0.95, 0.99]),
+            )
         return PolicySpec(config=config)
 
     # Setup PPO with an ensemble of `num_policies` different policies.
