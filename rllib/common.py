@@ -28,15 +28,15 @@ class SupportedFileType(str, Enum):
 
 
 def get_file_type(config_file: str) -> SupportedFileType:
-    if ".py" in config_file:
+    if config_file.endswith(".py"):
         file_type = SupportedFileType.python
-    elif ".yaml" in config_file or ".yml" in config_file:
+    elif config_file.endswith(".yaml") or config_file.endswith(".yml"):
         file_type = SupportedFileType.yaml
     else:
         raise ValueError(
             "Unknown file type for config "
             "file: {}. Supported extensions: .py, "
-            "yml, yaml.".format(config_file)
+            ".yml, .yaml".format(config_file)
         )
     return file_type
 
@@ -77,7 +77,14 @@ def download_example_file(
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
-        temp_file = tempfile.NamedTemporaryFile()
+        file_type = get_file_type(example_url)
+        if file_type == SupportedFileType.yaml:
+            temp_file = tempfile.NamedTemporaryFile(suffix=".yaml")
+        else:
+            assert (
+                file_type == SupportedFileType.python
+            ), f"`example_url` ({example_url}) must be a python or yaml file!"
+            temp_file = tempfile.NamedTemporaryFile(suffix=".py")
 
         r = requests.get(example_url)
         with open(temp_file.name, "wb") as f:
@@ -209,7 +216,7 @@ class CLIArguments:
 
     # Train arguments
     # __cli_train_start__
-    Stop = typer.Option(None, "--stop", "-s", help=get_help("stop"))
+    Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
     )

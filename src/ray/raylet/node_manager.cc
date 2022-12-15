@@ -338,9 +338,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_service_(ray_syncer_),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
-          RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
-          RayConfig::instance().memory_monitor_interval_ms(),
+          RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -445,7 +445,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
-
+  // GCS will check the health of the service named with the node id.
+  // Fail to setup this will lead to the health check failure.
+  node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+      self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
@@ -3059,9 +3062,9 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
       << not_retriable_recommendation_ss.str()
       << "To adjust the kill "
          "threshold, set the environment variable "
-         "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+         "`RAY_memory_usage_threshold` when starting Ray. To disable "
          "worker killing, set the environment variable "
-         "`RAY_memory_monitor_interval_ms` to zero.";
+         "`RAY_memory_monitor_refresh_ms` to zero.";
   return oom_kill_suggestions_ss.str();
 }
 
@@ -3070,7 +3073,7 @@ void NodeManager::SetTaskFailureReason(const TaskID &task_id,
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
   ray::TaskFailureEntry entry(failure_reason);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
-  if (result.second) {
+  if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
                         "task, the previous failure will be removed. Task id: "
                      << task_id;

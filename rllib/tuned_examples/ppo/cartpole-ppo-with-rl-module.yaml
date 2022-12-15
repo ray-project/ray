@@ -1,0 +1,21 @@
+cartpole-ppo:
+    env: CartPole-v1
+    run: PPO
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 100000
+    config:
+        # TODO (Kourosh): Works only for torch.
+        framework: torch
+        gamma: 0.99
+        lr: 0.0003
+        num_workers: 1
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+        enable_connectors: true
+        _enable_rl_module_api: true

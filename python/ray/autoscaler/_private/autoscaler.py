@@ -3,6 +3,7 @@ import logging
 import math
 import operator
 import os
+import queue
 import subprocess
 import threading
 import time
@@ -13,7 +14,6 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 
 import grpc
 import yaml
-from six.moves import queue
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,

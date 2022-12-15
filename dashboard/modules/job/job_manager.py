@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import signal
 import string
 import subprocess
 import sys
@@ -140,6 +141,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    WAIT_FOR_JOB_TERMINATION_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
     def __init__(
@@ -303,21 +305,15 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
-        try:
-            while child_process is not None:
-                return_code = child_process.poll()
-                if return_code is not None:
-                    # subprocess finished with return code
-                    return return_code
-                else:
-                    # still running, yield control, 0.1s by default
-                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except Exception:
-            if child_process:
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
-            return 1
+    async def _polling(self, child_process: subprocess.Popen) -> int:
+        while child_process is not None:
+            return_code = child_process.poll()
+            if return_code is not None:
+                # subprocess finished with return code
+                return return_code
+            else:
+                # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     async def run(
         self,
@@ -375,12 +371,38 @@ class JobSupervisor:
             )
 
             if self._stop_event.is_set():
-                polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
+                    polling_task.cancel()
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                    child_process.kill()
+                    try:
+                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                    except ProcessLookupError:
+                        # Process already completed.
+                        logger.info(
+                            f"Job {self._job_id} completed on its own before it could "
+                            "be manually terminated."
+                        )
+                        pass
+                    else:
+                        # Wait for job to terminate gracefully, otherwise kill process
+                        # forcefully after timeout.
+                        try:
+                            await asyncio.wait_for(
+                                polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                            )
+                            logger.info(
+                                f"Job {self._job_id} has been terminated gracefully."
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Attempt to gracefully terminate job {self._job_id} "
+                                "through SIGTERM has timed out after "
+                                f"{self.WAIT_FOR_JOB_TERMINATION_S} seconds. Job is "
+                                "now being force-killed."
+                            )
+                            polling_task.cancel()
+                            child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set

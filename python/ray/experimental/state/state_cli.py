@@ -814,7 +814,7 @@ Example:
     obtained from `ray start --head` or `ray.init()`).
 
     ```
-    ray logs --address="localhost:6379"
+    ray logs cluster
     ```
 
     [ray logs cluster] Print the last 500 lines of raylet.out on a head node.

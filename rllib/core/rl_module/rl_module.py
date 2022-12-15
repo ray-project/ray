@@ -1,12 +1,13 @@
 import abc
-from typing import Mapping, Any, Type, TYPE_CHECKING
+from dataclasses import dataclass
+import gym
+from typing import Mapping, Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
-    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
@@ -14,16 +15,39 @@ from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
+
 from ray.rllib.utils.typing import SampleBatchType
 
+
 ModuleID = str
+
+
+@ExperimentalAPI
+@dataclass
+class RLModuleConfig:
+    """Configuration for the PPO module.
+
+    # TODO (Kourosh): Whether we need this or not really depends on how the catalog
+    # design end up being.
+
+    Attributes:
+        observation_space: The observation space of the environment.
+        action_space: The action space of the environment.
+        max_seq_len: Max seq len for training an RNN model.
+        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink
+        this design?)
+    """
+
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    max_seq_len: int = None
 
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
-    Here is the pseudo code for how the forward methods are called:
+    Here is the pseudocode for how the forward methods are called:
 
     # During Training (acting in env from each rollout worker)
     ----------------------------------------------------------
@@ -76,9 +100,92 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: Mapping[str, Any] = None) -> None:
-        self.config = config or {}
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of RLModule.
+        # This method is called after the __init__ method of the subclass.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
+
+    def __post_init__(self):
+        """Called automatically after the __init__ method of the subclass.
+
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
+        method of the subclass is called, the __post_init__ method is called.
+
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
+        self._input_specs_train = self.input_specs_train()
+        self._output_specs_train = self.output_specs_train()
+        self._input_specs_exploration = self.input_specs_exploration()
+        self._output_specs_exploration = self.output_specs_exploration()
+        self._input_specs_inference = self.input_specs_inference()
+        self._output_specs_inference = self.output_specs_inference()
+
+    @classmethod
+    def from_model_config(
+        cls,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        model_config: Mapping[str, Any],
+    ) -> Union["RLModule", Mapping[str, Any]]:
+        """Creates a RLModule instance from a model config dict and spaces.
+
+        The model config dict is the same as the one passed to the AlgorithmConfig
+        object that contains global model configurations parameters.
+
+        This method can also be used to create a config dict for the module constructor
+        so it can be re-used to create multiple instances of the module.
+
+        Example:
+
+        .. code-block:: python
+
+            class MyModule(RLModule):
+                def __init__(self, input_dim, output_dim):
+                    self.input_dim, self.output_dim = input_dim, output_dim
+
+                @classmethod
+                def from_model_config(
+                    cls,
+                    observation_space: gym.Space,
+                    action_space: gym.Space,
+                    model_config: Mapping[str, Any],
+                    return_config: bool = False,
+                ):
+                    return cls(
+                        input_dim=observation_space.shape[0],
+                        output_dim=action_space.n
+                    )
+
+            module = MyModule.from_model_config(
+                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
+                action_space=gym.spaces.Discrete(2),
+                model_config={},
+            )
+
+
+        Args:
+            observation_space: The observation space of the env.
+            action_space: The action space of the env.
+            model_config: The model config dict.
+        """
+        raise NotImplementedError
+
+    def get_initial_state(self) -> NestedDict:
+        """Returns the initial state of the module.
+
+        This is used for recurrent models.
+        """
+        return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
@@ -119,7 +226,7 @@ class RLModule(abc.ABC):
         return ModelSpec()
 
     @check_specs(
-        input_spec="input_specs_inference", output_spec="output_specs_inference"
+        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
     )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
@@ -141,7 +248,7 @@ class RLModule(abc.ABC):
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_specs(
-        input_spec="input_specs_exploration", output_spec="output_specs_exploration"
+        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
     )
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
@@ -164,8 +271,11 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
+    def forward_train(
+        self,
+        batch: SampleBatchType,
+    ) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -178,7 +288,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch, **kwargs)
+        return self._forward_train(batch)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
@@ -202,12 +312,6 @@ class RLModule(abc.ABC):
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""
-        return self.get_multi_agent_class()({DEFAULT_POLICY_ID: self})
-
-    @classmethod
-    @OverrideToImplementCustomLogic
-    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
-        """Returns the multi-agent wrapper class for this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule
+        return MultiAgentRLModule({DEFAULT_POLICY_ID: self})

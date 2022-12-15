@@ -69,7 +69,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Build.
         algo = config.build()
@@ -87,7 +87,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Train via Ray Tune.
         tune.run("PPO", config=config)
@@ -97,7 +97,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
     .. code-block:: bash
 
-        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
+        rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
@@ -160,11 +160,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
 .. code-block:: python
 
     # Setup policy and rollout workers.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
         policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
+        env_creator=lambda c: gym.make("CartPole-v1"),
         num_workers=10)
 
     while True:

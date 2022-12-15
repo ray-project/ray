@@ -105,6 +105,7 @@ class DTConfig(AlgorithmConfig):
         loss_coef_obs: Optional[float] = NotProvided,
         loss_coef_returns_to_go: Optional[float] = NotProvided,
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        horizon: Optional[int] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -163,6 +164,8 @@ class DTConfig(AlgorithmConfig):
             loss_coef_returns_to_go: Coefficients on the loss for the returns_to_go
                 output. Default to 0. Set to a value greater than 0 to regress on the
                 returns_to_go output.
+            horizon: The episode horizon used. This value can be derived from your
+                environment via `[your_env]._max_episode_steps`.
             **kwargs: Forward compatibility kwargs
 
         Returns:
@@ -202,6 +205,8 @@ class DTConfig(AlgorithmConfig):
             self.loss_coef_obs = loss_coef_obs
         if loss_coef_returns_to_go is not NotProvided:
             self.loss_coef_returns_to_go = loss_coef_returns_to_go
+        if horizon is not NotProvided:
+            self.horizon = horizon
 
         return self
 
@@ -226,6 +231,16 @@ class DTConfig(AlgorithmConfig):
             self.target_return = target_return
 
         return self
+
+    @override(AlgorithmConfig)
+    def rollouts(self, *args, **kwargs):
+        if "horizon" in kwargs:
+            raise ValueError(
+                "`horizon` setting no longer supported via "
+                "`config.rollouts(horizon=..)`! This is a DT-only setting now and "
+                "must be specified via `config.training(horizon=..)`."
+            )
+        return super().rollouts(*args, **kwargs)
 
     @override(AlgorithmConfig)
     def validate(self) -> None:

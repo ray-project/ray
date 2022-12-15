@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from ray._private.utils import get_or_create_event_loop
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 try:
     from packaging.version import Version
@@ -101,6 +102,17 @@ class HttpServerDashboardHead:
 
     @routes.get("/")
     async def get_index(self, req) -> aiohttp.web.FileResponse:
+        try:
+            # This API will be no-op after the first report.
+            # Note: We always record the usage, but it is not reported
+            # if the usage stats is disabled.
+            record_extra_usage_tag(TagKey.DASHBOARD_USED, "True")
+        except Exception as e:
+            logger.warning(
+                "Failed to record the dashboard usage. "
+                "This error message is harmless and can be ignored. "
+                f"Error: {e}"
+            )
         return aiohttp.web.FileResponse(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"

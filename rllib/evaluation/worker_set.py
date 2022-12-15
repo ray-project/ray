@@ -933,16 +933,10 @@ class WorkerSet:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[RolloutWorker, ActorHandle]:
-        def session_creator():
-            # Default session creator function, if `tf_session_args` are provided.
-            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
-            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
-
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
             default_policy_class=self._policy_class,
-            tf_session_creator=(session_creator if config["tf_session_args"] else None),
             config=config,
             worker_index=worker_index,
             num_workers=num_workers,

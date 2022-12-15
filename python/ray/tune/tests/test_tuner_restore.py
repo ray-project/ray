@@ -4,6 +4,7 @@ import shutil
 import time
 import unittest
 from pathlib import Path
+import logging
 
 import pytest
 
@@ -15,6 +16,8 @@ from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
+from ray.tune.schedulers.async_hyperband import ASHAScheduler
+from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -101,6 +104,13 @@ class _FailOnStats(Callback):
             )
         else:
             print("Not failing:", [(t.status, t.last_result.get("it")) for t in trials])
+
+
+class MockData:
+    def __init__(self):
+        import numpy as np
+
+        self.data = np.random.rand((2 * 1024 * 1024))
 
 
 def test_tuner_restore_num_trials(ray_start_4_cpus, tmpdir):
@@ -257,8 +267,8 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir):
             ),
         },
     )
-    # Catch the FailOnStats erro
-    with pytest.raises(tune.TuneError):
+    # Catch the FailOnStats error
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -316,7 +326,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
         },
     )
     # Catch the FailOnStats error
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -511,6 +521,138 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 2
 
 
+def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
+    """Test validation for trainable compatibility, when re-specifying a trainable
+    on restore."""
+
+    def train_func_1(config):
+        data = {"data": config["data"]}
+        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        raise RuntimeError("Failing!")
+
+    tuner = Tuner(
+        train_func_1,
+        run_config=RunConfig(name="overwrite_trainable", local_dir=str(tmpdir)),
+        param_space={"data": 1},
+    )
+    tuner.fit()
+
+    del tuner
+
+    # Can't overwrite with a different Trainable type
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable="__fake",
+            resume_errored=True,
+        )
+
+    # Can't overwrite with a different Trainable name
+    def train_func_2(config):
+        checkpoint = session.get_checkpoint()
+        assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
+
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable=train_func_2,
+            resume_errored=True,
+        )
+
+    # Can still change trainable code, but logs a warning
+    def train_func_1(config):
+        checkpoint = session.get_checkpoint()
+        assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable=train_func_1,
+            resume_errored=True,
+        )
+        assert "The trainable will be overwritten" in caplog.text
+
+    results = tuner.fit()
+    assert not results.errors
+
+
+@pytest.mark.parametrize("use_function_trainable", [True, False])
+def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_trainable):
+    """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
+
+    def train_func(config, data_str=None, data_obj=None):
+        assert data_str is not None and data_obj is not None
+        fail_marker = config.pop("fail_marker", None)
+        config["failing_hanging"] = (fail_marker, None)
+        _train_fn_sometimes_failing(config)
+
+    class FailingTrainable(Trainable):
+        def setup(self, config, data_str=None, data_obj=None):
+            assert data_str is not None and data_obj is not None
+            self.idx = 0
+            self.fail_marker = config.get("fail_marker", None)
+
+        def step(self):
+            if self.fail_marker and self.fail_marker.exists():
+                raise RuntimeError("==== Run is failing ====")
+            self.idx += 1
+            return {"score": self.idx}
+
+        def save_checkpoint(self, checkpoint_dir):
+            return {"idx": self.idx}
+
+        def load_checkpoint(self, checkpoint_dict):
+            self.idx = checkpoint_dict["idx"]
+
+    trainable = train_func if use_function_trainable else FailingTrainable
+
+    def create_trainable_with_params():
+        data = MockData()
+        trainable_with_params = tune.with_parameters(
+            trainable, data_str="data", data_obj=data
+        )
+        return trainable_with_params
+
+    exp_name = "restore_with_params"
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    tuner = Tuner(
+        create_trainable_with_params(),
+        run_config=RunConfig(
+            name=exp_name,
+            local_dir=str(tmp_path),
+            stop={"training_iteration": 3},
+            failure_config=FailureConfig(max_failures=0),
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        ),
+        param_space={"fail_marker": fail_marker},
+    )
+    results = tuner.fit()
+    assert results.errors
+
+    tuner = Tuner.restore(
+        str(tmp_path / exp_name),
+        resume_errored=True,
+    )
+    # Should still be able to access results
+    assert len(tuner.get_results().errors) == 1
+
+    # Continuing to fit should fail if we didn't re-specify the trainable
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    fail_marker.unlink()
+    tuner = Tuner.restore(
+        str(tmp_path / exp_name),
+        resume_errored=True,
+        overwrite_trainable=create_trainable_with_params(),
+    )
+    results = tuner.fit()
+    assert not results.errors
+
+
 @pytest.mark.parametrize("use_tune_run", [True, False])
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, use_tune_run
@@ -604,6 +746,58 @@ def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
     results = tuner.fit()
     assert not results.errors
     assert results[0].metrics["score"] == 1
+
+
+def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
+    """Check that a restored Tune experiment uses the original searcher/scheduler."""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    class MockSearcher(OptunaSearch):
+        def on_trial_result(self, trial_id: str, result: dict):
+            super().on_trial_result(trial_id, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+
+    class MockScheduler(ASHAScheduler):
+        def on_trial_result(self, runner, trial, result):
+            decision = super().on_trial_result(runner, trial, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+            return decision
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        run_config=RunConfig(local_dir=str(tmpdir), name="exp_name"),
+        tune_config=TuneConfig(
+            search_alg=MockSearcher(),
+            scheduler=MockScheduler(),
+            metric="it",
+            mode="max",
+        ),
+        param_space={"a": tune.uniform(0, 1), "failing_hanging": (fail_marker, None)},
+    )
+    tuner.fit()
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    tuner = Tuner.restore(str(tmpdir / "exp_name"), resume_errored=True)
+    tuner.fit()
+    searcher = tuner._local_tuner._tune_config.search_alg
+    scheduler = tuner._local_tuner._tune_config.scheduler
+    assert isinstance(searcher, MockSearcher)
+    assert isinstance(scheduler, MockScheduler)
+    # Searcher state should get loaded correctly
+    # Total of 3 reported results (1 from before failure, 2 after restore)
+    assert searcher._test_result_counter == 3
+    # Make sure that the restored scheduler is at least used
+    assert (
+        hasattr(scheduler, "_test_result_counter")
+        and scheduler._test_result_counter > 0
+    )
 
 
 if __name__ == "__main__":

@@ -47,7 +47,8 @@ DEFINE_stats(
     // State: the task state, as described by rpc::TaskState proto in common.proto.
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Name", "Source"),
+    // IsRetry: whether this task is a retry.
+    ("State", "Name", "Source", "IsRetry"),
     (),
     ray::stats::GAUGE);
 
@@ -295,6 +296,36 @@ DEFINE_stats(gcs_placement_group_count,
 DEFINE_stats(gcs_actors_count,
              "Number of actors per state {Created, Destroyed, Unresolved, Pending}",
              ("State"),
+             (),
+             ray::stats::GAUGE);
+
+/// GCS Task Manager
+DEFINE_stats(gcs_task_manager_task_events_reported,
+             "Number of all task events reported to gcs.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_dropped,
+             /// Type:
+             ///     - PROFILE_EVENT: number of profile task events dropped from both
+             ///     workers and GCS.
+             ///     - STATUS_EVENT: number of task status updates events dropped from
+             ///     both workers and GCS.
+             "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
+             ("Type"),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored,
+             "Number of task events stored in GCS.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
+             "Number of bytes of all task events stored in GCS.",
+             (),
              (),
              ray::stats::GAUGE);
 

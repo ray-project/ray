@@ -17,18 +17,14 @@
 namespace ray {
 namespace gcs {
 UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
-                                   instrumented_io_context &io_service)
-    : io_service_(io_service) {
+                                   instrumented_io_context &io_service) {
   GcsClientOptions options(gcs_address);
   gcs_client_ = std::make_unique<GcsClient>(options);
+  RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
 
 void UsageStatsClient::RecordExtraUsageTag(const std::string &key,
                                            const std::string &value) {
-  if (!gcs_client_->IsConnected()) {
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  }
-
   RAY_CHECK_OK(gcs_client_->InternalKV().AsyncInternalKVPut(
       kUsageStatsNamespace,
       kExtraUsageTagPrefix + key,

@@ -257,20 +257,6 @@ class TestExternalEnv(unittest.TestCase):
             if not reached:
                 raise Exception("failed to improve reward")
 
-    def test_external_env_horizon_not_supported(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: SimpleServing(MockEnv(25)),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=10,
-                horizon=20,
-                batch_mode="complete_episodes",
-                num_rollout_workers=0,
-                enable_connectors=False,
-            ),
-        )
-        self.assertRaises(ValueError, lambda: ev.sample())
-
 
 if __name__ == "__main__":
     import pytest

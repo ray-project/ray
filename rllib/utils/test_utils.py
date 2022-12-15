@@ -33,7 +33,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
 
@@ -461,6 +461,13 @@ def check_compute_single_action(
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test(
                                 what,
                                 method_to_test,
@@ -597,7 +604,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results):
+def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -642,7 +649,18 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    is_multi_agent = train_results["config"].is_multi_agent()
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict(train_results["config"]["multiagent"])
+        .is_multi_agent()
+    )
 
     # Check in particular the "info" dict.
     info = train_results["info"]

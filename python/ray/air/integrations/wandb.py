@@ -3,14 +3,13 @@ import os
 import pickle
 import urllib
 
-from multiprocessing import Process, Queue
-
 import numpy as np
 from numbers import Number
 
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import ray
 from ray import logger
 from ray.air import session
 
@@ -19,7 +18,9 @@ from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
 from ray._private.storage import _load_class
+from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
+from ray.util.queue import Queue
 
 try:
     import wandb
@@ -40,6 +41,13 @@ WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
 # It doesn't take in any arguments and returns the W&B API key.
 # Example: "your.module.wandb_setup_api_key_hook".
 WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
+# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
+# to populate environment variables to specify the location
+# (project and group) of the W&B run.
+# It doesn't take in any arguments and doesn't return anything, but it does populate
+# WANDB_PROJECT_NAME and WANDB_GROUP_NAME.
+# Example: "your.module.wandb_populate_run_location_hook".
+WANDB_POPULATE_RUN_LOCATION_HOOK = "WANDB_POPULATE_RUN_LOCATION_HOOK"
 # Hook that is invoked after running wandb.init in WandbLoggerCallback
 # to process information about the W&B run.
 # It takes in a W&B run object and doesn't return anything.
@@ -142,6 +150,12 @@ def _setup_wandb(
         api_key_file = os.path.expanduser(api_key_file)
 
     _set_api_key(api_key_file, wandb_config.pop("api_key", None))
+    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
+    wandb_config["group"] = (
+        os.environ.get(WANDB_GROUP_ENV_VAR)
+        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
+        else wandb_config.get("group")
+    )
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -167,7 +181,9 @@ def _setup_wandb(
 
     _wandb = _wandb or wandb
 
-    return _wandb.init(**wandb_init_kwargs)
+    run = _wandb.init(**wandb_init_kwargs)
+    _run_wandb_process_run_info_hook(run)
+    return run
 
 
 def _is_allowed_type(obj):
@@ -223,6 +239,31 @@ def _clean_log(obj: Any):
         return fallback
 
 
+def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
+    """Get W&B project from environment variable or external hook if not passed
+    as and argument."""
+    if (
+        not project
+        and not os.environ.get(WANDB_PROJECT_ENV_VAR)
+        and os.environ.get(WANDB_POPULATE_RUN_LOCATION_HOOK)
+    ):
+        # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
+        # from external hook
+        try:
+            _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+        except Exception as e:
+            logger.exception(
+                f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
+                f"populate {WANDB_PROJECT_ENV_VAR} and {WANDB_GROUP_ENV_VAR}: {e}",
+                exc_info=e,
+            )
+    if not project and os.environ.get(WANDB_PROJECT_ENV_VAR):
+        # Try to get project and group from environment variables if not
+        # passed through WandbLoggerCallback.
+        project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+    return project
+
+
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
@@ -259,16 +300,29 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
         )
 
 
+def _run_wandb_process_run_info_hook(run: Any) -> None:
+    """Run external hook to process information about wandb run"""
+    if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
+        try:
+            _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+        except Exception as e:
+            logger.exception(
+                f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
+            )
+
+
 class _QueueItem(enum.Enum):
     END = enum.auto()
     RESULT = enum.auto()
     CHECKPOINT = enum.auto()
 
 
-class _WandbLoggingProcess(Process):
+class _WandbLoggingActor:
     """
-    We need a `multiprocessing.Process` to allow multiple concurrent
-    wandb logging instances locally.
+    We need a separate process to allow multiple concurrent
+    wandb logging instances locally. We use Ray actors as forking multiprocessing
+    processes is not supported by Ray and spawn processes run into pickling
+    problems.
 
     We use a queue for the driver to communicate with the logging process.
     The queue accepts the following items:
@@ -287,8 +341,6 @@ class _WandbLoggingProcess(Process):
         *args,
         **kwargs,
     ):
-        super(_WandbLoggingProcess, self).__init__()
-
         import wandb
 
         self._wandb = wandb
@@ -309,14 +361,7 @@ class _WandbLoggingProcess(Process):
         run = self._wandb.init(*self.args, **self.kwargs)
         run.config.trial_log_path = self._logdir
 
-        # Run external hook to process information about wandb run
-        if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
-            try:
-                _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
-            except Exception as e:
-                logger.exception(
-                    f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
-                )
+        _run_wandb_process_run_info_hook(run)
 
         while True:
             item_type, item_content = self.queue.get()
@@ -362,9 +407,6 @@ class _WandbLoggingProcess(Process):
 
         config_update.pop("callbacks", None)  # Remove callbacks
         return log, config_update
-
-    def __reduce__(self):
-        raise RuntimeError("_WandbLoggingProcess is not pickleable.")
 
 
 class WandbLoggerCallback(LoggerCallback):
@@ -434,7 +476,7 @@ class WandbLoggerCallback(LoggerCallback):
         "date",
     ]
 
-    _logger_process_cls = _WandbLoggingProcess
+    _logger_actor_cls = _WandbLoggingActor
 
     def __init__(
         self,
@@ -456,7 +498,12 @@ class WandbLoggerCallback(LoggerCallback):
         self.save_checkpoints = save_checkpoints
         self.kwargs = kwargs
 
-        self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
+        self._remote_logger_class = None
+
+        self._trial_logging_actors: Dict[
+            "Trial", ray.actor.ActorHandle[_WandbLoggingActor]
+        ] = {}
+        self._trial_logging_futures: Dict["Trial", ray.ObjectRef] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self, *args, **kwargs):
@@ -465,10 +512,7 @@ class WandbLoggerCallback(LoggerCallback):
         )
         _set_api_key(self.api_key_file, self.api_key)
 
-        # Try to get project and group from environment variables if not
-        # passed through WandbLoggerCallback.
-        if not self.project and os.environ.get(WANDB_PROJECT_ENV_VAR):
-            self.project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+        self.project = _get_wandb_project(self.project)
         if not self.project:
             raise ValueError(
                 "Please pass the project name as argument or through "
@@ -516,18 +560,50 @@ class WandbLoggerCallback(LoggerCallback):
         )
         wandb_init_kwargs.update(self.kwargs)
 
-        self._trial_queues[trial] = Queue()
-        self._trial_processes[trial] = self._logger_process_cls(
+        self._start_logging_actor(trial, exclude_results, **wandb_init_kwargs)
+
+    def _start_logging_actor(
+        self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
+    ):
+        if not self._remote_logger_class:
+            env_vars = {}
+            # API key env variable is not set if authenticating through `wandb login`
+            if WANDB_ENV_VAR in os.environ:
+                env_vars[WANDB_ENV_VAR] = os.environ[WANDB_ENV_VAR]
+            self._remote_logger_class = ray.remote(
+                num_cpus=0,
+                **_force_on_current_node(),
+                runtime_env={"env_vars": env_vars},
+            )(self._logger_actor_cls)
+
+        self._trial_queues[trial] = Queue(
+            actor_options={"num_cpus": 0, **_force_on_current_node()}
+        )
+        self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
             **wandb_init_kwargs,
         )
-        self._trial_processes[trial].start()
+        self._trial_logging_futures[trial] = self._trial_logging_actors[
+            trial
+        ].run.remote()
+
+    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+        self._trial_queues[trial].put((_QueueItem.END, None))
+
+        try:
+            ray.get(self._trial_logging_futures[trial], timeout=timeout)
+        except TimeoutError:
+            ray.kill(self._trial_logging_actors[trial])
+
+        del self._trial_queues[trial]
+        del self._trial_logging_actors[trial]
+        del self._trial_logging_futures[trial]
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        if trial not in self._trial_processes:
+        if trial not in self._trial_logging_actors:
             self.log_trial_start(trial)
 
         result = _clean_log(result)
@@ -540,23 +616,12 @@ class WandbLoggerCallback(LoggerCallback):
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._trial_queues[trial].put((_QueueItem.END, None))
-        self._trial_processes[trial].join(timeout=10)
-
-        if self._trial_processes[trial].is_alive():
-            self._trial_processes[trial].kill()
-
-        del self._trial_queues[trial]
-        del self._trial_processes[trial]
+        self._stop_logging_actor(trial=trial, timeout=10)
 
     def __del__(self):
-        for trial in self._trial_processes:
-            if trial in self._trial_queues:
-                self._trial_queues[trial].put((_QueueItem.END, None))
-            self._trial_processes[trial].join(timeout=2)
+        for trial in list(self._trial_logging_actors):
+            self._stop_logging_actor(trial=trial, timeout=2)
 
-            if self._trial_processes[trial].is_alive():
-                self._trial_processes[trial].kill()
-
-        self._trial_processes = {}
+        self._trial_logging_actors = {}
+        self._trial_logging_futures = {}
         self._trial_queues = {}
