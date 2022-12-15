@@ -545,7 +545,7 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
 def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating stage-level stats:
-    `DatasetStats.get_total_wall_time()`,
+    `DatasetStats.get_max_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
     context = DatasetContext.get_current()
@@ -558,7 +558,7 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     )
     calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
     wall_time_stats = calculated_stats.get(DatasetStats.WALL_TIME)
-    assert stats.get_total_wall_time() == wall_time_stats.get("sum")
+    assert stats.get_max_wall_time() == wall_time_stats.get("max")
 
     cpu_time_stats = calculated_stats.get(DatasetStats.CPU_TIME)
     assert stats.get_total_cpu_time() == cpu_time_stats.get("sum")
