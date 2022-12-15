@@ -317,7 +317,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = False
+        self.enable_connectors = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
