@@ -55,9 +55,6 @@ export const NodeCountCard = () => {
         >
           <Typography variant="h4">View all nodes →</Typography>
         </Link>
-        <Link className={classes.link} to="">
-          <Typography variant="h4">View autoscaler →</Typography>
-        </Link>
       </div>
     </OverviewCard>
   );

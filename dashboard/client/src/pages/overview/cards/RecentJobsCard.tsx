@@ -18,7 +18,11 @@ const useStyles = makeStyles((theme) =>
       display: "flex",
       flexDirection: "column",
     },
-    listContainer: { marginTop: theme.spacing(2), flex: 1 },
+    listContainer: {
+      marginTop: theme.spacing(2),
+      flex: 1,
+      overflow: "hidden",
+    },
     listItem: {
       "&:not(:first-child)": {
         marginTop: theme.spacing(1),
@@ -35,7 +39,7 @@ export const RecentJobsCard = () => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
-  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
+  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 5);
 
   return (
     <OverviewCard className={classes.root}>
@@ -48,6 +52,9 @@ export const RecentJobsCard = () => {
             job={job}
           />
         ))}
+        {sortedJobs.length === 0 && (
+          <Typography variant="h4">No jobs yet...</Typography>
+        )}
       </div>
       <Link className={classes.viewAllJobs} to="/new/jobs">
         <Typography variant="h4">View all jobs →</Typography>
@@ -69,6 +76,15 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       width: 20,
       height: 20,
       marginRight: theme.spacing(1),
+      flex: "0 0 20px",
+    },
+    "@keyframes spinner": {
+      from: {
+        transform: "rotate(0deg)",
+      },
+      to: {
+        transform: "rotate(360deg)",
+      },
     },
     colorSuccess: {
       color: theme.palette.success.main,
@@ -76,11 +92,24 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
     colorError: {
       color: theme.palette.error.main,
     },
-    colorRunning: {
+    iconRunning: {
       color: "#1E88E5",
+      animationName: "$spinner",
+      animationDuration: "1000ms",
+      animationIterationCount: "infinite",
+      animationTimingFunction: "linear",
+    },
+    textContainer: {
+      flex: "1 1 auto",
+      width: `calc(100% - ${theme.spacing(1) + 20}px)`,
     },
     title: {
       color: "#036DCF",
+    },
+    entrypoint: {
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
   }),
 );
@@ -111,7 +140,7 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
       default:
         return (
           <RiLoader4Line
-            className={classNames(classes.icon, classes.colorRunning)}
+            className={classNames(classes.icon, classes.iconRunning)}
           />
         );
     }
@@ -120,9 +149,14 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
     <div className={className}>
       <Link className={classes.root} to={`/new/jobs/${job.job_id}`}>
         {icon}
-        <Typography className={classes.title} variant="h4">
-          {job.job_id ?? job.submission_id}
-        </Typography>
+        <div className={classes.textContainer}>
+          <Typography className={classes.title} variant="h4">
+            {job.job_id ?? job.submission_id}
+          </Typography>
+          <Typography className={classes.entrypoint}>
+            {job.entrypoint}
+          </Typography>
+        </div>
       </Link>
     </div>
   );
