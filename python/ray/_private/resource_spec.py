@@ -275,11 +275,7 @@ def _autodetect_num_gpus():
     """
     result = 0
     if importlib.util.find_spec("GPUtil"):
-        try:
-            gpu_list = GPUtil.getGPUs()
-        except ValueError:
-            # gputil issue gh-26
-            return 0
+        gpu_list = GPUtil.getGPUs()
         result = len(gpu_list)
     elif sys.platform.startswith("linux"):
         proc_gpus_path = "/proc/driver/nvidia/gpus"
