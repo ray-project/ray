@@ -254,7 +254,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
-        await asyncio.gather([self._update_actors(), self._cleanup_actors()])
+        await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod
     def is_minimal_module():

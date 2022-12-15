@@ -1857,7 +1857,7 @@ class DeferSigint(contextlib.AbstractContextManager):
 background_tasks = set()
 
 
-def run_background_task(coroutine: Coroutine, *args, **kwargs) -> asyncio.Task:
+def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     """Schedule a task reliably to the event loop.
 
     This API is used when you don't want to cache the reference of `asyncio.Task`.
@@ -1875,8 +1875,7 @@ def run_background_task(coroutine: Coroutine, *args, **kwargs) -> asyncio.Task:
 
     https://docs.python.org/3/library/asyncio-task.html#creating-tasks
     """
-    task = get_or_create_event_loop().create_task(coroutine(*args, **kwargs))
-    global background_tasks
+    task = get_or_create_event_loop().create_task(coroutine)
     # Add task to the set. This creates a strong reference.
     background_tasks.add(task)
 
