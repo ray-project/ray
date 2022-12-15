@@ -1333,6 +1333,26 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
           memory_object_ids.erase(current);
         }
       }
+    } else if (RayConfig::instance().core_worker_new_path() == 6) {
+      size_t max_bytes_to_send_to_plasma = 1024 * 1024 * 2; // 64MB
+      size_t cur_bytes_to_plasma = 0;
+      size_t max_to_look_through = 1024;
+      size_t looked_through = 0;
+      for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end() && looked_through < max_to_look_through; ++looked_through) {
+        auto current = iter++;
+        const auto &mem_id = *current;
+        auto found = memory_store->GetIfExists(mem_id);
+        if (found != nullptr && found->IsInPlasmaError()) {
+          plasma_object_ids.insert(mem_id);
+          ready.erase(mem_id);
+          memory_object_ids.erase(current);
+          cur_bytes_to_plasma += found->GetSize();
+
+          if (cur_bytes_to_plasma >= max_bytes_to_send_to_plasma) {
+            break;
+          }
+        }
+      }
     } else {
         RAY_CHECK(false);
     }
