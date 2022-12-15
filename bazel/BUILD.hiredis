@@ -7,6 +7,8 @@ filegroup(
     ),
 )
 
+
+
 cmake(
     name = "libhiredis",
     defines = [
@@ -20,5 +22,15 @@ cmake(
         "@boringssl//:ssl",
         "@boringssl//:crypto"
     ],
+    out_static_libs = select({
+        "@bazel_tools//src/conditions:windows": [
+            "hiredis.lib",
+            "hiredis_ssl.lib",
+        ],
+        "//conditions:default": [
+            "libhiredis.a",
+            "libhiredis_ssl.a",
+        ]
+    }),
     visibility = ["//visibility:public"],
 )
