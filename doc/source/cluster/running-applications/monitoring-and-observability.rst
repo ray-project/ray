@@ -142,7 +142,7 @@ start``.  If using KubeRay, you can specify
 ``rayStartParams.metrics-export-port`` in the RayCluster configuration file.
 The port must be specified on all nodes in the cluster.
 
-If you do not know the IP addresses of the nodes in your Ray cluster, 
+If you do not know the IP addresses of the nodes in your Ray cluster,
 you can also programmatically discover the endpoints by reading the
 Ray Cluster information. Here, we will use a Python script and the
 ``ray.nodes()`` API to find the metrics agents' URLs, by combining the
@@ -188,3 +188,14 @@ Ray Cluster information. Here, we will use a Python script and the
                     'object_store_memory': 2.0},
      'alive': True}]
     """
+
+Setting up Grafana and Metrics
+##############################
+
+One common pattern of supporting :ref:`metrics <ray-metrics>` on a remote ray cluster is by running the Prometheus and Grafana services
+on the head node of the cluster. However, in order to view the :ref:`Dashboard <ray-dashboard>` metrics on your local
+machine, you must configure the Dashboard UI to embed the metrics graphs via a public address for the Grafana instance.
+
+The `RAY_GRAFANA_HOST` env var can be set when launching Ray to configure how the Dashboard UI embeds the metrics.
+For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
+to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
