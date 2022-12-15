@@ -1602,6 +1602,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         filters = self.get_filters(flush_after=True)
         policy_states = {}
         for pid in self.policy_map.keys():
+            # If required by the user, only capture policies that are actually
+            # trainable. Otherwise, capture all policies (for saving to disk).
             if (
                 not self.config.checkpoint_trainable_policies_only
                 or self.is_policy_to_train is None
