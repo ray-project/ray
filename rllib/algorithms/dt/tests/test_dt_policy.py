@@ -39,6 +39,7 @@ def _default_config():
         "loss_coef_returns_to_go": 0,
         "num_gpus": 0,
         "_fake_gpus": None,
+        "_enable_rl_module_api": False,
     }
 
 
