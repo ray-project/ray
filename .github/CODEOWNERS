@@ -27,6 +27,9 @@
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 

@@ -183,6 +183,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // since we need to know the port the rpc server listens on.
   InitUsageStatsClient();
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
