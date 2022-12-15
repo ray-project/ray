@@ -166,7 +166,6 @@ def _calc_mem_per_ray_worker_node(
     available_shared_mem_per_node = int(
         shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
-
     if object_store_memory_per_node is None:
         object_store_bytes = available_shared_mem_per_node
     else:

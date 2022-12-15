@@ -26,6 +26,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     @classmethod
     def teardown_class(cls):
+        time.sleep(8)  # Wait all background spark job canceled.
         cls.spark.stop()
 
     @staticmethod
@@ -201,7 +202,7 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
 
 if __name__ == "__main__":
     os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
-    os.environ["RAY_ON_SPARK_RAY_WORKER_STARTUP_INTERVAL"] = "5"
+    os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
