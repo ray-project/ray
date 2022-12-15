@@ -106,7 +106,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
             )
 
     # Test different batch formats of map_batches.
-    for current_format in ["pyarrow", "pandas", "numpy"]:
+    for current_format in ["pyarrow", "pandas"]:
         new_input_ds = input_ds.map_batches(
             lambda ds: ds, batch_format=current_format, batch_size=None
         ).fully_executed()
