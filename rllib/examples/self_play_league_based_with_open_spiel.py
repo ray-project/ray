@@ -85,14 +85,14 @@ def get_cli_args():
         "of previously frozen 'main's from here on.",
     )
     parser.add_argument(
-        "--enable-rl-module-api", action="store_true", help="Use RLModule API."
-    )
-    parser.add_argument(
         "--num-episodes-human-play",
         type=int,
         default=10,
         help="How many episodes to play against the user on the command "
         "line after training has finished.",
+    )
+    parser.add_argument(
+        "--enable-rl-module-api", action="store_true", help="Use RLModule API."
     )
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
