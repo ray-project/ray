@@ -164,7 +164,9 @@ class GcsPublisher(_PublisherBase):
         channel = gcs_utils.create_gcs_channel(address)
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
-    def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
+    def publish_error(
+        self, key_id: bytes, error_info: ErrorTableData, num_retries=None
+    ) -> None:
         """Publishes error info to GCS."""
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
@@ -172,7 +174,7 @@ class GcsPublisher(_PublisherBase):
             error_info_message=error_info,
         )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        self._gcs_publish(req)
+        self._gcs_publish(req, num_retries, timeout=1)
 
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
@@ -184,16 +186,17 @@ class GcsPublisher(_PublisherBase):
         req = self._create_function_key_request(key)
         self._gcs_publish(req)
 
-    def _gcs_publish(self, req) -> None:
-        count = MAX_GCS_PUBLISH_RETRIES
+    def _gcs_publish(self, req, num_retries=None, timeout=None) -> None:
+        count = num_retries or MAX_GCS_PUBLISH_RETRIES
         while count > 0:
             try:
-                self._stub.GcsPublish(req)
+                self._stub.GcsPublish(req, timeout=timeout)
                 return
             except _InactiveRpcError:
                 pass
-            time.sleep(1)
             count -= 1
+            if count > 0:
+                time.sleep(1)
         raise TimeoutError(f"Failed to publish after retries: {req}")
 
 

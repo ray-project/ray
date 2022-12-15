@@ -128,12 +128,12 @@ if __name__ == "__main__":
                     "pol1": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 0},
+                        config=config.overrides(agent_id=0),
                     ),
                     "pol2": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 1},
+                        config=config.overrides(agent_id=1),
                     ),
                 },
                 policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
