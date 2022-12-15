@@ -397,13 +397,17 @@ class LogMonitor:
                     normpath = os.path.normpath(file_info.filename)
                     return os.path.split(normpath)[1].startswith(key)
 
-                if is_logfile("raylet", file_info):
+                # if is_logfile("raylet", file_info):
+                if "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
-                elif is_logfile("gcs_server", file_info):
+                # elif is_logfile("gcs_server", file_info):
+                elif "/gcs_server" in file_info.filename:
                     file_info.worker_pid = "gcs_server"
-                elif is_logfile("monitor", file_info):
+                # elif is_logfile("monitor", file_info):
+                elif "/monitor" in file_info.filename:
                     file_info.worker_pid = "autoscaler"
-                elif is_logfile("runtime_env", file_info):
+                # elif is_logfile("runtime_env", file_info):
+                elif "/runtime_env" in file_info.filename:
                     file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.
