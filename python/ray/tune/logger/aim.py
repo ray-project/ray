@@ -59,7 +59,7 @@ class AimCallback(LoggerCallback):
             """
         except ImportError:
             if log_once("aim-install"):
-                logger.info('"pip install aim" to be able to use the aim logger.')
+                logger.info("Please run `pip install aim` to use the AimLogger.")
             raise
 
         self._trial_run: Dict["Trial", Run] = {}
