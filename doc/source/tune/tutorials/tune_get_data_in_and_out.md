@@ -50,7 +50,7 @@ First order of business is to provide the inputs for the Trainable. We can broad
 
 Variables are the parameters we want to tune. They will be different for every [Trial](tune_60_seconds_trials). For example, those may be the learning rate and batch size for a neural network, number of trees and the maximum depth for a random forest, or the data partition if you are using Tune as an execution engine for batch training.
 
-Constants are the parameters that are the same for every Trial. Those can be the number of epochs, model hyperparameters we want to set but not tune, the dataset and so on. Often, the constants will be quite large (eg. the dataset or the model).
+Constants are the parameters that are the same for every Trial. Those can be the number of epochs, model hyperparameters we want to set but not tune, the dataset and so on. Often, the constants will be quite large (e.g. the dataset or the model).
 
 ### Search space
 
@@ -58,13 +58,13 @@ Constants are the parameters that are the same for every Trial. Those can be the
 TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
 ```
 
-The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or out of constant values. The search space may be composed out of nested dictionaries, and those in turn can have distributions as well.
+The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
 
 ```{warning}
 Each value in the search space will be saved directly in the Trial metadata. This means that every value in the search space **must** be serializable and take up a small amount of memory.
 ```
 
-For example, passing in a large pandas DataFrame or an unserializable model object as a value in the search space will at best cause large slowdowns and disk space usage as Trial metadata saved to disk will also contain this data, or at worst, an exception as the data cannot be sent over to the Trial workers. For more details, see {ref}`tune-bottlenecks`.
+For example, passing in a large pandas DataFrame or an unserializable model object as a value in the search space will lead to unwanted behavior. At best it will cause large slowdowns and disk space usage as Trial metadata saved to disk will also contain this data. At worst, an exception will be raised, as the data cannot be sent over to the Trial workers. For more details, see {ref}`tune-bottlenecks`.
 
 Instead, use strings or other identifiers as your values, and initialize/load the objects inside your Trainable directly depending on those.
 
@@ -170,7 +170,7 @@ tuner = Tuner(
 
 ### Loading data in Trainable
 
-You can also load data directly in Trainable from eg. cloud storage, shared file storage such as NFS, or from the local disk of the Trainable worker.
+You can also load data directly in Trainable from e.g. cloud storage, shared file storage such as NFS, or from the local disk of the Trainable worker.
 
 ```{warning}
 When loading from disk, ensure that all nodes in your cluster have access to the file you are trying to load.
