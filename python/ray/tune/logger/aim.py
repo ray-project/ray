@@ -69,7 +69,6 @@ class AimCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         logger.info(f"trial {trial} logger is started")
 
-        # do nothing when the trial is alrady initiliated
         if trial in self._trial_run:
             self._trial_run[trial].close()
         trial.init_logdir()
@@ -141,7 +140,6 @@ class AimCallback(LoggerCallback):
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         # cleanup in the end
-        self._trial_run[trial].finalize()
         self._trial_run[trial].close()
         del self._trial_run[trial]
 
