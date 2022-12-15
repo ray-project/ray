@@ -27,6 +27,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def __preprocessing_enabled(config: TrainerConfigDict):
+    if config._disable_preprocessor_api:
+        return False
+    # Same conditions as in RolloutWorker.__init__.
+    if (
+        config.is_atari
+        and not config.model.get("custom_preprocessor")
+        and config.preprocessor_pref == "deepmind"
+    ):
+        return False
+    if not config.model.get("custom_preprocessor") and config.preprocessor_pref is None:
+        return False
+    return True
+
+
+def __clip_rewards(config: TrainerConfigDict):
+    # Same logic as in RolloutWorker.__init__.
+    # We always clip rewards for Atari games.
+    return config.clip_rewards or config.is_atari
+
+
 @PublicAPI(stability="alpha")
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
@@ -34,14 +55,13 @@ def get_agent_connectors_from_config(
 ) -> AgentConnectorPipeline:
     connectors = []
 
-    if config["clip_rewards"] is True:
+    clip_rewards = __clip_rewards(config)
+    if clip_rewards is True:
         connectors.append(ClipRewardAgentConnector(ctx, sign=True))
-    elif type(config["clip_rewards"]) == float:
-        connectors.append(
-            ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
-        )
+    elif type(clip_rewards) == float:
+        connectors.append(ClipRewardAgentConnector(ctx, limit=abs(clip_rewards)))
 
-    if not config["_disable_preprocessor_api"]:
+    if __preprocessing_enabled(config):
         connectors.append(ObsPreprocessorConnector(ctx))
 
     # Filters should be after observation preprocessing
