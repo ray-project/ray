@@ -935,6 +935,7 @@ def _process_observations(
             # If an episode was marked faulty, perform regular postprocessing
             # (to e.g. properly flush and clean up the SampleCollector's buffers),
             # but then discard the entire batch and don't return it.
+            ma_sample_batch = None
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
@@ -943,9 +944,6 @@ def _process_observations(
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )
             if not episode.is_faulty:
-                if ma_sample_batch:
-                    outputs.append(ma_sample_batch)
-
                 # Call each (in-memory) policy's Exploration.on_episode_end
                 # method.
                 # Note: This may break the exploration (e.g. ParameterNoise) of
@@ -970,7 +968,9 @@ def _process_observations(
                     env_index=env_id,
                 )
 
-            # TODO: move this here
+            # Now that all callbacks are done and users had the chance to add custom
+            # metrics based on the last observation in the episode, finish up metrics
+            # object and append to `outputs`.
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:
                 if atari_metrics is not None:
@@ -996,7 +996,11 @@ def _process_observations(
             else:
                 # Add metrics about a faulty episode.
                 outputs.append(RolloutMetrics(episode_faulty=True))
-            # END TEST
+
+            # Only after the RolloutMetrics were appended, append the collected sample
+            # batch, if any.
+            if not episode.is_faulty and ma_sample_batch:
+                outputs.append(ma_sample_batch)
 
             # Terminated: Try to reset the sub environment.
             # Clean up old finished episode.
