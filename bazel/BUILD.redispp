@@ -16,6 +16,7 @@ cmake(
         "HIREDIS_HEADER": "$EXT_BUILD_DEPS/libhiredis/include",
         "REDIS_PLUS_PLUS_ASYNC_LIB_HEADER": "$EXT_BUILD_DEPS/libuv_a/include",
         "REDIS_PLUS_PLUS_ASYNC_LIB": "$EXT_BUILD_DEPS/libuv_a/lib",
+        "BUILD_SHARED_LIBS": "OFF",
     },
     lib_source = "//:all_srcs",
     deps = [

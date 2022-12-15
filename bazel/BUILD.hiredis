@@ -16,6 +16,7 @@ cmake(
     ],
     cache_entries = {
         "ENABLE_SSL": "ON",
+        "BUILD_SHARED_LIBS": "OFF",
     },
     lib_source = "//:all_srcs",
     deps = [

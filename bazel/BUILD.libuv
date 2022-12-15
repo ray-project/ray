@@ -11,6 +11,7 @@ cmake(
     name = "libuv_a",
     cache_entries = {
         "BUILD_TESTING": "OFF",
+        "BUILD_SHARED_LIBS": "OFF",
     },
     lib_source = "//:all_srcs",
     visibility = ["//visibility:public"]
