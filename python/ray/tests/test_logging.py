@@ -79,6 +79,7 @@ def test_reopen_changed_inode(tmp_path):
     assert file_info.file_handle.tell() == orig_file_pos
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_deleted_file_does_not_throw_error(tmp_path):
     filename = tmp_path / "file"
 
