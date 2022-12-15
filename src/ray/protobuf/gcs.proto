@@ -233,7 +233,7 @@ message TaskStateUpdate {
   // Timestamp when status changes to PENDING_ARGS_AVAIL.
   optional int64 pending_args_avail_ts = 2;
   // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
-  optional int64 pending_node_assignment = 3;
+  optional int64 pending_node_assignment_ts = 3;
   // Timestamp when status changes to SUBMITTED_TO_WORKER.
   optional int64 submitted_to_worker_ts = 4;
   // Timestamp when status changes to RUNNING.
@@ -242,6 +242,13 @@ message TaskStateUpdate {
   optional int64 finished_ts = 6;
   // Timestamp when status changes to FAILED.
   optional int64 failed_ts = 7;
+}
+
+enum TaskEventType {
+  // Profile events.
+  PROFILE_EVENT = 0;
+  // Status update events.
+  STATUS_EVENT = 1;
 }
 
 // Represents events and state changes from a single task run.
@@ -263,8 +270,10 @@ message TaskEvents {
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped task events due to buffer size limit on workers.
-  int32 num_task_events_dropped = 2;
+  // Number of dropped profile task events due to buffer size limit on workers.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of dropped status task events due to buffer size limit on workers.
+  int32 num_status_task_events_dropped = 4;
 }
 
 message ResourceTableData {

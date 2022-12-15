@@ -160,17 +160,17 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
-    .. link-button:: /serve/tutorials/rllib
-        :type: ref
-        :text: [Guide] Serving RLlib Models
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/serve.svg
-
-    +++
     .. link-button:: /serve/model_composition
         :type: ref
         :text: [Guide] Model Composition in Serve
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: /serve/tutorials/index
+        :type: ref
+        :text: [Gallery] Serve Examples Gallery
         :classes: btn-link btn-block stretched-link
 
 Hyperparameter Tuning
@@ -188,33 +188,25 @@ Learn more about the Tune library with the following talks and user guides.
     :img-top: /images/tune.png
 
     +++
-    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
-        :type: url
-        :text: [Talk] Distributed Hyperparameter Optimization Made Simple
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: https://druce.ai/2020/10/hyperparameter-tuning-with-xgboost-ray-tune-hyperopt-and-optuna
-        :type: url
-        :text: [Blog] Hyperopt, Optuna, and Ray Tune for XGBoost and LightGBM
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: https://www.cncf.io/blog/2022/02/15/managing-public-cloud-resources-for-deep-learning-training-experiments-and-lessons-learned/
-        :type: url
-        :text: [Blog] Managing public cloud resources for deep learning training
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
     .. link-button:: /tune/getting-started
         :type: ref
         :text: [Guide] Getting Started with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune
+        :type: url
+        :text: [Blog] How to distribute hyperparameter tuning with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
+        :type: url
+        :text: [Talk] Simple Distributed Hyperparameter Optimization
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -226,6 +218,14 @@ Learn more about the Tune library with the following talks and user guides.
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
+
+    +++
+    .. link-button:: /ray-air/examples/automl_with_ray_air
+        :type: ref
+        :text: [Example] Simple AutoML for time series with Ray AIR
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /tune/examples/index
@@ -286,7 +286,7 @@ Learn more about the Train library with the following talks and user guides.
         :text: [Example] Fine-tune a 🤗 Transformers model
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ray_logo.png
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /train/examples
@@ -308,6 +308,14 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     :img-top: /rllib/images/rllib-logo.png
 
     +++
+    .. link-button:: https://applied-rl-course.netlify.app/
+        :type: url
+        :text: [Course] Applied Reinforcement Learning with RLlib
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
     .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
         :type: url
         :text: [Blog] Intro to RLlib: Example Environments
@@ -322,6 +330,22 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: https://deumbra.com/2022/08/rllib-for-deep-hierarchical-multiagent-reinforcement-learning/
+        :type: url
+        :text: [Blog] RLlib for Deep Hierarchical Multiagent Reinforcement Learning
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/riot.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
+        :type: url
+        :text: [Talk] Deep reinforcement learning at Riot Games
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /rllib/rllib-examples
@@ -440,7 +464,7 @@ The following are highlighted examples utilizing Ray AIR to implement end-to-end
         :text: [Example] AutoML for Time Series with Ray
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ray_logo.png
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /ray-air/examples/index
