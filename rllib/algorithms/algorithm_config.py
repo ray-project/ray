@@ -628,7 +628,7 @@ class AlgorithmConfig:
 
         try:
             env = gym.make(self.env)
-        except:
+        except gym.error.NameNotFound:
             # Not an Atari env if this is not a gym env.
             return False
 

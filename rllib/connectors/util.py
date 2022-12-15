@@ -45,9 +45,7 @@ def __preprocessing_enabled(config: TrainerConfigDict):
 def __clip_rewards(config: TrainerConfigDict):
     # Same logic as in RolloutWorker.__init__.
     # We always clip rewards for Atari games.
-    if config.is_atari:
-        return True
-    return config.clip_rewards
+    return config.clip_rewards or config.is_atari
 
 
 @PublicAPI(stability="alpha")
