@@ -3,6 +3,9 @@ from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
 
+# TODO (Kourosh): Noticed that the env is broken and throws an error in this test.
+# The error is ValueError: Input vector should be 1-D. (Could be pettingzoo version
+# issue)
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 
 if __name__ == "__main__":
@@ -30,7 +33,7 @@ if __name__ == "__main__":
             "num_workers": 2,
             # Method specific
             "multiagent": {
-                "policies": set(env.agents),
+                "policies": env.get_agent_ids(),
                 "policy_mapping_fn": (lambda agent_id, episode, **kwargs: agent_id),
             },
         },
