@@ -25,12 +25,8 @@ namespace ray {
 namespace gcs {
 
 /// Type alias for a single task attempt, i.e. <task id and attempt number>.
-/// Type alias for a single task attempt, i.e. <task id and attempt number>.
 using TaskAttempt = std::pair<TaskID, int32_t>;
 
-/// GcsTaskManger is responsible for capturing task states change reported by
-/// TaskEventBuffer from other components.
-///
 /// GcsTaskManger is responsible for capturing task states change reported by
 /// TaskEventBuffer from other components.
 ///
@@ -59,7 +55,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
   /// \param send_reply_callback Callback to invoke when sending reply.
-  /// Handles a AddTaskEventData request.
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback)
@@ -109,10 +104,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// task events are approximately task events that arrived in earlier rpc.
   class GcsTaskManagerStorage {
    public:
-    /// Constructor
-    ///
-    /// \param max_num_task_events Max number of task events stored before replacing older
-    /// ones.
     /// Constructor
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
@@ -184,10 +175,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_ GUARDED_BY(mutex_);
 
   /// Its own separate IO service separated from the main service.
-  /// Its own separate IO service separated from the main service.
   instrumented_io_context io_service_;
-
-  /// Its own IO thread from the main thread.
 
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;

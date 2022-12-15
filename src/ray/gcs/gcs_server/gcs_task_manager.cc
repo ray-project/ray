@@ -14,8 +14,6 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
-#include <atomic>  // std::atomic
-
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
