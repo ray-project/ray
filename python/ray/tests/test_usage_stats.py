@@ -22,6 +22,9 @@ from ray._private.test_utils import (
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.util.placement_group import (
+    placement_group,
+)
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -183,6 +186,8 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "key": "val",
             "_test1": "val1",
             "_test2": "val2",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -197,6 +202,8 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
         }
 
 
@@ -236,6 +243,62 @@ def test_worker_crash_increment_stats():
 
         assert "worker_crash_oom" in result
         assert result["worker_crash_oom"] == "1"
+
+
+def test_actor_stats():
+    @ray.remote
+    class Actor:
+        pass
+
+    with ray.init(
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "1",
+            timeout=5,
+        )
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "2",
+            timeout=5,
+        )
+        del actor
+
+
+def test_pg_stats():
+    with ray.init(
+        num_cpus=3,
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "1",
+            timeout=5,
+        )
+        pg1 = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg1.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "2",
+            timeout=5,
+        )
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -1064,6 +1127,10 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
+        assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
+        payload["extra_usage_tags"]["actor_num_created"] = "0"
+        payload["extra_usage_tags"]["pg_num_created"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
@@ -1072,6 +1139,8 @@ provider:
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -1413,6 +1482,8 @@ def test_usage_stats_tags(
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
             }
             assert num_nodes == 2
             return True

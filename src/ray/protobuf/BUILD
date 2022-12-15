@@ -317,3 +317,18 @@ python_grpc_compile(
     name = "serve_py_proto",
     deps = [":serve_proto"],
 )
+
+proto_library(
+    name = "usage_proto",
+    srcs = ["usage.proto"],
+)
+
+python_grpc_compile(
+    name = "usage_py_proto",
+    deps = [":usage_proto"],
+)
+
+cc_proto_library(
+    name = "usage_cc_proto",
+    deps = [":usage_proto"],
+)

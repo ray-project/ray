@@ -1,0 +1,88 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.usage;
+
+// This file defines your custom TagKey to record custom usage stats.
+//
+// Steps to record custom usage stats:
+// 1. Define your key in the TagKey enum (this means the key cannot be dynamic).
+// 2. Call `ray._private.usage.usage_lib.record_extra_usage_tag(k, v)` in your code.
+// 3. One of @pcmoritz, @thomasdesr should review and approve the data
+// collection. In particular, please make sure values are not fully dynamic
+// (no user-defined data like their file name, etc!)
+
+enum TagKey {
+  // Test only.
+  _TEST1 = 0;
+  _TEST2 = 1;
+
+  // RLlib
+  // The deep learning framework ("tf", "torch", etc.).
+  RLLIB_FRAMEWORK = 2;
+  // The algorithm name (only built-in algorithms).
+  RLLIB_ALGORITHM = 3;
+  // The number of workers as a string.
+  RLLIB_NUM_WORKERS = 4;
+
+  // Serve
+  // The public Python API version ("v1", "v2").
+  SERVE_API_VERSION = 5;
+  // The total number of running serve deployments as a string.
+  SERVE_NUM_DEPLOYMENTS = 6;
+  // The GCS storage type, which could be memory or redis.
+  GCS_STORAGE = 7;
+
+  // Ray Core State API
+  // NOTE(rickyxx): Currently only setting "1" for tracking existence of
+  // invocations only.
+  CORE_STATE_API_LIST_ACTORS = 100;
+  CORE_STATE_API_LIST_TASKS = 101;
+  CORE_STATE_API_LIST_JOBS = 102;
+  CORE_STATE_API_LIST_NODES = 103;
+  CORE_STATE_API_LIST_PLACEMENT_GROUPS = 104;
+  CORE_STATE_API_LIST_WORKERS = 105;
+  CORE_STATE_API_LIST_OBJECTS = 106;
+  CORE_STATE_API_LIST_RUNTIME_ENVS = 107;
+  CORE_STATE_API_LIST_CLUSTER_EVENTS = 108;
+  CORE_STATE_API_LIST_LOGS = 109;
+  CORE_STATE_API_GET_LOG = 110;
+  CORE_STATE_API_SUMMARIZE_TASKS = 111;
+  CORE_STATE_API_SUMMARIZE_ACTORS = 112;
+  CORE_STATE_API_SUMMARIZE_OBJECTS = 113;
+
+  // Dashboard
+  // {True, False}
+  // True if the dashboard page has been ever opened.
+  DASHBOARD_USED = 200;
+  // Whether a user is running ray with some third party metrics
+  // services (Ex: "True", "False")
+  DASHBOARD_METRICS_PROMETHEUS_ENABLED = 201;
+  DASHBOARD_METRICS_GRAFANA_ENABLED = 202;
+
+  // Core
+  // Total number of placement groups created.
+  PG_NUM_CREATED = 300;
+  // Total number of actors created.
+  ACTOR_NUM_CREATED = 301;
+  // The count(int) of worker crash with exit type 'system error' since
+  // the cluster started, emitted from GCS
+  WORKER_CRASH_SYSTEM_ERROR = 302;
+  // The count(int) of worker crash with exit type 'out-of-memory' since
+  // the cluster started, emitted from GCS
+  WORKER_CRASH_OOM = 303;
+}
