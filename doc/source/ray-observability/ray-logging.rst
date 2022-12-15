@@ -152,12 +152,12 @@ A new Ray instance creates a new session ID to the temp directory. The latest se
 
 Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/stderr and ``.err`` is logs from stderr. The backward compatibility of log directories is not maintained.
 
-- ``dashboard.log``: A log file of a Ray dashboard.
+- ``dashboard.[log|out|err]``: A log file of a Ray dashboard. ``log.`` file contains logs generated from the dashboard's logger. ``.out`` and ``.err`` are stdout and stderr printed from the dashboard. They are usually empty except when the dashboard crashes unexpectedly.
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``job-driver-[submission_id].log``: The stdout of a job submitted via the :ref:`Ray Jobs API <jobs-overview>`.
-- ``log_monitor.log``: The log monitor is in charge of streaming logs to the driver.
+- ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``log.`` file contains logs generated from the log monitor's logger. ``.out`` and ``.err`` are stdout and stderr printed from the log monitor. They are usually empty except when the log monitor crashes unexpectedly.
 - ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
 - ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
 - ``plasma_store.[out|err]``: Deprecated.
