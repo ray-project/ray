@@ -10,6 +10,7 @@ import ray
 from ray.data.block import Block, BlockMetadata, List
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import get_compute
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -23,27 +24,42 @@ from ray.data._internal.execution.interfaces import (
 
 
 def execute_to_legacy_block_list(
-    executor: Executor, plan: ExecutionPlan, owns_blocks: bool
+    executor: Executor, plan: ExecutionPlan, allow_clear_input_blocks: bool
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        owns_blocks: Whether the executor owns the input blocks and can destroy them.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
 
     Returns:
         The output as a legacy block list.
     """
-    dag = _to_operator_dag(plan, owns_blocks)
+    dag = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag)
     return _bundles_to_block_list(bundles)
 
 
-def _to_operator_dag(plan: ExecutionPlan, owns_blocks: bool) -> PhysicalOperator:
+def _to_operator_dag(
+    plan: ExecutionPlan, allow_clear_input_blocks: bool
+) -> PhysicalOperator:
     """Translate a plan into an operator DAG for the new execution backend."""
 
     blocks, _, stages = plan._optimize()
+    if allow_clear_input_blocks:
+        if plan._stages_before_snapshot:
+            # Not the first stage, always clear stage input blocks.
+            owns_blocks = True
+        elif isinstance(blocks, LazyBlockList):
+            # Always clear lazy input blocks since they can be recomputed.
+            owns_blocks = True
+        else:
+            # Otherwise, we have non-lazy input blocks that's the source of this
+            # execution plan, so we don't clear these.
+            owns_blocks = False
+    else:
+        owns_blocks = False
     operator = _blocks_to_input_buffer(blocks, owns_blocks)
     for stage in stages:
         operator = _stage_to_operator(stage, operator)
