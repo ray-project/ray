@@ -8,13 +8,10 @@ filegroup(
 )
 
 cmake(
-    name = "libuv",
+    name = "libuv_a",
     cache_entries = {
         "BUILD_TESTING": "OFF",
     },
     lib_source = "//:all_srcs",
-    out_static_libs = [
-        "libuv_a.a",
-    ],
     visibility = ["//visibility:public"]
 )

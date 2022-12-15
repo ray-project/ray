@@ -17,7 +17,7 @@ cmake(
     },
     lib_source = "//:all_srcs",
     deps = [
-        "@libuv//:libuv",
+        "@libuv//:libuv_a",
         "@com_github_redis_hiredis//:libhiredis",
     ],
     visibility = ["//visibility:public"],
