@@ -1122,6 +1122,7 @@ py_test(
 # RandomAgent
 py_test(
     name = "test_random_agent",
+    main = "algorithms/random_agent/random_agent.py",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/random_agent/random_agent.py"]

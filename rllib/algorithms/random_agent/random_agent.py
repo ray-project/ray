@@ -10,7 +10,7 @@ class RandomAgentConfig(AlgorithmConfig):
     """Defines a configuration class from which a RandomAgent Algorithm can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.random import RandomAgentConfig
+        >>> from ray.rllib.algorithms.random_agent import RandomAgentConfig
         >>> config = RandomAgentConfig().rollouts(rollouts_per_iteration=20)
         >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
