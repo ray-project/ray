@@ -26,7 +26,7 @@ class TensorflowCheckpoint(Checkpoint):
     ``TensorflowCheckpoint.from_checkpoint(ckpt)``.
     """
 
-    _SERIALIZED_ATTRS = ("_flavor", "_h5_file_path")
+    _SERIALIZED_ATTRS = Checkpoint._SERIALIZED_ATTRS + ("_flavor", "_h5_file_path")
 
     class Flavor(Enum):
         # Various flavors with which TensorflowCheckpoint is generated.

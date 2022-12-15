@@ -387,7 +387,7 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 2
-    assert iterator._checkpoint_manager.latest_checkpoint["epoch"] == 2
+    assert iterator._checkpoint_manager.latest_checkpoint.to_dict()["epoch"] == 2
 
 
 def test_tensorflow_mnist_fail(ray_start_4_cpus):

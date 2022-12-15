@@ -35,3 +35,13 @@ _ERROR_FETCH_TIMEOUT = 1
 # The key used to identify whether we have already warned about ray.air.session
 # functions being used outside of the session
 SESSION_MISUSE_LOG_ONCE_KEY = "air_warn_session_misuse"
+
+# Name of attribute in Checkpoint storing current Tune ID for restoring
+# training with Ray Train
+CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
+
+# Integer value which if set will copy files in reported AIR directory
+# checkpoints instead of moving them (if worker is on the same node as Trainable)
+COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
+    "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
+)
