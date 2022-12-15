@@ -244,13 +244,6 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
 }
 
-enum TaskEventType {
-  // Profile events.
-  PROFILE_EVENT = 0;
-  // Status update events.
-  STATUS_EVENT = 1;
-}
-
 // Represents events and state changes from a single task run.
 message TaskEvents {
   // Metadata shared by all event types.

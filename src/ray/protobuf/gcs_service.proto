@@ -633,18 +633,25 @@ message AddTaskEventDataReply {
 }
 
 message GetTaskEventsRequest {
-  // Get task events of certain type.
-  optional TaskEventType event_type = 1;
-  // Get task events from a job.
-  optional string job_id = 2;
+  message TaskIDs {
+    repeated string vals = 1;
+  }
+  oneof select_by {
+    // Get task events from a job.
+    string job_id = 1;
+    // Get task events from a set of tasks.
+    TaskIDs task_ids = 2;
+  }
 }
 
 message GetTaskEventsReply {
   GcsStatus status = 1;
   // Task events returned.
   repeated TaskEvents events_by_task = 2;
-  // Number of events dropped at GCS and worker for the queried events.
-  int32 num_events_dropped = 3;
+  // Number of profile events dropped at GCS and worker for the queried events.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of status events dropped at GCS and worker for the queried events.
+  int32 num_status_task_events_dropped = 4;
 }
 
 // Service for task info access.

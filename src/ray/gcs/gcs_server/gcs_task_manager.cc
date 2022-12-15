@@ -30,13 +30,26 @@ void GcsTaskManager::Stop() {
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    absl::optional<JobID> job_id) {
+    const absl::flat_hash_set<std::string> &task_ids,
+    absl::optional<std::string> job_id) {
   std::vector<rpc::TaskEvents> results;
+
+  if (!task_ids.empty()) {
+    RAY_CHECK(!job_id.has_value())
+        << "only one of job_id or task_ids should be provided. ";
+    // Get all task events with task ids.
+    for (const auto &task_event : task_events_) {
+      if (task_ids.contains(task_event.task_id())) {
+        results.push_back(task_event);
+      }
+    }
+    return results;
+  }
+
   if (job_id) {
     // Get all task events with job id
     for (const auto &task_event : task_events_) {
-      if (task_event.has_task_info() &&
-          JobID::FromBinary(task_event.task_info().job_id()) == *job_id) {
+      if (task_event.has_task_info() && task_event.task_info().job_id() == *job_id) {
         results.push_back(task_event);
       }
     }
@@ -111,47 +124,28 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
-  io_service_.post(
-      [this, reply, send_reply_callback, request = std::move(request)]() {
-        // Select candidate events by indexing.
-        std::vector<rpc::TaskEvents> task_events;
-        if (request.has_job_id()) {
-          task_events =
-              task_event_storage_->GetTaskEvents(JobID::FromBinary(request.job_id()));
-        } else {
-          task_events = task_event_storage_->GetTaskEvents();
-        }
+  // Select candidate events by indexing.
+  std::vector<rpc::TaskEvents> task_events;
+  if (request.has_task_ids()) {
+    absl::flat_hash_set<std::string> task_ids(request.task_ids().vals().begin(),
+                                              request.task_ids().vals().end());
+    task_events = task_event_storage_->GetTaskEvents(task_ids);
+  } else if (request.has_job_id()) {
+    task_events = task_event_storage_->GetTaskEvents(/* task_ids */ {}, request.job_id());
+  } else {
+    task_events = task_event_storage_->GetTaskEvents(/* task_ids */ {});
+  }
 
-        // Filter query specific event fields
-        if (!request.has_event_type()) {
-          for (auto &task_event : task_events) {
-            auto events = reply->add_events_by_task();
-            events->Swap(&task_event);
-          }
-          reply->set_num_events_dropped(total_num_status_task_events_dropped_ +
-                                        total_num_profile_task_events_dropped_);
-        } else if (request.event_type() == rpc::TaskEventType::PROFILE_EVENT) {
-          for (auto &task_event : task_events) {
-            if (!task_event.has_profile_events()) {
-              continue;
-            }
-            AddProfileEvent(reply, task_event);
-          }
-          reply->set_num_events_dropped(total_num_profile_task_events_dropped_);
-        } else if (request.event_type() == rpc::TaskEventType::STATUS_EVENT) {
-          for (auto &task_event : task_events) {
-            if (!task_event.has_state_updates()) {
-              continue;
-            }
-            AddStatusUpdateEvent(reply, task_event);
-          }
-          reply->set_num_events_dropped(total_num_status_task_events_dropped_);
-        } else {
-          UNREACHABLE;
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      },
-      "GcsTaskManager::HandleGetTaskEvents");
+  // Populate reply.
+  for (auto &task_event : task_events) {
+    auto events = reply->add_events_by_task();
+    events->Swap(&task_event);
+  }
+
+  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_);
+  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_);
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
 }
 
@@ -224,23 +218,6 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsCount(), ray::stats::kGcsTaskEventStored);
   ray::stats::STATS_gcs_task_manager_task_events_bytes.Record(
       task_event_storage_->GetTaskEventsBytes());
-}
-
-void GcsTaskManager::AddProfileEvent(rpc::GetTaskEventsReply *reply,
-                                     rpc::TaskEvents &task_event) {
-  auto profile_event = reply->add_events_by_task();
-  profile_event->set_task_id(task_event.task_id());
-  profile_event->set_attempt_number(task_event.attempt_number());
-  profile_event->mutable_profile_events()->Swap(task_event.mutable_profile_events());
-}
-
-void GcsTaskManager::AddStatusUpdateEvent(rpc::GetTaskEventsReply *reply,
-                                          rpc::TaskEvents &task_event) {
-  auto status_event = reply->add_events_by_task();
-  status_event->set_task_id(task_event.task_id());
-  status_event->set_attempt_number(task_event.attempt_number());
-  status_event->mutable_task_info()->Swap(task_event.mutable_task_info());
-  status_event->mutable_state_updates()->Swap(task_event.mutable_state_updates());
 }
 
 }  // namespace gcs

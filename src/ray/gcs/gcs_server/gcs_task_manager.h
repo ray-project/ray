@@ -132,11 +132,17 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// Get task events.
     ///
-    /// \param job_id Getting task events from this `job_id` only if not nullopt.
-    /// Otherwise all task events will be returned.
+    /// Get task events from a job/tasks if `job_id`/`task_ids` provided. Otherwise get
+    /// all task events.
+    ///
+    /// Only one of the `task_ids` and `job_id` should be provided for querying.
+    ///
+    /// \param task_ids Getting task events from this `task_id` set if not empty.
+    /// \param job_id Getting task events from this `job_id` if not nullopt.
     /// \return A vector of task events.
     std::vector<rpc::TaskEvents> GetTaskEvents(
-        absl::optional<JobID> job_id = absl::nullopt);
+        const absl::flat_hash_set<std::string> &task_ids,
+        absl::optional<std::string> job_id = absl::nullopt);
 
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
@@ -145,10 +151,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
     /// Max number of task events allowed in the storage.
-    /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
-
-    /// Current task events stored.
 
     /// Current task events stored.
     std::vector<rpc::TaskEvents> task_events_;
@@ -165,18 +168,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   };
 
  private:
-  /// Add a profile event to the reply.
-  ///
-  /// \param reply rpc reply.
-  /// \param task_event Task event from which the profile event will be made.
-  void AddProfileEvent(rpc::GetTaskEventsReply *reply, rpc::TaskEvents &task_event);
-
-  ///  Add a task status update event to the reply.
-  ///
-  /// \param reply rpc reply.
-  /// \param task_event Task event from which the task status updates will be made.
-  void AddStatusUpdateEvent(rpc::GetTaskEventsReply *reply, rpc::TaskEvents &task_event);
-
   /// Mutex guarding all fields that will be accessed by main_io as well.
   absl::Mutex mutex_;
 
@@ -201,8 +192,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
 
-  FRIEND_TEST(GcsTaskManagerTest, TestGetTaskEvents);
-  FRIEND_TEST(GcsTaskManagerTest, TestGetTaskEventsByJob);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
