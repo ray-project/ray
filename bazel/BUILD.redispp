@@ -7,21 +7,18 @@ filegroup(
     ),
 )
 
-_CACHE_ENTRIES = {
-}
-
 cmake(
     name = "libredis++",
     cache_entries = {
         "REDIS_PLUS_PLUS_BUILD_ASYNC": "libuv",
         "REDIS_PLUS_PLUS_BUILD_TEST": "OFF",
-        "HIREDIS_LIB": "$EXT_BUILD_DEPS/lib",
-        "HIREDIS_HEADER": "$EXT_BUILD_DEPS/include",
+        "HIREDIS_LIB": "$EXT_BUILD_DEPS/libhiredis//lib",
+        "HIREDIS_HEADER": "$EXT_BUILD_DEPS/libhiredis/include",
     },
     lib_source = "//:all_srcs",
     deps = [
         "@libuv//:libuv",
-        "@com_github_redis_hiredis//:hiredis",
+        "@com_github_redis_hiredis//:libhiredis",
     ],
     visibility = ["//visibility:public"],
 )
