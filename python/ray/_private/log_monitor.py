@@ -73,11 +73,11 @@ class LogFileInfo:
         would have different inodes, such as log rotation or file syncing
         semantics.
         """
-        open_inode = None
-        if self.file_handle and not self.file_handle.closed:
-            open_inode = os.fstat(self.file_handle.fileno()).st_ino
-
         try:
+            open_inode = None
+            if self.file_handle and not self.file_handle.closed:
+                open_inode = os.fstat(self.file_handle.fileno()).st_ino
+
             new_inode = os.stat(self.filename).st_ino
             if open_inode != new_inode:
                 self.file_handle = open(self.filename, "rb")
