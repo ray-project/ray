@@ -2274,8 +2274,10 @@ def get(
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning. Set this to None will block until the
-            corresponding object becomes available. Set this to 0 will return 
-            the object immediately if it's available, else raise GetTimeoutError.
+            corresponding object becomes available.
+
+            WARNING: In future ray releases, set ``timeout=0`` will return the object
+            immediately if it's available, else raise GetTimeoutError.
 
     Returns:
         A Python object or a list of Python objects.
