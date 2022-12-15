@@ -49,7 +49,12 @@ def do_rollouts(
     for _ in range(num_rollouts):
         obs, info = env.reset()
         _obs, _next_obs, _actions, _rewards, _terminateds, _truncateds = (
-            [], [], [], [], [], []
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
         )
         _return = -0
         for _ in range(env._max_episode_steps):
