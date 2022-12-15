@@ -269,6 +269,7 @@ class RAY_EXPORT Status {
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
+  bool IsObjectUnknownOwner() const { return code() == StatusCode::ObjectUnknownOwner; }
   bool IsObjectAlreadySealed() const { return code() == StatusCode::ObjectAlreadySealed; }
   bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
   bool IsTransientObjectStoreFull() const {

@@ -200,6 +200,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectNotFound():
         raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
+        raise ValueError(message)
     else:
         raise RaySystemError(message)
 
