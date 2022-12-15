@@ -77,7 +77,7 @@ def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
             run_options = tf1.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         except AttributeError:
             run_options = None
-            # In local mode, tf1.RunOptions is not available
+            # In local mode, tf1.RunOptions is not available, see #26511
             if log_once("tf1.RunOptions_not_available"):
                 logger.exception(
                     "Can not run timeline when ray is in local_mode. "
