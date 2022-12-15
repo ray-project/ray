@@ -1262,7 +1262,8 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
     for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
       auto current = iter++;
       const auto &mem_id = *current;
-    
+      // Batch the requests to prefetch, 100 each
+      // Until object store capacity.
       auto ready_iter = ready.find(mem_id);
       if (ready_iter != ready.end()) {
         std::vector<std::shared_ptr<RayObject>> found;
@@ -1340,15 +1341,18 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   //absl::flat_hash_set<ObjectID> plasma_object_ids;
+  // Raylet might not know about all objects in memory store
   absl::flat_hash_set<ObjectID> plasma_object_ids(ids.begin(), ids.end());
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   if (memory_object_ids.size() != ids.size()) {
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
+  // Select first N in ids, check size
 
   absl::flat_hash_set<ObjectID> ready;
   int64_t start_time = current_time_ms();
+  // Can we extend this call to return the ones in plasma?
   RAY_RETURN_NOT_OK(memory_store_->Wait(
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects),
@@ -1392,6 +1396,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         RAY_LOG(WARNING) << "FetchFromPlasmaStore skipped first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits()
             << ", core_worker_new_path: " << RayConfig::instance().core_worker_new_path() << ", core_worker_use_old_path: " << RayConfig::instance().core_worker_use_old_path();
     }
+
+    RAY_LOG(WARNING) << "plasma_store_provider_->Wait plasma_object_ids size " << static_cast<int>(plasma_object_ids.size()) << ", other " << (num_objects - static_cast<int>(ready.size()));
 
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
