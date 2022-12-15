@@ -12,14 +12,11 @@ class BCTFOptimizer(RLOptimizer):
 
     def compute_loss(
         self, batch: NestedDict[tf.Tensor], fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    ) -> tf.Tensor:
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
         loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
-        loss_dict = {
-            "total_loss": loss,
-        }
-        return loss_dict
+        return loss
 
     def get_state(self):
         return {

@@ -83,6 +83,8 @@ class BCTFTrainer:
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
             loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            if isinstance(loss, tf.Tensor):
+                loss = {"total_loss": loss}
         gradients = self.compute_gradients(loss, tape)
         self.apply_gradients(gradients)
         return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
