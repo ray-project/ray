@@ -551,12 +551,12 @@ class TestSampleBatch(unittest.TestCase):
 
         another_device = torch.device("cuda")
 
-        self.assertTrue(batch[SampleBatch.OBS] is another_array)
+        self.assertTrue(another_batch[SampleBatch.OBS] is another_array)
         another_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=another_device)
         )
-        self.assertTrue(all(another_batch[SampleBatch.OBS] == another_array))
-        self.assertFalse(batch[SampleBatch.OBS] is another_array)
+        self.assertTrue(check(another_batch[SampleBatch.OBS], another_array))
+        self.assertFalse(another_batch[SampleBatch.OBS] is another_array)
 
 
 if __name__ == "__main__":
