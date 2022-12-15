@@ -111,7 +111,7 @@ class RayClusterOnSpark:
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count == self.num_worker_nodes:
+                if cur_alive_worker_count >= self.num_worker_nodes:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
@@ -122,7 +122,7 @@ class RayClusterOnSpark:
                         f"({cur_alive_worker_count} / {self.num_worker_nodes})"
                     )
                 else:
-                    if time.time() - last_progress_move_time > 120:
+                    if time.time() - last_progress_move_time > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT:
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. Started / Total "
                             f"requested: ({cur_alive_worker_count} / {self.num_worker_nodes}). "
@@ -187,8 +187,10 @@ def _convert_ray_node_options(options):
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
-_BACKGROUND_JOB_STARTUP_WAIT = 30
+_BACKGROUND_JOB_STARTUP_WAIT = int(os.environ.get("RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT", "30"))
 _RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL = 3
+_RAY_WORKER_NODE_STARTUP_INTERVAL = int(os.environ.get("RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL", "10"))
+_RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT = 120
 
 
 def _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_startup():
@@ -316,11 +318,11 @@ def _allocate_port_range_and_start_lock_barrier_thread_for_ray_worker_node_start
         release_lock()
         raise
 
-    def hold_lock_for_10s_and_release():
-        time.sleep(5)
+    def hold_lock():
+        time.sleep(_RAY_WORKER_NODE_STARTUP_INTERVAL)
         release_lock()
 
-    threading.Thread(target=hold_lock_for_10s_and_release, args=()).start()
+    threading.Thread(target=hold_lock, args=()).start()
 
     return worker_port_range_begin, worker_port_range_end
 

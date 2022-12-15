@@ -59,7 +59,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert results == [i * i for i in range(32)]
 
         # assert temp dir is removed.
-        time.sleep(4)
+        time.sleep(5)
         assert not os.path.exists(cluster.temp_dir)
 
     def test_ray_cluster_shutdown(self):
@@ -70,7 +70,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
             cluster._cancel_background_spark_job()
-            time.sleep(3)
+            time.sleep(6)
 
             assert len(self.get_ray_worker_resources_list()) == 0
 
@@ -200,6 +200,8 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
 
 
 if __name__ == "__main__":
+    os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
+    os.environ["RAY_ON_SPARK_RAY_WORKER_STARTUP_INTERVAL"] = "5"
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
