@@ -1,3 +1,4 @@
+import gym
 import unittest
 
 import ray
@@ -112,6 +113,32 @@ class TestAlgorithmConfig(unittest.TestCase):
             self.assertTrue(config.get_rollout_fragment_length(worker_index=i) == 112)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=11) == 111)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=12) == 111)
+
+    def test_detect_atari_env(self):
+        """Tests that we can properly detect Atari envs."""
+        config = AlgorithmConfig().environment(env="BreakoutNoFrameskip-v4")
+        config.validate()
+        self.assertTrue(config.is_atari)
+
+        config = AlgorithmConfig().environment(env="ALE/Pong-v5")
+        config.validate()
+        self.assertTrue(config.is_atari)
+
+        config = AlgorithmConfig().environment(env="CartPole-v1")
+        config.validate()
+        # We do not auto-detect callable env makers for Atari envs.
+        self.assertFalse(config.is_atari)
+
+        config = AlgorithmConfig().environment(
+            env=lambda ctx: gym.make("BreakoutNoFrameskip-v4")
+        )
+        config.validate()
+        # We do not auto-detect callable env makers for Atari envs.
+        self.assertFalse(config.is_atari)
+
+        config = AlgorithmConfig().environment(env="NotAtari")
+        config.validate()
+        self.assertFalse(config.is_atari)
 
 
 if __name__ == "__main__":
