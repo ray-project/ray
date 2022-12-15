@@ -1,59 +1,25 @@
-import { Grid, Switch } from "@material-ui/core";
+import { Grid } from "@material-ui/core";
 import dayjs from "dayjs";
-import React, { useCallback, useEffect, useState } from "react";
-import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
+import React, { useState } from "react";
 import PlacementGroupTable from "../../components/PlacementGroupTable";
 import { getPlacementGroup } from "../../service/placementGroup";
 import { PlacementGroup } from "../../type/placementGroup";
+import { useStateApiList } from "./hook/useStateApi";
 
 /**
  * Represent the embedable actors page.
  */
 const PlacementGroupList = ({ jobId = null }: { jobId?: string | null }) => {
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [placementGroups, setPlacementGroups] = useState<Array<PlacementGroup>>(
-    [],
+  const [timeStamp] = useState(dayjs());
+  const data: Array<PlacementGroup> | undefined = useStateApiList(
+    "usePlacementGroup",
+    getPlacementGroup,
   );
-  const [timeStamp, setTimeStamp] = useState(dayjs());
-  const queryPlacementGroup = useCallback(
-    () =>
-      getPlacementGroup().then((res) => {
-        if (res?.data?.data?.result?.result) {
-          setPlacementGroups(res.data.data.result.result);
-        }
-      }),
-    [],
-  );
-
-  useEffect(() => {
-    let tmo: NodeJS.Timeout;
-    const refreshPlacementGroup = () => {
-      const nowTime = dayjs();
-      queryPlacementGroup().then(() => {
-        setTimeStamp(nowTime);
-        if (autoRefresh) {
-          tmo = setTimeout(refreshPlacementGroup, API_REFRESH_INTERVAL_MS);
-        }
-      });
-    };
-
-    refreshPlacementGroup();
-
-    return () => {
-      clearTimeout(tmo);
-    };
-  }, [autoRefresh, queryPlacementGroup]);
+  const placementGroups = data ? data : [];
 
   return (
     <div>
       <Grid container alignItems="center">
-        <Grid item>
-          Auto Refresh:{" "}
-          <Switch
-            checked={autoRefresh}
-            onChange={({ target: { checked } }) => setAutoRefresh(checked)}
-          />
-        </Grid>
         <Grid item>{timeStamp.format("YYYY-MM-DD HH:mm:ss")}</Grid>
       </Grid>
       <PlacementGroupTable placementGroups={placementGroups} jobId={jobId} />

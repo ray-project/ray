@@ -14,34 +14,34 @@ import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
-import { PlacementGroup } from "../type/placementGroup";
+import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
-import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
-const PlacementGroupTable = ({
-  placementGroups = [],
+const TaskTable = ({
+  tasks = [],
   jobId = null,
 }: {
-  placementGroups: Array<PlacementGroup>;
+  tasks: Array<Task>;
   jobId?: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter();
   const [pageSize, setPageSize] = useState(10);
-  const placementGroupList = placementGroups.filter(filterFunc);
-  const list = placementGroupList.slice(
-    (pageNo - 1) * pageSize,
-    pageNo * pageSize,
-  );
+  const taskList = tasks.filter(filterFunc);
+  const list = taskList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const classes = rowStyles();
 
   const columns = [
     { label: "ID" },
     { label: "Name" },
     { label: "Job Id" },
-    { label: "State" },
-    { label: "Scheduling Detail" },
+    { label: "Scheduling State" },
+    { label: "Function or Class Name" },
+    { label: "Node Id" },
+    { label: "Actor_id" },
+    { label: "Type" },
+    { label: "Required Resources" },
   ];
 
   return (
@@ -49,34 +49,30 @@ const PlacementGroupTable = ({
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(
-            new Set(placementGroups.map((e) => e.placement_group_id)),
-          )}
+          options={Array.from(new Set(tasks.map((e) => e.task_id)))}
           onInputChange={(_: any, value: string) => {
-            changeFilter("placement_group_id", value.trim());
+            changeFilter("task_id", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Placement group ID" />
+            <TextField {...params} label="Task ID" />
           )}
         />
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(new Set(placementGroups.map((e) => e.state)))}
+          options={Array.from(new Set(tasks.map((e) => e.scheduling_state)))}
           onInputChange={(_: any, value: string) => {
-            changeFilter("state", value.trim());
+            changeFilter("scheduling_state", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="State" />
+            <TextField {...params} label="Scheduling State" />
           )}
         />
         <Autocomplete
           style={{ margin: 8, width: 150 }}
           defaultValue={jobId}
-          options={Array.from(
-            new Set(placementGroups.map((e) => e.creator_job_id)),
-          )}
+          options={Array.from(new Set(tasks.map((e) => e.job_id)))}
           onInputChange={(_: any, value: string) => {
-            changeFilter("creator_job_id", value.trim());
+            changeFilter("job_id", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Job Id" />
@@ -84,12 +80,22 @@ const PlacementGroupTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 150 }}
-          options={Array.from(new Set(placementGroups.map((e) => e.name)))}
+          options={Array.from(new Set(tasks.map((e) => e.name)))}
           onInputChange={(_: any, value: string) => {
             changeFilter("name", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Name" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          options={Array.from(new Set(tasks.map((e) => e.func_or_class_name)))}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("func_or_class_name", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Function or Class Name" />
           )}
         />
         <TextField
@@ -112,11 +118,8 @@ const PlacementGroupTable = ({
           <Pagination
             page={pageNo}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(placementGroupList.length / pageSize)}
+            count={Math.ceil(taskList.length / pageSize)}
           />
-        </div>
-        <div>
-          <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
       <Table>
@@ -133,25 +136,58 @@ const PlacementGroupTable = ({
         </TableHead>
         <TableBody>
           {list.map(
-            ({ placement_group_id, name, creator_job_id, state, stats }) => (
+            ({
+              task_id,
+              name,
+              job_id,
+              scheduling_state,
+              func_or_class_name,
+              node_id,
+              actor_id,
+              type,
+              required_resources,
+            }) => (
               <TableRow>
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}
-                    title={placement_group_id}
+                    title={task_id}
                     arrow
                     interactive
                   >
-                    <div>{placement_group_id}</div>
+                    <div>{task_id}</div>
                   </Tooltip>
                 </TableCell>
                 <TableCell align="center">{name ? name : "-"}</TableCell>
-                <TableCell align="center">{creator_job_id}</TableCell>
+                <TableCell align="center">{job_id}</TableCell>
                 <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
+                  <StatusChip type="actor" status={scheduling_state} />
                 </TableCell>
+                <TableCell align="center">{func_or_class_name}</TableCell>
+                <TableCell align="center">{node_id ? node_id : "-"}</TableCell>
                 <TableCell align="center">
-                  {stats ? stats.scheduling_state : "-"}
+                  {actor_id ? actor_id : "-"}
+                </TableCell>
+                <TableCell align="center">{type}</TableCell>
+                <TableCell align="center">
+                  <Tooltip
+                    className={classes.OverflowCol}
+                    title={Object.entries(required_resources || {}).map(
+                      ([key, val]) => (
+                        <div style={{ margin: 4 }}>
+                          {key}: {val}
+                        </div>
+                      ),
+                    )}
+                    arrow
+                    interactive
+                  >
+                    <div>
+                      {Object.entries(required_resources || {})
+                        .map(([key, val]) => `${key}: ${val}`)
+                        .join(", ")}
+                    </div>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ),
@@ -162,4 +198,4 @@ const PlacementGroupTable = ({
   );
 };
 
-export default PlacementGroupTable;
+export default TaskTable;

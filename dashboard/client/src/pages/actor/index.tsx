@@ -18,7 +18,9 @@ const Actors = () => {
 
   return (
     <div className={classes.root}>
-      <TitleCard title="ACTORS">{<ActorList />}</TitleCard>
+      <TitleCard title="ACTORS">
+        <ActorList />
+      </TitleCard>
     </div>
   );
 };
