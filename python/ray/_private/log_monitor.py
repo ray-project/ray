@@ -76,10 +76,15 @@ class LogFileInfo:
         open_inode = None
         if self.file_handle and not self.file_handle.closed:
             open_inode = os.fstat(self.file_handle.fileno()).st_ino
-        new_inode = os.stat(self.filename).st_ino
-        if open_inode != new_inode:
-            self.file_handle = open(self.filename, "rb")
-            self.file_handle.seek(self.file_position)
+
+        try:
+            new_inode = os.stat(self.filename).st_ino
+            if open_inode != new_inode:
+                self.file_handle = open(self.filename, "rb")
+                self.file_handle.seek(self.file_position)
+        except Exception as _:
+            logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
+            pass
 
     def __repr__(self):
         return (
