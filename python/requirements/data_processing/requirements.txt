@@ -11,9 +11,6 @@ s3fs
 modin>=0.8.3;  python_version < '3.7'
 modin>=0.11.0; python_version >= '3.7'
 pytest-repeat
-# Uncomment when RayDP:
-# - Makes MLDataset an optional dependency.
-# - Removes pyarrow < 7.0.0 upperbound.
-# raydp-nightly==2022.6.30.dev1
+raydp-nightly
 responses==0.13.4
 pymars>=0.8.3

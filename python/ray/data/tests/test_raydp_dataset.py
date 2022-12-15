@@ -1,8 +1,3 @@
-# Skipping entire test module:
-#  - Waiting for MLDataset to be made an optional dependency
-#  - See https://github.com/oap-project/raydp/pull/241
-
-"""
 import pytest
 import ray
 import raydp
@@ -59,4 +54,3 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
-"""
