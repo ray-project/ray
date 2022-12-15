@@ -970,7 +970,7 @@ def _process_observations(
                     env_index=env_id,
                 )
 
-            #TODO: move this here
+            # TODO: move this here
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:
                 if atari_metrics is not None:
@@ -996,7 +996,7 @@ def _process_observations(
             else:
                 # Add metrics about a faulty episode.
                 outputs.append(RolloutMetrics(episode_faulty=True))
-            #END TEST
+            # END TEST
 
             # Terminated: Try to reset the sub environment.
             # Clean up old finished episode.

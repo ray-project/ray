@@ -1119,6 +1119,14 @@ py_test(
     srcs = ["algorithms/r2d2/tests/test_r2d2.py"]
 )
 
+# RandomAgent
+py_test(
+    name = "test_random_agent",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/random_agent/random_agent.py"]
+)
+
 # RNNSAC
 py_test(
     name = "test_rnnsac",
@@ -1165,18 +1173,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/td3/tests/test_td3.py"]
-)
-
-# --------------------------------------------------------------------
-# contrib Algorithms
-# --------------------------------------------------------------------
-
-py_test(
-    name = "random_agent",
-    tags = ["team:rllib", "algorithms_dir"],
-    main = "contrib/random_agent/random_agent.py",
-    size = "small",
-    srcs = ["contrib/random_agent/random_agent.py"]
 )
 
 
