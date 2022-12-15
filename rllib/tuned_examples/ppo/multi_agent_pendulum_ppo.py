@@ -8,7 +8,10 @@ register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents":
 config = (
     PPOConfig()
     .environment("multi_agent_pendulum")
-    .rollouts(num_envs_per_worker=10, batch_mode="complete_episodes")
+    .framework("torch")
+    .rollouts(
+        num_envs_per_worker=10, batch_mode="complete_episodes", enable_connectors=True
+    )
     .training(
         train_batch_size=2048,
         lambda_=0.1,
@@ -19,6 +22,7 @@ config = (
         model={"fcnet_hiddens": [128, 128]},
         vf_clip_param=10.0,
     )
+    .rl_module(_enable_rl_module_api=True)
 )
 
 stop = {
