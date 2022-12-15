@@ -580,6 +580,12 @@ def resolve_ip_for_localhost(address: str):
     # Make sure localhost isn't resolved to the loopback ip
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
         ip_address = get_node_ip_address()
+        my_pod_ip = os.environ.get("BYTED_RAY_POD_IP")
+        if my_pod_ip is not None and my_pod_ip != "":
+            if len(address_parts) > 1:
+                return ip_address + ":" + os.environ.get("PORT0")
+            else:
+                return ip_address
         return ":".join([ip_address] + address_parts[1:])
     else:
         return address
