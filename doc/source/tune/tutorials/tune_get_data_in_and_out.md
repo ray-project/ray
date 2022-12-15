@@ -518,3 +518,10 @@ results.get_dataframe()
 
 
 Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune_analyze_results`.
+
+
+### How do I access results after I am finished?
+
+After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-checkpoint-syncing` for more information on how to configure syncing.
+
+You can restore the Tune experiment by calling `Tuner.restore(path_or_cloud_uri)`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints as outlined in the previous section.
