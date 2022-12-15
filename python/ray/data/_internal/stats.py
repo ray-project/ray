@@ -512,13 +512,14 @@ class DatasetStats:
             )
         return out
 
-    def get_max_wall_time(self) -> float:
-        max_wall_time = 0
+    def get_total_wall_time(self) -> float:
+        """Returns the sum of maximum wall time per stage over all stages."""
+        total_wall_time = 0
         for stage_name, ss in self.stage_stats.items():
             stage_wall_time_stats = ss.get(DatasetStats.WALL_TIME)
             if stage_wall_time_stats:
-                max_wall_time = max(max_wall_time, stage_wall_time_stats.get("max", 0))
-        return max_wall_time
+                total_wall_time += stage_wall_time_stats.get("max", 0)
+        return total_wall_time
 
     def get_total_cpu_time(self) -> float:
         total_cpu_time = 0
