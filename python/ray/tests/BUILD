@@ -107,7 +107,6 @@ py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
-    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_nested_task.py",
@@ -261,6 +260,7 @@ py_test_module_list(
     "test_actor_resources.py",
     "test_failure.py",
     "test_actor_advanced.py",
+    "test_memory_deadlock.py",
     "test_multi_node.py",
     "test_threaded_actor.py",
     "test_stress_failure.py",
