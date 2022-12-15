@@ -482,6 +482,9 @@ class SearchSpaceTest(unittest.TestCase):
             "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
                 "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
+                # The constant parameter will get dropped on conversion
+                # This should be specified as a constant parameter in Tuner's
+                # `param_space` rather than as an input to `AxClient`
                 "y": 4,
                 "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
@@ -490,7 +493,6 @@ class SearchSpaceTest(unittest.TestCase):
         ax_config = [
             {"name": "a", "type": "choice", "values": [2, 3, 4]},
             {"name": "b/x", "type": "range", "bounds": [0, 4], "value_type": "int"},
-            {"name": "b/y", "type": "fixed", "value": 4},
             {
                 "name": "b/z",
                 "type": "range",
@@ -518,7 +520,6 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
-        self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
@@ -780,6 +781,7 @@ class SearchSpaceTest(unittest.TestCase):
                 "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
+        # Only Float domain is supported
         with self.assertRaises(ValueError):
             converted_config = DragonflySearch.convert_search_space(config)
 
