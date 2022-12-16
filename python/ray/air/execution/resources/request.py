@@ -2,12 +2,15 @@ import abc
 import json
 from copy import deepcopy
 from inspect import signature
-from typing import List, Type, Dict, Union
+from typing import Dict, List, Union
 
 from dataclasses import dataclass
 
+import ray
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
+
+RemoteRayObject = Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]
 
 
 def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
@@ -35,6 +38,12 @@ class ResourceRequest:
     The resource request can be submitted to a resource manager, which will
     schedule the resources. Depending on the resource backend, this may instruct
     Ray to scale up (autoscaling).
+
+    Resource requests are compatible with the most fine-grained low-level resource
+    backend, which are Ray placement groups. Depending on the resource backend,
+    some arguments that are applicable to placement groups will not be respected
+    by other backends. This will be called out in the docstrings of the respective
+    backends.
 
     Args:
         bundles: A list of bundles which represent the resources requirements.
@@ -70,7 +79,7 @@ class ResourceRequest:
         # Check if the head bundle is empty (no resources defined or all resources
         # are 0 (and thus removed in the previous step)
         if not self._bundles[0]:
-            # This is when trainable itself doesn't need resources.
+            # This is when the head bundle doesn't need resources.
             self._head_bundle_is_empty = True
             self._bundles.pop(0)
 
@@ -187,26 +196,33 @@ class ResourceRequest:
 @DeveloperAPI
 @dataclass
 class AllocatedResource(abc.ABC):
-    """Base class for available resources.
+    """Base class for available resources that have been acquired.
+
+    Available here means that the resources are available for immediate scheduling.
+    E.g. for placement groups, this means that the placement group has been
+    created.
 
     Internally this can point e.g. to a placement group, a placement
     group bundle index, or just raw resources.
 
     The main API is the `annotate_remote_objects` method. This will associate
-    remote Ray objects (tasks and actors) with the allocated resources.
+    remote Ray objects (tasks and actors) with the allocated resources by setting
+    the Ray remote options to use the allocated resources.
 
     Parameters other than the `request` should be private.
     """
 
     resource_request: ResourceRequest
 
-    def annotate_remote_objects(self, objects: List[Type]) -> List[Type]:
+    def annotate_remote_objects(
+        self, objects: List[RemoteRayObject]
+    ) -> List[Union[RemoteRayObject]]:
         """Return remote ray objects with options set to use the allocated resources.
 
         The first object will be associated with the first bundle, the second
         object will be associated with the second bundle, etc.
 
         Args:
-            object: Remote Ray objects to allocate resources to.
+            objects: Remote Ray objects to annotate with the allocated resources.
         """
         raise NotImplementedError

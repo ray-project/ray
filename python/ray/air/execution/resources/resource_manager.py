@@ -25,6 +25,14 @@ class ResourceManager(abc.ABC):
     This separation also ensures that requests can be cancelled before they resolve
     if resources are not needed anymore.
 
+    Thus, resources managed by the resource manager have three states:
+
+    1. Requested but not available (ready). The resource request is received,
+       but the resources are not available for use of remote Ray objects, yet.
+    2. Requested and ready. The resources can be acquired and subsequently used by
+       remote Ray objects.
+    3. Acquired. These resources have been acquired by a caller.
+
     The flow is as follows:
 
     .. code-block:: python

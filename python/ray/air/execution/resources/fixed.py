@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Union
 
 from dataclasses import dataclass
 
@@ -7,6 +7,7 @@ from ray import SCRIPT_MODE, LOCAL_MODE
 from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
+    RemoteRayObject,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -17,23 +18,14 @@ from ray.util.annotations import DeveloperAPI
 _DIGITS = 100000
 
 
-def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
-    all_resources = {}
-    for resources in bundles:
-        for k, v in resources.items():
-            all_resources[k] = all_resources.get(k, 0) + v
-
-    return all_resources
-
-
 @DeveloperAPI
 @dataclass
 class FixedAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
 
     def annotate_remote_objects(
-        self, objects: List[Type]
-    ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
+        self, objects: List[RemoteRayObject]
+    ) -> List[Union[RemoteRayObject]]:
         # If we have an empty head, we schedule the first object (the "head") with
         # empty resources.
         if self.resource_request.head_bundle_is_empty:
@@ -106,7 +98,7 @@ class FixedResourceManager(ResourceManager):
         available_resources = self._total_resources.copy()
 
         for used_resources in self._used_resources:
-            all_resources = _sum_bundle_resources(used_resources.bundles)
+            all_resources = used_resources.required_resources
             for k, v in all_resources.items():
                 available_resources[k] = (
                     available_resources[k] * _DIGITS - v * _DIGITS
@@ -124,7 +116,7 @@ class FixedResourceManager(ResourceManager):
             return False
 
         available_resources = self._available_resources
-        all_resources = _sum_bundle_resources(resource_request.bundles)
+        all_resources = resource_request.required_resources
         for k, v in all_resources.items():
             if available_resources[k] < v:
                 return False

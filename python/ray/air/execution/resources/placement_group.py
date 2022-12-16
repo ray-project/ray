@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Type, Union
+from typing import Dict, List, Optional, Set, Union
 
 from dataclasses import dataclass
 
@@ -8,6 +8,7 @@ import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
+    RemoteRayObject,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -21,8 +22,8 @@ class PlacementGroupAllocatedResource(AllocatedResource):
     placement_group: PlacementGroup
 
     def annotate_remote_objects(
-        self, objects: List[Type]
-    ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
+        self, objects: List[RemoteRayObject]
+    ) -> List[Union[RemoteRayObject]]:
         # If we have an empty head, we schedule the first object (the "head") in the
         # first PG bundle with num_cpus=0. The second object will also be scheduled in
         # the first bundle, but will occupy the respective resources. Thus, we start
@@ -88,19 +89,19 @@ class PlacementGroupResourceManager(ResourceManager):
     - When a resource is freed, the pg is removed from "acquired" and destroyed
 
     Per default, placement group scheduling state is refreshed every time when
-    resource state is inquired, but not more often than once every ``update_interval``
+    resource state is inquired, but not more often than once every ``update_interval_s``
     seconds. Alternatively, staging futures can be retrieved (and awaited) with
     ``get_resource_futures()`` and state update can be force with ``update_state()``.
 
     Args:
-        update_interval: Minimum interval in seconds between updating scheduling
+        update_interval_s: Minimum interval in seconds between updating scheduling
             state of placement groups.
 
     """
 
     _resource_cls: AllocatedResource = PlacementGroupAllocatedResource
 
-    def __init__(self, update_interval: float = 0.1):
+    def __init__(self, update_interval_s: float = 0.1):
         self._pg_to_request: Dict[PlacementGroup, ResourceRequest] = {}
         self._request_to_staged_pgs: Dict[
             ResourceRequest, Set[PlacementGroup]
@@ -113,21 +114,22 @@ class PlacementGroupResourceManager(ResourceManager):
         self._pg_to_staging_future: Dict[PlacementGroup, ray.ObjectRef] = dict()
         self._acquired_pgs: Set[PlacementGroup] = set()
 
-        self._update_interval = update_interval
-        self._last_update = time.monotonic() - self._update_interval - 1
+        self.update_interval_s = update_interval_s
+        self._last_update = time.monotonic() - self.update_interval_s - 1
 
     def get_resource_futures(self) -> List[ray.ObjectRef]:
         return list(self._staging_future_to_pg.keys())
 
     def _maybe_update_state(self):
         now = time.monotonic()
-        if now > self._last_update + self._update_interval:
+        if now > self._last_update + self.update_interval_s:
             self.update_state()
 
     def update_state(self):
         ready, not_ready = ray.wait(
             list(self._staging_future_to_pg.keys()),
             num_returns=len(self._staging_future_to_pg),
+            # Todo: Set to 0 once https://github.com/ray-project/ray/pull/30210 resolved
             timeout=1e-6,
         )
         for future in ready:
@@ -163,7 +165,8 @@ class PlacementGroupResourceManager(ResourceManager):
             if not pg:
                 raise RuntimeError(
                     "Cannot cancel resource request: No placement group was "
-                    f"staged or is ready. Request: {resource_request}"
+                    f"staged or is ready. Make sure to not cancel more resource "
+                    f"requests than you've created. Request: {resource_request}"
                 )
 
         self._pg_to_request.pop(pg)
