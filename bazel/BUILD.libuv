@@ -13,6 +13,14 @@ cmake(
         "BUILD_TESTING": "OFF",
         "BUILD_SHARED_LIBS": "OFF",
     },
+    out_static_libs = select({
+        "@bazel_tools//src/conditions:windows": [
+            "uv_a.lib",
+        ],
+        "//conditions:default": [
+            "libuv_a.a",
+        ]
+    }),
     lib_source = "//:all_srcs",
     visibility = ["//visibility:public"]
 )
