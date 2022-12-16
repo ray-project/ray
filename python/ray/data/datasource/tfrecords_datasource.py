@@ -202,16 +202,16 @@ def _read_records(
                 break
             elif num_length_bytes_read != 8:
                 raise ValueError(
-                    "Failed to read the length of record data. Expect 8 bytes but get "
-                    f"{num_length_bytes_read} bytes."
+                    "Failed to read the length of record data. Expected 8 bytes but "
+                    "got {num_length_bytes_read} bytes."
                 )
 
             # Read "masked_crc32_of_length" field.
             num_length_crc_bytes_read = file.readinto(crc_bytes)
             if num_length_crc_bytes_read != 4:
                 raise ValueError(
-                    "Failed to read the length of CRC-32C hashes. Expect 4 bytes but "
-                    "get {num_length_crc_bytes_read} bytes."
+                    "Failed to read the length of CRC-32C hashes. Expected 4 bytes "
+                    "but got {num_length_crc_bytes_read} bytes."
                 )
 
             # Read "data[length]" field.
@@ -222,7 +222,7 @@ def _read_records(
             num_datum_bytes_read = file.readinto(datum_bytes_view)
             if num_datum_bytes_read != data_length:
                 raise ValueError(
-                    f"Failed to read the record. Exepct {data_length} bytes but get "
+                    f"Failed to read the record. Exepcted {data_length} bytes but got "
                     f"{num_datum_bytes_read} bytes."
                 )
 
@@ -231,7 +231,7 @@ def _read_records(
             num_crc_bytes_read = file.readinto(crc_bytes)
             if num_crc_bytes_read != 4:
                 raise ValueError(
-                    "Failed to read the CRC-32C hashes. Expect 4 bytes but get "
+                    "Failed to read the CRC-32C hashes. Expected 4 bytes but got "
                     f"{num_crc_bytes_read} bytes."
                 )
 
