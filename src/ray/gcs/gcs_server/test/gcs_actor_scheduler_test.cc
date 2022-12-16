@@ -30,6 +30,7 @@ namespace gcs {
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
+    RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
