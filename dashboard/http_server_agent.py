@@ -85,3 +85,4 @@ class HttpServerAgent:
     async def cleanup(self):
         # Wait for finish signal.
         await self.runner.cleanup()
+        await self.http_session.close()
