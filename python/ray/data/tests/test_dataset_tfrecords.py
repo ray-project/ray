@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -211,6 +212,16 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 
     with pytest.raises(ValueError):
         ds.write_tfrecords(tmp_path)
+
+
+def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+    file_path = os.path.join(tmp_path, "file.json")
+    with open(file_path, "w") as file:
+        json.dump({"number": 0, "string": "foo"}, file)
+
+    # Expect exception raised when reading JSON as TFRecord file.
+    with pytest.raises(Exception, match="Failed to read TFRecord file"):
+        ray.data.read_tfrecords(file_path)
 
 
 if __name__ == "__main__":
