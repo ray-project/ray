@@ -47,6 +47,7 @@ from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
+
 def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
@@ -74,7 +75,10 @@ def get_cli_args():
         "--stop-iters", type=int, default=1000, help="Number of iterations to train."
     )
     parser.add_argument(
-        "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
+        "--stop-timesteps",
+        type=int,
+        default=10000000,
+        help="Number of timesteps to train.",
     )
     parser.add_argument(
         "--win-rate-threshold",
