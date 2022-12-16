@@ -1,5 +1,4 @@
 import copy
-import pickle
 import numpy as np
 from typing import Dict, List, Optional, Union
 
@@ -153,7 +152,7 @@ class AxSearch(Searcher):
         parameter_constraints: Optional[List] = None,
         outcome_constraints: Optional[List] = None,
         ax_client: Optional[AxClient] = None,
-        **ax_kwargs
+        **ax_kwargs,
     ):
         assert (
             ax is not None
@@ -337,7 +336,7 @@ class AxSearch(Searcher):
                 # Don't report trials with NaN metrics to Ax
                 self._ax.abandon_trial(
                     trial_index=ax_trial_index,
-                    reason=f"nan/inf metrics reported by {trial_id}"
+                    reason=f"nan/inf metrics reported by {trial_id}",
                 )
                 return
             metric_dict[key] = (val, None)

@@ -77,7 +77,7 @@ class InvalidValuesTest(unittest.TestCase):
         assert not any(
             "Trial Runner checkpointing failed: Can't pickle local object" in x
             for x in buffer
-        ), f"Searcher checkpointing failed (unable to serialize)."
+        ), "Searcher checkpointing failed (unable to serialize)."
 
     def testAxManualSetup(self):
         from ray.tune.search.ax import AxSearch
