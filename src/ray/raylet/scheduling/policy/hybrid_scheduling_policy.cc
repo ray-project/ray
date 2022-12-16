@@ -88,12 +88,15 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   return node_scores[node_index].first;
 }
 
-scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
+scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     const ResourceRequest &resource_request,
     float spread_threshold,
     bool force_spillback,
     bool require_node_available,
-    NodeFilter node_filter) {
+    NodeFilter node_filter,
+    int schedule_top_k_absolute,
+    float scheduler_top_k_fraction,
+    int64_t max_pending_lease_requests_per_scheduling_category) {
   // Nodes that are feasible and currently have available resources.
   std::vector<std::pair<scheduling::NodeID, float>> available_nodes;
   // Nodes that are feasible but currently do not have available resources.
@@ -137,13 +140,11 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     }
   }
 
-  int top_k = RayConfig::instance().scheduler_top_k_absolute();
+  int top_k = schedule_top_k_absolute;
   if (top_k <= 0) {
     top_k = std::max(
-        static_cast<uint64_t>(
-            RayConfig::instance().max_pending_lease_requests_per_scheduling_category()),
-        static_cast<uint64_t>(RayConfig::instance().scheduler_top_k_fraction() *
-                              nodes_.size()));
+        static_cast<uint64_t>(max_pending_lease_requests_per_scheduling_category),
+        static_cast<uint64_t>(scheduler_top_k_fraction * nodes_.size()));
   }
   if (!available_nodes.empty()) {
     // First prioritize available nodes.
@@ -168,28 +169,40 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
   RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
   if (!options.avoid_gpu_nodes || resource_request.Has(ResourceID::GPU())) {
-    return HybridPolicyWithFilter(resource_request,
-                                  options.spread_threshold,
-                                  options.avoid_local_node,
-                                  options.require_node_available);
+    return ScheduleImpl(resource_request,
+                        options.spread_threshold,
+                        options.avoid_local_node,
+                        options.require_node_available,
+                        NodeFilter::kAny,
+                        options.schedule_top_k_absolute,
+                        options.scheduler_top_k_fraction,
+                        options.max_pending_lease_requests_per_scheduling_category);
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = HybridPolicyWithFilter(resource_request,
-                                             options.spread_threshold,
-                                             options.avoid_local_node,
-                                             /*require_node_available*/ true,
-                                             NodeFilter::kNonGpu);
+  auto best_node_id =
+      ScheduleImpl(resource_request,
+                   options.spread_threshold,
+                   options.avoid_local_node,
+                   /*require_node_available*/ true,
+                   NodeFilter::kNonGpu,
+                   options.schedule_top_k_absolute,
+                   options.scheduler_top_k_fraction,
+                   options.max_pending_lease_requests_per_scheduling_category);
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
 
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
-  return HybridPolicyWithFilter(resource_request,
-                                options.spread_threshold,
-                                options.avoid_local_node,
-                                options.require_node_available);
+  return ScheduleImpl(resource_request,
+                      options.spread_threshold,
+                      options.avoid_local_node,
+                      options.require_node_available,
+                      NodeFilter::kAny,
+                      options.schedule_top_k_absolute,
+                      options.scheduler_top_k_fraction,
+                      options.max_pending_lease_requests_per_scheduling_category);
 }
 
 }  // namespace raylet_scheduling_policy

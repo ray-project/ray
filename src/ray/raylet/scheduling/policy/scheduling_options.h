@@ -152,22 +152,34 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  int schedule_top_k_absolute;
+  float scheduler_top_k_fraction;
+  int64_t max_pending_lease_requests_per_scheduling_category;
 
  private:
-  SchedulingOptions(SchedulingType type,
-                    float spread_threshold,
-                    bool avoid_local_node,
-                    bool require_node_available,
-                    bool avoid_gpu_nodes,
-                    double max_cpu_fraction_per_node = 1.0,
-                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr)
+  SchedulingOptions(
+      SchedulingType type,
+      float spread_threshold,
+      bool avoid_local_node,
+      bool require_node_available,
+      bool avoid_gpu_nodes,
+      double max_cpu_fraction_per_node = 1.0,
+      std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
+      int schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
+      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction(),
+      int64_t max_pending_lease_requests_per_scheduling_category =
+          RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
         require_node_available(require_node_available),
         avoid_gpu_nodes(avoid_gpu_nodes),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        scheduling_context(std::move(scheduling_context)) {}
+        scheduling_context(std::move(scheduling_context)),
+        schedule_top_k_absolute(schedule_top_k_absolute),
+        scheduler_top_k_fraction(scheduler_top_k_fraction),
+        max_pending_lease_requests_per_scheduling_category(
+            max_pending_lease_requests_per_scheduling_category) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
 };

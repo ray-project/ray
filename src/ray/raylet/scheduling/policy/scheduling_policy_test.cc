@@ -51,12 +51,20 @@ class SchedulingPolicyTest : public ::testing::Test {
       float spread,
       bool avoid_local_node,
       bool require_node_available,
-      bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes()) {
+      bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes(),
+      int schedule_top_k_absolute = 1,
+      float scheduler_top_k_fraction = 0.1,
+      int64_t max_pending_lease_requests_per_scheduling_category = 5) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
                              require_node_available,
-                             avoid_gpu_nodes);
+                             avoid_gpu_nodes,
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             /*scheduling_context*/ nullptr,
+                             schedule_top_k_absolute,
+                             scheduler_top_k_fraction,
+                             max_pending_lease_requests_per_scheduling_category);
   }
 
   ClusterResourceManager MockClusterResourceManager(
