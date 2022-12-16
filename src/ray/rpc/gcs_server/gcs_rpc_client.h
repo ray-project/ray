@@ -219,8 +219,6 @@ class GcsRpcClient {
                                                                  client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
         channel_, client_call_manager);
-    stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(channel_, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
@@ -369,21 +367,17 @@ class GcsRpcClient {
                              heartbeat_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Add profile data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             AddProfileData,
-                             stats_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
 
-  /// Get information of all profiles from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             GetAllProfileInfo,
-                             stats_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
 
   /// Add task events info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
                              AddTaskEventData,
+                             task_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Add task events info to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             GetTaskEvents,
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -595,7 +589,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
   std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
-  std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;

@@ -340,9 +340,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 /// Maximum number of items in one batch to scan/get/delete from GCS storage.
 RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
-/// Maximum number of rows in GCS profile table.
-RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
-
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
@@ -461,17 +458,19 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
-RAY_CONFIG(int64_t, task_events_report_interval_ms, 0)
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
+/// Each task event takes up 500 bytes approximately for now, so 500k task events should
+/// cost less than 250MiB.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
-RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
+RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 500000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped.
 /// Setting the value to -1 allows for unlimited task events buffered on workers.
-RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
+RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 50000)
 
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
