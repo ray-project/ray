@@ -1792,6 +1792,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"]
+)
+
+py_test(
     name = "test_marl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1799,10 +1806,17 @@ py_test(
 )
 
 py_test(
-    name = "test_rl_optimizer",
+    name = "test_rl_optimizer_torch",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+    srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
+)
+
+py_test(
+    name = "test_rl_optimizer_tf",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
 )
 
 # --------------------------------------------------------------------
