@@ -271,6 +271,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
                 always_attach_evaluation_results=True,
             )
+            .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
