@@ -43,29 +43,27 @@ def get_ppo_loss(fwd_in, fwd_out):
 # TODO: Most of the neural network, and model specs in this file will eventually be
 # retreived from the model catalog. That includes FCNet, Encoder, etc.
 def get_expected_model_config(env, lstm, shared_encoder):
-    assert not env.observation_space.shape[-1] == 3, "Implement VisionNet first"
     if lstm:
         encoder_config_class = LSTMConfig
     else:
         encoder_config_class = FCConfig
 
     pi_config = encoder_config_class(
+        output_dim=32,
         hidden_layers=[32],
         activation="ReLU",
     )
     vf_config = encoder_config_class(
-        input_dim=32,
+        output_dim=32,
         hidden_layers=[32],
         activation="ReLU",
     )
 
     if shared_encoder:
-        shared_encoder_config = (
-            encoder_config_class(
-                input_dim=env.observation_space.shape[0],
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
+        shared_encoder_config = encoder_config_class(
+            input_dim=env.observation_space.shape[0],
+            hidden_layers=[32],
+            activation="ReLU",
         )
         pi_config.input_dim = 32
         vf_config.input_dim = 32
@@ -126,15 +124,15 @@ class PPOTorchRLModule(TorchRLModule):
             self.encoder_vf = self.config.vf_config.build()
 
         self.pi = FCNet(
-            input_dim=self.config.pi_config.input_dim,
-            output_dim=self.config.pi_config.output_dim,
+            input_dim=self.config.pi_config.output_dim,
+            output_dim=2,
             hidden_layers=self.config.pi_config.hidden_layers,
             activation=self.config.pi_config.activation,
         )
 
         self.vf = FCNet(
-            input_dim=self.config.vf_config.input_dim,
-            output_dim=self.config.vf_config.output_dim,
+            input_dim=self.config.vf_config.output_dim,
+            output_dim=1,
             hidden_layers=self.config.vf_config.hidden_layers,
             activation=self.config.vf_config.activation,
         )
