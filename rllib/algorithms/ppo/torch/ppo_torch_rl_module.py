@@ -51,11 +51,11 @@ def get_shared_encoder_config(env):
             hidden_layers=[32],
             activation="ReLU",
         ),
-        pi_config=FCConfig(
+        pi_encoder_config=FCConfig(
             hidden_layers=[32],
             activation="ReLU",
         ),
-        vf_config=FCConfig(
+        vf_encoder_config=FCConfig(
             hidden_layers=[32],
             activation="ReLU",
         ),
@@ -66,11 +66,11 @@ def get_separate_encoder_config(env):
     return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        pi_config=FCConfig(
+        pi_encoder_config=FCConfig(
             hidden_layers=[32],
             activation="ReLU",
         ),
-        vf_config=FCConfig(
+        vf_encoder_config=FCConfig(
             hidden_layers=[32],
             activation="ReLU",
         ),
@@ -82,8 +82,8 @@ class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO module.
 
     Attributes:
-        pi_config: The configuration for the policy network.
-        vf_config: The configuration for the value network.
+        pi_encoder_config: The configuration for the policy network.
+        vf_encoder_config: The configuration for the value network.
         encoder_config: The configuration for the encoder network.
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
