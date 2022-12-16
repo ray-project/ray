@@ -140,9 +140,6 @@ if __name__ == "__main__":
             num_sgd_iter=10,
             vf_loss_coeff=1e-5,
             model={
-                # Attention net wrapping (for tf) can already use the native keras
-                # model versions. For torch, this will have no effect.
-                "_use_default_native_models": True,
                 "use_attention": not args.no_attention,
                 "max_seq_len": 10,
                 "attention_num_transformer_units": 1,
