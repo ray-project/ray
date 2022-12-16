@@ -31,14 +31,14 @@ def main():
     sys.path.insert(0, args.app_dir)
     if pathlib.Path(args.config_or_import_path).is_file():
         config_path = args.config_or_import_path
-        cli_logger.print(f'Deploying from config file: "{config_path}".')
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
 
         with open(config_path, "r") as config_file:
             config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
         is_config = True
     else:
         import_path = args.config_or_import_path
-        cli_logger.print(f'Deploying from import path: "{import_path}".')
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
         node = import_attr(import_path)
         is_config = False
 

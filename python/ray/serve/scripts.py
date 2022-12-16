@@ -287,8 +287,8 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
-    # If no local ray instance is running, start one.
-    if address is None and not ray.is_initialized():
+    # If no address is given and no local ray instance is running, we want to start one.
+    if address is None:
         ray.init(namespace=SERVE_NAMESPACE)
 
     final_runtime_env = parse_runtime_env_args(
@@ -303,11 +303,14 @@ def run(
     # The job to run on the cluster, which imports and runs the serve app.
     from ray.serve import run_script
 
+    with open(run_script.__file__, "r") as f:
+        script = f.read()
+
     # Use Ray Job Submission to run serve.
     client = JobSubmissionClient(address)
     submission_id = client.submit_job(
         entrypoint=(
-            f"python {run_script.__file__} "
+            f"python -c '{script}' "
             f"--config-or-import-path={config_or_import_path} "
             f"--host={host} "
             f"--port={port} "
