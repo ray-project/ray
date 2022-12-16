@@ -365,7 +365,7 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-def test_get_with_timeout(ray_start_regular_shared):
+def test_get_with_timeout(ray_start_regular_shared, monkeypatch):
     SignalActor = create_remote_signal_actor(ray)
     signal = SignalActor.remote()
 
@@ -394,6 +394,14 @@ def test_get_with_timeout(ray_start_regular_shared):
     # Removed when https://github.com/ray-project/ray/issues/28465 is resolved.
     with pytest.warns(UserWarning):
         ray.get(signal.wait.remote(should_wait=False), timeout=0)
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "0")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ray.get(signal.wait.remote(should_wait=False), timeout=0)
 
 
 # https://github.com/ray-project/ray/issues/6329
