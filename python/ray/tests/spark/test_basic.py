@@ -10,6 +10,9 @@ from ray.util.spark.cluster_init import _init_ray_cluster
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class RayOnSparkCPUClusterTestBase(ABC):
@@ -21,7 +24,12 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     @classmethod
     def setup_class(cls):
-        raise NotImplementedError()
+        _logger.info(
+            f"RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT={os.environ.get('RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT')}"
+        )
+        _logger.info(
+            f"RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL={os.environ.get('RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL')}"
+        )
 
     @classmethod
     def teardown_class(cls):
@@ -96,6 +104,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
     @classmethod
     def setup_class(cls):
+        super().setup_class()
         cls.num_total_cpus = 2
         cls.num_total_gpus = 0
         cls.num_cpus_per_spark_task = 1

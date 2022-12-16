@@ -12,6 +12,7 @@ os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
     @classmethod
     def setup_class(cls):
+        super().setup_class()
         cls.num_total_cpus = 4
         cls.num_total_gpus = 4
         cls.num_cpus_per_spark_task = 2

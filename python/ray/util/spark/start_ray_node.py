@@ -5,6 +5,8 @@ import time
 import shutil
 import fcntl
 import signal
+import socket
+from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create ray node
@@ -24,12 +26,15 @@ _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 if __name__ == "__main__":
     arg_list = sys.argv[1:]
 
+    collect_log_to_path = os.environ[RAY_ON_SPARK_COLLECT_LOG_TO_PATH]
+    is_head = ("--head" in arg_list)
+
     temp_dir_arg_prefix = "--temp-dir="
     temp_dir = None
 
     for arg in arg_list:
         if arg.startswith(temp_dir_arg_prefix):
-            temp_dir = arg[len(temp_dir_arg_prefix) :]
+            temp_dir = arg[len(temp_dir_arg_prefix):]
 
     if temp_dir is None:
         raise ValueError("Please explicitly set --temp-dir option.")
@@ -55,10 +60,25 @@ if __name__ == "__main__":
                 # acquiring exclusive lock to ensure removing dir safely.
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 shutil.rmtree(temp_dir, ignore_errors=True)
+
+                # This is the final terminated ray node on current spark worker,
+                # start copy logs (including all local ray nodes logs) to destination.
+                if collect_log_to_path is not None:
+                    copy_log_dest_path = os.path.join(
+                        collect_log_to_path,
+                        os.path.basename(temp_dir) + "-logs",
+                        ("head" if is_head else socket.gethostname())
+                    )
+                    os.makedirs(copy_log_dest_path, exist_ok=True)
+                    shutil.copytree(
+                        os.path.join(temp_dir, "logs"),
+                        copy_log_dest_path,
+                        dirs_exist_ok=True,
+                    )
             except BlockingIOError:
                 # The file has active shared lock or exclusive lock, representing there
                 # are other ray nodes running, or other node running cleanup temp-dir routine.
-                # skip cleaning temp-dir.
+                # skip cleaning temp-dir, and skip copy logs to destination directory as well.
                 pass
         except Exception:
             # swallow any exception.

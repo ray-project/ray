@@ -53,6 +53,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
     @classmethod
     def setup_class(cls):
+        super().setup_class()
         cls.num_total_cpus = 2
         cls.num_total_gpus = 2
         cls.num_cpus_per_spark_task = 1

@@ -48,6 +48,8 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 
 MAX_NUM_WORKER_NODES = -1
 
+RAY_ON_SPARK_COLLECT_LOG_TO_PATH = 'RAY_ON_SPARK_COLLECT_LOG_TO_PATH'
+
 
 class RayClusterOnSpark:
     """
@@ -334,6 +336,7 @@ def _init_ray_cluster(
     worker_options=None,
     ray_temp_root_dir=None,
     safe_mode=False,
+    collect_log_to_path=None,
 ):
     """
     This function is used in testing, it has the same arguments with
@@ -472,6 +475,7 @@ def _init_ray_cluster(
         ray_head_node_cmd,
         synchronous=False,
         preexec_fn=setup_sigterm_on_parent_death,
+        extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path}
     )
 
     # wait ray head node spin up.
@@ -551,7 +555,9 @@ def _init_ray_cluster(
             *_convert_ray_node_options(worker_options),
         ]
 
-        ray_worker_node_extra_envs = {}
+        ray_worker_node_extra_envs = {
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path
+        }
 
         if num_spark_task_gpus > 0:
             task_resources = context.resources()
@@ -686,6 +692,7 @@ def init_ray_cluster(
     worker_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
     safe_mode: Optional[bool] = False,
+    collect_log_to_path: Optional[str] = None,
 ) -> None:
     """
     Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
@@ -723,6 +730,11 @@ def init_ray_cluster(
             not available for minimum recommended functionality, an exception will be raised that
             details the inadequate spark cluster configuration settings. If overridden as `False`,
             a warning is raised.
+        collect_log_to_path: If specified, after ray head / worker nodes terminated, collect their
+                             logs to the specified path. On Databricks Runtime, we recommend you to
+                             specify a local path starts with '/dbfs/', because the path mounts
+                             with a centralized storage device and stored data is persisted after
+                             databricks spark cluster terminated.
     """
     global _active_ray_cluster
     if _active_ray_cluster is not None:
