@@ -318,15 +318,38 @@ def test_multi_trial_reuse_with_failing(ray_start_4_cpus_extra):
     assert trial4.last_result["num_resets"] == 1
 
 
+def test_multi_trial_reuse_one_by_one(ray_start_4_cpus_extra):
+    """Test that we still reuse actors even if we run with concurrency = 1.
+
+    - Run 6 trials, but only 1 concurrent at the time
+    - This means there won't be any PENDING trials until the trial completed
+    - We still want to reuse actors
+
+    """
+    register_trainable("foo2", MyResettableClass)
+
+    trials = tune.run(
+        "foo2",
+        config={"id": -1},
+        reuse_actors=True,
+        num_samples=6,
+        max_concurrent_trials=1,
+    ).trials
+
+    assert sorted([t.last_result["num_resets"] for t in trials]) == [0, 1, 2, 3, 4, 5]
+
+
 def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
     """Test that actors with heterogeneous resource requirements are reused efficiently.
 
     - Run 6 trials in total
-    - Up to 2 trials can run at the same time
+    - Only 1 trial can run at the same time
     - Trials 1 and 6, 2 and 4, and 3 and 5, have the same resource request, respectively
     - Assert that trials 4, 5, and 6 re-use their respective previous actors
 
     """
+    # We need to set this to 6 so that all trials will be scheduled and actors will
+    # be correctly cached.
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "6"
 
     register_trainable("foo2", MyResettableClass)
@@ -334,21 +357,20 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
     trials = tune.run(
         "foo2",
         config={
-            # The extra resources are selected so that only any 2 placement groups
+            # The extra resources are selected so that only any 1 placement group
             # can be scheduled at the same time at all times (to force sequential
             # execution of trials)
             "required_resources": tune.grid_search(
                 [
                     {"cpu": 4, "custom_resources": {"extra": 4}},
-                    {"cpu": 2, "custom_resources": {"extra": 1}},
-                    {"cpu": 1, "custom_resources": {"extra": 3}},
-                    {"cpu": 2, "custom_resources": {"extra": 1}},
-                    {"cpu": 1, "custom_resources": {"extra": 3}},
+                    {"cpu": 2, "custom_resources": {"extra": 4}},
+                    {"cpu": 1, "custom_resources": {"extra": 4}},
+                    {"cpu": 2, "custom_resources": {"extra": 4}},
+                    {"cpu": 1, "custom_resources": {"extra": 4}},
                     {"cpu": 4, "custom_resources": {"extra": 4}},
                 ]
             ),
             "id": -1,
-            "sleep": 2,
         },
         reuse_actors=True,
     ).trials
