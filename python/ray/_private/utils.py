@@ -1262,7 +1262,7 @@ def get_wheel_filename(
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ray_constants.SUPPORTED_PYTHON_VERSIONS, py_version
+    assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
     if py_version_str in ["36", "37"]:
