@@ -2290,19 +2290,20 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
-    if timeout == 0 and os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
-        import warnings
+    if timeout == 0:
+        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
+            import warnings
 
-        warnings.warn(
-            (
-                "Please use timeout=None if you expect ray.get() to block. "
-                "Setting timeout=0 in future ray releases will raise GetTimeoutError "
-                "if the objects references are not available. "
-                "You could suppress this warning by setting "
-                "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0"
-            ),
-            UserWarning,
-        )
+            warnings.warn(
+                (
+                    "Please use timeout=None if you expect ray.get() to block. "
+                    "Setting timeout=0 in future ray releases will raise "
+                    "GetTimeoutError if the objects references are not available. "
+                    "You could suppress this warning by setting "
+                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0"
+                ),
+                UserWarning,
+            )
 
     worker = global_worker
     worker.check_connected()
