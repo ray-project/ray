@@ -42,6 +42,50 @@ def get_ppo_loss(fwd_in, fwd_out):
     return loss
 
 
+# TODO: Most of the neural network, and model specs in this file will eventually be
+# retreived from the model catalog. That includes FCNet, Encoder, etc.
+def get_expected_model_config(env, lstm, shared_encoder):
+    assert not env.observation_space.shape[-1] == 3, "Implement VisionNet first"
+    if lstm:
+        encoder_config_class = LSTMConfig
+    else:
+        encoder_config_class = FCConfig
+
+    pi_config = encoder_config_class(
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+    vf_config = encoder_config_class(
+        input_dim=32,
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+
+    if shared_encoder:
+        shared_encoder_config = (
+            encoder_config_class(
+                input_dim=env.observation_space.shape[0],
+                hidden_layers=[32],
+                activation="ReLU",
+            ),
+        )
+        pi_config.input_dim = 32
+        vf_config.input_dim = 32
+    else:
+        shared_encoder_config = None
+        pi_config.input_dim = env.observation_space.shape[0]
+        vf_config.input_dim = env.observation_space.shape[0]
+
+    return PPOModuleConfig(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        shared_encoder_config=shared_encoder_config,
+        pi_config=pi_config,
+        vf_config=vf_config,
+        shared_encoder=shared_encoder,
+    )
+
+
 @dataclass
 class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO module.
@@ -58,8 +102,6 @@ class PPOModuleConfig(RLModuleConfig):
 
     pi_config: FCConfig = None
     vf_config: FCConfig = None
-    pi_encoder_config: FCConfig = None
-    vf_encoder_config: FCConfig = None
     shared_encoder_config: FCConfig = None
     free_log_std: bool = False
     shared_encoder: bool = True
@@ -76,9 +118,14 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
 
-        self.shared_encoder = self.config.shared_encoder_config.build()
-        self.pi_encoder = self.config.pi_encoder_config.build()
-        self.vf_encoder = self.config.vf_encoder_config.build()
+        if self.config.shared_encoder:
+            self.shared_encoder = self.config.shared_encoder_config.build()
+            self.encoder_pi = IdentityEncoder(self.config.pi_config)
+            self.encoder_vf = IdentityEncoder(self.config.vf_config)
+        else:
+            self.shared_encoder = IdentityEncoder(self.config.shared_encoder_config)
+            self.encoder_pi = self.config.pi_config.build()
+            self.encoder_vf = self.config.vf_config.build()
 
         self.pi = FCNet(
             input_dim=self.config.pi_encoder_config.output_dim,
@@ -138,16 +185,15 @@ class PPOTorchRLModule(TorchRLModule):
             shared_encoder_config = IdentityConfig(output_dim=obs_dim)
 
         if use_lstm:
-            pi_encoder_config = LSTMConfig(
-                input_dim=shared_encoder_config.output_dim,
+            assert vf_share_layers, "LSTM not supported with vf_share_layers=False"
+            shared_encoder_config = LSTMConfig(
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
                 output_dim=model_config["lstm_cell_size"],
                 num_layers=1,
             )
         else:
-            pi_encoder_config = FCConfig(
-                input_dim=shared_encoder_config.output_dim,
+            shared_encoder_config = FCConfig(
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
@@ -176,16 +222,15 @@ class PPOTorchRLModule(TorchRLModule):
 
         # build pi network
         shared_encoder_config.input_dim = observation_space.shape[0]
-        pi_encoder_config.input_dim = shared_encoder_config.output_dim
-        pi_config.input_dim = pi_encoder_config.output_dim
+        pi_config.input_dim = shared_encoder_config.output_dim
+
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
 
         # build vf network
-        vf_encoder_config.input_dim = shared_encoder_config.output_dim
-        vf_config.input_dim = vf_encoder_config.output_dim
+        vf_config.input_dim = shared_encoder_config.output_dim
         vf_config.output_dim = 1
 
         config_ = PPOModuleConfig(
@@ -205,12 +250,13 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if isinstance(self.shared_encoder, LSTMEncoder):
-            return self.shared_encoder.get_initial_state()
-        elif isinstance(self.pi_encoder, LSTMEncoder):
-            return self.pi_encoder.get_initial_state()
-        else:
-            return NestedDict({})
+        if isinstance(self.config.shared_encoder_config, LSTMConfig):
+            # TODO (Kourosh): How does this work in RLlib today?
+            if isinstance(self.shared_encoder, LSTMEncoder):
+                return self.shared_encoder.get_inital_state()
+            else:
+                return self.encoder_pi.get_inital_state()
+        return {}
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
