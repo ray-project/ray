@@ -28,7 +28,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/profiling.h"
+#include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
@@ -800,8 +800,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
 
-  /// Create a profile event with a reference to the core worker's profiler.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
+  /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
+
+      const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
     return direct_task_submitter_->GetNumTasksSubmitted();
@@ -1433,9 +1435,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
-
-  /// Profiler including a background thread that pushes profiling events to the GCS.
-  std::shared_ptr<worker::Profiler> profiler_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

@@ -23,6 +23,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -306,6 +307,9 @@ class AlgorithmConfig:
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        # Whether this env is an atari env (for atari-specific preprocessing).
+        # If not specified, we will try to auto-detect this.
+        self.is_atari = None
 
         # `self.rollouts()`
         self.num_rollout_workers = 0
@@ -405,6 +409,7 @@ class AlgorithmConfig:
 
         # `self.checkpointing()`
         self.export_native_model_files = False
+        self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
         self.logger_creator = None
@@ -485,7 +490,22 @@ class AlgorithmConfig:
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            config["multiagent"][k] = config.pop(k)
+            # convert policies dict to something human-readable
+            if k == "policies" and isinstance(self.multiagent[k], dict):
+                policies_dict = {}
+                for policy_id, policy_spec in self.multiagent[k].items():
+                    if isinstance(policy_spec, PolicySpec):
+                        policies_dict[policy_id] = (
+                            policy_spec.policy_class,
+                            policy_spec.observation_space,
+                            policy_spec.action_space,
+                            policy_spec.config,
+                        )
+                    else:
+                        policies_dict[policy_id] = policy_spec
+                config["multiagent"][k] = policies_dict
+            else:
+                config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
@@ -630,6 +650,28 @@ class AlgorithmConfig:
         # TODO: Flip out all set/dict/list values into frozen versions
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
+
+    def _detect_atari_env(self) -> bool:
+        """Returns whether this configured env is an Atari env or not.
+
+        Returns:
+            True, if specified env is an Atari env, False otherwise.
+        """
+        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+        # or "ALE/Breakout-v5".
+        # We do NOT attempt to auto-detect Atari env for other specified types like
+        # a callable, to avoid running heavy logics in validate().
+        # For these cases, users can explicitly set `environment(atari=True)`.
+        if not type(self.env) == str:
+            return False
+
+        try:
+            env = gym.make(self.env)
+        except gym.error.NameNotFound:
+            # Not an Atari env if this is not a gym env.
+            return False
+
+        return is_atari(env)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
@@ -791,6 +833,10 @@ class AlgorithmConfig:
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+        # Detect if specified env is an Atari env.
+        if self.is_atari is None:
+            self.is_atari = self._detect_atari_env()
 
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
             raise ValueError(
@@ -1018,6 +1064,7 @@ class AlgorithmConfig:
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
         disable_env_checking: Optional[bool] = NotProvided,
+        is_atari: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1058,6 +1105,9 @@ class AlgorithmConfig:
                 before sending them back to the env.
                 TODO: (sven) This option should be deprecated and always be False.
             disable_env_checking: If True, disable the environment pre-checking module.
+            is_atari: This config can be used to explicitly specify whether the env is
+                an Atari env or not. If not specified, RLlib will try to auto-detect
+                this during config validation.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1086,6 +1136,8 @@ class AlgorithmConfig:
             self.clip_actions = clip_actions
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
+        if is_atari is not NotProvided:
+            self.is_atari = is_atari
 
         return self
 
@@ -1371,6 +1423,20 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.model.update(model)
+            if (
+                model.get("_use_default_native_models", DEPRECATED_VALUE)
+                != DEPRECATED_VALUE
+            ):
+                deprecation_warning(
+                    old="AlgorithmConfig.training(_use_default_native_models=True)",
+                    help="_use_default_native_models is not supported "
+                    "anymore. To get rid of this error, set `experimental("
+                    "_enable_rl_module_api` to True. Native models will "
+                    "be better supported by the upcoming RLModule API.",
+                    # Error out if user tries to enable this
+                    error=model["_use_default_native_models"],
+                )
+
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
         if max_requests_in_flight_per_sampler_worker is not NotProvided:
@@ -1949,6 +2015,7 @@ class AlgorithmConfig:
     def checkpointing(
         self,
         export_native_model_files: Optional[bool] = NotProvided,
+        checkpoint_trainable_policies_only: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's checkpointing settings.
 
@@ -1959,6 +2026,9 @@ class AlgorithmConfig:
                 from these files w/o requiring RLlib. These files are generated
                 by calling the tf- or torch- built-in saving utility methods on
                 the actual models.
+            checkpoint_trainable_policies_only: Whether to only add Policies to the
+                Algorithm checkpoint (in sub-directory "policies/") that are trainable
+                according to the `is_trainable_policy` callable of the local worker.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1966,6 +2036,8 @@ class AlgorithmConfig:
 
         if export_native_model_files is not NotProvided:
             self.export_native_model_files = export_native_model_files
+        if checkpoint_trainable_policies_only is not NotProvided:
+            self.checkpoint_trainable_policies_only = checkpoint_trainable_policies_only
 
         return self
 

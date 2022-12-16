@@ -369,6 +369,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.

@@ -254,7 +254,7 @@ You can also click the node id to go into a node detail page where you can see m
     - Logs messages at each node and worker. You can see log files relevant to a node or worker by clicking this link.
   * - **Stack Trace**
     - Get the Python stack trace for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
-  * - **Flame Graph**
+  * - **CPU Flame Graph**
     - Get a CPU flame graph for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
 
 
@@ -321,7 +321,7 @@ Actors
     - A link to the logs that are relevant to this actor.
   * - **Stack Trace**
     - Get the Python stack trace for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
-  * - **Flame Graph**
+  * - **CPU Flame Graph**
     - Get a CPU flame graph for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
 
 Logs
