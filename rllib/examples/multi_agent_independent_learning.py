@@ -31,7 +31,9 @@ if __name__ == "__main__":
             # Method specific
             "multiagent": {
                 "policies": set(env.agents),
-                "policy_mapping_fn": (lambda agent_id, episode, **kwargs: agent_id),
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, worker, **kwargs: agent_id
+                ),
             },
         },
     ).fit()

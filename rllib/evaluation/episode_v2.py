@@ -116,7 +116,9 @@ class EpisodeV2:
         # duration of this episode to the returned PolicyID.
         if agent_id not in self._agent_to_policy or refresh:
             policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                agent_id, episode=self, worker=self.worker
+                agent_id,  # agent_id
+                self,  # episode
+                worker=self.worker,
             )
         # Use already determined PolicyID.
         else:

@@ -38,7 +38,7 @@ class TestMADDPG(unittest.TestCase):
                         config=maddpg.MADDPGConfig.overrides(agent_id=1),
                     ),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol2"
                 if agent_id
                 else "pol1",
             )

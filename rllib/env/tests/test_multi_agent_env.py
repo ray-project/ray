@@ -177,10 +177,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "p{}".format(
-                        agent_id % 2
-                    )
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -200,8 +198,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -220,8 +218,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -289,7 +287,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -434,7 +432,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -492,7 +490,9 @@ class TestMultiAgentEnv(unittest.TestCase):
                     "policy_1": gen_policy(),
                     "policy_2": gen_policy(),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "policy_1",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "policy_1"
+                ),
             )
             .framework("tf")
         )
