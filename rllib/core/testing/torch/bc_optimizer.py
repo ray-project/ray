@@ -13,8 +13,8 @@ class BCTorchOptimizer(RLOptimizer):
 
     @override(RLOptimizer)
     def compute_loss(
-        self, batch: NestedDict, fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+        self, batch: NestedDict[torch.Tensor], fwd_out: Mapping[str, Any]
+    ) -> torch.Tensor:
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
         actions = batch["actions"]

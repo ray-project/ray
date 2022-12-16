@@ -14,8 +14,16 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        module1 = DiscreteBCTorchModule.from_env(env)
-        module2 = DiscreteBCTorchModule.from_env(env)
+        module1 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+        module2 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         multi_agent_dict = {"module1": module1, "module2": module2}
         marl_module = MultiAgentRLModule(multi_agent_dict)
@@ -55,7 +63,11 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
-        marl_module = DiscreteBCTorchModule.from_env(env).as_multi_agent()
+        marl_module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        ).as_multi_agent()
 
         self.assertNotIsInstance(marl_module, DiscreteBCTorchModule)
         self.assertIsInstance(marl_module, MultiAgentRLModule)
@@ -70,7 +82,11 @@ class TestMARLModule(unittest.TestCase):
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
-        module = DiscreteBCTorchModule.from_env(env).as_multi_agent()
+        module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        ).as_multi_agent()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -80,7 +96,11 @@ class TestMARLModule(unittest.TestCase):
             set(module[DEFAULT_POLICY_ID].get_state().keys()),
         )
 
-        module2 = DiscreteBCTorchModule.from_env(env).as_multi_agent()
+        module2 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        ).as_multi_agent()
         state2 = module2.get_state()
         check(state, state2, false=True)
 
@@ -94,9 +114,20 @@ class TestMARLModule(unittest.TestCase):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        module = DiscreteBCTorchModule.from_env(env).as_multi_agent()
+        module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        ).as_multi_agent()
 
-        module.add_module("test", DiscreteBCTorchModule.from_env(env))
+        module.add_module(
+            "test",
+            DiscreteBCTorchModule.from_model_config(
+                env.observation_space,
+                env.action_space,
+                model_config={"hidden_dim": 32},
+            ),
+        )
         self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID, "test"})
         module.remove_module("test")
         self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID})
@@ -105,12 +136,23 @@ class TestMARLModule(unittest.TestCase):
         self.assertRaises(
             ValueError,
             lambda: module.add_module(
-                DEFAULT_POLICY_ID, DiscreteBCTorchModule.from_env(env)
+                DEFAULT_POLICY_ID,
+                DiscreteBCTorchModule.from_model_config(
+                    env.observation_space,
+                    env.action_space,
+                    model_config={"hidden_dim": 32},
+                ),
             ),
         )
 
         module.add_module(
-            DEFAULT_POLICY_ID, DiscreteBCTorchModule.from_env(env), override=True
+            DEFAULT_POLICY_ID,
+            DiscreteBCTorchModule.from_model_config(
+                env.observation_space,
+                env.action_space,
+                model_config={"hidden_dim": 32},
+            ),
+            override=True,
         )
 
     def test_get_module_configs(self):

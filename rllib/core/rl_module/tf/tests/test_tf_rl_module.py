@@ -1,10 +1,11 @@
 import gym
-import torch
+import tensorflow as tf
+import tensorflow_probability as tfp
 import unittest
 from typing import Mapping
 
-from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
 from ray.rllib.utils.test_utils import check
 
@@ -13,54 +14,58 @@ class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
+        module = DiscreteBCTFModule.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
         )
 
-        self.assertIsInstance(module, TorchRLModule)
+        self.assertIsInstance(module, TfRLModule)
 
     def test_forward_train(self):
 
         bsize = 1024
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
+        module = DiscreteBCTFModule.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
         )
 
         obs_shape = env.observation_space.shape
-        obs = torch.randn((bsize,) + obs_shape)
-        actions = torch.stack(
-            [torch.tensor(env.action_space.sample()) for _ in range(bsize)]
+        obs = tf.random.uniform((bsize,) + obs_shape)
+        actions = tf.stack(
+            [
+                tf.convert_to_tensor(env.action_space.sample(), dtype=tf.float32)
+                for _ in range(bsize)
+            ]
         )
-        output = module.forward_train({"obs": obs})
+        with tf.GradientTape() as tape:
+            output = module.forward_train({"obs": obs})
+            loss = -tf.math.reduce_mean(output["action_dist"].log_prob(actions))
 
         self.assertIsInstance(output, Mapping)
         self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], torch.distributions.Categorical)
+        self.assertIsInstance(output["action_dist"], tfp.distributions.Categorical)
 
-        loss = -output["action_dist"].log_prob(actions.view(-1)).mean()
-        loss.backward()
+        grads = tape.gradient(loss, module.trainable_variables())
 
         # check that all neural net parameters have gradients
-        for param in module.parameters():
-            self.assertIsNotNone(param.grad)
+        for grad in grads["policy"]:
+            self.assertIsNotNone(grad)
 
     def test_forward(self):
         """Test forward inference and exploration of"""
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
+        module = DiscreteBCTFModule.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
         )
 
         obs_shape = env.observation_space.shape
-        obs = torch.randn((1,) + obs_shape)
+        obs = tf.random.uniform((1,) + obs_shape)
 
         # just test if the forward pass runs fine
         module.forward_inference({"obs": obs})
@@ -69,7 +74,7 @@ class TestRLModule(unittest.TestCase):
     def test_get_set_state(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
+        module = DiscreteBCTFModule.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
@@ -78,13 +83,13 @@ class TestRLModule(unittest.TestCase):
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
-        module2 = DiscreteBCTorchModule.from_model_config(
+        module2 = DiscreteBCTFModule.from_model_config(
             env.observation_space,
             env.action_space,
             model_config={"hidden_dim": 32},
         )
         state2 = module2.get_state()
-        check(state, state2, false=True)
+        check(state["policy"][0], state2["policy"][0], false=True)
 
         module2.set_state(state)
         state2_after = module2.get_state()
