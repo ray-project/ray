@@ -1247,7 +1247,7 @@ def import_attr(full_path: str):
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: Tuple[int, int] = sys.version_info[:2],
+    py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
