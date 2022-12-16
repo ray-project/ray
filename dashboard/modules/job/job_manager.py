@@ -19,6 +19,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
@@ -493,7 +494,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
-        create_task(self._recover_running_jobs())
+        run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
@@ -504,7 +505,7 @@ class JobManager:
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                create_task(self._monitor_job(job_id))
+                run_background_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -836,7 +837,9 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
+            run_background_task(
+                self._monitor_job(submission_id, job_supervisor=supervisor)
+            )
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,
