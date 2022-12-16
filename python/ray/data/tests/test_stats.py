@@ -19,7 +19,9 @@ def canonicalize(stats: str) -> str:
     s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
     # Replace tabs with spaces.
     s4 = re.sub("\t", "    ", s3)
-    return s4
+    # Drop the extra metrics line.
+    s5 = "\n".join(x for x in s4.split("\n") if "Extra metrics: " not in x)
+    return s5
 
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):

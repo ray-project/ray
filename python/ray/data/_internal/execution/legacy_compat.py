@@ -8,7 +8,7 @@ from typing import Iterator
 
 import ray
 from ray.data.block import Block, BlockMetadata, List
-from ray.data._internal.stats import StatsDict
+from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import get_compute
@@ -36,17 +36,17 @@ def execute_to_legacy_block_list(
     Returns:
         The output as a legacy block list.
     """
-    dag = _to_operator_dag(plan, allow_clear_input_blocks)
-    bundles = executor.execute(dag)
+    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    bundles = executor.execute(dag, initial_stats=stats)
     return _bundles_to_block_list(bundles)
 
 
 def _to_operator_dag(
     plan: ExecutionPlan, allow_clear_input_blocks: bool
-) -> PhysicalOperator:
+) -> (PhysicalOperator, DatasetStats):
     """Translate a plan into an operator DAG for the new execution backend."""
 
-    blocks, _, stages = plan._optimize()
+    blocks, stats, stages = plan._optimize()
     if allow_clear_input_blocks:
         if isinstance(blocks, LazyBlockList):
             # Always clear lazy input blocks since they can be recomputed.
@@ -60,7 +60,7 @@ def _to_operator_dag(
     operator = _blocks_to_input_buffer(blocks, owns_blocks)
     for stage in stages:
         operator = _stage_to_operator(stage, operator)
-    return operator
+    return operator, stats
 
 
 def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:
@@ -149,12 +149,15 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         fn = stage.fn
         block_udf = stage.block_udf
         remote_args = stage.ray_remote_args
+        stage_name = stage.name
 
         def bulk_fn(refs: List[RefBundle]) -> (List[RefBundle], StatsDict):
             owns_blocks = all(b.owns_blocks for b in refs)
             block_list = _bundles_to_block_list(refs)
             block_list, stats_dict = fn(block_list, owns_blocks, block_udf, remote_args)
             output = _block_list_to_bundles(block_list, owns_blocks=True)
+            if not stats_dict:
+                stats_dict = {stage_name: block_list.get_metadata()}
             return output, stats_dict
 
         return AllToAllOperator(

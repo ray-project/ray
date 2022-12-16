@@ -192,7 +192,9 @@ class Executor:
         """Create the executor."""
         self._options = options
 
-    def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
+    def execute(
+        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+    ) -> Iterator[RefBundle]:
         """Start execution."""
         raise NotImplementedError
 

@@ -1,6 +1,5 @@
-import time
 import logging
-from typing import Dict, List, Iterator
+from typing import Dict, List, Iterator, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -19,13 +18,21 @@ class BulkExecutor(Executor):
     def __init__(self, options: ExecutionOptions):
         super().__init__(options)
         self._stats = DatasetStats(stages={}, parent=None)
+        self._executed = False
 
-    def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
+    def execute(
+        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+    ) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal."""
-        logger.debug("Executing DAG %s", dag)
+
+        assert not self._executed, "Can only call execute once."
+        self._executed = True
+        logger.info("Executing DAG %s", dag)
+
+        if initial_stats:
+            self._stats = initial_stats
 
         saved_outputs: Dict[PhysicalOperator, List[RefBundle]] = {}
-        self._stats = DatasetStats(stages={}, parent=None)
 
         def execute_recursive(node: PhysicalOperator) -> List[RefBundle]:
             # Avoid duplicate executions.
@@ -36,7 +43,8 @@ class BulkExecutor(Executor):
             inputs = [execute_recursive(dep) for dep in node.input_dependencies]
 
             # Fully execute this operator.
-            start_time = time.perf_counter()
+            logger.info("Executing node %s", node.name)
+            builder = self._stats.child_builder(node.name)
             for i, ref_bundles in enumerate(inputs):
                 for r in ref_bundles:
                     node.add_input(r, input_index=i)
@@ -49,8 +57,7 @@ class BulkExecutor(Executor):
             node_stats = node.get_stats()
             node_metrics = node.get_metrics()
             if node_stats:
-                self._stats = DatasetStats(stages=node_stats, parent=self._stats)
-                self._stats.time_total_s = time.perf_counter() - start_time
+                self._stats = builder.build_multistage(node_stats)
                 self._stats.extra_metrics = node_metrics
             return output
 

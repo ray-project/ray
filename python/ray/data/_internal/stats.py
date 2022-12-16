@@ -65,10 +65,13 @@ class _DatasetStatsBuilder:
     ) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
-            if i == 0:
-                stage_infos[self.stage_name + "_" + k] = v
+            if len(stages) > 1:
+                if i == 0:
+                    stage_infos[self.stage_name + "_" + k] = v
+                else:
+                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
             else:
-                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                stage_infos[self.stage_name] = v
         stats = DatasetStats(
             stages=stage_infos,
             parent=self.parent,
