@@ -230,9 +230,6 @@ class RayTrialExecutor:
         self._resources_to_cached_actors: Dict[
             ResourceRequest, List[Tuple[ray.actor.ActorHandle, AcquiredResource]]
         ] = defaultdict(list)
-        self._last_cached_actor_cleanup = float("-inf")
-        # Protect these actors from the first cleanup
-        self._newly_cached_actors = set()
 
         # Trials for which we requested resources
         self._staged_trials = set()
@@ -571,12 +568,14 @@ class RayTrialExecutor:
         E.g. if we have 6 running trials and 4 additional staged actors, we will only
         cache up to 4 of the running trial actors when they finish.
 
-        One exception is the case when we don't have any cached actors, yet. In that
-        case we allow up to 1 cached actor _for one iteration of the trial runner_.
-        This is to allow the trial runner to create a trial that needs the resources,
-        (e.g. if we don't allow any pending trials), which will be fulfilled
-        immediately. If no such trial is created, the cached actor is cleaned up
-        in the next trial runner iteration.
+        One exception is the case when we have no cached actors, yet. In that case,
+        we will always cache the actor in this method.
+
+        Later, in `_cleanup_cached_actors`, we will check again if we need this cached
+        actor. That method will keep the actor if we don't have any staged trials,
+        because we don't know at that point if the next trial might require the same
+        resources. But because there is no staged trial, it is safe to keep the actor
+        around, as it won't occupy resources needed by another trial until it's staged.
         """
         if not self._reuse_actors:
             return False
@@ -595,7 +594,6 @@ class RayTrialExecutor:
             # then we don't have an immediate need for the actor and don't
             # want to cache it.
         ):
-            # We don't need that many cached actors
             logger.debug(
                 f"Could not cache actor of trial {trial} for "
                 "reuse, as there are no pending trials "
@@ -609,11 +607,6 @@ class RayTrialExecutor:
             (trial.runner, acquired_resource)
         )
         self._trial_to_acquired_resource.pop(trial)
-
-        # Track caching of this actor to prevent it from being cleaned up right away.
-        # This is to enable actor re-use when there are no other pending trials, yet.
-        # See docstring of `_cleanup_cached_actors()`
-        self._newly_cached_actors.add(trial.runner)
 
         trial.set_runner(None)
 
@@ -881,18 +874,20 @@ class RayTrialExecutor:
         _no_ pending trial, so we would never cache the actor.
 
         To circumvent this problem, we always cache an actor once the trial is
-        gracefully stopped (and when `reuse_actors=True`). We add this trial to
-        `self._newly_cached_actors` to prevent cleanup in the same iteration.
-
-        In the next iteration, we may have created a new trial. Then, when the step
-        ends, we know if the actor we cached in the previous iteration is needed soon.
-        This is checked in this very method. If it is not needed, it will be cleaned
-        up (as it will have been removed from `self._newly_cached_actors` by now).
+        gracefully stopped (and when `reuse_actors=True`). We only remove this
+        cached actor once we have at least one new staged trial, so that we know
+        if we need to keep the actor or not. So if we create a new trial in the next
+        iteration, we can either reuse the cached actor (if resources match) or
+        remove it (if resources don't match and the cached actor is thus not required).
 
         This method fetches the required resources for all pending trials and the
         resources for all cached actors. If we cached more actors than we need, we
         terminate the excess actors and free the resources.
         """
+        if not self._staged_trials and not force_all:
+            # If we don't have any staged trials, keep cached actors
+            return
+
         staged_resources = self._count_staged_resources()
 
         for resource_request, actors in self._resources_to_cached_actors.items():
@@ -900,19 +895,14 @@ class RayTrialExecutor:
                 force_all and len(actors)
             ):
                 actor, acquired_resource = actors[-1]
-                if actor in self._newly_cached_actors and not force_all:
-                    self._newly_cached_actors.remove(actor)
-                else:
-                    actors.pop()
-                    future = actor.stop.remote()
-                    self._futures[future] = (
-                        _ExecutorEventType.STOP_RESULT,
-                        acquired_resource,
-                    )
-                    if self._trial_cleanup:  # force trial cleanup within a deadline
-                        self._trial_cleanup.add(future)
-
-        self._last_cached_actor_cleanup = time.time()
+                actors.pop()
+                future = actor.stop.remote()
+                self._futures[future] = (
+                    _ExecutorEventType.STOP_RESULT,
+                    acquired_resource,
+                )
+                if self._trial_cleanup:  # force trial cleanup within a deadline
+                    self._trial_cleanup.add(future)
 
     def _resolve_stop_event(
         self,
