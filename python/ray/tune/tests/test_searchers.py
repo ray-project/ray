@@ -66,7 +66,8 @@ class InvalidValuesTest(unittest.TestCase):
         from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
 
-        config = {"report": tune.uniform(0.0, 5.0)}
+        config = self.config.copy()
+        config["mixed_list"] = [1, tune.uniform(2, 3), 4]
         converted_config = AxSearch.convert_search_space(config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
@@ -83,9 +84,11 @@ class InvalidValuesTest(unittest.TestCase):
             num_samples=4,
             reuse_actors=False,
         )
-
-        best_trial = out.best_trial
-        self.assertLessEqual(best_trial.config["report"], 2.0)
+        self.assertCorrectExperimentOutput(out)
+        self.assertEqual(out.best_trial.config["mixed_list"][0], 1)
+        self.assertGreaterEqual(out.best_trial.config["mixed_list"][1], 2)
+        self.assertLess(out.best_trial.config["mixed_list"][1], 3)
+        self.assertEqual(out.best_trial.config["mixed_list"][2], 4)
 
     def testAx(self):
         from ray.tune.search.ax import AxSearch
