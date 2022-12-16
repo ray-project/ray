@@ -42,37 +42,45 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 # TODO: Most of the neural network, and model specs in this file will eventually be
 # retreived from the model catalog. That includes FCNet, Encoder, etc.
-def get_shared_encoder_config(env):
-    return PPOModuleConfig(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        encoder_config=FCConfig(
-            hidden_layers=[32],
-            activation="ReLU",
-        ),
-        pi_config=FCConfig(
-            hidden_layers=[32],
-            activation="ReLU",
-        ),
-        vf_config=FCConfig(
-            hidden_layers=[32],
-            activation="ReLU",
-        ),
+def get_expected_model_config(env, lstm, shared_encoder):
+    assert not env.observation_space.shape[-1] == 3, "Implement VisionNet first"
+    if lstm:
+        encoder_config_class = LSTMConfig
+    else:
+        encoder_config_class = FCConfig
+
+    pi_config = encoder_config_class(
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+    vf_config = encoder_config_class(
+        input_dim=32,
+        hidden_layers=[32],
+        activation="ReLU",
     )
 
+    if shared_encoder:
+        shared_encoder_config = (
+            encoder_config_class(
+                input_dim=env.observation_space.shape[0],
+                hidden_layers=[32],
+                activation="ReLU",
+            ),
+        )
+        pi_config.input_dim = 32
+        vf_config.input_dim = 32
+    else:
+        shared_encoder_config = None
+        pi_config.input_dim = env.observation_space.shape[0]
+        vf_config.input_dim = env.observation_space.shape[0]
 
-def get_separate_encoder_config(env):
     return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        pi_config=FCConfig(
-            hidden_layers=[32],
-            activation="ReLU",
-        ),
-        vf_config=FCConfig(
-            hidden_layers=[32],
-            activation="ReLU",
-        ),
+        shared_encoder_config=shared_encoder_config,
+        pi_config=pi_config,
+        vf_config=vf_config,
+        shared_encoder=shared_encoder,
     )
 
 
@@ -83,7 +91,7 @@ class PPOModuleConfig(RLModuleConfig):
     Attributes:
         pi_config: The configuration for the policy network.
         vf_config: The configuration for the value network.
-        encoder_config: The configuration for the encoder network.
+        shared_encoder_config: The configuration for the encoder network.
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
@@ -92,7 +100,7 @@ class PPOModuleConfig(RLModuleConfig):
 
     pi_config: FCConfig = None
     vf_config: FCConfig = None
-    encoder_config: FCConfig = None
+    shared_encoder_config: FCConfig = None
     free_log_std: bool = False
     shared_encoder: bool = True
 
@@ -109,13 +117,13 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.vf_config, "vf_config must be provided."
 
         if self.config.shared_encoder:
-            self.shared_encoder = self.config.encoder_config.build()
-            self.encoder_pi = IdentityEncoder(self.config.encoder_config)
-            self.encoder_vf = IdentityEncoder(self.config.encoder_config)
+            self.shared_encoder = self.config.shared_encoder_config.build()
+            self.encoder_pi = IdentityEncoder(self.config.pi_config)
+            self.encoder_vf = IdentityEncoder(self.config.vf_config)
         else:
-            self.shared_encoder = IdentityEncoder(self.config.encoder_config)
-            self.encoder_pi = self.config.encoder_config.build()
-            self.encoder_vf = self.config.encoder_config.build()
+            self.shared_encoder = IdentityEncoder(self.config.shared_encoder_config)
+            self.encoder_pi = self.config.pi_config.build()
+            self.encoder_vf = self.config.vf_config.build()
 
         self.pi = FCNet(
             input_dim=self.config.pi_config.input_dim,
@@ -162,14 +170,14 @@ class PPOTorchRLModule(TorchRLModule):
 
         if use_lstm:
             assert vf_share_layers, "LSTM not supported with vf_share_layers=False"
-            encoder_config = LSTMConfig(
+            shared_encoder_config = LSTMConfig(
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
                 output_dim=model_config["lstm_cell_size"],
                 num_layers=1,
             )
         else:
-            encoder_config = FCConfig(
+            shared_encoder_config = FCConfig(
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
@@ -191,8 +199,8 @@ class PPOTorchRLModule(TorchRLModule):
         )
 
         # build pi network
-        encoder_config.input_dim = observation_space.shape[0]
-        pi_config.input_dim = encoder_config.output_dim
+        shared_encoder_config.input_dim = observation_space.shape[0]
+        pi_config.input_dim = shared_encoder_config.output_dim
 
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
@@ -200,14 +208,14 @@ class PPOTorchRLModule(TorchRLModule):
             pi_config.output_dim = action_space.shape[0] * 2
 
         # build vf network
-        vf_config.input_dim = encoder_config.output_dim
+        vf_config.input_dim = shared_encoder_config.output_dim
         vf_config.output_dim = 1
 
         config_ = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
             max_seq_len=model_config["max_seq_len"],
-            encoder_config=encoder_config,
+            shared_encoder_config=shared_encoder_config,
             pi_config=pi_config,
             vf_config=vf_config,
             free_log_std=free_log_std,
@@ -218,7 +226,7 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if isinstance(self.config.encoder_config, LSTMConfig):
+        if isinstance(self.config.shared_encoder_config, LSTMConfig):
             # TODO (Kourosh): How does this work in RLlib today?
             if isinstance(self.shared_encoder, LSTMEncoder):
                 return self.shared_encoder.get_inital_state()

@@ -1,12 +1,21 @@
 import numpy as np
+import tree
 import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
 
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    get_expected_model_config,
+    PPOTorchRLModule,
+    get_ppo_loss,
+)
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -175,6 +184,127 @@ class TestPPO(unittest.TestCase):
                 )
             check(np.mean(actions), 1.5, atol=0.2)
             trainer.stop()
+
+    def test_torch_model_creation(self):
+        pass
+
+    def test_torch_model_creation_lstm(self):
+        pass
+
+    def test_rollouts(self):
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:  # , "BreakoutNoFrameskip-v4"]:
+            for fwd_fn in ["forward_exploration", "forward_inference"]:
+                for shared_encoder in [False, True]:
+                    for lstm in [False]:  # , True]"
+                        print(
+                            f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
+                            f"{shared_encoder}] | LSTM={lstm}"
+                        )
+                        import gym
+
+                        env = gym.make(env_name)
+
+                        config = get_expected_model_config(env, lstm, shared_encoder)
+                        module = PPOTorchRLModule(config)
+
+                        obs = env.reset()
+                        if lstm:
+                            states = [
+                                s.get_initial_state()
+                                for s in (
+                                    module.shared_encoder,
+                                    module.encoder_vf,
+                                    module.encoder_pi,
+                                )
+                            ]
+                            batch = {
+                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+                                **{f"state_in_{i}": s for i, s in enumerate(states)},
+                            }
+                        else:
+                            batch = {
+                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
+                            }
+
+                        if fwd_fn == "forward_exploration":
+                            module.forward_exploration(batch)
+                        elif fwd_fn == "forward_inference":
+                            module.forward_inference(batch)
+
+    def test_forward_train(self):
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:  # , "BreakoutNoFrameskip-v4"]:
+            for fwd_fn in ["forward_exploration", "forward_inference"]:
+                for shared_encoder in [False, True]:
+                    for lstm in [False]:  # , True]"
+                        print(
+                            f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
+                            f"{shared_encoder}] | LSTM={lstm}"
+                        )
+                        import gym
+
+                        env = gym.make(env_name)
+
+                        config = get_expected_model_config(env, lstm, shared_encoder)
+                        module = PPOTorchRLModule(config)
+
+                        # collect a batch of data
+                        batch = []
+                        obs = env.reset()
+                        tstep = 0
+                        if lstm:
+                            states = {}
+                            for i, model in enumerate(
+                                [
+                                    module.shared_encoder,
+                                    module.encoder_pi,
+                                    module.encoder_vf,
+                                ]
+                            ):
+                                states[i] = model.get_inital_state()
+                        while tstep < 10:
+                            fwd_out = module.forward_exploration(
+                                {"obs": convert_to_torch_tensor(obs)[None]}
+                            )
+                            action = convert_to_numpy(
+                                fwd_out["action_dist"].sample().squeeze(0)
+                            )
+                            new_obs, reward, done, _ = env.step(action)
+                            step = {
+                                SampleBatch.OBS: obs,
+                                SampleBatch.NEXT_OBS: new_obs,
+                                SampleBatch.ACTIONS: action,
+                                SampleBatch.REWARDS: np.array(reward),
+                                SampleBatch.DONES: np.array(done),
+                            }
+                            if lstm:
+                                assert "state_out" in fwd_out
+                                for k, v in states.items():
+                                    step[f"state_in_{k}"] = v
+                                    states[k] = fwd_out["state_out"][k]
+                            batch.append(step)
+                            obs = new_obs
+                            tstep += 1
+
+                        # convert the list of dicts to dict of lists
+                        batch = tree.map_structure(lambda *x: list(x), *batch)
+                        # convert dict of lists to dict of tensors
+                        fwd_in = {
+                            k: convert_to_torch_tensor(np.array(v))
+                            for k, v in batch.items()
+                        }
+
+                        # forward train
+                        # before training make sure it's on the right device and it's on
+                        # trianing mode
+                        module.to("cpu")
+                        module.train()
+                        fwd_out = module.forward_train(fwd_in)
+                        loss = get_ppo_loss(fwd_in, fwd_out)
+                        loss.backward()
+
+                        # check that all neural net parameters have gradients
+                        for param in module.parameters():
+                            self.assertIsNotNone(param.grad)
 
 
 if __name__ == "__main__":
