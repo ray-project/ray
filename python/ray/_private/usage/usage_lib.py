@@ -297,6 +297,11 @@ class TagKey(Enum):
     # the cluster started, emitted from GCS
     WORKER_CRASH_OOM = auto()
 
+    # If {true, false} setting of timeout =0 in `ray.get``, i.e. ray.get(..., timeout=0)
+    # This is to track usage of the buggy behavior that will be fixed.
+    # See https://github.com/ray-project/ray/issues/28465 for more details.
+    RAY_GET_TIMEOUT_ZERO = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
