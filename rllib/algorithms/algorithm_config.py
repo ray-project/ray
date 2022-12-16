@@ -491,7 +491,7 @@ class AlgorithmConfig:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
             # convert policies dict to something human-readable
-            if k == "policies":
+            if k == "policies" and isinstance(self.multiagent[k], dict):
                 policies_dict = {}
                 for policy_id, policy_spec in self.multiagent[k].items():
                     if isinstance(policy_spec, PolicySpec):
@@ -501,6 +501,8 @@ class AlgorithmConfig:
                             policy_spec.action_space,
                             policy_spec.config,
                         )
+                    else:
+                        policies_dict[policy_id] = policy_spec
                 config["multiagent"][k] = policies_dict
             else:
                 config["multiagent"][k] = config.pop(k)
