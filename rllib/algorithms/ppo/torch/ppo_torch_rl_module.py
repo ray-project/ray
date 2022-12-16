@@ -40,48 +40,6 @@ def get_ppo_loss(fwd_in, fwd_out):
     return loss
 
 
-# TODO: Most of the neural network, and model specs in this file will eventually be
-# retreived from the model catalog. That includes FCNet, Encoder, etc.
-def get_expected_model_config(env, lstm, shared_encoder):
-    if lstm:
-        encoder_config_class = LSTMConfig
-    else:
-        encoder_config_class = FCConfig
-
-    pi_config = encoder_config_class(
-        output_dim=32,
-        hidden_layers=[32],
-        activation="ReLU",
-    )
-    vf_config = encoder_config_class(
-        output_dim=32,
-        hidden_layers=[32],
-        activation="ReLU",
-    )
-
-    if shared_encoder:
-        shared_encoder_config = encoder_config_class(
-            input_dim=env.observation_space.shape[0],
-            hidden_layers=[32],
-            activation="ReLU",
-        )
-        pi_config.input_dim = 32
-        vf_config.input_dim = 32
-    else:
-        shared_encoder_config = None
-        pi_config.input_dim = env.observation_space.shape[0]
-        vf_config.input_dim = env.observation_space.shape[0]
-
-    return PPOModuleConfig(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        shared_encoder_config=shared_encoder_config,
-        pi_config=pi_config,
-        vf_config=vf_config,
-        shared_encoder=shared_encoder,
-    )
-
-
 @dataclass
 class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO module.

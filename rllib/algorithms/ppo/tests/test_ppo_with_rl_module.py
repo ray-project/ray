@@ -1,27 +1,74 @@
+import unittest
+
 import numpy as np
 import tree
-import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    get_expected_model_config,
+    PPOModuleConfig,
     PPOTorchRLModule,
     get_ppo_loss,
 )
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.core.rl_module.encoder import (
+    FCConfig,
+    LSTMConfig,
+)
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+
+# TODO: Most of the neural network, and model specs in this file will eventually be
+# retreived from the model catalog. That includes FCNet, Encoder, etc.
+def get_expected_model_config(env, lstm, shared_encoder):
+    assert not len(env.observation_space.shape) == 3, "Implement VisionNet first!"
+    if lstm:
+        encoder_config_class = LSTMConfig
+    else:
+        encoder_config_class = FCConfig
+
+    pi_config = encoder_config_class(
+        output_dim=32,
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+    vf_config = encoder_config_class(
+        output_dim=32,
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+
+    if shared_encoder:
+        shared_encoder_config = encoder_config_class(
+            input_dim=env.observation_space.shape[0],
+            hidden_layers=[32],
+            activation="ReLU",
+        )
+        pi_config.input_dim = 32
+        vf_config.input_dim = 32
+    else:
+        shared_encoder_config = None
+        pi_config.input_dim = env.observation_space.shape[0]
+        vf_config.input_dim = env.observation_space.shape[0]
+
+    return PPOModuleConfig(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        shared_encoder_config=shared_encoder_config,
+        pi_config=pi_config,
+        vf_config=vf_config,
+        shared_encoder=shared_encoder,
+    )
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -184,12 +231,6 @@ class TestPPO(unittest.TestCase):
                 )
             check(np.mean(actions), 1.5, atol=0.2)
             trainer.stop()
-
-    def test_torch_model_creation(self):
-        pass
-
-    def test_torch_model_creation_lstm(self):
-        pass
 
     def test_rollouts(self):
         for env_name in ["CartPole-v1", "Pendulum-v1"]:  # , "BreakoutNoFrameskip-v4"]:
