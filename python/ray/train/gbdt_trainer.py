@@ -158,8 +158,10 @@ class GBDTTrainer(BaseTrainer):
     ):
         self.label_column = label_column
         self.params = params
-        self.dmatrix_params = dmatrix_params or {}
+
         self.train_kwargs = train_kwargs
+        self.dmatrix_params = dmatrix_params or {}
+
         super().__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -167,6 +169,12 @@ class GBDTTrainer(BaseTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        # Ray Datasets should always use distributed loading.
+        for dataset_name in self.datasets.keys():
+            dataset_params = self.dmatrix_params.get(dataset_name, {})
+            dataset_params["distributed"] = True
+            self.dmatrix_params[dataset_name] = dataset_params
 
     def _validate_attributes(self):
         super()._validate_attributes()
