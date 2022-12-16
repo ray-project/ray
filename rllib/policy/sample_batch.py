@@ -148,7 +148,7 @@ class SampleBatch(dict):
     DONES = "dones"  # Done returned after stepping with SampleBatch.ACTIONS
     INFOS = "infos"  # Infos returned after stepping with SampleBatch.ACTIONS
 
-    # # Additional keys filled by RLLib to manage the data above:
+    # # Additional keys filled by RLlib to manage the data above:
 
     SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
     T = "t"  # Timestep counter
