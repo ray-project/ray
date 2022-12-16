@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TensorType
 
 class RLTrainer:
     """Base class for rllib algorithm trainers.
-    
+
     Args:
         module_class: The (MA)RLModule class to use.
         module_config: The config for the (MA)RLModule.
@@ -34,10 +34,10 @@ class RLTrainer:
         self.optimizer_class = optimizer_class
         self.optimizer_config = optimizer_config
         if distributed:
-            self.module, self.optimizer = self.make_distributed()
+            self._module, self._rl_optimizer = self.make_distributed()
         else:
-            self.module = module_class.from_model_config(**module_config)
-            self.optimizer = optimizer_class(optimizer_config)
+            self._module = module_class.from_model_config(**module_config)
+            self._rl_optimizer = optimizer_class(optimizer_config)
 
     @staticmethod
     def on_after_compute_gradients(
@@ -111,18 +111,14 @@ class RLTrainer:
             A dictionary of extra information and statistics.
         """
 
-    @abc.abstractmethod
-    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
-        """Perform an update on self._module"""
-
-    @abc.abstractmethod
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer."""
+        self._rl_optimizer.set_state(state.get("optimizer_state", {}))
+        self._module.set_state(state.get("module_state", {}))
 
-    @abc.abstractmethod
     def get_state(self) -> Mapping[str, Any]:
         """Get the state of the trainer."""
-
-    @abc.abstractmethod
-    def make_distributed(self) -> RLModule:
-        """Make the module distributed."""
+        return {
+            "module_state": self._module.get_state(),
+            "optimizer_state": self._rl_optimizer.get_state(),
+        }
