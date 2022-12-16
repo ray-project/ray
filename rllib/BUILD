@@ -573,7 +573,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-truncated-ppo.yaml"],
+    data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
     args = ["--dir=tuned_examples/ppo"]
 )
 

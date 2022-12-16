@@ -20,7 +20,7 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
     """
     # If a gym.Env, check proper spaces as well as occurrence of the "Atari<ALE" string
     # in the class name.
-    if isinstance(env, gym.Env):
+    if not isinstance(env, str):
         if (
             hasattr(env.observation_space, "shape")
             and env.observation_space.shape is not None
@@ -29,14 +29,8 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
             return False
         return "AtariEnv<ALE" in str(env)
     # If string, check for "ALE/" prefix.
-    elif isinstance(env, str):
-        return env.startswith("ALE/")
-    # Error.
     else:
-        raise ValueError(
-            "`is_atari` expects a gym.Env object OR a string descriptor "
-            "(e.g. 'CartPole-v1' or 'ALE/Pong-v5') of the environment."
-        )
+        return env.startswith("ALE/")
 
 
 @PublicAPI
