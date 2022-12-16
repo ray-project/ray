@@ -87,8 +87,8 @@ class TestEpisodeV2(unittest.TestCase):
             config=AlgorithmConfig()
             .multi_agent(
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: str(agent_id),
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    str(agent_id)
                 ),
             )
             .rollouts(enable_connectors=True, num_rollout_workers=0),
