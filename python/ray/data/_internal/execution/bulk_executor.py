@@ -84,8 +84,9 @@ def _naive_run_until_complete(node: PhysicalOperator) -> List[RefBundle]:
     if tasks:
         bar = ProgressBar(node.name, total=node.num_outputs_total())
         while tasks:
-            [ready], remaining = ray.wait(tasks, num_returns=1, fetch_local=True)
-            node.notify_task_completed(ready)
+            done, _ = ray.wait(tasks, fetch_local=True, timeout=0.1)
+            for ready in done:
+                node.notify_task_completed(ready)
             tasks = node.get_tasks()
             while node.has_next():
                 bar.update(1)
