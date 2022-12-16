@@ -30,7 +30,7 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:
-            self.rng_seed = seed
+            self.rng_seed = int(seed)
             self.np_random, _ = seeding.np_random(seed)
             print(
                 f"Seeding env (worker={self.env_config.worker_index}) " f"with {seed}"
@@ -46,7 +46,7 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # Or create a new RNG from another random number:
         # Seed the RNG with a deterministic seed if set, otherwise, create
         # a random one.
-        new_seed = (
+        new_seed = int(
             self.np_random.integers(0, 1000000) if not self.rng_seed else self.rng_seed
         )
         self.np_random, _ = seeding.np_random(new_seed)
