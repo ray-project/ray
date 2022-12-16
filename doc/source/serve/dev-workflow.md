@@ -85,7 +85,7 @@ Note that rerunning `serve run` will redeploy all deployments. To prevent redepl
 
 ## Testing on a remote cluster
 
-To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `http://<head-node-ip-address>:8265` and will be passed to Ray Jobs Submission; see [Ray Jobs](jobs-overview) for more information.
+To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `http://<head-node-ip-address>:8265` and will be passed to Ray Job Submission; see [Ray Jobs](jobs-overview) for more information.
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  
 
