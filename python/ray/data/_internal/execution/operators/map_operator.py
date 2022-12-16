@@ -112,3 +112,6 @@ class MapOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
+
+    def shutdown(self) -> None:
+        self._execution_state.shutdown()

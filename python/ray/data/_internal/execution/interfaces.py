@@ -175,8 +175,8 @@ class PhysicalOperator:
         """Executor calls this when the given task is completed and local."""
         raise NotImplementedError
 
-    def release_unused_resources(self) -> None:
-        """Release any currently unused operator resources."""
+    def shutdown(self) -> None:
+        """Abort execution and release all resources used by this operator."""
         pass
 
 

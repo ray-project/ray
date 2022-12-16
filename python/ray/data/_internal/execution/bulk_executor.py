@@ -47,12 +47,14 @@ class BulkExecutor(Executor):
             # Fully execute this operator.
             logger.debug("Executing node %s", node.name)
             builder = self._stats.child_builder(node.name)
-            for i, ref_bundles in enumerate(inputs):
-                for r in ref_bundles:
-                    node.add_input(r, input_index=i)
-                node.inputs_done(i)
-            output = _naive_run_until_complete(node)
-            node.release_unused_resources()
+            try:
+                for i, ref_bundles in enumerate(inputs):
+                    for r in ref_bundles:
+                        node.add_input(r, input_index=i)
+                    node.inputs_done(i)
+                output = _naive_run_until_complete(node)
+            finally:
+                node.shutdown()
 
             # Cache and return output.
             saved_outputs[node] = output

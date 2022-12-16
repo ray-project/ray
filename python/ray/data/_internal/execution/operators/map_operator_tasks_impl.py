@@ -112,3 +112,17 @@ class MapOperatorTasksImpl:
 
     def get_tasks(self) -> List[ray.ObjectRef]:
         return list(self._tasks)
+
+    def shutdown(self) -> None:
+        # Cancel all active tasks.
+        for task in self._tasks:
+            ray.cancel(task)
+        # Wait until all tasks have failed or been cancelled.
+        for task in self._tasks:
+            try:
+                ray.get(task)
+            except ray.exceptions.RayError:
+                # Cancellation either succeeded, or the task had already failed with
+                # a different error, or cancellation failed. In all cases, we
+                # swallow the exception.
+                pass
