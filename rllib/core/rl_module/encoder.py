@@ -75,7 +75,7 @@ class Encoder(nn.Module):
         self._input_spec = self.input_spec()
         self._output_spec = self.output_spec()
 
-    def get_initial_state(self):
+    def get_inital_state(self):
         return []
 
     def input_spec(self):

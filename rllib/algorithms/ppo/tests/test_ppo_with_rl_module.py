@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 import tree
+import gym
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
@@ -28,43 +29,55 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
-# TODO: Most of the neural network, and model specs in this file will eventually be
-# retreived from the model catalog. That includes FCNet, Encoder, etc.
+# Get a model config that we expect from the catalog
 def get_expected_model_config(env, lstm, shared_encoder):
     assert not len(env.observation_space.shape) == 3, "Implement VisionNet first!"
+
+    shared_encoder_config = FCConfig(
+        input_dim=env.observation_space.shape[0],
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+
     if lstm:
-        encoder_config_class = LSTMConfig
+        pi_encoder_config = LSTMConfig(
+            hidden_dim=32,
+            batch_first=True,
+            output_dim=32,
+            num_layers=1,
+        )
     else:
-        encoder_config_class = FCConfig
-
-    pi_config = encoder_config_class(
-        output_dim=32,
-        hidden_layers=[32],
-        activation="ReLU",
-    )
-    vf_config = encoder_config_class(
-        output_dim=32,
-        hidden_layers=[32],
-        activation="ReLU",
-    )
-
-    if shared_encoder:
-        shared_encoder_config = encoder_config_class(
-            input_dim=env.observation_space.shape[0],
+        pi_encoder_config = FCConfig(
+            output_dim=32,
             hidden_layers=[32],
             activation="ReLU",
         )
-        pi_config.input_dim = 32
-        vf_config.input_dim = 32
-    else:
+
+    vf_encoder_config = FCConfig(
+        output_dim=32,
+        hidden_layers=[32],
+        activation="ReLU",
+    )
+
+    if not shared_encoder:
         shared_encoder_config = None
-        pi_config.input_dim = env.observation_space.shape[0]
-        vf_config.input_dim = env.observation_space.shape[0]
+        pi_encoder_config.input_dim = env.observation_space.shape[0]
+        vf_encoder_config.input_dim = env.observation_space.shape[0]
+
+    pi_config = FCConfig()
+    vf_config = FCConfig()
+
+    if isinstance(env.action_space, gym.spaces.Discrete):
+        pi_config.output_dim = env.action_space.n
+    else:
+        pi_config.output_dim = env.action_space.shape[0] * 2
 
     return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
         shared_encoder_config=shared_encoder_config,
+        pi_encoder_config=pi_encoder_config,
+        vf_encoder_config=vf_encoder_config,
         pi_config=pi_config,
         vf_config=vf_config,
         shared_encoder=shared_encoder,
@@ -245,10 +258,11 @@ class TestPPO(unittest.TestCase):
             trainer.stop()
 
     def test_rollouts(self):
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:  # , "BreakoutNoFrameskip-v4"]:
+        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    for lstm in [False]:  # , True]"
+                    for lstm in [False, True]:
                         print(
                             f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
                             f"{shared_encoder}] | LSTM={lstm}"
@@ -261,18 +275,11 @@ class TestPPO(unittest.TestCase):
                         module = PPOTorchRLModule(config)
 
                         obs = env.reset()
+
                         if lstm:
-                            states = [
-                                s.get_initial_state()
-                                for s in (
-                                    module.shared_encoder,
-                                    module.encoder_vf,
-                                    module.encoder_pi,
-                                )
-                            ]
                             batch = {
                                 SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                                **{f"state_in_{i}": s for i, s in enumerate(states)},
+                                "state_in": module.pi_encoder.get_inital_state()
                             }
                         else:
                             batch = {
@@ -285,10 +292,11 @@ class TestPPO(unittest.TestCase):
                             module.forward_inference(batch)
 
     def test_forward_train(self):
-        for env_name in ["CartPole-v1", "Pendulum-v1"]:  # , "BreakoutNoFrameskip-v4"]:
+        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    for lstm in [False]:  # , True]"
+                    for lstm in [False,  True]:
                         print(
                             f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
                             f"{shared_encoder}] | LSTM={lstm}"
@@ -305,19 +313,19 @@ class TestPPO(unittest.TestCase):
                         obs = env.reset()
                         tstep = 0
                         if lstm:
-                            states = {}
-                            for i, model in enumerate(
-                                [
-                                    module.shared_encoder,
-                                    module.encoder_pi,
-                                    module.encoder_vf,
-                                ]
-                            ):
-                                states[i] = model.get_inital_state()
+                            # TODO (Artur): Multiple states
+                            state_in = module.pi_encoder.get_inital_state()
                         while tstep < 10:
-                            fwd_out = module.forward_exploration(
-                                {"obs": convert_to_torch_tensor(obs)[None]}
-                            )
+                            if lstm:
+                                batch = {
+                                    SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+                                    "state_in": state_in,
+                                }
+                            else:
+                                batch = {
+                                    SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
+                                }
+                            fwd_out = module.forward_exploration(batch)
                             action = convert_to_numpy(
                                 fwd_out["action_dist"].sample().squeeze(0)
                             )
@@ -331,9 +339,8 @@ class TestPPO(unittest.TestCase):
                             }
                             if lstm:
                                 assert "state_out" in fwd_out
-                                for k, v in states.items():
-                                    step[f"state_in_{k}"] = v
-                                    states[k] = fwd_out["state_out"][k]
+                                step[f"state_in"] = state_in
+                                state_in = fwd_out["state_out"]
                             batch.append(step)
                             obs = new_obs
                             tstep += 1
