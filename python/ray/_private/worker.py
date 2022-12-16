@@ -2300,7 +2300,7 @@ def get(
                     "Setting timeout=0 in future ray releases will raise "
                     "GetTimeoutError if the objects references are not available. "
                     "You could suppress this warning by setting "
-                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0"
+                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
                 ),
                 UserWarning,
             )
