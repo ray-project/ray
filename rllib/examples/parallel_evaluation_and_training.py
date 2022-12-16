@@ -76,27 +76,25 @@ class AssertEvalCallback(DefaultCallbacks):
         if "evaluation" in result and "hist_stats" in result["evaluation"]:
             hist_stats = result["evaluation"]["hist_stats"]
             # We count in episodes.
-            if algorithm.config["evaluation_duration_unit"] == "episodes":
+            if algorithm.config.evaluation_duration_unit == "episodes":
                 num_episodes_done = len(hist_stats["episode_lengths"])
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                if isinstance(algorithm.config["evaluation_duration"], int):
-                    assert num_episodes_done == algorithm.config["evaluation_duration"]
+                if isinstance(algorithm.config.evaluation_duration, int):
+                    assert num_episodes_done == algorithm.config.evaluation_duration
                 # If auto-episodes: Expect at least as many episode as workers
                 # (each worker's `sample()` is at least called once).
                 else:
-                    assert algorithm.config["evaluation_duration"] == "auto"
-                    assert (
-                        num_episodes_done >= algorithm.config["evaluation_num_workers"]
-                    )
+                    assert algorithm.config.evaluation_duration == "auto"
+                    assert num_episodes_done >= algorithm.config.evaluation_num_workers
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )
             # We count in timesteps.
             else:
                 num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
-                num_timesteps_wanted = algorithm.config["evaluation_duration"]
+                num_timesteps_wanted = algorithm.config.evaluation_duration
                 if num_timesteps_wanted != "auto":
                     delta = num_timesteps_wanted - num_timesteps_reported
                     # Expect roughly the same (desired // num-eval-workers).
