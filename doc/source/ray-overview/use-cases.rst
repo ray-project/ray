@@ -172,6 +172,14 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
         :type: ref
         :text: [Gallery] Serve Examples Gallery
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/serve.svg
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_serve
+        :type: url
+        :text: More Serve use cases on the Blog
+        :classes: btn-link btn-block stretched-link
 
 Hyperparameter Tuning
 ---------------------
@@ -231,6 +239,14 @@ Learn more about the Tune library with the following talks and user guides.
     .. link-button:: /tune/examples/index
         :type: ref
         :text: [Gallery] Ray Tune Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray-tune
+        :type: url
+        :text: More Tune use cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Distributed Training
@@ -293,6 +309,14 @@ Learn more about the Train library with the following talks and user guides.
         :type: ref
         :text: [Gallery] Ray Train Examples Gallery
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_train
+        :type: url
+        :text: More Train use cases on the Blog
+        :classes: btn-link btn-block stretched-link
 
 Reinforcement Learning
 ----------------------
@@ -352,7 +376,14 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :type: ref
         :text: [Gallery] RLlib Examples Gallery
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /rllib/images/rllib-logo.png
 
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=rllib
+        :type: url
+        :text: More RL use cases on the Blog
+        :classes: btn-link btn-block stretched-link
 
 ML Platform
 -----------
