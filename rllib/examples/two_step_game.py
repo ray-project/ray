@@ -68,13 +68,6 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    if args.run == "contrib/MADDPG":
-        logger.warning(
-            "`contrib/MADDPG` is not longer a valid algorithm descriptor! "
-            "Use `MADDPG` instead."
-        )
-        args.run = "MADDPG"
-
     grouping = {
         "group_1": [0, 1],
     }

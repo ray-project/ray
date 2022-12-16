@@ -273,6 +273,14 @@ py_test(
 )
 
 py_test(
+    name = "test_data_parallel_trainer_checkpointing",
+    size = "medium",
+    srcs = ["tests/test_data_parallel_trainer_checkpointing.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
