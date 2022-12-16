@@ -79,7 +79,7 @@ class MapOperatorTasksImpl:
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
 
-    def task_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
+    def work_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         task = self._tasks.pop(ref)
         all_refs = list(ray.get(ref))
         block_refs = all_refs[:-1]
@@ -110,7 +110,7 @@ class MapOperatorTasksImpl:
         self._next_output_index += 1
         return self._tasks_by_output_order.pop(i).output
 
-    def get_tasks(self) -> List[ray.ObjectRef]:
+    def get_work_refs(self) -> List[ray.ObjectRef]:
         return list(self._tasks)
 
     def shutdown(self) -> None:

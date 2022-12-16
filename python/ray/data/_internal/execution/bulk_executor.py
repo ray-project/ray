@@ -82,14 +82,14 @@ def _naive_run_until_complete(node: PhysicalOperator) -> List[RefBundle]:
         The list of output ref bundles for the operator.
     """
     output = []
-    tasks = node.get_tasks()
+    tasks = node.get_work_refs()
     if tasks:
         bar = ProgressBar(node.name, total=node.num_outputs_total())
         while tasks:
             done, _ = ray.wait(tasks, fetch_local=True, timeout=0.1)
             for ready in done:
-                node.notify_task_completed(ready)
-            tasks = node.get_tasks()
+                node.notify_work_completed(ready)
+            tasks = node.get_work_refs()
             while node.has_next():
                 bar.update(1)
                 output.append(node.get_next())

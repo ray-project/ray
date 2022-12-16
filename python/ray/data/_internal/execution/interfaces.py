@@ -24,7 +24,7 @@ class RefBundle:
     Ray reference counting to kick in.
     """
 
-    # The num_rows / size_bytes must be known in the metadata.
+    # The size_bytes must be known in the metadata, num_rows is optional.
     blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
 
     # Whether we own the blocks (can safely destroy them).
@@ -46,9 +46,15 @@ class RefBundle:
                     "The size in bytes of the block must be known: {}".format(b)
                 )
 
-    def num_rows(self) -> int:
-        """Number of rows present in this bundle."""
-        return sum(b[1].num_rows for b in self.blocks)
+    def num_rows(self) -> Optional[int]:
+        """Number of rows present in this bundle, if known."""
+        total = 0
+        for b in self.blocks:
+            if b[1].num_rows is None:
+                return None
+            else:
+                total += b[1].num_rows
+        return total
 
     def size_bytes(self) -> int:
         """Size of the blocks of this bundle in bytes."""
@@ -167,12 +173,12 @@ class PhysicalOperator:
         """Get the next downstream output."""
         raise NotImplementedError
 
-    def get_tasks(self) -> List[ray.ObjectRef]:
+    def get_work_refs(self) -> List[ray.ObjectRef]:
         """Get a list of object references the executor should wait on."""
         return []
 
-    def notify_task_completed(self, task: ray.ObjectRef) -> None:
-        """Executor calls this when the given task is completed and local."""
+    def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
+        """Executor calls this when the given work is completed and local."""
         raise NotImplementedError
 
     def shutdown(self) -> None:

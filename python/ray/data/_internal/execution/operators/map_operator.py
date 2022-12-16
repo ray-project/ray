@@ -104,11 +104,11 @@ class MapOperator(PhysicalOperator):
             self._output_metadata.append(meta)
         return bundle
 
-    def get_tasks(self) -> List[ray.ObjectRef]:
-        return self._execution_state.get_tasks()
+    def get_work_refs(self) -> List[ray.ObjectRef]:
+        return self._execution_state.get_work_refs()
 
-    def notify_task_completed(self, task: ray.ObjectRef) -> None:
-        self._execution_state.task_completed(task)
+    def notify_work_completed(self, task: ray.ObjectRef) -> None:
+        self._execution_state.work_completed(task)
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
