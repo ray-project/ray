@@ -875,22 +875,17 @@ class RayTrialExecutor:
         resources for all cached actors. If we cached more actors than we need, we
         terminate the excess actors and free the resources.
         """
-        if not force_all and time.time() - self._last_cached_actor_cleanup < 0.5:
-            return
-
         staged_resources = self._count_staged_resources()
 
         for resource_request, actors in self._resources_to_cached_actors.items():
-            re_add = []
-
             while len(actors) > staged_resources.get(resource_request, 0) or (
                 force_all and len(actors)
             ):
-                actor, allocated_resources = actors.pop()
+                actor, allocated_resources = actors[-1]
                 if actor in self._newly_cached_actors and not force_all:
                     self._newly_cached_actors.remove(actor)
-                    re_add.append((actor, allocated_resources))
                 else:
+                    actors.pop()
                     future = actor.stop.remote()
                     self._futures[future] = (
                         _ExecutorEventType.STOP_RESULT,
@@ -898,10 +893,6 @@ class RayTrialExecutor:
                     )
                     if self._trial_cleanup:  # force trial cleanup within a deadline
                         self._trial_cleanup.add(future)
-
-            # Re-add actors in self._newly_cached_actors
-            for actor, allocated_resources in re_add:
-                actors.append((actor, allocated_resources))
 
         self._last_cached_actor_cleanup = time.time()
 
