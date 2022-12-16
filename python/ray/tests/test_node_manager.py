@@ -1,5 +1,12 @@
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import (
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+    wait_for_condition,
+    get_resource_usage,
+)
+import pytest
+import os
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -46,9 +53,57 @@ f.remote()
     ray.get([f._remote(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)])
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_kill_driver_clears_backlog(call_ray_start):
+    driver = """
+import ray
+
+@ray.remote
+def f():
+    import time
+    time.sleep(300)
+
+refs = [f.remote() for _ in range(10000)]
+
+ray.get(refs)
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    ctx = ray.init(address=call_ray_start)
+
+    def check_has_backlog() -> bool:
+        resources_batch = get_resource_usage(
+            gcs_address=ctx.address_info["gcs_address"]
+        )
+        backlog = (
+            resources_batch.resource_load_by_shape.resource_demands[0].backlog_size
+            if resources_batch.resource_load_by_shape.resource_demands
+            else 0
+        )
+        return backlog > 0
+
+    wait_for_condition(check_has_backlog, timeout=10, retry_interval_ms=1000)
+
+    os.kill(proc.pid, 9)
+
+    def check_no_backlog() -> bool:
+        resources_batch = get_resource_usage(
+            gcs_address=ctx.address_info["gcs_address"]
+        )
+        backlog = (
+            resources_batch.resource_load_by_shape.resource_demands[0].backlog_size
+            if resources_batch.resource_load_by_shape.resource_demands
+            else 0
+        )
+        return backlog == 0
+
+    wait_for_condition(check_no_backlog, timeout=10, retry_interval_ms=1000)
+
+
 if __name__ == "__main__":
-    import pytest
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
