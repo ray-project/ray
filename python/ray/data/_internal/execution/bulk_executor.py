@@ -36,33 +36,33 @@ class BulkExecutor(Executor):
 
         saved_outputs: Dict[PhysicalOperator, List[RefBundle]] = {}
 
-        def execute_recursive(node: PhysicalOperator) -> List[RefBundle]:
+        def execute_recursive(op: PhysicalOperator) -> List[RefBundle]:
             # Avoid duplicate executions.
-            if node in saved_outputs:
-                return saved_outputs[node]
+            if op in saved_outputs:
+                return saved_outputs[op]
 
             # Compute dependencies.
-            inputs = [execute_recursive(dep) for dep in node.input_dependencies]
+            inputs = [execute_recursive(dep) for dep in op.input_dependencies]
 
             # Fully execute this operator.
-            logger.debug("Executing node %s", node.name)
-            builder = self._stats.child_builder(node.name)
+            logger.debug("Executing op %s", op.name)
+            builder = self._stats.child_builder(op.name)
             try:
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
-                        node.add_input(r, input_index=i)
-                    node.inputs_done(i)
-                output = _naive_run_until_complete(node)
+                        op.add_input(r, input_index=i)
+                    op.inputs_done(i)
+                output = _naive_run_until_complete(op)
             finally:
-                node.shutdown()
+                op.shutdown()
 
             # Cache and return output.
-            saved_outputs[node] = output
-            node_stats = node.get_stats()
-            node_metrics = node.get_metrics()
-            if node_stats:
-                self._stats = builder.build_multistage(node_stats)
-                self._stats.extra_metrics = node_metrics
+            saved_outputs[op] = output
+            op_stats = op.get_stats()
+            op_metrics = op.get_metrics()
+            if op_stats:
+                self._stats = builder.build_multistage(op_stats)
+                self._stats.extra_metrics = op_metrics
             return output
 
         return execute_recursive(dag)
@@ -72,28 +72,28 @@ class BulkExecutor(Executor):
         return self._stats
 
 
-def _naive_run_until_complete(node: PhysicalOperator) -> List[RefBundle]:
+def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
     """Run this operator until completion, assuming all inputs have been submitted.
 
     Args:
-        node: The operator to run.
+        op: The operator to run.
 
     Returns:
         The list of output ref bundles for the operator.
     """
     output = []
-    tasks = node.get_work_refs()
+    tasks = op.get_work_refs()
     if tasks:
-        bar = ProgressBar(node.name, total=node.num_outputs_total())
+        bar = ProgressBar(op.name, total=op.num_outputs_total())
         while tasks:
             done, _ = ray.wait(tasks, fetch_local=True, timeout=0.1)
             for ready in done:
-                node.notify_work_completed(ready)
-            tasks = node.get_work_refs()
-            while node.has_next():
+                op.notify_work_completed(ready)
+            tasks = op.get_work_refs()
+            while op.has_next():
                 bar.update(1)
-                output.append(node.get_next())
+                output.append(op.get_next())
         bar.close()
-    while node.has_next():
-        output.append(node.get_next())
+    while op.has_next():
+        output.append(op.get_next())
     return output
