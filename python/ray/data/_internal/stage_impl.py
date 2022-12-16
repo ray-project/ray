@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class RepartitionStage(AllToAllStage):
     """Implementation of `Dataset.repartition()`."""
 
-    def __init__(self, num_blocks: int, shuffle: bool):
+    def __init__(self, num_blocks: int, shuffle: bool, col=None):
         if shuffle:
 
             def do_shuffle(
@@ -50,6 +50,7 @@ class RepartitionStage(AllToAllStage):
                     clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
+                    shuffle_col=col
                 )
 
             super().__init__(

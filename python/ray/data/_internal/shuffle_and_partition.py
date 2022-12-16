@@ -33,6 +33,7 @@ class _ShufflePartitionOp(ShuffleOp):
         block_udf: Optional[Callable[[Block], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
+        shuffle_col=None,
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
         if block_udf:
@@ -54,9 +55,24 @@ class _ShufflePartitionOp(ShuffleOp):
             block = BlockAccessor.for_block(block)
 
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
+
+        def shuffle_partition(x):
+            return abs(hash(x)) % output_num_blocks
+
         slices = []
-        for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
+        block_slice = block.slice(0, 0, copy=True)
+        if shuffle_col is not None:
+            block_df = block.to_pandas()
+            block_df['g'] = block_df[shuffle_col].apply(shuffle_partition)
+            block_dfg = block_df.groupby('g')
+            for i in range(output_num_blocks):
+                if block_dfg.groups.get(i) is None:
+                    slices.append(block_slice)
+                else:
+                    slices.append(block_dfg.get_group(i).drop('g', axis=1))
+        else:
+            for i in range(output_num_blocks):
+                slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
 
         # Randomize the distribution order of the blocks (this prevents empty
         # outputs when input blocks are very small).

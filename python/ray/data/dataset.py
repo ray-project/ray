@@ -920,7 +920,7 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
+    def repartition(self, num_blocks: int, *, shuffle: bool = False, col: str = None) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
         This is a blocking operation. After repartitioning, all blocks in the
@@ -931,6 +931,11 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> # Set the number of output partitions to write to disk.
             >>> ds.repartition(10).write_parquet("/tmp/test")
+            >>>
+            >>> data = [{'a': 1, 'b': 2}, {'a': 5, 'b': 20, 'c': 21}]
+            >>> df = pd.DataFrame(data)
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds.repartition(10,col='a').write_csv(path="/tmp/test")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -942,12 +947,14 @@ class Dataset(Generic[T]):
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
                 minimizing data movement.
+            col: Repatirion by col, if col is not None, the block will be hashed
+                 by col value.
 
         Returns:
             The repartitioned dataset.
         """
 
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
+        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle, col=col))
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(

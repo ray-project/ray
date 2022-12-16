@@ -61,6 +61,7 @@ class SimpleShufflePlan(ShuffleOp):
         *,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        shuffle_col=None,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
@@ -82,7 +83,7 @@ class SimpleShufflePlan(ShuffleOp):
             shuffle_map.options(
                 **map_ray_remote_args,
                 num_returns=1 + output_num_blocks,
-            ).remote(i, block, output_num_blocks, *self._map_args)
+            ).remote(i, block, output_num_blocks, *self._map_args, shuffle_col)
             for i, block in enumerate(input_blocks_list)
         ]
 
