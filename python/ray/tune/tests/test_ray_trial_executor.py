@@ -639,7 +639,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         executor.pause_trial(trial1)  # Caches the PG
 
         assert (
-            len(executor._cached_resources_to_actor[trial1.placement_group_factory])
+            len(executor._resources_to_cached_actors[trial1.placement_group_factory])
             == 1
         )
 

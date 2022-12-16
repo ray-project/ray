@@ -109,7 +109,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 )
                 num_in_use = len(resource_manager._acquired_pgs)
                 num_cached = sum(
-                    len(a) for a in trial_executor._cached_resources_to_actor.values()
+                    len(a) for a in trial_executor._resources_to_cached_actors.values()
                 )
 
                 total_num_tracked = num_staging + num_ready + num_in_use + num_cached
