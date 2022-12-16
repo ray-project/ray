@@ -1,0 +1,20 @@
+diff --git a/BUILD b/BUILD
+index 65e0cdc2e..dba92dede 100644
+--- a/BUILD
++++ b/BUILD
+@@ -163,6 +163,7 @@ cc_library(
+     srcs = crypto_sources + crypto_internal_headers + crypto_sources_asm,
+     hdrs = crypto_headers + fips_fragments,
+     copts = boringssl_copts_c11,
++    linkstatic = True,
+     includes = ["src/include"],
+     linkopts = select({
+         # Android supports pthreads, but does not provide a libpthread
+@@ -184,6 +185,7 @@ cc_library(
+     srcs = ssl_sources + ssl_internal_headers,
+     hdrs = ssl_headers,
+     copts = boringssl_copts_cxx,
++    linkstatic = True,
+     includes = ["src/include"],
+     visibility = ["//visibility:public"],
+     deps = [
