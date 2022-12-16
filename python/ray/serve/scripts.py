@@ -105,8 +105,8 @@ def override_or_default(
 
     if override_value is not None:
         dict[key] = override_value
-    elif key not in dict:
-        dict[key] = default_value
+    else:
+        dict.setdefault(key, default_value)
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -314,7 +314,10 @@ def run(
             config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
-        host, port = host or DEFAULT_HTTP_HOST, port or DEFAULT_HTTP_PORT
+        if host is None:
+            host = DEFAULT_HTTP_HOST
+        if port is None:
+            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
