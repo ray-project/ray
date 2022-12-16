@@ -1353,8 +1353,10 @@ class AlgorithmConfig:
                     "anymore. To get rid of this error, set `experimental("
                     "_enable_rl_module_api` to True. Native models will "
                     "be better supported by the upcoming RLModule API.",
-                    error=True,
+                    # Error out if user tries to enable this
+                    error=model["_use_default_native_models"],
                 )
+
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
         if max_requests_in_flight_per_sampler_worker is not NotProvided:
