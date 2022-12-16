@@ -168,6 +168,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init GCS task manager.
+  InitGcsTaskManager();
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -234,6 +237,8 @@ void GcsServer::Stop() {
     } else {
       gcs_ray_syncer_->Stop();
     }
+
+    gcs_task_manager_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -606,6 +611,14 @@ void GcsServer::InitGcsWorkerManager() {
   rpc_server_.RegisterService(*worker_info_service_);
 }
 
+void GcsServer::InitGcsTaskManager() {
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
+  // Register service.
+  task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
+                                                        *gcs_task_manager_));
+  rpc_server_.RegisterService(*task_info_service_);
+}
+
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -719,6 +732,7 @@ void GcsServer::InstallEventListeners() {
 void GcsServer::RecordMetrics() const {
   gcs_actor_manager_->RecordMetrics();
   gcs_placement_group_manager_->RecordMetrics();
+  gcs_task_manager_->RecordMetrics();
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
@@ -741,7 +755,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
-         << runtime_env_manager_->DebugString() << "\n\n";
+         << runtime_env_manager_->DebugString() << "\n\n"
+         << gcs_task_manager_->DebugString() << "\n\n";
   if (gcs_ray_syncer_) {
     stream << gcs_ray_syncer_->DebugString();
   }
