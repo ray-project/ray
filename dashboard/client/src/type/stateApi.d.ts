@@ -5,7 +5,7 @@ export type StateApiResponse<T> = {
   message: string;
   data: {
     [result: string]: {
-      [result: string]: Array<T>;
+      [result: string]: T[];
     };
   };
 };

@@ -16,7 +16,9 @@ const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
   return (
     <div>
       <Grid container alignItems="center">
-        <Grid item>{timeStamp.format("YYYY-MM-DD HH:mm:ss")}</Grid>
+        <Grid item>
+          Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
+        </Grid>
       </Grid>
       <ActorTable actors={actors} jobId={jobId} />
     </div>

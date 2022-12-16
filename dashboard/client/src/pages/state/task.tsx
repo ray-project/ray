@@ -11,13 +11,15 @@ import { useStateApiList } from "./hook/useStateApi";
  */
 const TaskList = ({ jobId = null }: { jobId?: string | null }) => {
   const [timeStamp] = useState(dayjs());
-  const data: Array<Task> | undefined = useStateApiList("useTasks", getTasks);
+  const data: Task[] | undefined = useStateApiList("useTasks", getTasks);
   const tasks = data ? data : [];
 
   return (
     <div>
       <Grid container alignItems="center">
-        <Grid item>{timeStamp.format("YYYY-MM-DD HH:mm:ss")}</Grid>
+        <Grid item>
+          Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
+        </Grid>
       </Grid>
       <TaskTable tasks={tasks} jobId={jobId} />
     </div>

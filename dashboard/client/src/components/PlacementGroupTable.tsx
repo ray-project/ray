@@ -23,7 +23,7 @@ const PlacementGroupTable = ({
   placementGroups = [],
   jobId = null,
 }: {
-  placementGroups: Array<PlacementGroup>;
+  placementGroups: PlacementGroup[];
   jobId?: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);

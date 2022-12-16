@@ -11,7 +11,7 @@ import { useStateApiList } from "./hook/useStateApi";
  */
 const PlacementGroupList = ({ jobId = null }: { jobId?: string | null }) => {
   const [timeStamp] = useState(dayjs());
-  const data: Array<PlacementGroup> | undefined = useStateApiList(
+  const data: PlacementGroup[] | undefined = useStateApiList(
     "usePlacementGroup",
     getPlacementGroup,
   );
@@ -20,7 +20,9 @@ const PlacementGroupList = ({ jobId = null }: { jobId?: string | null }) => {
   return (
     <div>
       <Grid container alignItems="center">
-        <Grid item>{timeStamp.format("YYYY-MM-DD HH:mm:ss")}</Grid>
+        <Grid item>
+          Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
+        </Grid>
       </Grid>
       <PlacementGroupTable placementGroups={placementGroups} jobId={jobId} />
     </div>

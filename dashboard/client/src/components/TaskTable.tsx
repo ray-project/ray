@@ -22,7 +22,7 @@ const TaskTable = ({
   tasks = [],
   jobId = null,
 }: {
-  tasks: Array<Task>;
+  tasks: Task[];
   jobId?: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);
