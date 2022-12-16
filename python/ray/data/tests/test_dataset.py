@@ -5397,8 +5397,8 @@ def test_ragged_tensors(ray_start_regular_shared):
 
     ds = ray.data.from_items(
         [
-            {"spam": np.zeros((32, 32, 3))},
-            {"spam": np.zeros((64, 64, 3))},
+            {"spam": np.zeros((32, 32, 5))},
+            {"spam": np.zeros((64, 64, 5))},
         ]
     )
     new_type = ds.schema().types[0].scalar_type

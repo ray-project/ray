@@ -160,17 +160,20 @@ class ArrowTensorType(pa.PyExtensionType):
             True if concatenating arrays with types `array_types` requires
             a variable-shaped representation
         """
-        needs_variable_shaped = False
         shape = None
         for arr_type in array_types:
-            if isinstance(arr_type, ArrowVariableShapedTensorType) or (
-                shape is not None and arr_type.shape != shape
-            ):
-                needs_variable_shaped = True
-                break
-            if shape is None:
-                shape = arr_type.shape
-        return needs_variable_shaped
+            # If at least one of the arrays is variable-shaped, we can immediately
+            # short-circuit since we require a variable-shaped representation.
+            if isinstance(arr_type, ArrowVariableShapedTensorType):
+                return True
+            # For PyArrow extension types, we need variable-shaped representation
+            # if all the shapes do not match.
+            if isinstance(arr_type, pa.ExtensionType):
+                if shape is not None and arr_type.shape != shape:
+                    return True
+                if shape is None:
+                    shape = arr_type.shape
+        return False
 
 
 if _arrow_extension_scalars_are_subclassable():

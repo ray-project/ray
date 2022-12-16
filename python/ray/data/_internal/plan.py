@@ -279,16 +279,8 @@ class ExecutionPlan:
             if pa is not None and isinstance(schemas_to_unify[0], pa.Schema):
                 return unify_schemas(schemas_to_unify)
             # Otherwise, if the resulting schemas are simple types (e.g. int),
-            # validate that all blocks have the same type before returning.
-            first_schema = schemas_to_unify[0]
-            for s in schemas_to_unify:
-                if s != first_schema:
-                    raise Exception(
-                        "Found blocks with different types in schemas: {}".format(
-                            schemas_to_unify,
-                        )
-                    )
-            return first_schema
+            # return the first schema.
+            return schemas_to_unify[0]
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.

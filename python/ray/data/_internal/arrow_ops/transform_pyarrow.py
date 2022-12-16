@@ -62,10 +62,18 @@ def unify_schemas(
         for col_idx in range(len(schemas[0].types)):
             column_types = [s.types[col_idx] for s in schemas]
             if ArrowTensorType._need_variable_shaped_tensor_array(column_types):
-                new_type = ArrowVariableShapedTensorType(
-                    dtype=column_types[0].scalar_type,
-                    ndim=len(column_types[0].shape),
-                )
+                if isinstance(column_types[0], ArrowVariableShapedTensorType):
+                    new_type = column_types[0]
+                elif isinstance(column_types[0], ArrowTensorType):
+                    new_type = ArrowVariableShapedTensorType(
+                        dtype=column_types[0].scalar_type,
+                        ndim=len(column_types[0].shape),
+                    )
+                else:
+                    raise Exception(
+                        "Detected need for variable shaped tensor representation, "
+                        + f"but schema is not ArrayTensorType: {column_types[0]}"
+                    )
                 schema_tensor_field_overrides[col_idx] = new_type
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
@@ -147,8 +155,24 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             else:
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
             cols.append(col)
-        # Unify schemas.
-        schema = unify_schemas([b.schema for b in blocks])
+
+        # If the result contains PyArrow schemas, unify them
+        schemas_to_unify = [b.schema for b in blocks]
+        if pyarrow is not None and isinstance(schemas_to_unify[0], pyarrow.Schema):
+            schema = unify_schemas(schemas_to_unify)
+        else:
+            # Otherwise, if the resulting schemas are simple types (e.g. int),
+            # check that all blocks with valid schemas have the same type.
+            schema = schemas_to_unify[0]
+            if schema is not None:
+                NoneType = type(None)
+                for s in schemas_to_unify:
+                    if s is not NoneType and s != schema:
+                        raise Exception(
+                            "Found blocks with different types in schemas: {}".format(
+                                schemas_to_unify,
+                            )
+                        )
         # Build the concatenated table.
         table = pyarrow.Table.from_arrays(cols, schema=schema)
         # Validate table schema (this is a cheap check by default).
