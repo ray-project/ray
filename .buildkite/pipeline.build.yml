@@ -492,7 +492,9 @@
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
     - ./ci/env/env_info.sh
-    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
+    - RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
+      RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
+      bazel test --config=ci-debug $(./ci/run/bazel_export_options)
       --test_tag_filters=-kubernetes,spark_plugin_tests
       python/ray/tests/...
 

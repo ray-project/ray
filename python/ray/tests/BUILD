@@ -520,7 +520,9 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "spark/test_ray_on_spark.py",
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
     "spark/test_utils.py",
   ],
   size = "large",
