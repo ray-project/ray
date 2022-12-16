@@ -144,7 +144,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
