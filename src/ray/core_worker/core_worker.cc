@@ -2276,6 +2276,8 @@ Status CoreWorker::ExecuteTask(
       rpc::TaskEvents task_event;
       task_event.set_task_id(task_spec.TaskId().Binary());
       task_event.set_attempt_number(task_spec.AttemptNumber());
+      task_event.set_job_id(task_spec.JobId().Binary());
+
       auto state_updates = task_event.mutable_state_updates();
       state_updates->set_running_ts(absl::GetCurrentTimeNanos());
       task_event_buffer_->AddTaskEvent(std::move(task_event));
