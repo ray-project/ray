@@ -1,0 +1,1 @@
+../ci/build/upload_build_info.sh

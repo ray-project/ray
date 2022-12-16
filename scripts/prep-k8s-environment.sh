@@ -1,0 +1,1 @@
+../ci/k8s/prep-k8s-environment.sh
