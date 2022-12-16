@@ -3,6 +3,7 @@ import pytest
 import ray
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])
 REQUEST_4_CPU = ResourceRequest([{"CPU": 4}])
@@ -18,7 +19,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def test_acquire_return_resources():
+def test_acquire_return_resources(ray_start_4_cpus):
     manager = FixedResourceManager(total_resources={"CPU": 4})
 
     assert not manager.has_resources_ready(REQUEST_2_CPU)
@@ -39,7 +40,7 @@ def test_acquire_return_resources():
     assert manager.has_resources_ready(REQUEST_4_CPU)
 
 
-def test_numerical_error():
+def test_numerical_error(ray_start_4_cpus):
     """Make sure we don't run into numerical errors when using fractional resources.
 
     Legacy test: test_trial_runner::TrialRunnerTest::testResourceNumericalError
@@ -124,6 +125,51 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
     res1, res2 = ray.get([av1.remote(), av2.remote()])
     assert sum(v for k, v in res1.items() if k.startswith("CPU")) == 0
     assert sum(v for k, v in res2.items() if k.startswith("CPU")) == 2
+
+
+@pytest.mark.parametrize("strategy", ["STRICT_PACK", "PACK", "SPREAD", "STRICT_SPREAD"])
+def test_strategy(ray_start_4_cpus, strategy):
+    """The fixed resoure manager does not support STRICT placement strategies."""
+    manager = FixedResourceManager()
+
+    req = ResourceRequest([{"CPU": 2}], strategy=strategy)
+
+    if strategy.startswith("STRICT_"):
+        with pytest.raises(RuntimeError):
+            manager.request_resources(req)
+    else:
+        manager.request_resources(req)
+
+
+@pytest.mark.parametrize("strategy", ["STRICT_PACK", "PACK", "SPREAD", "STRICT_SPREAD"])
+def test_strategy_nested(ray_start_4_cpus, strategy):
+    """The fixed resoure manager does not support STRICT_SPREAD within a PG."""
+
+    @ray.remote
+    def nested_test():
+        manager = FixedResourceManager()
+
+        req = ResourceRequest([{"CPU": 2}], strategy=strategy)
+
+        if strategy == "STRICT_SPREAD":
+            with pytest.raises(RuntimeError):
+                manager.request_resources(req)
+        else:
+            manager.request_resources(req)
+
+    pg = ray.util.placement_group([{"CPU": 2}])
+    ray.wait([pg.ready()])
+
+    try:
+        ray.get(
+            nested_test.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_capture_child_tasks=True
+                )
+            ).remote()
+        )
+    finally:
+        ray.util.remove_placement_group(pg)
 
 
 if __name__ == "__main__":

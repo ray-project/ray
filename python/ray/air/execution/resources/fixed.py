@@ -82,12 +82,21 @@ class FixedResourceManager(ResourceManager):
     _resource_cls: AcquiredResource = FixedAcquiredResource
 
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
+        rtc = ray.get_runtime_context()
+
         if not total_resources:
-            rtc = ray.get_runtime_context()
             if rtc.worker.mode in {None, SCRIPT_MODE, LOCAL_MODE}:
                 total_resources = ray.available_resources()
             else:
                 total_resources = rtc.get_assigned_resources()
+
+        # If we are in a placement group, all of our resources will be in a bundle
+        # and thus fulfill requirements of STRICT_PACK - but only if child tasks
+        # are captured by the pg.
+        self._allow_strict_pack = (
+            ray.util.get_current_placement_group() is not None
+            and rtc.should_capture_child_tasks_in_placement_group
+        )
 
         self._total_resources = total_resources
         self._requested_resources = []
@@ -106,6 +115,16 @@ class FixedResourceManager(ResourceManager):
         return available_resources
 
     def request_resources(self, resource_request: ResourceRequest):
+        if resource_request.strategy == "STRICT_SPREAD" or (
+            not self._allow_strict_pack and resource_request.strategy == "STRICT_PACK"
+        ):
+            raise RuntimeError(
+                f"Requested a resource with placement strategy "
+                f"{resource_request.strategy}, but this cannot be fulfilled by a "
+                f"FixedResourceManager. In a nested setting, please set the inner "
+                f"placement strategy to be less restrictive (i.e. no STRICT_ strategy)."
+            )
+
         self._requested_resources.append(resource_request)
 
     def cancel_resource_request(self, resource_request: ResourceRequest):
