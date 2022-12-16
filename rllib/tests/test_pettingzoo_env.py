@@ -41,7 +41,7 @@ class TestPettingZooEnv(unittest.TestCase):
                 # Setup a single, shared policy for all agents.
                 policies={"av": (None, observation_space, action_space, {})},
                 # Map all agents to that policy.
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "av",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
             .debugging(log_level="DEBUG")
             .rollouts(
@@ -77,7 +77,7 @@ class TestPettingZooEnv(unittest.TestCase):
                 policies={"av": (None, observation_space, action_space, {})},
                 # Mapping function that always returns "av" as policy ID to use
                 # (for any agent).
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "av",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
         )
 

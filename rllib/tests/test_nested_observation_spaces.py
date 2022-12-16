@@ -518,7 +518,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
                     ),
                 },
                 policy_mapping_fn=(
-                    lambda agent_id, **kwargs: {
+                    lambda agent_id, episode, worker, **kwargs: {
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy",
                     }[agent_id]
