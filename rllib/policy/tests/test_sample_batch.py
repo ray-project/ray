@@ -555,7 +555,7 @@ class TestSampleBatch(unittest.TestCase):
         another_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=another_device)
         )
-        self.assertTrue(check(another_batch[SampleBatch.OBS], another_array))
+        check(another_batch[SampleBatch.OBS], another_array)
         self.assertFalse(another_batch[SampleBatch.OBS] is another_array)
 
 
