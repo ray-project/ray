@@ -2,20 +2,41 @@ from collections import deque
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from typing import Union
 
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
 
 
 @PublicAPI
-def is_atari(env):
-    if (
-        hasattr(env.observation_space, "shape")
-        and env.observation_space.shape is not None
-        and len(env.observation_space.shape) <= 2
-    ):
-        return False
-    return "AtariEnv<ALE" in str(env)
+def is_atari(env: Union[gym.Env, str]) -> bool:
+    """Returns, whether a given env object or env descriptor (str) is an Atari env.
+
+    Args:
+        env: The gym.Env object or a string descriptor of the env (e.g. "ALE/Pong-v5").
+
+    Returns:
+        Whether `env` is an Atari environment.
+    """
+    # If a gym.Env, check proper spaces as well as occurrence of the "Atari<ALE" string
+    # in the class name.
+    if isinstance(env, gym.Env):
+        if (
+            hasattr(env.observation_space, "shape")
+            and env.observation_space.shape is not None
+            and len(env.observation_space.shape) <= 2
+        ):
+            return False
+        return "AtariEnv<ALE" in str(env)
+    # If string, check for "ALE/" prefix.
+    elif isinstance(env, str):
+        return env.startswith("ALE/")
+    # Error.
+    else:
+        raise ValueError(
+            "`is_atari` expects a gym.Env object OR a string descriptor "
+            "(e.g. 'CartPole-v1' or 'ALE/Pong-v5') of the environment."
+        )
 
 
 @PublicAPI
