@@ -19,7 +19,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 class TestSampleBatch(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
