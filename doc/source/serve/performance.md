@@ -151,7 +151,7 @@ There are handful of ways to address these issues:
 ### Using `async` methods
 
 :::{note}
-According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#very-technical-details), `def` endpoint function will be called in a separate threadpool, you might observe many requests running at the same time inside one replica, and this scenario might cause the OOM or resource starvation. In this case, you can try to use `async def` and tune `max_concurrent_queries` to control the workload performance.
+According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#very-technical-details), `def` endpoint functions will be called in a separate threadpool, so you might observe many requests running at the same time inside one replica, and this scenario might cause OOM or resource starvation. In this case, you can try to use `async def` to control the workload performance.
 :::
 
 Are you using `async def` in your callable? If you are using `asyncio` and
