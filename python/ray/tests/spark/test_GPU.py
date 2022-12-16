@@ -11,10 +11,6 @@ import ray
 from ray.util.spark.cluster_init import _init_ray_cluster
 
 
-os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
-os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
-
-
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
     num_total_gpus = None

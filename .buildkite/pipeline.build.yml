@@ -487,15 +487,14 @@
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
-  env:
-    RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT: 1
-    RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL: 5
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
     - ./ci/env/env_info.sh
     - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
+      --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
+      --test_env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
       --test_tag_filters=-kubernetes,spark_plugin_tests
       python/ray/tests/...
 

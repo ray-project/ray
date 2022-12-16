@@ -475,7 +475,7 @@ def _init_ray_cluster(
         ray_head_node_cmd,
         synchronous=False,
         preexec_fn=setup_sigterm_on_parent_death,
-        extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path}
+        extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ''}
     )
 
     # wait ray head node spin up.
@@ -556,7 +556,7 @@ def _init_ray_cluster(
         ]
 
         ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ''
         }
 
         if num_spark_task_gpus > 0:
@@ -749,6 +749,7 @@ def init_ray_cluster(
         worker_options=worker_options,
         ray_temp_root_dir=ray_temp_root_dir,
         safe_mode=safe_mode,
+        collect_log_to_path=collect_log_to_path,
     )
     cluster.connect()  # NB: this line might raise error.
 

@@ -1,4 +1,7 @@
 import os
+import shutil
+import tempfile
+import socket
 import pytest
 import sys
 
@@ -6,6 +9,8 @@ from abc import ABC
 
 import ray
 
+import ray.util.spark.cluster_init
+from ray.util.spark import init_ray_cluster, shutdown_ray_cluster
 from ray.util.spark.cluster_init import _init_ray_cluster
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
@@ -53,10 +58,16 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 for worker_res in worker_res_list:
                     assert worker_res["CPU"] == self.num_cpus_per_spark_task
 
-    def test_basic_ray_app(self):
-        with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
-        ) as cluster:
+    def test_public_api(self):
+        try:
+            ray_temp_root_dir = tempfile.mkdtemp()
+            collect_log_to_path = tempfile.mkdtemp()
+            init_ray_cluster(
+                num_worker_nodes=self.max_spark_tasks,
+                safe_mode=False,
+                collect_log_to_path=collect_log_to_path,
+                ray_temp_root_dir=ray_temp_root_dir,
+            )
 
             @ray.remote
             def f(x):
@@ -66,9 +77,26 @@ class RayOnSparkCPUClusterTestBase(ABC):
             results = ray.get(futures)
             assert results == [i * i for i in range(32)]
 
-        # assert temp dir is removed.
-        time.sleep(5)
-        assert not os.path.exists(cluster.temp_dir)
+            shutdown_ray_cluster()
+
+            time.sleep(5)
+            # assert temp dir is removed.
+            assert len(os.listdir(ray_temp_root_dir)) == 1 and \
+                   os.listdir(ray_temp_root_dir)[0].endswith(".lock")
+
+            # assert logs are copied to specified path
+            listed_items = os.listdir(collect_log_to_path)
+            assert len(listed_items) == 1 and listed_items[0].startswith("ray-")
+            log_dest_dir = os.path.join(collect_log_to_path, listed_items[0], socket.gethostname())
+            assert os.path.exists(log_dest_dir) and len(os.listdir(log_dest_dir)) > 0
+        finally:
+            if ray.util.spark.cluster_init._active_ray_cluster is not None:
+                # if the test raised error and does not destroy cluster,
+                # destroy it here.
+                ray.util.spark._active_ray_cluster.shutdown()
+                time.sleep(5)
+            shutil.rmtree(ray_temp_root_dir)
+            shutil.rmtree(collect_log_to_path)
 
     def test_ray_cluster_shutdown(self):
         with _init_ray_cluster(

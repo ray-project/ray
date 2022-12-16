@@ -5,10 +5,6 @@ from pyspark.sql import SparkSession
 from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
 
-os.environ["RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT"] = "1"
-os.environ["RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL"] = "5"
-
-
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
     @classmethod
     def setup_class(cls):

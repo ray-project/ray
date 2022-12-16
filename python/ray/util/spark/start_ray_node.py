@@ -6,6 +6,7 @@ import shutil
 import fcntl
 import signal
 import socket
+import logging
 from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 
 
@@ -22,12 +23,13 @@ from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 
 _WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
+_logger = logging.getLogger(__name__)
+
 
 if __name__ == "__main__":
     arg_list = sys.argv[1:]
 
     collect_log_to_path = os.environ[RAY_ON_SPARK_COLLECT_LOG_TO_PATH]
-    is_head = ("--head" in arg_list)
 
     temp_dir_arg_prefix = "--temp-dir="
     temp_dir = None
@@ -56,30 +58,38 @@ if __name__ == "__main__":
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
             try:
-                # Start clean the temp-dir,
-                # acquiring exclusive lock to ensure removing dir safely.
+                # acquiring exclusive lock to ensure copy logs and removing dir safely.
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                shutil.rmtree(temp_dir, ignore_errors=True)
-
-                # This is the final terminated ray node on current spark worker,
-                # start copy logs (including all local ray nodes logs) to destination.
-                if collect_log_to_path is not None:
-                    copy_log_dest_path = os.path.join(
-                        collect_log_to_path,
-                        os.path.basename(temp_dir) + "-logs",
-                        ("head" if is_head else socket.gethostname())
-                    )
-                    os.makedirs(copy_log_dest_path, exist_ok=True)
-                    shutil.copytree(
-                        os.path.join(temp_dir, "logs"),
-                        copy_log_dest_path,
-                        dirs_exist_ok=True,
-                    )
+                lock_acquired = True
             except BlockingIOError:
                 # The file has active shared lock or exclusive lock, representing there
                 # are other ray nodes running, or other node running cleanup temp-dir routine.
                 # skip cleaning temp-dir, and skip copy logs to destination directory as well.
-                pass
+                lock_acquired = False
+
+            if lock_acquired:
+                # This is the final terminated ray node on current spark worker,
+                # start copy logs (including all local ray nodes logs) to destination.
+                if collect_log_to_path:
+                    try:
+                        copy_log_dest_path = os.path.join(
+                            collect_log_to_path,
+                            os.path.basename(temp_dir) + "-logs",
+                            socket.gethostname(),
+                        )
+                        os.makedirs(copy_log_dest_path, exist_ok=True)
+                        shutil.copytree(
+                            os.path.join(temp_dir, "session_latest", "logs"),
+                            copy_log_dest_path,
+                            dirs_exist_ok=True,
+                        )
+                    except Exception as e:
+                        _logger.warning(
+                            f"Collect logs to destination directory failed, error: {repr(e)}."
+                        )
+
+                # Start cleaning the temp-dir,
+                shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception:
             # swallow any exception.
             pass
