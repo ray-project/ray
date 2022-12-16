@@ -3,12 +3,9 @@
 # Environment adapters.
 # ---------------------
 # Atari
-autorom[accept-rom-license]
-gymnasium[atari,mujoco]==0.26.3
 # TODO(sven): Still needed for Atari (need to be wrapped by gymnasium as it does NOT support Atari yet)
 gym==0.26.2
-# For testing Atari envs with gymnasium.
-ale-py==0.8.0
+gymnasium[atari,mujoco]==0.26.3
 # For testing MuJoCo envs with gymnasium.
 mujoco-py<2.2,>=2.1
 # Kaggle envs.

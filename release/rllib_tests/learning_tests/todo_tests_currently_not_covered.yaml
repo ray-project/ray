@@ -36,8 +36,11 @@
 #    config:
 #        # DDPPO only supports PyTorch so far.
 #        frameworks: [ "torch" ]
+#        # Make analogous to old v4 + NoFrameskip.
 #        env_config:
-#            frameskip: 1  # no frameskip
+#            frameskip: 1
+#            full_action_space: false
+#            repeat_action_probability: 0.0
 #        # Worker config: 10 workers, each of which requires a GPU.
 #        num_workers: 16
 #        # Workers require GPUs, but share 1 GPU amongst 2 workers.

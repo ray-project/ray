@@ -178,7 +178,7 @@ if __name__ == "__main__":
             None,
             None,
             # Provide entire AlgorithmConfig object, not just an override.
-            DQNConfig().training(target_network_update_freq=1000),
+            DQNConfig().training(target_network_update_freq=500),
         ),
     }
 
