@@ -455,13 +455,20 @@ class LogMonitor:
                 time.sleep(0.1)
 
 
-def is_proc_alive(pid):
+def _is_proc_alive(pid):
     try:
         return psutil.Process(pid).is_running()
     except psutil.NoSuchProcess:
         # The process does not exist.
         return False
 
+def is_proc_alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            # If OSError is raised, the process is not alive.
+            return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
