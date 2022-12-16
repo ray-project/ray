@@ -800,6 +800,8 @@ def start(
                 cli_logger.print("See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html")
                 cli_logger.print("for more information on connecting to the Ray cluster.")
                 cli_logger.newline()
+                cli_logger.print("To see the status of the cluster, use")
+                cli_logger.print("  {}".format(cf.bold("ray status")))
                 if dashboard_url:
                     cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                     cli_logger.print(
