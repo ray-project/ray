@@ -41,7 +41,7 @@ scikit-image
 scipy
 aiohttp>=3.7
 fastapi
-gymnasium==0.26.3
+gym<0.24.1,>=0.21.0
 opencensus
 fsspec
 dm_tree
