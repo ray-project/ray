@@ -2032,7 +2032,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy", "multi-gpu"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -2495,7 +2495,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_pg",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "gpu"], # (Artur) gpu tag is for test_ppo_no_preprocessors_gpu
+     tags = ["team:rllib", "tests_dir", "multi-gpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPG"]
