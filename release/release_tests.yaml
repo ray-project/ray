@@ -2850,29 +2850,30 @@
 
   alert: default
 
-- name: rllib_learning_tests_a3c_torch
-  group: RLlib tests
-  working_dir: rllib_tests
+# TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
+#- name: rllib_learning_tests_a3c_torch
+#  group: RLlib tests
+#  working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
+#  legacy:
+#    test_name: learning_tests
+#    test_suite: rllib_tests
 
-  frequency: nightly
-  team: rl
-  env: staging
+#  frequency: nightly
+#  team: rl
+#  env: staging
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 32cpus.yaml
+#  cluster:
+#    cluster_env: app_config.yaml
+#    cluster_compute: 32cpus.yaml
 
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
-    type: sdk_command
-    file_manager: job
+#  run:
+#    timeout: 18000
+#    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
+#    type: sdk_command
+#    file_manager: job
 
-  alert: default
+#  alert: default
 
 - name: rllib_learning_tests_apex_tf
   group: RLlib tests
