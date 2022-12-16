@@ -567,15 +567,15 @@ py_test(
 )
 
 # PPO
-# py_test(
-#    name = "learning_tests_cartpole_ppo",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
-#    args = ["--dir=tuned_examples/ppo"]
-# )
+py_test(
+    name = "learning_tests_cartpole_truncated_ppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/cartpole-truncated-ppo.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
 
 py_test(
     name = "learning_tests_pendulum_ppo",

@@ -663,14 +663,24 @@ class AlgorithmConfig:
         Returns:
             True, if specified env is an Atari env, False otherwise.
         """
-        # Atari envs are usually specified via a string like "ALE/Breakout-v5".
+        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+        # or "ALE/Breakout-v5".
         # We do NOT attempt to auto-detect Atari env for other specified types like
         # a callable, to avoid running heavy logics in validate().
         # For these cases, users can explicitly set `environment(atari=True)`.
         if not type(self.env) == str:
             return False
 
-        return is_atari(self.env)
+        try:
+            if self.env.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=self.env)
+            else:
+                env = gym.make(self.env)
+        except gym.error.NameNotFound:
+            # Not an Atari env if this is not a gym env.
+            return False
+
+        return is_atari(env)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
