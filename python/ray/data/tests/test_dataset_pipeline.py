@@ -134,20 +134,6 @@ def test_pipeline_actors(shutdown_only):
     assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
 
-def test_incremental_take(shutdown_only):
-    ray.init(num_cpus=2)
-
-    # Can read incrementally even if future results are delayed.
-    def block_on_ones(x: int) -> int:
-        if x == 1:
-            time.sleep(999999)
-        return x
-
-    pipe = ray.data.range(2).window(blocks_per_window=1)
-    pipe = pipe.map(block_on_ones)
-    assert pipe.take(1) == [0]
-
-
 def test_pipeline_is_parallel(shutdown_only):
     ray.init(num_cpus=4)
     ds = ray.data.range(10)
@@ -806,6 +792,21 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
 
     splits = ds.repeat(1).map_batches(lambda x: x).split(2)
     ray.get([consume.remote(splits[0], True), consume.remote(splits[1], True)])
+
+
+# Run at end of file to avoid segfault https://github.com/ray-project/ray/issues/31145
+def test_incremental_take(shutdown_only):
+    ray.init(num_cpus=2)
+
+    # Can read incrementally even if future results are delayed.
+    def block_on_ones(x: int) -> int:
+        if x == 1:
+            time.sleep(999999)
+        return x
+
+    pipe = ray.data.range(2).window(blocks_per_window=1)
+    pipe = pipe.map(block_on_ones)
+    assert pipe.take(1) == [0]
 
 
 if __name__ == "__main__":
