@@ -290,20 +290,6 @@ def ray_deps_setup():
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
-    http_archive(
-        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
-        # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
-        # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
-        name = "boringssl",
-        sha256 = "e168777eb0fc14ea5a65749a2f53c095935a6ea65f38899a289808fb0c221dc4",
-        strip_prefix = "boringssl-4fb158925f7753d80fb858cb0239dff893ef9f15",
-        urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
-            "https://github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
-        ],
-    )
-
     auto_http_archive(
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
