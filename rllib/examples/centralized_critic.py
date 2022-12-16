@@ -247,7 +247,7 @@ class CentralizedCritic(PPO):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -280,7 +280,7 @@ if __name__ == "__main__":
                     PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
             if agent_id == 0
             else "pol2",
         )
