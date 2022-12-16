@@ -104,10 +104,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// task events are approximately task events that arrived in earlier rpc.
   class GcsTaskManagerStorage {
    public:
-    using TaskAttemptToIndexMap = absl::flat_hash_map<int32_t, size_t>;
-    /// Mapping from a task id to the index of multiple task attempt in the buffer.
-    using TaskIDToIndexMap = absl::flat_hash_map<TaskID, TaskAttemptToIndexMap>;
-
     /// Constructor
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
@@ -127,17 +123,26 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// Get task events from job.
     ///
-    /// Get task events from a job, with job_id. Additionally, a set of TaskID strings
-    /// could be provided to get a subset of tasks from the job. all task events.
-    ///
-    ///
+    /// \param job_id Job ID to filter task events.
+    /// \return task events of `job_id`.
     std::vector<rpc::TaskEvents> GetTaskEvents(JobID job_id) const;
 
+    /// Get all task events.
+    ///
+    /// \return all task events stored.
     std::vector<rpc::TaskEvents> GetTaskEvents() const;
 
+    /// Get task events from tasks corresponding to `task_ids`.
+    ///
+    /// \param task_ids Task ids of the tasks.
+    /// \return task events from the `task_ids`.
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskID> &task_ids) const;
 
+    /// Get task events of task attempt.
+    ///
+    /// \param task_attempts Task attempts (task ids + attempt number).
+    /// \return task events from the `task_attempts`.
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
@@ -153,6 +158,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
 
+    /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
+    /// https://github.com/ray-project/ray/issues/31158
     /// Current task events stored.
     std::vector<rpc::TaskEvents> task_events_;
 
