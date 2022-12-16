@@ -490,7 +490,20 @@ class AlgorithmConfig:
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            config["multiagent"][k] = config.pop(k)
+            # convert policies dict to something human-readable
+            if k == "policies":
+                policies_dict = {}
+                for policy_id, policy_spec in self.multiagent[k].items():
+                    if isinstance(policy_spec, PolicySpec):
+                        policies_dict[policy_id] = (
+                            policy_spec.policy_class,
+                            policy_spec.observation_space,
+                            policy_spec.action_space,
+                            policy_spec.config,
+                        )
+                config["multiagent"][k] = policies_dict
+            else:
+                config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
