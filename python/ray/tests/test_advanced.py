@@ -383,6 +383,21 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
+def test_ray_get_timeout_zero(monkeypatch):
+    # Check that ray.get(timeout=0) raises warnings on change of behavior.
+    # Removed when https://github.com/ray-project/ray/issues/28465 is resolved.
+    with pytest.warns(UserWarning):
+        ray.get(ray.put(1), timeout=0)
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "0")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ray.get(ray.put(1), timeout=0)
+
+
 if __name__ == "__main__":
     import pytest
 

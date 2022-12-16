@@ -390,19 +390,6 @@ def test_get_with_timeout(ray_start_regular_shared, monkeypatch):
     ray.get(result_id, timeout=30)
     assert time.time() - start < 30
 
-    # Check that ray.get(timeout=0) raises warnings on change of behavior.
-    # Removed when https://github.com/ray-project/ray/issues/28465 is resolved.
-    with pytest.warns(UserWarning):
-        ray.get(signal.wait.remote(should_wait=False), timeout=0)
-
-    with monkeypatch.context() as m:
-        m.setenv("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "0")
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            ray.get(signal.wait.remote(should_wait=False), timeout=0)
-
 
 # https://github.com/ray-project/ray/issues/6329
 def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
