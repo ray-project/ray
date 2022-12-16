@@ -134,7 +134,6 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
-        session_name: str,
         log_dir: str = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
@@ -150,7 +149,6 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-        self._session_name = session_name
         worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=self.gcs_address)
 
@@ -165,6 +163,8 @@ class Monitor:
             gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
+        self._session_name = self.get_session_name(gcs_client)
+        logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
 
@@ -189,7 +189,7 @@ class Monitor:
         else:
             self.event_logger = None
 
-        self.prom_metrics = AutoscalerPrometheusMetrics(session_name=session_name)
+        self.prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
         if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
@@ -326,6 +326,27 @@ class Monitor:
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
+
+    def get_session_name(self, gcs_client: GcsClient) -> Optional[str]:
+        """Obtain the session name from the GCS.
+
+        If the GCS doesn't respond, session name is considered None.
+        In this case, the metrics reported from the monitor won't have
+        the correct session name.
+        """
+        if not _internal_kv_initialized():
+            return None
+
+        session_name = gcs_client.internal_kv_get(
+            b"session_name",
+            ray_constants.KV_NAMESPACE_SESSION,
+            timeout=10,
+        )
+
+        if session_name:
+            session_name = session_name.decode()
+
+        return session_name
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -611,12 +632,6 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
-    parser.add_argument(
-        "--session-name",
-        required=True,
-        type=str,
-        help="The session name of the cluster where the autoscaler is deployed on.",
-    )
 
     args = parser.parse_args()
     setup_component_logger(
@@ -645,7 +660,6 @@ if __name__ == "__main__":
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
-        session_name=args.session_name,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )

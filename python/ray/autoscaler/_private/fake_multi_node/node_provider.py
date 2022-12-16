@@ -326,7 +326,6 @@ class FakeMultiNodeProvider(NodeProvider):
                     "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
                 },
             )
-            time.sleep(300)
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )

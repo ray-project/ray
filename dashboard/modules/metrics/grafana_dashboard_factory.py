@@ -39,8 +39,6 @@ class Panel:
         id: Integer id used to reference the graph from Metrics.tsx.
         unit: The unit to display on the y-axis of the graph.
         targets: List of query targets.
-        sort_legend_by: Sort the legends. current is the default meaning
-            it is sorted by the current values.
     """
 
     title: str
@@ -48,7 +46,6 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
-    sort_legend_by: str = "current"
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -118,25 +115,20 @@ GRAFANA_PANELS = [
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
-        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
+        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
-        sort_legend_by=None,
         targets=[
             Target(
                 expr='sum(ray_resources{{Name="CPU",State="USED",{global_filters}}}) by (instance)',
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="CPU",State="AVAILABLE",{global_filters}}}) by (instance)',
-                legend="Available",
-            ),
-            Target(
                 expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
                 legend="MAX",
             ),
             Target(
-                expr='sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})',
-                legend="Pending",
+                expr='(sum(ray_resources{{Name="CPU",{global_filters}}}) or vector(0)) + (sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}}) or vector(0))',
+                legend="PENDING + MAX",
             ),
         ],
     ),
@@ -159,25 +151,20 @@ GRAFANA_PANELS = [
     Panel(
         id=28,
         title="Scheduler GPUs (logical slots)",
-        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
+        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
         unit="GPUs",
-        sort_legend_by=None,
         targets=[
             Target(
                 expr='ray_resources{{Name="GPU",State="USED",{global_filters}}}',
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="GPU",State="AVAILABLE",{global_filters}}}) by (instance)',
-                legend="Available",
-            ),
-            Target(
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
             ),
             Target(
-                expr='sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})',
-                legend="Pending",
+                expr='(sum(ray_resources{{Name="GPU",{global_filters}}}) or vector(0)) + (sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}}) or vector(0))',
+                legend="PENDING + MAX",
             ),
         ],
     ),
@@ -402,19 +389,11 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:2987",
-            "alias": "Available",
-            "dashes": False,
-            "color": "#FFFFFF",
+            "alias": "PENDING + MAX",
+            "dashes": True,
+            "color": "#EB455F",
             "fill": 0,
-            "stack": True,
-        },
-        {
-            "$$hashKey": "object:2987",
-            "alias": "Pending",
-            "dashes": False,
-            "fill": 0,
-            "stack": True,
-            "fillGradient": 7,
+            "stack": False,
         },
     ],
     "spaceLength": 10,
@@ -482,8 +461,6 @@ def _generate_grafana_panels() -> List[dict]:
         template["gridPos"]["y"] = i // 2
         template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
-        if panel.sort_legend_by:
-            template["legend"]["sort"] = panel.sort_legend_by
         panels.append(template)
     return panels
 

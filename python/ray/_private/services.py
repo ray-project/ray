@@ -1816,7 +1816,6 @@ def determine_plasma_store_config(
 def start_monitor(
     gcs_address: str,
     logs_dir: str,
-    session_name: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
@@ -1853,7 +1852,6 @@ def start_monitor(
         f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--session-name={session_name}",
     ]
     if gcs_address is not None:
         command.append(f"--gcs-address={gcs_address}")
