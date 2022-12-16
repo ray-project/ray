@@ -40,7 +40,11 @@ def _summarize(obj):
     elif isinstance(obj, np.ndarray):
         if obj.size == 0:
             return _StringValue("np.ndarray({}, dtype={})".format(obj.shape, obj.dtype))
-        elif obj.dtype == object or obj.dtype.type is np.str_:
+        elif (
+            obj.dtype == object
+            or obj.dtype.type is np.str_
+            or obj.dtype.type is np.bytes_
+        ):
             return _StringValue(
                 "np.ndarray({}, dtype={}, head={})".format(
                     obj.shape, obj.dtype, _summarize(obj[0])
