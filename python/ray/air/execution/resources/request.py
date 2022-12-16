@@ -198,11 +198,16 @@ class ResourceRequest:
 class AllocatedResource(abc.ABC):
     """Base class for available resources that have been acquired.
 
+    Available here means that the resources are available for immediate scheduling.
+    E.g. for placement groups, this means that the placement group has been
+    created.
+
     Internally this can point e.g. to a placement group, a placement
     group bundle index, or just raw resources.
 
     The main API is the `annotate_remote_objects` method. This will associate
-    remote Ray objects (tasks and actors) with the allocated resources.
+    remote Ray objects (tasks and actors) with the allocated resources by setting
+    the Ray remote options to use the allocated resources.
 
     Parameters other than the `request` should be private.
     """
@@ -218,6 +223,6 @@ class AllocatedResource(abc.ABC):
         object will be associated with the second bundle, etc.
 
         Args:
-            objects: Remote Ray objects to allocate resources to.
+            objects: Remote Ray objects to annotate with the allocated resources.
         """
         raise NotImplementedError
