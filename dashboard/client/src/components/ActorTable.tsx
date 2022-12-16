@@ -31,9 +31,11 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 const ActorTable = ({
   actors = {},
   workers = [],
+  jobId = null,
 }: {
   actors: { [actorId: string]: Actor };
   workers?: Worker[];
+  jobId?: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter();
@@ -152,6 +154,19 @@ const ActorTable = ({
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="State" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          defaultValue={jobId}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.jobId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("jobId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Job Id" />
           )}
         />
         <Autocomplete

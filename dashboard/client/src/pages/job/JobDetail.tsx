@@ -7,7 +7,10 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -173,6 +176,13 @@ const JobDetailPage = () => {
         />
       </TitleCard>
       <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Task Table">
+        <TaskList jobId={jobId} />
+      </TitleCard>
+      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      <TitleCard title="Placement Groups">
+        <PlacementGroupList jobId={jobId} />
+      </TitleCard>
     </div>
   );
 };
