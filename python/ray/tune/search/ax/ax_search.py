@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 from typing import Dict, List, Optional, Union
 
+from ray import cloudpickle
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
@@ -425,9 +426,9 @@ class AxSearch(Searcher):
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
         with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(save_object, outputFile)
+            cloudpickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
-            save_object = pickle.load(inputFile)
+            save_object = cloudpickle.load(inputFile)
         self.__dict__.update(save_object)
