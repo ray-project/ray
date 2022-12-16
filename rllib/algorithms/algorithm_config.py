@@ -490,7 +490,22 @@ class AlgorithmConfig:
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            config["multiagent"][k] = config.pop(k)
+            # convert policies dict to something human-readable
+            if k == "policies" and isinstance(self.multiagent[k], dict):
+                policies_dict = {}
+                for policy_id, policy_spec in self.multiagent[k].items():
+                    if isinstance(policy_spec, PolicySpec):
+                        policies_dict[policy_id] = (
+                            policy_spec.policy_class,
+                            policy_spec.observation_space,
+                            policy_spec.action_space,
+                            policy_spec.config,
+                        )
+                    else:
+                        policies_dict[policy_id] = policy_spec
+                config["multiagent"][k] = policies_dict
+            else:
+                config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
@@ -1408,6 +1423,20 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.model.update(model)
+            if (
+                model.get("_use_default_native_models", DEPRECATED_VALUE)
+                != DEPRECATED_VALUE
+            ):
+                deprecation_warning(
+                    old="AlgorithmConfig.training(_use_default_native_models=True)",
+                    help="_use_default_native_models is not supported "
+                    "anymore. To get rid of this error, set `experimental("
+                    "_enable_rl_module_api` to True. Native models will "
+                    "be better supported by the upcoming RLModule API.",
+                    # Error out if user tries to enable this
+                    error=model["_use_default_native_models"],
+                )
+
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
         if max_requests_in_flight_per_sampler_worker is not NotProvided:

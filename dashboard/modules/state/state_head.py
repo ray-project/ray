@@ -175,7 +175,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
             )
 
-        timeout = int(req.query.get("timeout"))
+        timeout = int(req.query.get("timeout", 30))
         filter_keys = req.query.getall("filter_keys", [])
         filter_predicates = req.query.getall("filter_predicates", [])
         filter_values = req.query.getall("filter_values", [])
