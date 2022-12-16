@@ -1,6 +1,7 @@
+# TODO (avnishn): Merge with the tensorflow version of this test once the
+# RLTrainer has been merged.
 import gym
 import pytest
-import numpy as np
 import torch
 from typing import Any, Mapping, Union
 import unittest
@@ -13,7 +14,6 @@ from ray.rllib.offline.dataset_reader import (
     DatasetReader,
     get_dataset_and_shards,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_optimizer import BCTorchOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -41,52 +41,18 @@ def model_norm(model: torch.nn.Module) -> float:
     return total_norm
 
 
-def do_rollouts(
-    env: gym.Env, module_for_inference: RLModule, num_rollouts: int
-) -> SampleBatch:
-    _returns = []
-    _rollouts = []
-    for _ in range(num_rollouts):
-        obs = env.reset()
-        _obs, _next_obs, _actions, _rewards, _dones = [], [], [], [], []
-        _return = -0
-        for _ in range(env._max_episode_steps):
-            _obs.append(obs)
-            fwd_out = module_for_inference.forward_inference(
-                {"obs": torch.tensor(obs)[None]}
-            )
-            action = convert_to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-            next_obs, reward, done, _ = env.step(action)
-            _next_obs.append(next_obs)
-            _actions.append([action])
-            _rewards.append([reward])
-            _dones.append([done])
-            _return += reward
-            if done:
-                break
-            obs = next_obs
-        batch = SampleBatch(
-            {
-                "obs": _obs,
-                "next_obs": _next_obs,
-                "actions": _actions,
-                "rewards": _rewards,
-                "dones": _dones,
-            }
-        )
-        _returns.append(_return)
-        _rollouts.append(batch)
-    return np.mean(_returns), _returns, _rollouts
-
-
 # TODO (avnishn): This RLTrainer has to be properly implemented once the RLTrainerActor
 # is implemented on master.
 class BCTorchTrainer:
     """This class is a demonstration on how to use RLOptimizer and RLModule together."""
 
-    def __init__(self, env: gym.Space) -> None:
+    def __init__(self, env: gym.Env) -> None:
         optimizer_config = {}
-        self._module = DiscreteBCTorchModule.from_env(env)
+        self._module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         self._rl_optimizer = BCTorchOptimizer(self._module, optimizer_config)
 
     @staticmethod
@@ -128,12 +94,14 @@ class BCTorchTrainer:
         Returns:
             A dictionary of results.
         """
+
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        return {
+        results = {
             "avg_reward": batch["rewards"].mean(),
-            "module_norm": model_norm(self._module),
-            **loss_numpy,
         }
+        results.update(loss_numpy)
+        results["module_norm"] = model_norm(self._module)
+        return results
 
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
@@ -211,10 +179,14 @@ class TestRLOptimizer(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rl_optimizer_in_behavioral_clonning(self):
+    def test_rl_optimizer_in_behavioral_cloning_torch(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
-        module_for_inference = DiscreteBCTorchModule.from_env(env)
+        module_for_inference = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
 
         trainer = BCTorchTrainer(env)
         trainer.set_state({"module_state": module_for_inference.get_state()})
@@ -238,28 +210,23 @@ class TestRLOptimizer(unittest.TestCase):
         num_epochs = 100
         total_timesteps_of_training = 1000000
         inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
-        for epoch_i in range(num_epochs):
-            total_loss = 0
+        for _ in range(num_epochs):
             for _ in range(inter_steps):
                 batch = reader.next()
                 results = trainer.update(batch)
-                total_loss += results["total_loss"] / inter_steps
-
-            module_for_inference.set_state(trainer.get_state()["module_state"])
-            avg_return, _, _ = do_rollouts(env, module_for_inference, 10)
-            print(
-                f"[epoch = {epoch_i}] avg_total_loss: "
-                f"{total_loss}, avg_return: {avg_return}"
-            )
-            if avg_return > 50:
-                break
-        assert (
-            avg_return > 50
-        ), f"Return for training behavior cloning is too low: avg_return={avg_return}!"
+                if results["total_loss"] < 0.57:
+                    break
+        # The loss is initially around 0.68. When it gets to around
+        # 0.57 the return of the policy gets to around 100.
+        self.assertLess(results["total_loss"], 0.57)
 
     def test_rl_optimizer_set_state_get_state_torch(self):
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_env(env)
+        module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
         optim1 = BCTorchOptimizer(module, {"lr": 0.1})
         optim2 = BCTorchOptimizer(module, {"lr": 0.2})
 
