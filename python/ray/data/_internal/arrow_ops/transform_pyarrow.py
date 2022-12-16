@@ -158,7 +158,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
         # If the result contains PyArrow schemas, unify them
         schemas_to_unify = [b.schema for b in blocks]
-        if pyarrow is not None and isinstance(schemas_to_unify[0], pyarrow.Schema):
+        if pyarrow is not None and any(
+            isinstance(s, pyarrow.Schema) for s in schemas_to_unify
+        ):
             schema = unify_schemas(schemas_to_unify)
         else:
             # Otherwise, if the resulting schemas are simple types (e.g. int),

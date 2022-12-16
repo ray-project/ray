@@ -276,7 +276,9 @@ class ExecutionPlan:
             except ImportError:
                 pa = None
             # If the result contains PyArrow schemas, unify them
-            if pa is not None and isinstance(schemas_to_unify[0], pa.Schema):
+            if pa is not None and any(
+                isinstance(s, pa.Schema) for s in schemas_to_unify
+            ):
                 return unify_schemas(schemas_to_unify)
             # Otherwise, if the resulting schemas are simple types (e.g. int),
             # return the first schema.
@@ -287,7 +289,6 @@ class ExecutionPlan:
         # For lazy block lists, this launches read tasks and fetches block metadata
         # until we find the first valid block schema. This is to minimize new
         # computations when fetching the schema.
-        schemas_to_unify = []
         for _, m in blocks.iter_blocks_with_metadata():
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 return m.schema
