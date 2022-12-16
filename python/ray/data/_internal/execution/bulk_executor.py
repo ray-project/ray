@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
@@ -27,7 +28,8 @@ class BulkExecutor(Executor):
 
         assert not self._executed, "Can only call execute once."
         self._executed = True
-        logger.info("Executing DAG %s", dag)
+        if not isinstance(dag, InputDataBuffer):
+            logger.info("Executing DAG %s", dag)
 
         if initial_stats:
             self._stats = initial_stats
@@ -43,7 +45,7 @@ class BulkExecutor(Executor):
             inputs = [execute_recursive(dep) for dep in node.input_dependencies]
 
             # Fully execute this operator.
-            logger.info("Executing node %s", node.name)
+            logger.debug("Executing node %s", node.name)
             builder = self._stats.child_builder(node.name)
             for i, ref_bundles in enumerate(inputs):
                 for r in ref_bundles:
