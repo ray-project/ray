@@ -8,8 +8,11 @@ appo-pongnoframeskip-v5:
     stop:
         time_total_s: 1800
     config:
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            frameskip: 1  # no frameskip
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         vtrace: True
         use_kl_loss: False
         rollout_fragment_length: 50

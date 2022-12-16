@@ -10,8 +10,11 @@ a3c-pongdeterministic-v5:
     # TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
     frameworks: [ "tf" ]
     config:
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            nondeterministic: False  # deterministic
+            repeat_action_probability: 0.0
+            frameskip: 4
+            full_action_space: false
         num_gpus: 0
         num_workers: 16
         max_requests_in_flight_per_sampler_worker: 1
