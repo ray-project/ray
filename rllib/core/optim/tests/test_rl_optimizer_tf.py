@@ -192,7 +192,8 @@ class TestRLOptimizerTF(unittest.TestCase):
                 results = trainer.update(batch)
                 if results["total_loss"] < 0.57:
                     break
-
+        # The loss is initially around 0.68. When it gets to around
+        # 0.57 the return of the policy gets to around 100.
         self.assertLess(results["total_loss"], 0.57)
 
     def test_rl_optimizer_set_state_get_state_tf(self):
