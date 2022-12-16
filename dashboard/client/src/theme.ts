@@ -28,6 +28,17 @@ const basicTheme: ThemeOptions = {
       elevation: 0,
     },
   },
+  overrides: {
+    MuiTooltip: {
+      tooltip: {
+        fontSize: "0.75rem",
+        fontWeight: 400,
+      },
+      tooltipPlacementRight: {
+        margin: "0 8px",
+      },
+    },
+  },
 };
 
 export const lightTheme = createTheme({

@@ -24,7 +24,7 @@ const useStyles = makeStyles((theme) =>
       paddingTop: theme.spacing(1),
       paddingBottom: theme.spacing(2),
       background: "white",
-      borderRight: "1px solid #D2DCE6",
+      boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
     },
     contentContainer: {
       marginLeft: 64,
@@ -70,14 +70,17 @@ const useSideTabStyles = makeStyles((theme) =>
       color: "#5F6469",
       borderRadius: 4,
       marginTop: theme.spacing(1),
+      "&:hover": {
+        backgroundColor: "#EBF3FB",
+      },
     },
     tabHighlighted: {
       backgroundColor: "#EBF3FB",
       color: "#036DCF",
     },
     icon: {
-      width: 20,
-      height: 20,
+      width: 24,
+      height: 24,
     },
   }),
 );
