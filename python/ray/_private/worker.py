@@ -1355,8 +1355,12 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
     if not ray_constants.ENABLE_RAY_CLUSTER:
-        logger.info("Ray clusters are not supported on OSX and Windows. "
-                "If you would like to proceed anyway, rerun with the environment variable `%s=true`.", ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR)
+        logger.warn(
+            "Ray clusters are not supported on OSX and Windows. "
+            "If you would like to proceed anyway, rerun with the "
+            "environment variable `%s=true`.",
+            ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
+        )
 
     if local_mode:
         driver_mode = LOCAL_MODE

@@ -578,10 +578,7 @@ def start(
             cf.bold("--port"),
         )
 
-    # Whether the original arguments include node_ip_address.
-    include_node_ip_address = False
     if node_ip_address is not None:
-        include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
@@ -756,20 +753,23 @@ def start(
                     )
                 else:
                     cli_logger.print(
-                            "Ray clusters are not supported on OSX and Windows.")
+                        "Ray clusters are not supported on OSX and Windows."
+                    )
                     cli_logger.print(
-                            "If you would like to proceed anyway, restart Ray with:")
+                        "If you would like to proceed anyway, restart Ray with:"
+                    )
                     cli_logger.print(
                         cf.bold("  ray stop"),
                     )
                     cli_logger.print(
                         cf.bold("  {}=true ray start"),
-                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR
+                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
                     )
                     cli_logger.newline()
-                    cli_logger.print("{}=true must also be passed to any Ray programs.",
-                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR
-                        )
+                    cli_logger.print(
+                        "`{}=true` must also be passed to any Ray clients.",
+                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
+                    )
                 cli_logger.newline()
             else:
                 cli_logger.print("To add another node to this Ray cluster, run")
@@ -781,24 +781,45 @@ def start(
                 )
                 cli_logger.newline()
             if ray_constants.ENABLE_RAY_CLUSTER:
-                cli_logger.print("To connect to this Ray cluster, run `ray.init()` as usual.")
+                cli_logger.print(
+                    "To connect to this Ray cluster, run `ray.init()` as usual:"
+                )
+                with cli_logger.indented():
+                    cli_logger.print("{} ray", cf.magenta("import"))
+                    cli_logger.print(
+                        "ray{}init()",
+                        cf.magenta("."),
+                    )
                 cli_logger.newline()
                 cli_logger.print(
                     "To connect to this Ray instance from outside of "
                     "the cluster, for example "
-                    )
-                cli_logger.print("when connecting to a remote cluster from your laptop, "
-                    "use Ray jobs and")
-                cli_logger.print("set the environment variable RAY_ADDRESS to the dashboard URL.")
+                )
+                cli_logger.print(
+                    "when connecting to a remote cluster from your laptop, "
+                    "make sure the"
+                )
+                cli_logger.print(
+                    "dashboard {}is accessible and use Ray jobs. For example:",
+                    f"({dashboard_url}) " if dashboard_url else "",
+                )
                 if dashboard_url:
-                    cli_logger.print("For example:")
                     cli_logger.print(
-                        cf.bold("  RAY_ADDRESS='{}' ray job submit --working-dir my_working_directory -- python my_script.py"),
-                        dashboard_url,
+                        cf.bold(
+                            "  RAY_ADDRESS='http://<dashboard URL>' ray job submit "
+                            "--working-dir . "
+                            "-- python my_script.py"
+                        ),
                     )
                 cli_logger.newline()
-                cli_logger.print("See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html")
-                cli_logger.print("for more information on connecting to the Ray cluster.")
+                cli_logger.print(
+                    "See https://docs.ray.io/en/latest/cluster/running-applications"
+                    "/job-submission/index.html"
+                )
+                cli_logger.print(
+                    "for more information on connecting to the Ray cluster from "
+                    "a remote client."
+                )
                 cli_logger.newline()
                 cli_logger.print("To see the status of the cluster, use")
                 cli_logger.print("  {}".format(cf.bold("ray status")))
@@ -809,7 +830,7 @@ def start(
                             cf.bold(dashboard_url),
                         )
                     )
-                    cli_logger.newline()
+                cli_logger.newline()
                 cli_logger.print(
                     cf.underlined(
                         "If connection fails, check your "

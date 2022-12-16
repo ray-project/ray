@@ -368,4 +368,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
 ENABLE_RAY_CLUSTERS_ENV_VAR = "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"
-ENABLE_RAY_CLUSTER = env_bool(ENABLE_RAY_CLUSTERS_ENV_VAR, not(sys.platform == "darwin" or sys.platform == "win32"))
+ENABLE_RAY_CLUSTER = env_bool(
+    ENABLE_RAY_CLUSTERS_ENV_VAR,
+    not (sys.platform == "darwin" or sys.platform == "win32"),
+)
