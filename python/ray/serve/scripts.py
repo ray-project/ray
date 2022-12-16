@@ -16,6 +16,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.job_submission import JobSubmissionClient
+from ray.serve import run_script
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import (
@@ -301,8 +302,6 @@ def run(
     final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
 
     # The job to run on the cluster, which imports and runs the serve app.
-    from ray.serve import run_script
-
     with open(run_script.__file__, "r") as f:
         script = f.read()
 
