@@ -935,7 +935,7 @@ class Dataset(Generic[T]):
             >>> data = [{'a': 1, 'b': 2}, {'a': 5, 'b': 20, 'c': 21}]
             >>> df = pd.DataFrame(data)
             >>> ds = ray.data.from_pandas(df)
-            >>> ds.repartition(10,col='a').write_csv(path="/tmp/test")
+            >>> ds.repartition(10 ,shuffle=True, col='a').write_csv(path="/tmp/test")
 
         Time complexity: O(dataset size / parallelism)
 
