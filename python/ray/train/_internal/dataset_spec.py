@@ -214,13 +214,8 @@ class DataParallelIngestSpec:
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
-            shuffle = 0
-            if config.global_shuffle:
-                shuffle = -1
-            if config.randomize_block_order:
-                shuffle = 1
             for i, dataset_split in enumerate(dataset_splits):
-                dataset_splits[i] = _DatasetIterator(dataset_split, shuffle)
+                dataset_splits[i] = _DatasetIterator(dataset_split)
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

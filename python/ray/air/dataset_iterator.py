@@ -30,10 +30,8 @@ class _DatasetIterator(DatasetIterator):
             self,
             #base_dataset: Dataset,
             base_dataset,
-            shuffle: int = 0,
             ):
         self._base_dataset = base_dataset
-        self._shuffle = shuffle
         self._epoch = 0
 
     def iter_batches(
@@ -46,16 +44,13 @@ class _DatasetIterator(DatasetIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[DataBatchType]:
-        ds = self._base_dataset
-        if self._shuffle > 0:
-            ds = self._base_dataset.randomize_block_order()
         self._epoch += 1
-        return ds.iter_batches(
+        return self._base_dataset.iter_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
-                local_shuffle_buffer_size=self._shuffle,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed)
 
     def count(self) -> int:
