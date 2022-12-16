@@ -5,7 +5,7 @@ from typing import List, Optional
 import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AllocatedResource,
+    AcquiredResource,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -51,10 +51,10 @@ class ResourceManager(abc.ABC):
             time.sleep(1)
 
         # Once ready, acquire resources
-        allocated_resources = resource_manager.acquire_resources(resource_request)
+        acquired_resource = resource_manager.acquire_resources(resource_request)
 
         # Bind to remote task or actor
-        annotated_remote_fn = allocated_resources.annotate_remote_objects(
+        annotated_remote_fn = acquired_resource.annotate_remote_objects(
             [remote_fn])
 
         # Run remote function. This will use the acquired resources
@@ -83,11 +83,11 @@ class ResourceManager(abc.ABC):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[AllocatedResource]:
+    ) -> Optional[AcquiredResource]:
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 
-    def free_resources(self, allocated_resources: AllocatedResource):
+    def free_resources(self, acquired_resource: AcquiredResource):
         """Free resources from usage."""
         raise NotImplementedError
 

@@ -195,7 +195,7 @@ class ResourceRequest:
 
 @DeveloperAPI
 @dataclass
-class AllocatedResource(abc.ABC):
+class AcquiredResource(abc.ABC):
     """Base class for available resources that have been acquired.
 
     Available here means that the resources are available for immediate scheduling.
@@ -206,8 +206,8 @@ class AllocatedResource(abc.ABC):
     group bundle index, or just raw resources.
 
     The main API is the `annotate_remote_objects` method. This will associate
-    remote Ray objects (tasks and actors) with the allocated resources by setting
-    the Ray remote options to use the allocated resources.
+    remote Ray objects (tasks and actors) with the acquired resources by setting
+    the Ray remote options to use the acquired resources.
 
     Parameters other than the `request` should be private.
     """
@@ -217,12 +217,12 @@ class AllocatedResource(abc.ABC):
     def annotate_remote_objects(
         self, objects: List[RemoteRayObject]
     ) -> List[Union[RemoteRayObject]]:
-        """Return remote ray objects with options set to use the allocated resources.
+        """Return remote ray objects with options set to use the acquired resources.
 
         The first object will be associated with the first bundle, the second
         object will be associated with the second bundle, etc.
 
         Args:
-            objects: Remote Ray objects to annotate with the allocated resources.
+            objects: Remote Ray objects to annotate with the acquired resources.
         """
         raise NotImplementedError

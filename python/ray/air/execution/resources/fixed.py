@@ -6,7 +6,7 @@ import ray
 from ray import SCRIPT_MODE, LOCAL_MODE
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AllocatedResource,
+    AcquiredResource,
     RemoteRayObject,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
@@ -14,13 +14,13 @@ from ray.util.annotations import DeveloperAPI
 
 
 # Avoid numerical errors by multiplying and subtracting with this number.
-# Compare: 0.99 - 0.33 vs (0.99 * 1000 - 0.33 * 1000) / 1000
+# Compare: 0.99 - 0.33 = 0.65999... vs (0.99 * 1000 - 0.33 * 1000) / 1000 = 0.66
 _DIGITS = 100000
 
 
 @DeveloperAPI
 @dataclass
-class FixedAllocatedResource(AllocatedResource):
+class FixedAcquiredResource(AcquiredResource):
     bundles: List[Dict[str, float]]
 
     def annotate_remote_objects(
@@ -79,7 +79,7 @@ class FixedResourceManager(ResourceManager):
 
     """
 
-    _resource_cls: AllocatedResource = FixedAllocatedResource
+    _resource_cls: AcquiredResource = FixedAcquiredResource
 
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
         if not total_resources:
@@ -124,7 +124,7 @@ class FixedResourceManager(ResourceManager):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[AllocatedResource]:
+    ) -> Optional[AcquiredResource]:
         if not self.has_resources_ready(resource_request):
             return None
 
@@ -133,8 +133,8 @@ class FixedResourceManager(ResourceManager):
             bundles=resource_request.bundles, resource_request=resource_request
         )
 
-    def free_resources(self, allocated_resources: AllocatedResource):
-        resources = allocated_resources.resource_request
+    def free_resources(self, acquired_resource: AcquiredResource):
+        resources = acquired_resource.resource_request
         self._used_resources.remove(resources)
 
     def clear(self):
