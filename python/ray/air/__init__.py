@@ -9,7 +9,7 @@ from ray.air.config import (
 from ray.air.data_batch_type import DataBatchType
 from ray.air.result import Result
 
-from ray.air.execution.resources.request import AllocatedResource, ResourceRequest
+from ray.air.execution.resources.request import AcquiredResource, ResourceRequest
 
 
 __all__ = [
@@ -21,6 +21,6 @@ __all__ = [
     "DatasetConfig",
     "FailureConfig",
     "CheckpointConfig",
-    "AllocatedResource",
+    "AcquiredResource",
     "ResourceRequest",
 ]

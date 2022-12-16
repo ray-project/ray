@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AllocatedResource,
+    AcquiredResource,
     RemoteRayObject,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
@@ -18,7 +18,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 @DeveloperAPI
 @dataclass
-class PlacementGroupAllocatedResource(AllocatedResource):
+class PlacementGroupAcquiredResource(AcquiredResource):
     placement_group: PlacementGroup
 
     def annotate_remote_objects(
@@ -99,7 +99,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     """
 
-    _resource_cls: AllocatedResource = PlacementGroupAllocatedResource
+    _resource_cls: AcquiredResource = PlacementGroupAcquiredResource
 
     def __init__(self, update_interval_s: float = 0.1):
         self._pg_to_request: Dict[PlacementGroup, ResourceRequest] = {}
@@ -181,7 +181,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[PlacementGroupAllocatedResource]:
+    ) -> Optional[PlacementGroupAcquiredResource]:
         if not self.has_resources_ready(resource_request):
             return None
 
@@ -190,8 +190,8 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def free_resources(self, allocated_resources: PlacementGroupAllocatedResource):
-        pg = allocated_resources.placement_group
+    def free_resources(self, acquired_resource: PlacementGroupAcquiredResource):
+        pg = acquired_resource.placement_group
 
         self._acquired_pgs.remove(pg)
         remove_placement_group(pg)
