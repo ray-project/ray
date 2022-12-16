@@ -7,6 +7,7 @@ from ray.air.config import (
     CheckpointConfig,
 )
 from ray.air.data_batch_type import DataBatchType
+from ray.air.dataset_iterator import DatasetIterator, _DatasetIterator
 from ray.air.result import Result
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "Result",
     "ScalingConfig",
     "DatasetConfig",
+    "DatasetIterator",
     "FailureConfig",
     "CheckpointConfig",
 ]

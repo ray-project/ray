@@ -4,7 +4,7 @@ from typing import Optional
 import pytest
 
 import ray
-from ray.air import session
+from ray.air import session, DatasetIterator
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
@@ -30,10 +30,7 @@ class TestBasic(DataParallelTrainer):
     ):
         def train_loop_per_worker():
             data_shard = session.get_dataset_shard("train")
-            if expect_ds:
-                assert isinstance(data_shard, Dataset), data_shard
-            else:
-                assert isinstance(data_shard, DatasetPipeline), data_shard
+            assert isinstance(data_shard, DatasetIterator)
             for k, v in expect_sizes.items():
                 shard = session.get_dataset_shard(k)
                 if v == -1:
@@ -386,6 +383,8 @@ def test_randomize_block_order(ray_start_4_cpus):
         datasets={"train": ds},
     )
     test.fit()
+
+    # TODO(swang): Check that order is randomized on each epoch.
 
 
 if __name__ == "__main__":
