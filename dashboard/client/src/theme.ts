@@ -33,9 +33,14 @@ const basicTheme: ThemeOptions = {
       tooltip: {
         fontSize: "0.75rem",
         fontWeight: 400,
+        boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+        padding: 8,
       },
       tooltipPlacementRight: {
         margin: "0 8px",
+        "@media (min-width: 600px)": {
+          margin: "0 8px",
+        },
       },
     },
   },

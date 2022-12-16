@@ -24,7 +24,7 @@ const useStyles = makeStyles((theme) =>
       paddingTop: theme.spacing(1),
       paddingBottom: theme.spacing(2),
       background: "white",
-      boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+      borderRight: "1px solid #D2DCE6",
     },
     contentContainer: {
       marginLeft: 64,
