@@ -2308,7 +2308,7 @@ def get(
         # Record this usage in telemetry
         import ray._private.usage.usage_lib as usage_lib
 
-        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "true")
+        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "True")
 
     worker = global_worker
     worker.check_connected()
