@@ -796,6 +796,7 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
 
 # Run at end of file to avoid segfault https://github.com/ray-project/ray/issues/31145
 def test_incremental_take(shutdown_only):
+    ray.shutdown()
     ray.init(num_cpus=2)
 
     # Can read incrementally even if future results are delayed.
