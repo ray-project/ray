@@ -65,10 +65,6 @@ class ResourceManager(abc.ABC):
 
     """
 
-    def get_resource_futures(self) -> List[ray.ObjectRef]:
-        """Return futures for resources to await."""
-        return []
-
     def request_resources(self, resource_request: ResourceRequest):
         """Request resources, e.g. schedule placement group."""
         raise NotImplementedError
@@ -90,6 +86,19 @@ class ResourceManager(abc.ABC):
     def free_resources(self, acquired_resource: AcquiredResource):
         """Free resources from usage."""
         raise NotImplementedError
+
+    def get_resource_futures(self) -> List[ray.ObjectRef]:
+        """Return futures for resources to await.
+
+        Depending on the backend, we use resource futures to determine availability
+        of resources (e.g. placement groups). In this case, they can be awaited
+        externally by an outer control loop.
+
+        When a resource future resolved, you may want to call ``update_state()``
+        to force the resource manager to update its internal state, which will
+        make the resources available to be used on the next call.
+        """
+        return []
 
     def update_state(self):
         """Reconcile internal state with cluster state.
