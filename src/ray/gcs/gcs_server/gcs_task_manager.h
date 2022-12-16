@@ -104,6 +104,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// task events are approximately task events that arrived in earlier rpc.
   class GcsTaskManagerStorage {
    public:
+    using TaskAttemptToIndexMap = absl::flat_hash_map<int32_t, size_t>;
+    /// Mapping from a task id to the index of multiple task attempt in the buffer.
+    using TaskIDToIndexMap = absl::flat_hash_map<TaskID, TaskAttemptToIndexMap>;
+
     /// Constructor
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
@@ -121,19 +125,21 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// replaced task event.
     absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents &&task_event);
 
-    /// Get task events.
+    /// Get task events from job.
     ///
-    /// Get task events from a job/tasks if `job_id`/`task_ids` provided. Otherwise get
-    /// all task events.
+    /// Get task events from a job, with job_id. Additionally, a set of TaskID strings
+    /// could be provided to get a subset of tasks from the job. all task events.
     ///
-    /// Only one of the `task_ids` and `job_id` should be provided for querying.
     ///
-    /// \param task_ids Getting task events from this `task_id` set if not empty.
-    /// \param job_id Getting task events from this `job_id` if not nullopt.
-    /// \return A vector of task events.
+    std::vector<rpc::TaskEvents> GetTaskEvents(JobID job_id) const;
+
+    std::vector<rpc::TaskEvents> GetTaskEvents() const;
+
     std::vector<rpc::TaskEvents> GetTaskEvents(
-        const absl::flat_hash_set<std::string> &task_ids,
-        absl::optional<std::string> job_id = absl::nullopt);
+        const absl::flat_hash_set<TaskID> &task_ids) const;
+
+    std::vector<rpc::TaskEvents> GetTaskEvents(
+        const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
@@ -144,14 +150,22 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
 
-    /// Current task events stored.
-    std::vector<rpc::TaskEvents> task_events_;
-
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
 
-    /// Index from task attempt to the index of the corresponding task event.
+    /// Current task events stored.
+    std::vector<rpc::TaskEvents> task_events_;
+
+    /// Index from task attempt to the corresponding task attempt in the buffer
+    /// `task_events_`.
     absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
+
+    /// Secondary index from task id to task attempts.
+    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskAttempt>>
+        task_to_task_attempt_index_;
+    /// Secondary index from job id to task attempts of the job.
+    absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
+        job_to_task_attempt_index_;
 
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.

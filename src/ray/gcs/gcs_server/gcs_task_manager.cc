@@ -27,41 +27,53 @@ void GcsTaskManager::Stop() {
   }
 }
 
-std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    const absl::flat_hash_set<std::string> &task_ids,
-    absl::optional<std::string> job_id) {
-  std::vector<rpc::TaskEvents> results;
-
-  if (!task_ids.empty()) {
-    RAY_CHECK(!job_id.has_value())
-        << "only one of job_id or task_ids should be provided. ";
-    // Get all task events with task ids.
-    for (const auto &task_event : task_events_) {
-      if (task_ids.contains(task_event.task_id())) {
-        results.push_back(task_event);
-      }
-    }
-    return results;
-  }
-
-  if (job_id) {
-    // Get all task events with job id
-    for (const auto &task_event : task_events_) {
-      if (task_event.has_task_info() && task_event.task_info().job_id() == *job_id) {
-        results.push_back(task_event);
-      }
-    }
-    return results;
-  }
-
-  // Return all task events
+std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
+    const {
   return task_events_;
+}
+
+std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
+    JobID job_id) const {
+  auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
+  if (task_attempts_itr == job_to_task_attempt_index_.end()) {
+    // Not found any tasks related to this job.
+    return {};
+  }
+  return GetTaskEvents(task_attempts_itr->second);
+}
+
+std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
+    const absl::flat_hash_set<TaskID> &task_ids) const {
+  absl::flat_hash_set<TaskAttempt> select_task_attempts;
+  for (const auto &task_id : task_ids) {
+    auto task_attempts_itr = task_to_task_attempt_index_.find(task_id);
+    if (task_attempts_itr != task_to_task_attempt_index_.end()) {
+      select_task_attempts.insert(task_attempts_itr->second.begin(),
+                                  task_attempts_itr->second.end());
+    }
+  }
+
+  return GetTaskEvents(select_task_attempts);
+}
+
+std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
+    const absl::flat_hash_set<TaskAttempt> &task_attempts) const {
+  std::vector<rpc::TaskEvents> result;
+  for (const auto &task_attempt : task_attempts) {
+    auto idx_itr = task_attempt_index_.find(task_attempt);
+    if (idx_itr != task_attempt_index_.end()) {
+      result.push_back(task_events_.at(idx_itr->second));
+    }
+  }
+
+  return result;
 }
 
 absl::optional<rpc::TaskEvents>
 GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents &&events_by_task) {
   TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
+  JobID job_id = JobID::FromBinary(events_by_task.job_id());
   int32_t attempt_number = events_by_task.attempt_number();
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
 
@@ -84,6 +96,8 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   // A new task event, add to storage and index.
 
   // If limit enforced, replace one.
+  // TODO(rickyx): Optimize this to per job limit with bounded FIFO map.
+  // https://github.com/ray-project/ray/issues/31071
   if (max_num_task_events_ > 0 && task_events_.size() >= max_num_task_events_) {
     RAY_LOG_EVERY_MS(WARNING, 10000)
         << "Max number of tasks event (" << max_num_task_events_
@@ -99,11 +113,29 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     std::swap(to_replaced, events_by_task);
     auto replaced = std::move(events_by_task);
 
-    // Update index.
+    // Update task_attempt -> buffer index mapping.
     TaskAttempt replaced_attempt = std::make_pair<>(
         TaskID::FromBinary(replaced.task_id()), replaced.attempt_number());
+
+    // Update task attempt -> idx mapping.
     task_attempt_index_.erase(replaced_attempt);
     task_attempt_index_[task_attempt] = next_idx_to_overwrite_;
+
+    // Update the job -> task attempt mapping.
+    auto replaced_job_id = JobID::FromBinary(replaced.job_id());
+    job_to_task_attempt_index_[job_id].erase(replaced_attempt);
+    if (job_to_task_attempt_index_[replaced_job_id].empty()) {
+      job_to_task_attempt_index_.erase(replaced_job_id);
+    }
+    job_to_task_attempt_index_[job_id].insert(task_attempt);
+
+    // Update the task -> task attempt mapping.
+    auto replaced_task_id = TaskID::FromBinary(replaced.task_id());
+    task_to_task_attempt_index_[replaced_task_id].erase(replaced_attempt);
+    if (task_to_task_attempt_index_[replaced_task_id].empty()) {
+      task_to_task_attempt_index_.erase(replaced_task_id);
+    }
+    task_to_task_attempt_index_[task_id].insert(task_attempt);
 
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
@@ -113,6 +145,8 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
   // Add to index.
   task_attempt_index_[task_attempt] = task_events_.size();
+  job_to_task_attempt_index_[job_id].insert(task_attempt);
+  task_to_task_attempt_index_[task_id].insert(task_attempt);
   // Add a new task events.
   task_events_.push_back(std::move(events_by_task));
   return absl::nullopt;
@@ -127,13 +161,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   // Select candidate events by indexing.
   std::vector<rpc::TaskEvents> task_events;
   if (request.has_task_ids()) {
-    absl::flat_hash_set<std::string> task_ids(request.task_ids().vals().begin(),
-                                              request.task_ids().vals().end());
+    absl::flat_hash_set<TaskID> task_ids;
+    for (const auto &task_id_str : request.task_ids().vals()) {
+      task_ids.insert(TaskID::FromBinary(task_id_str));
+    }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
   } else if (request.has_job_id()) {
-    task_events = task_event_storage_->GetTaskEvents(/* task_ids */ {}, request.job_id());
+    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(request.job_id()));
   } else {
-    task_events = task_event_storage_->GetTaskEvents(/* task_ids */ {});
+    task_events = task_event_storage_->GetTaskEvents();
   }
 
   // Populate reply.
