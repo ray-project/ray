@@ -800,7 +800,7 @@ def start(
                     "make sure the"
                 )
                 cli_logger.print(
-                    "dashboard {}is accessible and use Ray jobs. For example:",
+                    "dashboard {}is accessible and use the Ray Jobs API. For example:",
                     f"({dashboard_url}) " if dashboard_url else "",
                 )
                 if dashboard_url:
