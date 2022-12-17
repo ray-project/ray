@@ -1211,7 +1211,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   for (size_t i = 0; i < ids.size(); i++) {
     rpc::Address unused_owner_address;
     auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (!status.ok()) {
+    if (status.IsObjectUnknownOwner()) {
       ids_stream << ids[i] << " ";
       got_exception = true;
     }
@@ -1374,7 +1374,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   for (size_t i = 0; i < ids.size(); i++) {
     rpc::Address unused_owner_address;
     auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (!status.ok()) {
+    if (status.IsObjectUnknownOwner()) {
       ids_stream << ids[i] << " ";
       missing_owners += 1;
     }
