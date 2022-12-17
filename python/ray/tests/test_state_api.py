@@ -2938,7 +2938,9 @@ def test_core_state_api_usage_tags(shutdown_only):
         TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS,
         TagKey.CORE_STATE_API_SUMMARIZE_TASKS,
     ]
-    assert set(result.keys()).issuperset({tag.name.lower() for tag in expected_tags})
+    assert set(result.keys()).issuperset(
+        {TagKey.Name(tag).lower() for tag in expected_tags}
+    )
 
 
 if __name__ == "__main__":
