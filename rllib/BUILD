@@ -3188,7 +3188,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4", "--enable-rl-module"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4", "--enable-rl-module-api"]
 )
 
 py_test(
@@ -3210,6 +3210,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/multi_agent_custom_policy_torch_w_rlm",
+    main = "examples/multi_agent_custom_policy.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=80", "--enable-rl-module-api"]
+)
+
+py_test(
     name = "examples/multi_agent_different_spaces_for_agents_tf2",
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3226,6 +3235,16 @@ py_test(
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=torch"]
 )
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_torch_w_rlm",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=torch", "--enable-rl-module-api"]
+)
+
 
 py_test(
     name = "examples/multi_agent_two_trainers_tf",
@@ -3548,6 +3567,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_torch_rlm",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0", "--enable-rl-module-api"]
+)
+
+py_test(
     name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
     main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3563,6 +3591,15 @@ py_test(
     size = "medium",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
     args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
+
+py_test(
+    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch_w_rlm",
+    main = "examples/self_play_league_based_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0", "--enable-rl-module-api"]
 )
 
 py_test(

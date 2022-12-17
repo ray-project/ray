@@ -114,10 +114,8 @@ if __name__ == "__main__":
     )
 
     if args.enable_rl_module_api:
-        config = (
-            config
-            .rollouts(enable_connectors=True)
-            .rl_module(_enable_rl_module_api=True)
+        config = config.rollouts(enable_connectors=True).rl_module(
+            _enable_rl_module_api=True
         )
 
     stop = {
