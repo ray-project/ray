@@ -52,11 +52,15 @@ METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
 """
-Queries that are used more than once.
+Queries for autoscaler resources.
 """
-MAX_CPUS = 'sum(ray_resources{{Name="CPU",{global_filters}}})'
+# Note: MAX & USED resources are reported from raylet to provide the most up to date information.
+# But MAX + PENDING data is coming from the autoscaler. That said, MAX + PENDING can be
+# more outdated. it is harmless because the actual MAX will catch up with MAX + PENDING
+# eventually.
+MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})'
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
-MAX_GPUS = 'sum(ray_resources{{Name="GPU",{global_filters}}})'
+MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
 
 
@@ -139,7 +143,7 @@ GRAFANA_PANELS = [
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr=MAX_CPUS,
+                expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
                 legend="MAX",
             ),
             # If max + pending > max, we display this value.
@@ -177,7 +181,7 @@ GRAFANA_PANELS = [
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr=MAX_GPUS,
+                expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
             ),
             # If max + pending > max, we display this value.
