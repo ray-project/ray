@@ -345,7 +345,9 @@ class GuessTheNumberGame(MultiAgentEnv):
         # get agent 1's action
         direction, number = action_dict.get(1)
         info = {}
-        obs = {1: 0}  # always the same
+        # always the same, we don't need agent 0 to act ever again, agent 1 should keep
+        # guessing.
+        obs = {1: 0}
         guessed_correctly = False
         # everytime agent 1 does not guess correctly agent 0 gets a reward of 1.
         if direction == 0:  # lower

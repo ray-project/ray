@@ -103,7 +103,8 @@ class TestEnvRunnerV2(unittest.TestCase):
         the picked number is higher than 1. The game will end when the picked number is
         1, and agent 1 will win. The reward will be 100 for winning, and 1 for each
         step that the game is dragged on for. So the expected reward for agent 1 is 100
-        + 19 = 119.
+        + 19 = 119. 19 is the number of steps that the game will last for agent 1
+        before it wins or loses.
         """
 
         register_env("env_under_test", lambda config: GuessTheNumberGame(config))
@@ -167,6 +168,11 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         # reward should be 100 (for winning) + 19 (for dragging the game for 19 steps)
         check(pol1_batch["rewards"], 119 * np.ones_like(pol1_batch["rewards"]))
+        # check if pol1 only has one timestep of transition informatio per each episode
+        check(len(set(pol1_batch["eps_id"])), len(pol1_batch["eps_id"]))
+        # check if pol2 has 19 timesteps of transition information per each episode
+        pol2_batch = sample_batch.policy_batches["pol2"]
+        check(len(set(pol2_batch["eps_id"])) * 19, len(pol2_batch["eps_id"]))
 
     def test_inference_batches_are_grouped_by_policy(self):
         # Create 2 policies that have different inference batch shapes.
