@@ -2,7 +2,7 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 dask[complete]==2022.2.0; python_version < '3.8'
-dask[complete]==2022.10.1; python_version >= '3.8'
+dask[complete]==2022.12.1; python_version >= '3.8'
 aioboto3==8.3.0
 crc32c==2.3
 flask_cors
