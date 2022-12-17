@@ -2,7 +2,6 @@ import subprocess
 import os
 import sys
 import random
-import math
 import threading
 import collections
 import logging

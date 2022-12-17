@@ -88,8 +88,11 @@ if __name__ == "__main__":
                             socket.gethostname(),
                         )
                         os.makedirs(copy_log_dest_path, exist_ok=True)
+                        ray_session_dir = os.readlink(
+                            os.path.join(temp_dir, "session_latest")
+                        )
                         shutil.copytree(
-                            os.path.join(temp_dir, "session_latest", "logs"),
+                            os.path.join(ray_session_dir, "logs"),
                             copy_log_dest_path,
                             dirs_exist_ok=True,
                         )

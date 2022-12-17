@@ -72,9 +72,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
             results = ray.get(futures)
             assert results == [i * i for i in range(32)]
 
-            # print files generated in temp directory.
-            exec_cmd(["find", ray_temp_root_dir, "-print"], synchronous=True)
-
             shutdown_ray_cluster()
 
             time.sleep(7)
@@ -96,8 +93,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 # destroy it here.
                 ray.util.spark._active_ray_cluster.shutdown()
                 time.sleep(5)
-            shutil.rmtree(ray_temp_root_dir)
-            shutil.rmtree(collect_log_to_path)
+            shutil.rmtree(ray_temp_root_dir, ignore_errors=True)
+            shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
         with _init_ray_cluster(
