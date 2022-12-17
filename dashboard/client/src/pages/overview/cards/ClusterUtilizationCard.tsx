@@ -39,7 +39,6 @@ export const ClusterUtilizationCard = ({
         title="Cluster Utilization"
         className={classes.graph}
         src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-        width="416"
         frameBorder="0"
       />
     </OverviewCard>

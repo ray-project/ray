@@ -41,7 +41,6 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
         title="Node Count"
         className={classes.graph}
         src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-        width="416"
         frameBorder="0"
       />
       <div className={classes.links}>
