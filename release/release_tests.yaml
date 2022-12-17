@@ -3421,7 +3421,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework==tf
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
     type: sdk_command
     file_manager: job
 
