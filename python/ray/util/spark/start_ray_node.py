@@ -8,6 +8,7 @@ import signal
 import socket
 import logging
 from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create ray node
@@ -20,8 +21,6 @@ from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 # `start_ray_node` subprocess will receive a SIGTERM signal and the SIGTERM handler will do
 # cleanup work.
 
-
-_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR = 1
 
 _logger = logging.getLogger(__name__)
 
@@ -48,10 +47,19 @@ if __name__ == "__main__":
     lock_file = temp_dir + ".lock"
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
+    # Mutilple ray nodes might start on the same machine, and they are using the
+    # same temp directory, adding a shared lock representing current ray node is
+    # using the temp directory.
+    fcntl.flock(lock_fd, fcntl.LOCK_SH)
+    process = subprocess.Popen([ray_exec_path, "start", *arg_list], text=True)
+
     def try_clean_temp_dir_at_exit():
         try:
             # Wait for a while to ensure the children processes of the ray node all exited.
-            time.sleep(_WAIT_TIME_BEFORE_CLEAN_TEMP_DIR)
+            time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
+            if process.poll() is None:
+                # "ray start ..." command process is still alive. Force to kill it.
+                process.kill()
 
             # Release the shared lock, representing current ray node does not use the
             # temp dir.
@@ -98,12 +106,6 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     try:
-        # Mutilple ray nodes might start on the same machine, and they are using the
-        # same temp directory, adding a shared lock representing current ray node is
-        # using the temp directory.
-        fcntl.flock(lock_fd, fcntl.LOCK_SH)
-        process = subprocess.Popen([ray_exec_path, "start", *arg_list], text=True)
-
         def sigterm_handler(*args):
             process.terminate()
             try_clean_temp_dir_at_exit()
