@@ -80,9 +80,9 @@ def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
             # In local mode, tf1.RunOptions is not available, see #26511
             if log_once("tf1.RunOptions_not_available"):
                 logger.exception(
-                    "Can not run tf timeline when ray is in local_mode. "
+                    "Can not run properly run tf timeline in local_mode. "
                     "RLlib will use timeline without "
-                    "`trace_level=tf.RunOptions.FULL_TRACE`."
+                    "`options=tf.RunOptions.FULL_TRACE`."
                 )
         run_metadata = tf1.RunMetadata()
         start = time.time()
