@@ -543,13 +543,20 @@ class EnvRunnerV2:
                     # Create a fake observation by sampling the original env
                     # observation space.
                     obs_space = get_original_space(policy.observation_space)
+                    # Although there is no obs for this agent, there may be
+                    # good rewards and info dicts for it.
+                    # This is the case for e.g. OpenSpiel games, where a reward
+                    # is only earned with the last step, but the obs for that
+                    # step is {}.
+                    reward = rewards[env_id].get(agent_id, 0.0)
+                    info = infos[env_id].get(agent_id, {})
                     values_dict = {
                         SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
-                        SampleBatch.REWARDS: 0.0,
+                        SampleBatch.REWARDS: reward,
                         SampleBatch.DONES: True,
-                        SampleBatch.INFOS: {},
+                        SampleBatch.INFOS: info,
                         SampleBatch.NEXT_OBS: obs_space.sample(),
                     }
 
