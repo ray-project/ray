@@ -1,9 +1,8 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React, { useContext } from "react";
-import { Link } from "react-router-dom";
 import { GlobalContext } from "../../../App";
-import { OverviewCard } from "./OverviewCard";
+import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -20,17 +19,14 @@ const useStyles = makeStyles((theme) =>
       flexDirection: "row",
       flexWrap: "nowrap",
     },
-    link: {
-      color: "#036DCF",
-      textDecoration: "none",
-    },
-    nodesLink: {
-      marginRight: theme.spacing(3),
-    },
   }),
 );
 
-export const NodeCountCard = () => {
+type NodeCountCardProps = {
+  className?: string;
+};
+
+export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const classes = useStyles();
 
   const { grafanaHost, sessionName } = useContext(GlobalContext);
@@ -39,7 +35,7 @@ export const NodeCountCard = () => {
   const timeRangeParams = "&from=now-30m&to=now";
 
   return (
-    <OverviewCard className={classes.root}>
+    <OverviewCard className={classNames(classes.root, className)}>
       {/* TODO (aguo): Handle grafana not running */}
       <iframe
         title="Node Count"
@@ -49,12 +45,7 @@ export const NodeCountCard = () => {
         frameBorder="0"
       />
       <div className={classes.links}>
-        <Link
-          className={classNames(classes.link, classes.nodesLink)}
-          to="/new/cluster"
-        >
-          <Typography variant="h4">View all nodes →</Typography>
-        </Link>
+        <LinkWithArrow text="View all nodes" to="/new/cluster" />
       </div>
     </OverviewCard>
   );

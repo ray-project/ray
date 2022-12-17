@@ -10,7 +10,7 @@ import {
 import { Link } from "react-router-dom";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
-import { OverviewCard } from "./OverviewCard";
+import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -28,21 +28,21 @@ const useStyles = makeStyles((theme) =>
         marginTop: theme.spacing(1),
       },
     },
-    viewAllJobs: {
-      color: "#036DCF",
-      textDecoration: "none",
-    },
   }),
 );
 
-export const RecentJobsCard = () => {
+type RecentJobsCardProps = {
+  className?: string;
+};
+
+export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 5);
 
   return (
-    <OverviewCard className={classes.root}>
+    <OverviewCard className={classNames(classes.root, className)}>
       <Typography variant="h3">Recent jobs</Typography>
       <div className={classes.listContainer}>
         {sortedJobs.map((job) => (
@@ -56,9 +56,7 @@ export const RecentJobsCard = () => {
           <Typography variant="h4">No jobs yet...</Typography>
         )}
       </div>
-      <Link className={classes.viewAllJobs} to="/new/jobs">
-        <Typography variant="h4">View all jobs →</Typography>
-      </Link>
+      <LinkWithArrow text="View all jobs" to="/new/jobs" />
     </OverviewCard>
   );
 };
@@ -73,8 +71,8 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       textDecoration: "none",
     },
     icon: {
-      width: 20,
-      height: 20,
+      width: 24,
+      height: 24,
       marginRight: theme.spacing(1),
       flex: "0 0 20px",
     },
@@ -153,7 +151,7 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
           <Typography className={classes.title} variant="h4">
             {job.job_id ?? job.submission_id}
           </Typography>
-          <Typography className={classes.entrypoint}>
+          <Typography className={classes.entrypoint} title={job.entrypoint}>
             {job.entrypoint}
           </Typography>
         </div>

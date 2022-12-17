@@ -8,9 +8,13 @@ const useStyles = makeStyles((theme) =>
       display: "flex",
       flexDirection: "row",
       flexWrap: "nowrap",
+      alignItems: "center",
+      fontWeight: 500,
     },
     icon: {
       marginRight: theme.spacing(1),
+      width: 24,
+      height: 24,
     },
     body: {
       marginTop: theme.spacing(3),
@@ -39,17 +43,15 @@ export const CollapsibleSection = ({
 
   return (
     <div className={className}>
-      <Typography className={classes.title} variant="h4">
+      <Typography
+        className={classes.title}
+        variant="h4"
+        onClick={handleExpandClick}
+      >
         {expanded ? (
-          <RiArrowDownSLine
-            className={classes.icon}
-            onClick={handleExpandClick}
-          />
+          <RiArrowDownSLine className={classes.icon} />
         ) : (
-          <RiArrowUpSLine
-            className={classes.icon}
-            onClick={handleExpandClick}
-          />
+          <RiArrowUpSLine className={classes.icon} />
         )}
         {title}
       </Typography>

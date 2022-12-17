@@ -21,6 +21,11 @@ const useStyles = makeStyles((theme) =>
       marginBottom: theme.spacing(4),
       gap: theme.spacing(3),
     },
+    overviewCard: {
+      flex: "1 0 448px",
+      // Calculate max width based on 1/3 of the total width minus padding between cards
+      maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+    },
     section: {
       marginTop: theme.spacing(2),
     },
@@ -36,9 +41,9 @@ export const OverviewPage = () => {
         pageInfo={{ title: "Overview", id: "overview", path: "/new/overview" }}
       />
       <div className={classes.overviewCardsContainer}>
-        <ClusterUtilizationCard />
-        <NodeCountCard />
-        <RecentJobsCard />
+        <ClusterUtilizationCard className={classes.overviewCard} />
+        <NodeCountCard className={classes.overviewCard} />
+        <RecentJobsCard className={classes.overviewCard} />
       </div>
 
       <CollapsibleSection

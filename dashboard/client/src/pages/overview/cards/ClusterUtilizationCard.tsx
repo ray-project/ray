@@ -1,4 +1,5 @@
 import { createStyles, makeStyles } from "@material-ui/core";
+import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
 import { OverviewCard } from "./OverviewCard";
@@ -16,7 +17,13 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export const ClusterUtilizationCard = () => {
+type ClusterUtilizationCardProps = {
+  className?: string;
+};
+
+export const ClusterUtilizationCard = ({
+  className,
+}: ClusterUtilizationCardProps) => {
   const classes = useStyles();
 
   const { grafanaHost, sessionName } = useContext(GlobalContext);
@@ -25,7 +32,7 @@ export const ClusterUtilizationCard = () => {
   const timeRangeParams = "&from=now-30m&to=now";
 
   return (
-    <OverviewCard className={classes.root}>
+    <OverviewCard className={classNames(classes.root, className)}>
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
       <iframe
