@@ -7,8 +7,6 @@ a3c-pongdeterministic-v5:
         timesteps_total: 5000000
     stop:
         time_total_s: 3600
-    # TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
-    frameworks: [ "tf" ]
     config:
         # Make analogous to old v4 + NoFrameskip.
         env_config:

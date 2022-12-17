@@ -752,7 +752,7 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),
@@ -777,7 +777,7 @@ class TestRolloutWorker(unittest.TestCase):
                 count_steps_by="agent_steps",
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),

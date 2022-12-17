@@ -80,6 +80,36 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
+  rpc::GetTaskEventsReply SyncGetTaskEvents(
+      absl::flat_hash_set<TaskID> task_ids,
+      absl::optional<JobID> job_id = absl::nullopt) {
+    rpc::GetTaskEventsRequest request;
+    rpc::GetTaskEventsReply reply;
+    std::promise<bool> promise;
+
+    if (!task_ids.empty()) {
+      for (const auto &task_id : task_ids) {
+        request.mutable_task_ids()->add_vals(task_id.Binary());
+      }
+    }
+
+    if (job_id) {
+      request.set_job_id(job_id->Binary());
+    }
+
+    task_manager->HandleGetTaskEvents(
+        request,
+        &reply,
+        [&promise](Status, std::function<void()>, std::function<void()>) {
+          promise.set_value(true);
+        });
+
+    promise.get_future().get();
+
+    EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+    return reply;
+  }
+
   static rpc::TaskInfoEntry GenTaskInfo(JobID job_id) {
     rpc::TaskInfoEntry task_info;
     task_info.set_job_id(job_id.Binary());
@@ -105,7 +135,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   static std::vector<rpc::TaskEvents> GenTaskEvents(
       const std::vector<TaskID> &task_ids,
-      int32_t attempt_number,
+      int32_t attempt_number = 0,
+      int32_t job_id = 0,
       absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
       absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
       absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt) {
@@ -113,6 +144,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;
       events.set_task_id(task_id.Binary());
+      events.set_job_id(JobID::FromInt(job_id).Binary());
       events.set_attempt_number(attempt_number);
 
       if (state_update.has_value()) {
@@ -195,7 +227,7 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
   int32_t attempt_number = 0;
   for (size_t i = 0; i < num_task_events; ++i) {
     auto profile_events = GenProfileEvents("event", i, i);
-    auto events = GenTaskEvents(task_ids, attempt_number, profile_events);
+    auto events = GenTaskEvents(task_ids, attempt_number, 0, profile_events);
     auto events_data = Mocker::GenTaskEventsData(events);
 
     auto reply = SyncAddTaskEventData(events_data);
@@ -223,6 +255,144 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
   }
 }
 
+TEST_F(GcsTaskManagerTest, TestGetTaskEvents) {
+  // Add events
+  size_t num_profile_events = 10;
+  size_t num_status_events = 20;
+  size_t num_both_events = 30;
+  size_t num_profile_task_events_dropped = 10;
+  size_t num_status_task_events_dropped = 20;
+
+  std::vector<rpc::TaskEvents> events_with_profile;
+  std::vector<rpc::TaskEvents> events_with_status;
+  std::vector<rpc::TaskEvents> events_with_both;
+
+  {
+    auto task_ids1 = GenTaskIDs(num_profile_events);
+    auto task_ids2 = GenTaskIDs(num_status_events);
+    auto task_ids3 = GenTaskIDs(num_both_events);
+
+    auto profile_events = GenProfileEvents("event", /*start*/ 1, /*end*/ 1);
+    auto status_update = GenStateUpdate();
+
+    events_with_profile =
+        GenTaskEvents(task_ids1, /*attempt_number*/ 0, /* job_id */ 0, profile_events);
+    events_with_status =
+        GenTaskEvents(task_ids2, 0, 0, /*profile_events*/ absl::nullopt, status_update);
+    events_with_both = GenTaskEvents(task_ids3, 0, 0, profile_events, status_update);
+
+    auto all_events = {events_with_profile, events_with_status, events_with_both};
+    for (auto &events : all_events) {
+      auto data = Mocker::GenTaskEventsData(events);
+      SyncAddTaskEventData(data);
+    }
+  }
+
+  {
+    // Add drop counter.
+    auto data = Mocker::GenTaskEventsData(
+        {}, num_profile_task_events_dropped, num_status_task_events_dropped);
+    SyncAddTaskEventData(data);
+  }
+
+  // Test get all events
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {});
+    // Expect all events
+    std::vector<rpc::TaskEvents> expected_events =
+        ConcatTaskEvents({events_with_status, events_with_profile, events_with_both});
+
+    auto expected_data = Mocker::GenTaskEventsData(expected_events);
+    // Expect match events
+    ExpectTaskEventsEq(expected_data.mutable_events_by_task(),
+                       reply.mutable_events_by_task());
+
+    EXPECT_EQ(reply.num_profile_task_events_dropped(), num_profile_task_events_dropped);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), num_status_task_events_dropped);
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsByTaskIDs) {
+  int32_t num_events_task_1 = 10;
+  int32_t num_events_task_2 = 20;
+
+  rpc::TaskEventData events_data_task1;
+  auto task_id1 = RandomTaskId();
+  {
+    std::vector<std::vector<rpc::TaskEvents>> all_events;
+    for (int32_t attempt_num = 0; attempt_num < num_events_task_1; ++attempt_num) {
+      all_events.push_back(GenTaskEvents({task_id1}, attempt_num));
+    }
+    auto events_task1 = ConcatTaskEvents(all_events);
+    events_data_task1 = Mocker::GenTaskEventsData(events_task1);
+    SyncAddTaskEventData(events_data_task1);
+  }
+
+  rpc::TaskEventData events_data_task2;
+  auto task_id2 = RandomTaskId();
+  {
+    std::vector<std::vector<rpc::TaskEvents>> all_events;
+    for (int32_t attempt_num = 0; attempt_num < num_events_task_2; ++attempt_num) {
+      all_events.push_back(GenTaskEvents({task_id2}, attempt_num));
+    }
+    auto events_task2 = ConcatTaskEvents(all_events);
+    events_data_task2 = Mocker::GenTaskEventsData(events_task2);
+    SyncAddTaskEventData(events_data_task2);
+  }
+
+  auto reply_task1 = SyncGetTaskEvents({task_id1});
+  auto reply_task2 = SyncGetTaskEvents({task_id2});
+
+  // Check matched
+  ExpectTaskEventsEq(events_data_task1.mutable_events_by_task(),
+                     reply_task1.mutable_events_by_task());
+  ExpectTaskEventsEq(events_data_task2.mutable_events_by_task(),
+                     reply_task2.mutable_events_by_task());
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
+  size_t num_task_job1 = 10;
+  size_t num_task_job2 = 20;
+
+  rpc::TaskEventData events_data_job1;
+  {
+    auto task_ids = GenTaskIDs(num_task_job1);
+    auto task_info = GenTaskInfo(JobID::FromInt(1));
+    auto events = GenTaskEvents(task_ids,
+                                /* attempt_number */ 0,
+                                /* job_id */ 1,
+                                absl::nullopt,
+                                absl::nullopt,
+                                task_info);
+    events_data_job1 = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data_job1);
+  }
+
+  rpc::TaskEventData events_data_job2;
+  {
+    auto task_ids = GenTaskIDs(num_task_job2);
+    auto task_info = GenTaskInfo(JobID::FromInt(2));
+    auto events = GenTaskEvents(task_ids,
+                                /* attempt_number */
+                                0,
+                                /* job_id */ 2,
+                                absl::nullopt,
+                                absl::nullopt,
+                                task_info);
+    events_data_job2 = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data_job2);
+  }
+
+  auto reply_job1 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(1));
+  auto reply_job2 = SyncGetTaskEvents({}, JobID::FromInt(2));
+
+  // Check matched
+  ExpectTaskEventsEq(events_data_job1.mutable_events_by_task(),
+                     reply_job1.mutable_events_by_task());
+  ExpectTaskEventsEq(events_data_job2.mutable_events_by_task(),
+                     reply_job2.mutable_events_by_task());
+}
+
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
   size_t num_limit = 100;  // synced with test config
 
@@ -235,16 +405,21 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
   size_t num_status_events_dropped_on_worker = 22;
   {
     // Add profile event.
-    auto events = GenTaskEvents(
-        GenTaskIDs(num_profile_events_to_drop), 0, GenProfileEvents("event", 1, 1));
+    auto events = GenTaskEvents(GenTaskIDs(num_profile_events_to_drop),
+                                /* attempt_number */ 0,
+                                /* job_id */ 0,
+                                GenProfileEvents("event", 1, 1));
     auto events_data =
         Mocker::GenTaskEventsData(events, num_profile_events_dropped_on_worker);
     SyncAddTaskEventData(events_data);
   }
   {
     // Add status update events.
-    auto events = GenTaskEvents(
-        GenTaskIDs(num_status_events_to_drop), 0, absl::nullopt, GenStateUpdate());
+    auto events = GenTaskEvents(GenTaskIDs(num_status_events_to_drop),
+                                /* attempt_number*/ 0,
+                                /* job_id */ 0,
+                                /* profile_events */ absl::nullopt,
+                                GenStateUpdate());
     auto events_data = Mocker::GenTaskEventsData(events,
                                                  /*num_profile_task_events_dropped*/ 0,
                                                  num_status_events_dropped_on_worker);

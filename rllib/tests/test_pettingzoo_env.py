@@ -37,7 +37,7 @@ class TestPettingZooEnv(unittest.TestCase):
                 # default policy class, the env's/agent's obs/act spaces and config={}).
                 policies={"av"},
                 # Map all agents to that policy.
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "av",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
             .debugging(log_level="DEBUG")
             .rollouts(
@@ -69,7 +69,7 @@ class TestPettingZooEnv(unittest.TestCase):
                 policies={"av"},
                 # Mapping function that always returns "av" as policy ID to use
                 # (for any agent).
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "av",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
         )
 

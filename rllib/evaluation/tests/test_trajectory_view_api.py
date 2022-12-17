@@ -288,7 +288,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         rw = RolloutWorker(
@@ -331,7 +331,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         config = (
@@ -362,7 +362,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id),
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                "p{}".format(agent_id)
+            ),
             count_steps_by="agent_steps",
         )
 
