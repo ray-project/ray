@@ -697,7 +697,13 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_handles(self, name: str, unique: bool = False):
+    def get_log_file_handles(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ):
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
@@ -706,6 +712,8 @@ class Node:
             name: descriptive string for this log file.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
 
         Returns:
             A tuple of two file handles for redirecting (stdout, stderr), or
@@ -714,16 +722,26 @@ class Node:
         if not self.should_redirect_logs():
             return None, None
 
-        log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
+        log_stdout, log_stderr = self._get_log_file_names(
+            name, unique=unique, create_out=create_out, create_err=create_err
+        )
         return open_log(log_stdout), open_log(log_stderr)
 
-    def _get_log_file_names(self, name: str, unique: bool = False):
+    def _get_log_file_names(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ):
         """Generate partially randomized filenames for log files.
 
         Args:
             name: descriptive string for this log file.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
 
         Returns:
             A tuple of two file names for redirecting (stdout, stderr).
@@ -872,7 +890,9 @@ class Node:
         """Start the log monitor."""
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles("dashboard", unique=True)
+        _, stderr_file = self.get_log_file_handles(
+            "log_monitor", unique=True, create_out=False
+        )
         process_info = ray._private.services.start_log_monitor(
             self._logs_dir,
             self.gcs_address,
@@ -901,7 +921,9 @@ class Node:
         """
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles("dashboard", unique=True)
+        _, stderr_file = self.get_log_file_handles(
+            "dashboard", unique=True, create_out=False
+        )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
             raise_on_failure,
