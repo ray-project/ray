@@ -12,7 +12,7 @@ import ray
 import ray.util.spark.cluster_init
 from ray.util.spark import init_ray_cluster, shutdown_ray_cluster
 from ray.util.spark.cluster_init import _init_ray_cluster
-from ray.util.spark.utils import check_port_open
+from ray.util.spark.utils import check_port_open, exec_cmd
 from pyspark.sql import SparkSession
 import time
 import logging
@@ -71,6 +71,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
             futures = [f.remote(i) for i in range(32)]
             results = ray.get(futures)
             assert results == [i * i for i in range(32)]
+
+            # print files generated in temp directory.
+            exec_cmd(["find", ray_temp_root_dir, "-print"], synchronous=True)
 
             shutdown_ray_cluster()
 
