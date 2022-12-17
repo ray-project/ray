@@ -11,7 +11,8 @@ bc-halfcheetah-v0:
         input: "dataset"
         input_config:
             format: "json"
-            paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
+            #paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
+            paths: "/home/ray/halfcheetah_1500_mean_reward_sac.json"
         actions_in_input_normalized: true
 
         num_gpus: 1
