@@ -32,7 +32,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
             @ray.remote(num_cpus=1, num_gpus=1)
             def f(_):
                 # Add a sleep to avoid the task finishing too fast,
-                # so that it can make all ray tasks concurrently running in all idle task slots.
+                # so that it can make all ray tasks concurrently running in all idle
+                # task slots.
                 time.sleep(5)
                 return [
                     int(gpu_id)

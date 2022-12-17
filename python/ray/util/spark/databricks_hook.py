@@ -29,9 +29,9 @@ def get_dbutils():
 def display_databricks_driver_proxy_url(spark_context, port, title):
     """
     This helper function create a proxy URL for databricks driver webapp forwarding.
-    In databricks runtime, user does not have permission to directly access web service
-    binding on driver machine port, but user can visit it by a proxy URL with following
-    format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
+    In databricks runtime, user does not have permission to directly access web
+    service binding on driver machine port, but user can visit it by a proxy URL with
+    following format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/".
     """
     from dbruntime.display import displayHTML
 
@@ -68,7 +68,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             get_dbutils().entry_point.registerBackgroundSparkJobGroup(job_group_id)
         except Exception:
             _logger.warning(
-                "Register ray cluster spark job as background job failed. You need to manually "
-                "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
-                "python REPL."
+                "Register ray cluster spark job as background job failed. You need to "
+                "manually call `ray_cluster_on_spark.shutdown()` before detaching "
+                "your databricks python REPL."
             )

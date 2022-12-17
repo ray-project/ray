@@ -22,8 +22,8 @@ def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
     cmd_str = " ".join(cmd)
     tail_output = "".join(tail_output_deque)
     return (
-        f"Command {cmd_str} failed with return code {return_code}, tail output are included "
-        f"below.\n{tail_output}\n"
+        f"Command {cmd_str} failed with return code {return_code}, tail output are "
+        f"included below.\n{tail_output}\n"
     )
 
 
@@ -35,12 +35,14 @@ def exec_cmd(
     **kwargs,
 ):
     """
-    A convenience wrapper of `subprocess.Popen` for running a command from a Python script.
-    If `synchronous` is True, wait until the process terminated and if subprocess return code
-    is not 0, raise error containing last 100 lines output.
-    If `synchronous` is False, return an `Popen` instance and a deque instance holding tail
-    outputs.
-    The subprocess stdout / stderr output will be streamly redirected to current process stdout.
+    A convenience wrapper of `subprocess.Popen` for running a command from a Python
+    script.
+    If `synchronous` is True, wait until the process terminated and if subprocess
+    return code is not 0, raise error containing last 100 lines output.
+    If `synchronous` is False, return an `Popen` instance and a deque instance holding
+    tail outputs.
+    The subprocess stdout / stderr output will be streamly redirected to current
+    process stdout.
     """
     illegal_kwargs = set(kwargs.keys()).intersection({"text", "stdout", "stderr"})
     if illegal_kwargs:
@@ -118,8 +120,9 @@ def get_spark_session():
     spark_session = SparkSession.getActiveSession()
     if spark_session is None:
         raise RuntimeError(
-            "Spark session haven't been initiated yet. Please use `SparkSession.builder` to "
-            "create a spark session and connect to a spark cluster."
+            "Spark session haven't been initiated yet. Please use "
+            "`SparkSession.builder` to create a spark session and connect to a spark "
+            "cluster."
         )
     return spark_session
 
@@ -131,7 +134,8 @@ def get_spark_application_driver_host(spark):
 def get_max_num_concurrent_tasks(spark_context):
     """Gets the current max number of concurrent tasks."""
     # pylint: disable=protected-access
-    # spark version 3.1 and above have a different API for fetching max concurrent tasks
+    # spark version 3.1 and above have a different API for fetching max concurrent
+    # tasks
     if spark_context._jsc.sc().version() >= "3.1":
         return spark_context._jsc.sc().maxNumConcurrentTasks(
             spark_context._jsc.sc().resourceProfileManager().resourceProfileFromId(0)
@@ -213,8 +217,9 @@ def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
         except Exception as e:
             return -1, -1, repr(e)
 
-    # Running memory inference routine on spark executor side since the spark worker nodes may
-    # have a different machine configuration compared to the spark driver node.
+    # Running memory inference routine on spark executor side since the spark worker
+    # nodes may have a different machine configuration compared to the spark driver
+    # node.
     (
         inferred_ray_worker_node_heap_mem_bytes,
         inferred_ray_worker_node_object_store_bytes,

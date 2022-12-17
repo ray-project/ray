@@ -11,15 +11,15 @@ from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 
-# Spark on ray implementation does not directly invoke `ray start ...` script to create ray node
-# subprocess, instead, it creates a subprocess to run this `ray.util.spark.start_ray_node`
-# module, and in this module it invokes `ray start ...` script to start ray node,
-# the purpose of `start_ray_node` module is to set up a SIGTERM handler for cleaning ray temp
-# directory when ray node exits.
-# When spark driver python process dies, or spark python worker dies, because they registered
-# the PR_SET_PDEATHSIG signal, so OS will send a SIGTERM signal to its children processes, so
-# `start_ray_node` subprocess will receive a SIGTERM signal and the SIGTERM handler will do
-# cleanup work.
+# Spark on ray implementation does not directly invoke `ray start ...` script to create
+# ray node subprocess, instead, it creates a subprocess to run this
+# `ray.util.spark.start_ray_node` module, and in this module it invokes `ray start ...`
+# script to start ray node, the purpose of `start_ray_node` module is to set up a
+# SIGTERM handler for cleaning ray temp directory when ray node exits.
+# When spark driver python process dies, or spark python worker dies, because they
+# registered the PR_SET_PDEATHSIG signal, so OS will send a SIGTERM signal to its
+# children processes, so `start_ray_node` subprocess will receive a SIGTERM signal and
+# the SIGTERM handler will do cleanup work.
 
 
 _logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     for arg in arg_list:
         if arg.startswith(temp_dir_arg_prefix):
-            temp_dir = arg[len(temp_dir_arg_prefix):]
+            temp_dir = arg[len(temp_dir_arg_prefix) :]
 
     if temp_dir is None:
         raise ValueError("Please explicitly set --temp-dir option.")
@@ -55,7 +55,8 @@ if __name__ == "__main__":
 
     def try_clean_temp_dir_at_exit():
         try:
-            # Wait for a while to ensure the children processes of the ray node all exited.
+            # Wait for a while to ensure the children processes of the ray node all
+            # exited.
             time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
             if process.poll() is None:
                 # "ray start ..." command process is still alive. Force to kill it.
@@ -71,8 +72,9 @@ if __name__ == "__main__":
                 lock_acquired = True
             except BlockingIOError:
                 # The file has active shared lock or exclusive lock, representing there
-                # are other ray nodes running, or other node running cleanup temp-dir routine.
-                # skip cleaning temp-dir, and skip copy logs to destination directory as well.
+                # are other ray nodes running, or other node running cleanup temp-dir
+                # routine. skip cleaning temp-dir, and skip copy logs to destination
+                # directory as well.
                 lock_acquired = False
 
             if lock_acquired:
@@ -93,7 +95,8 @@ if __name__ == "__main__":
                         )
                     except Exception as e:
                         _logger.warning(
-                            f"Collect logs to destination directory failed, error: {repr(e)}."
+                            "Collect logs to destination directory failed, "
+                            f"error: {repr(e)}."
                         )
 
                 # Start cleaning the temp-dir,
@@ -106,6 +109,7 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     try:
+
         def sigterm_handler(*args):
             process.terminate()
             try_clean_temp_dir_at_exit()

@@ -29,16 +29,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     @classmethod
     def setup_class(cls):
-        _logger.info(
-            f"RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT={os.environ.get('RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT')}"
-        )
-        _logger.info(
-            f"RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL={os.environ.get('RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL')}"
-        )
+        pass
 
     @classmethod
     def teardown_class(cls):
-        time.sleep(8)  # Wait all background spark job canceled.
+        time.sleep(10)  # Wait all background spark job canceled.
         cls.spark.stop()
 
     @staticmethod
@@ -79,15 +74,18 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             shutdown_ray_cluster()
 
-            time.sleep(5)
+            time.sleep(7)
             # assert temp dir is removed.
-            assert len(os.listdir(ray_temp_root_dir)) == 1 and \
-                   os.listdir(ray_temp_root_dir)[0].endswith(".lock")
+            assert len(os.listdir(ray_temp_root_dir)) == 1 and os.listdir(
+                ray_temp_root_dir
+            )[0].endswith(".lock")
 
             # assert logs are copied to specified path
             listed_items = os.listdir(collect_log_to_path)
             assert len(listed_items) == 1 and listed_items[0].startswith("ray-")
-            log_dest_dir = os.path.join(collect_log_to_path, listed_items[0], socket.gethostname())
+            log_dest_dir = os.path.join(
+                collect_log_to_path, listed_items[0], socket.gethostname()
+            )
             assert os.path.exists(log_dest_dir) and len(os.listdir(log_dest_dir)) > 0
         finally:
             if ray.util.spark.cluster_init._active_ray_cluster is not None:
@@ -106,7 +104,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
             cluster._cancel_background_spark_job()
-            time.sleep(6)
+            time.sleep(8)
 
             assert len(self.get_ray_worker_resources_list()) == 0
 
@@ -122,7 +120,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
             cluster.spark_job_is_canceled = False
-            time.sleep(3)
+            time.sleep(5)
 
             # assert ray head node exit by checking head port being closed.
             hostname, port = cluster.address.split(":")
