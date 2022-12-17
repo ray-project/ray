@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union, Dict, Any
+from typing import Optional, Union
 
 import click
 import yaml
@@ -96,17 +96,6 @@ def process_dict_for_yaml_dump(data):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
-
-
-def override_or_default(
-    dict: Dict[str, Any], key: str, override_value: Any, default_value: Any
-):
-    """Apply priority order: override value, original dict value, default value."""
-
-    if override_value is not None:
-        dict[key] = override_value
-    else:
-        dict.setdefault(key, default_value)
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -309,8 +298,16 @@ def run(
             config_dict = yaml.safe_load(config_file)
             # If host or port is specified as a CLI argument, they should take priority
             # over config values.
-            override_or_default(config_dict, "host", host, DEFAULT_HTTP_HOST)
-            override_or_default(config_dict, "port", port, DEFAULT_HTTP_PORT)
+            if host is not None:
+                config_dict["host"] = host
+            else:
+                config_dict.setdefault("host", DEFAULT_HTTP_HOST)
+
+            if port is not None:
+                config_dict["port"] = port
+            else:
+                config_dict.setdefault("port", DEFAULT_HTTP_PORT)
+
             config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
