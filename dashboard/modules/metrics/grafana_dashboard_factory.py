@@ -51,6 +51,22 @@ class Panel:
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
+"""
+Queries that are used more than once.
+"""
+MAX_CPUS = 'sum(ray_resources{{Name="CPU",{global_filters}}})'
+PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
+MAX_GPUS = 'sum(ray_resources{{Name="GPU",{global_filters}}})'
+PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+
+
+def max_plus_pending(max_resource, pending_resource):
+    return f"({max_resource} or vector(0)) + ({pending_resource} or vector(0))"
+
+
+MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
+MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
@@ -123,12 +139,14 @@ GRAFANA_PANELS = [
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
+                expr=MAX_CPUS,
                 legend="MAX",
             ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
             Target(
-                expr='(sum(ray_resources{{Name="CPU",{global_filters}}}) or vector(0)) + (sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}}) or vector(0))',
-                legend="PENDING + MAX",
+                expr=f"({MAX_PLUS_PENDING_CPUS} and {MAX_PLUS_PENDING_CPUS} > ({MAX_CPUS} or vector(0)))",
+                legend="MAX + PENDING",
             ),
         ],
     ),
@@ -159,12 +177,14 @@ GRAFANA_PANELS = [
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
+                expr=MAX_GPUS,
                 legend="MAX",
             ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
             Target(
-                expr='(sum(ray_resources{{Name="GPU",{global_filters}}}) or vector(0)) + (sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}}) or vector(0))',
-                legend="PENDING + MAX",
+                expr=f"({MAX_PLUS_PENDING_GPUS} and {MAX_PLUS_PENDING_GPUS} > ({MAX_GPUS} or vector(0)))",
+                legend="MAX + PENDING",
             ),
         ],
     ),
@@ -360,6 +380,7 @@ PANEL_TEMPLATE = {
         "min": False,
         "rightSide": False,
         "show": True,
+        "sort": "current",
         "sortDesc": True,
         "total": False,
         "values": True,
@@ -389,9 +410,9 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:2987",
-            "alias": "PENDING + MAX",
+            "alias": "MAX + PENDING",
             "dashes": True,
-            "color": "#EB455F",
+            "color": "#ff9a00",
             "fill": 0,
             "stack": False,
         },

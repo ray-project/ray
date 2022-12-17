@@ -4,7 +4,7 @@ import operator
 import threading
 import time
 import traceback
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
@@ -43,8 +43,8 @@ class BaseNodeLauncher:
         provider,
         pending,
         event_summarizer,
-        session_name: str,
         node_provider_availability_tracker: NodeProviderAvailabilityTracker,
+        session_name: Optional[str] = None,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -176,8 +176,8 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
         queue,
         pending,
         event_summarizer,
-        session_name: str,
         node_provider_availability_tracker,
+        session_name: Optional[str] = None,
         prom_metrics=None,
         node_types=None,
         index=None,

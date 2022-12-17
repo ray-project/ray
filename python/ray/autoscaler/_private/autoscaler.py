@@ -186,7 +186,7 @@ class StandardAutoscaler:
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
         gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
-        session_name: str,
+        session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
@@ -321,8 +321,8 @@ class StandardAutoscaler:
                 provider=self.provider,
                 pending=self.pending_launches,
                 event_summarizer=self.event_summarizer,
-                session_name=session_name,
                 node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
+                session_name=session_name,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
             )
@@ -336,8 +336,8 @@ class StandardAutoscaler:
                     index=i,
                     pending=self.pending_launches,
                     event_summarizer=self.event_summarizer,
-                    session_name=session_name,
                     node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagreee how to format this.
+                    session_name=session_name,
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
                 )
