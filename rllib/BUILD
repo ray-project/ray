@@ -3183,6 +3183,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/multi_agent_cartpole_torch_w_rl_module",
+    main = "examples/multi_agent_cartpole.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/multi_agent_cartpole.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4", "--enable-rl-module"]
+)
+
+py_test(
     name = "examples/multi_agent_custom_policy_tf",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],

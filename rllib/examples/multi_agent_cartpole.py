@@ -113,6 +113,13 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
+    if args.enable_rl_module_api:
+        config = (
+            config
+            .rollouts(enable_connectors=True)
+            .rl_module(_enable_rl_module_api=True)
+        )
+
     stop = {
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
