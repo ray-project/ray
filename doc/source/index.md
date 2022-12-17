@@ -18,6 +18,10 @@
 :target: https://discuss.ray.io/
 ```
 
+```{image} https://img.shields.io/badge/Newsletter-Subscribe-blue
+:target: https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85
+```
+
 ```{image} https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
 :target: https://twitter.com/raydistributed
 ```
