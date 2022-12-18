@@ -79,6 +79,29 @@ def test_reopen_changed_inode(tmp_path):
     assert file_info.file_handle.tell() == orig_file_pos
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_deleted_file_does_not_throw_error(tmp_path):
+    filename = tmp_path / "file"
+
+    Path(filename).touch()
+
+    file_info = LogFileInfo(
+        filename=filename,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+
+    os.remove(filename)
+
+    file_info.reopen_if_necessary()
+
+
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100
