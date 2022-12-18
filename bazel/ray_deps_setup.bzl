@@ -113,6 +113,10 @@ def ray_deps_setup():
         url = "https://github.com/redis/hiredis/archive/refs/tags/v1.1.0.tar.gz",
         strip_prefix= "hiredis-1.1.0",
         sha256 = "fe6d21741ec7f3fc9df409d921f47dfc73a4d8ff64f4ac6f1d95f951bf7f53d6",
+        patch_args = ["-p1"],
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:hiredis.patch",
+        ],
     )
 
     auto_http_archive(

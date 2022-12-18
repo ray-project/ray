@@ -1,4 +1,4 @@
-load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "make")
 
 filegroup(
     name = "all_srcs",
@@ -7,35 +7,19 @@ filegroup(
     ),
 )
 
-cmake(
+make(
     name = "libhiredis",
-    defines = [
-        "USE_SSL=1",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [
-            "_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
-            "WIN32=",
-            "WIN32_LEAN_AND_MEAN=",
-            "_WIN32="
-        ],
-        "//conditions:default": [],
-    }),
-    cache_entries = {
-        "ENABLE_SSL": "ON",
-        "BUILD_SHARED_LIBS": "OFF",
+    env = {
+        "USE_SSL": "1",
     },
-    lib_source = "//:all_srcs",
+    targets = [
+        "install", "install-ssl"
+    ],
+    lib_source = ":all_srcs",
     deps = [
         "@boringssl//:ssl",
         "@boringssl//:crypto"
     ],
-    copts = select({
-        "@//:msvc-cl": [],
-        "//conditions:default": [
-            # Old versions of GCC (e.g. 4.9.2) can fail to compile Redis's C without this.
-            "-std=c99",
-        ],
-    }),
     out_static_libs = select({
         "@bazel_tools//src/conditions:windows": [
             "hiredis.lib",
