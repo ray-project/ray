@@ -13,9 +13,6 @@ from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
-# only import gym.spaces.Text if gym is on version 0.25.0 or higher
-text_space_class = getattr(gym.spaces, "Text", None)
-
 
 def _assert_array_equal(eq, a1, a2, margin=None):
     for a in zip(a1, a2):
@@ -144,13 +141,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
 
     def test_text(self):
-        # NOTE (kourosh): This unittest will automatically get activated on CI once
-        # we upgrade gym
-        if text_space_class is None:
-            print("Skipping test_text, since gym version is too old")
-            return
-
-        expected_space = text_space_class(min_length=3, max_length=10, charset="abc")
+        expected_space = gym.spaces.Text(min_length=3, max_length=10, charset="abc")
         d = gym_space_to_dict(expected_space)
         sp = gym_space_from_dict(d)
 

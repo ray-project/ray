@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-import gym
+import gymnasium as gym
 from typing import Mapping, Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
 from typing import Any, Mapping, Union
