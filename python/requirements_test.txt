@@ -48,7 +48,7 @@ pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
 pyarrow==10.0.1
-pydantic==1.9.2
+pydantic==1.10.2
 # Keep in sync with `ci/build/upload_build_info.sh`
 PyOpenSSL==22.1.0
 # pygame==2.1.2
