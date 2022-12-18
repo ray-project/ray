@@ -1,3 +1,17 @@
+diff --git a/async.c b/async.c
+index 0018e37..e632705 100644
+--- a/async.c
++++ b/async.c
+@@ -33,7 +33,9 @@
+ #include "alloc.h"
+ #include <stdlib.h>
+ #include <string.h>
++#if !defined(WIN32) || defined(__MINGW32__)
+ #include <strings.h>
++#endif
+ #include <assert.h>
+ #include <ctype.h>
+ #include <errno.h>
 diff --git a/fmacros.h b/fmacros.h
 index 3227faa..a84e5f9 100644
 --- a/fmacros.h
