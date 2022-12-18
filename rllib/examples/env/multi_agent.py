@@ -383,11 +383,11 @@ class GuessTheNumberGame(MultiAgentEnv):
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.MultiDiscrete([3, self.max_number])
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._step = 0
         self._number = None
         # agent 0 has to pick a number. So the returned obs does not matter.
-        return {0: 0}
+        return {0: 0}, {}
 
     def step(self, action_dict):
         # get agent 0's action
@@ -399,7 +399,13 @@ class GuessTheNumberGame(MultiAgentEnv):
             # next obs should tell agent 1 to start guessing.
             # the returned reward and dones should be on agent 0 who picked a
             # number.
-            return {1: 0}, {0: 0}, {0: False, "__all__": False}, {}
+            return (
+                {1: 0},
+                {0: 0},
+                {0: False, "__all__": False},
+                {0: False, "__all__": False},
+                {},
+            )
 
         if self._number is None:
             raise ValueError(
@@ -414,24 +420,24 @@ class GuessTheNumberGame(MultiAgentEnv):
         # guessing.
         obs = {1: 0}
         guessed_correctly = False
+        terminated = {1: False, "__all__": False}
+        truncated = {1: False, "__all__": False}
         # everytime agent 1 does not guess correctly agent 0 gets a reward of 1.
         if direction == 0:  # lower
             reward = {1: int(number > self._number), 0: 1}
-            done = {1: False, "__all__": False}
         elif direction == 1:  # higher
             reward = {1: int(number < self._number), 0: 1}
-            done = {1: False, "__all__": False}
         else:  # equal
             guessed_correctly = number == self._number
             reward = {1: guessed_correctly * 100, 0: guessed_correctly * -100}
-            done = {1: guessed_correctly, "__all__": guessed_correctly}
+            terminated = {1: guessed_correctly, "__all__": guessed_correctly}
 
         self._step += 1
         if self._step >= self.max_steps:  # max number of steps episode is over
-            done["__all__"] = True
+            truncated["__all__"] = True
             if not guessed_correctly:
                 reward[0] = 100  # agent 0 wins
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
 
 MultiAgentCartPole = make_multi_agent("CartPole-v1")
