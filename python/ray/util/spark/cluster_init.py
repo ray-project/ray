@@ -8,6 +8,7 @@ import uuid
 from packaging.version import Version
 from typing import Optional, Dict
 
+import ray
 from ray.util.annotations import PublicAPI
 from ray._private.storage import _load_class
 
@@ -27,20 +28,9 @@ from .utils import (
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
 
-if not sys.platform.startswith("linux"):
-    raise RuntimeError("Ray on spark only supports running on Linux.")
 
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(logging.INFO)
-
-_spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
-try:
-    import pyspark
-
-    if Version(pyspark.__version__) < Version("3.3"):
-        raise RuntimeError(_spark_dependency_error)
-except ImportError:
-    raise RuntimeError(_spark_dependency_error)
 
 
 RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
@@ -48,6 +38,20 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
+
+
+def _check_system_environment():
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("Ray on spark only supports running on Linux.")
+
+    spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
+    try:
+        import pyspark
+
+        if Version(pyspark.__version__) < Version("3.3"):
+            raise RuntimeError(spark_dependency_error)
+    except ImportError:
+        raise RuntimeError(spark_dependency_error)
 
 
 class RayClusterOnSpark:
@@ -101,8 +105,12 @@ class RayClusterOnSpark:
                 "The ray cluster has been shut down or it failed to start."
             )
         if self.ray_context is None:
-            # connect to the ray cluster.
-            self.ray_context = ray.init(address=self.address)
+            try:
+                # connect to the ray cluster.
+                self.ray_context = ray.init(address=self.address)
+            except Exception:
+                self.shutdown()
+                raise
 
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
@@ -716,7 +724,7 @@ def init_ray_cluster(
     ray_temp_root_dir: Optional[str] = None,
     safe_mode: Optional[bool] = False,
     collect_log_to_path: Optional[str] = None,
-) -> None:
+) -> str:
     """
     Initialize a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
@@ -763,13 +771,27 @@ def init_ray_cluster(
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
             after databricks spark cluster terminated.
+
+    Returns:
+        The address of the initiated Ray cluster on spark.
     """
     global _active_ray_cluster
+
+    _check_system_environment()
+
     if _active_ray_cluster is not None:
         raise RuntimeError(
-            "Current active ray cluster on spark haven't shut down. You cannot create "
-            "a new ray cluster."
+            "Current active ray cluster on spark haven't shut down. Please call "
+            "`ray.util.spark.shutdown_ray_cluster()` before initiating a new Ray "
+            "cluster on spark."
         )
+
+    if ray.is_initialized():
+        raise RuntimeError(
+            "Current python process already initialized Ray, Please shut down it "
+            "by `ray.shutdown()` before initiating a Ray cluster on spark."
+        )
+
     cluster = _init_ray_cluster(
         num_worker_nodes=num_worker_nodes,
         object_store_memory_per_node=object_store_memory_per_node,
@@ -784,6 +806,7 @@ def init_ray_cluster(
     # If connect cluster successfully, set global _active_ray_cluster to be the started
     # cluster.
     _active_ray_cluster = cluster
+    return cluster.address
 
 
 @PublicAPI(stability="alpha")
