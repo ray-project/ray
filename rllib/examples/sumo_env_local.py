@@ -148,7 +148,7 @@ if __name__ == "__main__":
         )
     config.multi_agent(
         policies=policies,
-        policy_mapping_fn=lambda agent_id, episode, **kwargs: agent_id,
+        policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: agent_id,
         policies_to_train=["ppo_policy"],
     )
     config.environment("sumo_test_env", env_config=env_config)
