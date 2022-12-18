@@ -58,7 +58,6 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
-    "test_ray_shutdown.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_protobuf_compatibility.py"
@@ -112,6 +111,7 @@ py_test_module_list(
     "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
+    "test_task_events.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -127,6 +127,7 @@ py_test_module_list(
     "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",

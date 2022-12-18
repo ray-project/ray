@@ -127,13 +127,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types.
+            values converted to torch Tensor types. This does not convert possibly
+            nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
         if item is None:
-            # returns None with dtype=np.obj
-            return np.asarray(item)
+            # Torch has no representation for `None`, so we return None
+            return item
 
         # Special handling of "Repeated" values.
         if isinstance(item, RepeatedValues):
@@ -141,7 +142,6 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
 
-        tensor = None
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             tensor = item
@@ -149,7 +149,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
             # str type (e.g. agent_id in train batch): leave as-is.
-            if item.dtype == object or isinstance(item.dtype, type(np.dtype("str_"))):
+            if item.dtype == object or item.dtype.type is np.str_:
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:

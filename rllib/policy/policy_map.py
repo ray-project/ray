@@ -240,6 +240,15 @@ class PolicyMap(dict):
     def __contains__(self, item: PolicyID):
         return item in self._valid_keys
 
+    @override(dict)
+    def __str__(self) -> str:
+        # Only print out our keys (policy IDs), not values as this could trigger
+        # the LRU caching.
+        return (
+            f"<PolicyMap lru-caching-capacity={self.capacity} policy-IDs="
+            f"{list(self.keys())}>"
+        )
+
     def _stash_least_used_policy(self) -> Policy:
         """Writes the least-recently used policy's state to the Ray object store.
 
