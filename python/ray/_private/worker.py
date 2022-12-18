@@ -2951,6 +2951,7 @@ def remote(
             return values to return during execution, and the caller will
             receive an ObjectRef[ObjectRefGenerator] (note, this setting is
             experimental).
+            See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
