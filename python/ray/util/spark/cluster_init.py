@@ -1,5 +1,4 @@
 import os
-import fcntl
 import socket
 import sys
 import time
@@ -233,6 +232,7 @@ def _prepare_for_ray_worker_node_startup():
     Returns: Allocated port range for current worker ports
     """
     import psutil
+    import fcntl
 
     def acquire_lock(file_path):
         mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC

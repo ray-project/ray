@@ -17,6 +17,11 @@ from pyspark.sql import SparkSession
 import time
 import logging
 
+pytestmark = pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Ray on spark only supports running on Linux.",
+)
+
 _logger = logging.getLogger(__name__)
 
 

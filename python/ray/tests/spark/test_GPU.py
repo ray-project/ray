@@ -10,6 +10,11 @@ from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase
 import ray
 from ray.util.spark.cluster_init import _init_ray_cluster
 
+pytestmark = pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Ray on spark only supports running on Linux.",
+)
+
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 

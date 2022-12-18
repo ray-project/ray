@@ -8,6 +8,11 @@ from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
 )
 
+pytestmark = pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Ray on spark only supports running on Linux.",
+)
+
 
 def test_get_spark_task_assigned_physical_gpus():
     with patch.dict(os.environ, {}, clear=True):
