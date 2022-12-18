@@ -64,6 +64,10 @@ of each episode (arrow heads). This way, RLlib makes sure that the
 `Policy.postprocess_trajectory()` method never sees data from more than one episode.
 
 
+**no_done_at_end [bool]**:
+  Never set ``done=True``, at the end of an episode (or when any artificial time-limit horizon is reached, e.g. when using the ``gym.wrappers.TimeLimit`` wrapper).
+
+
 ... as well as ``AlgorithmConfig.multi_agent(count_steps_by=..)``:
 
 **count_steps_by [env_steps|agent_steps]**:
