@@ -16,7 +16,6 @@ from ray.rllib.models.torch.primitives import FCNet
 
 ENCODER_OUT = "encoder_out"
 STATE_IN = "state_in"
-STATE_OUT = "state_out"
 
 
 @dataclass
@@ -110,7 +109,7 @@ class FullyConnectedEncoder(Encoder):
         )
 
     def output_spec(self):
-        return SpecDict(
+        return ModelSpec(
             {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
 
@@ -159,13 +158,9 @@ class LSTMEncoder(Encoder):
         return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
-                STATE_OUT: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
-                    ),
-                    "c": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
-                    ),
+                "state_out": {
+                    "h": TorchTensorSpec("b, h", h=config.hidden_dim),
+                    "c": TorchTensorSpec("b, h", h=config.hidden_dim),
                 },
             }
         )
@@ -190,7 +185,7 @@ class LSTMEncoder(Encoder):
 
         return {
             ENCODER_OUT: x,
-            STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
+            "state_out": tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
 
 

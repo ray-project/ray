@@ -76,14 +76,9 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
 
-        if self.config.shared_encoder:
-            self.shared_encoder = self.config.shared_encoder_config.build()
-            self.pi_encoder = IdentityEncoder(self.config.pi_encoder_config)
-            self.vf_encoder = IdentityEncoder(self.config.vf_encoder_config)
-        else:
-            self.shared_encoder = IdentityEncoder(self.config.shared_encoder_config)
-            self.pi_encoder = self.config.pi_encoder_config.build()
-            self.vf_encoder = self.config.vf_encoder_config.build()
+        self.shared_encoder = self.config.shared_encoder_config.build()
+        self.pi_encoder = self.config.pi_encoder_config.build()
+        self.vf_encoder = self.config.vf_encoder_config.build()
 
         self.pi = FCNet(
             input_dim=self.config.pi_encoder_config.output_dim,
@@ -143,22 +138,27 @@ class PPOTorchRLModule(TorchRLModule):
             shared_encoder_config = IdentityConfig(output_dim=obs_dim)
 
         if use_lstm:
-            assert vf_share_layers, "LSTM not supported with vf_share_layers=False"
-            shared_encoder_config = LSTMConfig(
+            pi_encoder_config = LSTMConfig(
+                input_dim=shared_encoder_config.output_dim,
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
                 output_dim=model_config["lstm_cell_size"],
                 num_layers=1,
             )
         else:
-            shared_encoder_config = FCConfig(
+            pi_encoder_config = FCConfig(
+                input_dim=shared_encoder_config.output_dim,
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
             )
 
-        pi_encoder_config = FCConfig()
-        vf_encoder_config = FCConfig()
+        vf_encoder_config = FCConfig(
+            input_dim=shared_encoder_config.output_dim,
+            hidden_layers=fcnet_hiddens,
+            activation=activation,
+            output_dim=model_config["fcnet_hiddens"][-1],
+        )
         pi_config = FCConfig()
         vf_config = FCConfig()
 
@@ -177,14 +177,15 @@ class PPOTorchRLModule(TorchRLModule):
         # build pi network
         shared_encoder_config.input_dim = observation_space.shape[0]
         pi_encoder_config.input_dim = shared_encoder_config.output_dim
-
+        pi_config.input_dim = pi_encoder_config.output_dim
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
 
         # build vf network
-        vf_config.input_dim = shared_encoder_config.output_dim
+        vf_encoder_config.input_dim = shared_encoder_config.output_dim
+        vf_config.input_dim = vf_encoder_config.output_dim
         vf_config.output_dim = 1
 
         config_ = PPOModuleConfig(
@@ -222,9 +223,10 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi["embedding"])
+        shared_enc_out = self.shared_encoder(batch)
+        pi_enc_out = self.pi_encoder(shared_enc_out)
+
+        action_logits = self.pi(pi_enc_out[ENCODER_OUT])
 
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
@@ -266,7 +268,7 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out = self.shared_encoder(batch)
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi["embedding"])
+        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
 
         output = {}
         if self._is_discrete:
