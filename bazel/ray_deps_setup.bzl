@@ -110,12 +110,10 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/refs/tags/v0.14.1.tar.gz",
-        strip_prefix= "hiredis-0.14.1",
-        sha256 = "2663b2aed9fd430507e30fc5e63274ee40cdd1a296026e22eafd7d99b01c8913",
-        patch_args = ["-p1"],
+        url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
+        sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:hiredis.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
     )
 
@@ -163,9 +161,9 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "redispp",
-        strip_prefix = "redis-plus-plus-1.3.6",
-        url = "https://github.com/sewenew/redis-plus-plus/archive/refs/tags/1.3.6.tar.gz",
-        sha256 = "87dcadca50c6f0403cde47eb1f79af7ac8dd5a19c3cad2bb54ba5a34f9173a3e",
+        strip_prefix = "redis-plus-plus-1.3.5",
+        url = "https://github.com/sewenew/redis-plus-plus/archive/refs/tags/1.3.5.tar.gz",
+        sha256 = "a49a72fef26ed39d36a278fcc4e4d92822e111697b5992d8f26f70d16edc6c1f",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redispp",
     )
 
