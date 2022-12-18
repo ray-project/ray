@@ -12,7 +12,7 @@ import ray
 import ray.util.spark.cluster_init
 from ray.util.spark import init_ray_cluster, shutdown_ray_cluster
 from ray.util.spark.cluster_init import _init_ray_cluster
-from ray.util.spark.utils import check_port_open, exec_cmd
+from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
 import logging
