@@ -13,7 +13,7 @@ marwil-halfcheetah-v4:
         input: "dataset"
         input_config:
             format: "json"
-            paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
+            paths: "/home/ray/halfcheetah_1500_mean_reward_sac.json"
         actions_in_input_normalized: true
         # Switch off input evaluation (data does not contain action probs).
         off_policy_estimation_methods: {}
