@@ -1,8 +1,8 @@
 diff --git a/fmacros.h b/fmacros.h
-index 754a53c..5c10894 100644
+index 3227faa..a84e5f9 100644
 --- a/fmacros.h
 +++ b/fmacros.h
-@@ -11,4 +11,8 @@
+@@ -9,4 +9,8 @@
  #define _DARWIN_C_SOURCE
  #endif
  
@@ -12,27 +12,23 @@ index 754a53c..5c10894 100644
 +
  #endif
 diff --git a/sds.h b/sds.h
-index d9b6761..95dad8e 100644
+index 13be75a..40ba5b0 100644
 --- a/sds.h
 +++ b/sds.h
-@@ -40,8 +40,16 @@ typedef long long ssize_t;
- #ifndef __clang__
- #define __attribute__(x)
- #endif
-+
-+#endif
-+
+@@ -39,6 +39,12 @@
+ #include <stdarg.h>
+ #include <stdint.h>
+ 
 +#if defined(_MSC_VER) && !defined(__clang__)
 +#pragma pack(push, 1)
 +#pragma push_macro("__attribute__")
 +#define __attribute__(A)
- #endif
- 
++#endif
 +
- #include <sys/types.h>
- #include <stdarg.h>
- #include <stdint.h>
-@@ -79,6 +87,11 @@ struct __attribute__ ((__packed__)) sdshdr64 {
+ typedef char *sds;
+ 
+ /* Note: sdshdr5 is never used, we just access the flags byte directly.
+@@ -72,6 +78,11 @@ struct __attribute__ ((__packed__)) sdshdr64 {
      char buf[];
  };
  

@@ -110,9 +110,9 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/refs/tags/v1.1.0.tar.gz",
-        strip_prefix= "hiredis-1.1.0",
-        sha256 = "fe6d21741ec7f3fc9df409d921f47dfc73a4d8ff64f4ac6f1d95f951bf7f53d6",
+        url = "https://github.com/redis/hiredis/archive/refs/tags/v0.14.1.tar.gz",
+        strip_prefix= "hiredis-0.14.1",
+        sha256 = "2663b2aed9fd430507e30fc5e63274ee40cdd1a296026e22eafd7d99b01c8913",
         patch_args = ["-p1"],
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:hiredis.patch",
