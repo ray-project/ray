@@ -18,6 +18,8 @@ mlagents_envs==0.28.0
 pettingzoo==1.22.1; python_version >= '3.7'
 pymunk==6.2.1
 supersuit==3.7.0; python_version >= '3.7'
+# For tests on minigrid.
+minigrid==2.1.0
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.9.0

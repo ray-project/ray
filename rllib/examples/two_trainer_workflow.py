@@ -196,6 +196,7 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .reporting(metrics_num_episodes_for_smoothing=30)
     )
 
     stop = {

@@ -543,7 +543,9 @@ def make_multi_agent(
                     self.terminateds.add(i)
                 if truncated[i]:
                     self.truncateds.add(i)
-            terminated["__all__"] = len(self.terminateds) == len(self.envs)
+            terminated["__all__"] = (
+                len(self.terminateds) + len(self.truncateds) == len(self.envs)
+            )
             truncated["__all__"] = len(self.truncateds) == len(self.envs)
             return obs, rew, terminated, truncated, info
 
