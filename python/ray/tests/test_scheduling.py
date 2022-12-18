@@ -64,10 +64,14 @@ def test_load_balancing(ray_start_cluster):
 def test_hybrid_policy(ray_start_cluster):
 
     cluster = ray_start_cluster
+
     num_nodes = 2
     num_cpus = 10
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_cpus, memory=num_cpus)
+        cluster.add_node(num_cpus=num_cpus, memory=num_cpus,
+         _system_config={
+            "scheduler_top_k_absolute": 1,
+        },)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
