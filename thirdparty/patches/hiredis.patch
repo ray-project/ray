@@ -1,34 +1,3 @@
-diff --git a/Makefile b/Makefile
-index 016a771..524d09a 100644
---- a/Makefile
-+++ b/Makefile
-@@ -299,24 +299,16 @@ $(SSL_PKGCONFNAME): hiredis_ssl.h
- 	@echo Libs: -L\$${libdir} -lhiredis_ssl >> $@
- 	@echo Libs.private: -lssl -lcrypto >> $@
- 
--install: $(DYLIBNAME) $(STLIBNAME) $(PKGCONFNAME) $(SSL_INSTALL)
-+install: $(STLIBNAME) $(SSL_INSTALL)
- 	mkdir -p $(INSTALL_INCLUDE_PATH) $(INSTALL_INCLUDE_PATH)/adapters $(INSTALL_LIBRARY_PATH)
- 	$(INSTALL) hiredis.h async.h read.h sds.h alloc.h sockcompat.h $(INSTALL_INCLUDE_PATH)
- 	$(INSTALL) adapters/*.h $(INSTALL_INCLUDE_PATH)/adapters
--	$(INSTALL) $(DYLIBNAME) $(INSTALL_LIBRARY_PATH)/$(DYLIB_MINOR_NAME)
--	cd $(INSTALL_LIBRARY_PATH) && ln -sf $(DYLIB_MINOR_NAME) $(DYLIBNAME)
- 	$(INSTALL) $(STLIBNAME) $(INSTALL_LIBRARY_PATH)
--	mkdir -p $(INSTALL_PKGCONF_PATH)
--	$(INSTALL) $(PKGCONFNAME) $(INSTALL_PKGCONF_PATH)
- 
--install-ssl: $(SSL_DYLIBNAME) $(SSL_STLIBNAME) $(SSL_PKGCONFNAME)
-+install-ssl: $(SSL_STLIBNAME)
- 	mkdir -p $(INSTALL_INCLUDE_PATH) $(INSTALL_LIBRARY_PATH)
- 	$(INSTALL) hiredis_ssl.h $(INSTALL_INCLUDE_PATH)
--	$(INSTALL) $(SSL_DYLIBNAME) $(INSTALL_LIBRARY_PATH)/$(SSL_DYLIB_MINOR_NAME)
--	cd $(INSTALL_LIBRARY_PATH) && ln -sf $(SSL_DYLIB_MINOR_NAME) $(SSL_DYLIBNAME)
- 	$(INSTALL) $(SSL_STLIBNAME) $(INSTALL_LIBRARY_PATH)
--	mkdir -p $(INSTALL_PKGCONF_PATH)
--	$(INSTALL) $(SSL_PKGCONFNAME) $(INSTALL_PKGCONF_PATH)
- 
- 32bit:
- 	@echo ""
 diff --git a/fmacros.h b/fmacros.h
 index 754a53c..5c10894 100644
 --- a/fmacros.h
@@ -43,19 +12,31 @@ index 754a53c..5c10894 100644
 +
  #endif
 diff --git a/sds.h b/sds.h
-index d9b6761..248761c 100644
+index d9b6761..0e9944a 100644
 --- a/sds.h
 +++ b/sds.h
 @@ -42,6 +42,12 @@ typedef long long ssize_t;
  #endif
  #endif
  
-+#if defined(_MSC_VER) && !defined(__clang__)
 +#pragma pack(push, 1)
 +#pragma push_macro("__attribute__")
 +#define __attribute__(A)
 +#endif
 +
++
  #include <sys/types.h>
  #include <stdarg.h>
  #include <stdint.h>
+@@ -79,6 +85,11 @@ struct __attribute__ ((__packed__)) sdshdr64 {
+     char buf[];
+ };
+ 
++#if defined(_MSC_VER) && !defined(__clang__)
++#pragma pop_macro("__attribute__")
++#pragma pack(pop)
++#endif
++
+ #define SDS_TYPE_5  0
+ #define SDS_TYPE_8  1
+ #define SDS_TYPE_16 2
