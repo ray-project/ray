@@ -19,8 +19,9 @@ from ray.rllib.core.rl_module.encoder import (
     FCNet,
     FCConfig,
     LSTMConfig,
-    IdentityEncoder,
+    IdentityConfig,
     LSTMEncoder,
+    ENCODER_OUT,
 )
 
 
@@ -74,14 +75,9 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
 
-        if self.config.shared_encoder:
-            self.shared_encoder = self.config.shared_encoder_config.build()
-            self.pi_encoder = IdentityEncoder(self.config.pi_encoder_config)
-            self.vf_encoder = IdentityEncoder(self.config.vf_encoder_config)
-        else:
-            self.shared_encoder = IdentityEncoder(self.config.shared_encoder_config)
-            self.pi_encoder = self.config.pi_encoder_config.build()
-            self.vf_encoder = self.config.vf_encoder_config.build()
+        self.shared_encoder = self.config.shared_encoder_config.build()
+        self.pi_encoder = self.config.pi_encoder_config.build()
+        self.vf_encoder = self.config.vf_encoder_config.build()
 
         self.pi = FCNet(
             input_dim=self.config.pi_encoder_config.output_dim,
@@ -121,28 +117,44 @@ class PPOTorchRLModule(TorchRLModule):
         else:
             raise ValueError(f"Unsupported activation: {activation}")
 
+        obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
         vf_share_layers = model_config["vf_share_layers"]
         free_log_std = model_config["free_log_std"]
         use_lstm = model_config["use_lstm"]
 
+        if vf_share_layers:
+            shared_encoder_config = FCConfig(
+                input_dim=obs_dim,
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+                output_dim=model_config["fcnet_hiddens"][-1],
+            )
+        else:
+            shared_encoder_config = IdentityConfig(output_dim=obs_dim)
+
         if use_lstm:
-            assert vf_share_layers, "LSTM not supported with vf_share_layers=False"
-            shared_encoder_config = LSTMConfig(
+            pi_encoder_config = LSTMConfig(
+                input_dim=shared_encoder_config.output_dim,
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
                 output_dim=model_config["lstm_cell_size"],
                 num_layers=1,
             )
         else:
-            shared_encoder_config = FCConfig(
+            pi_encoder_config = FCConfig(
+                input_dim=shared_encoder_config.output_dim,
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
             )
 
-        pi_encoder_config = FCConfig()
-        vf_encoder_config = FCConfig()
+        vf_encoder_config = FCConfig(
+            input_dim=shared_encoder_config.output_dim,
+            hidden_layers=fcnet_hiddens,
+            activation=activation,
+            output_dim=model_config["fcnet_hiddens"][-1],
+        )
         pi_config = FCConfig()
         vf_config = FCConfig()
 
@@ -161,14 +173,15 @@ class PPOTorchRLModule(TorchRLModule):
         # build pi network
         shared_encoder_config.input_dim = observation_space.shape[0]
         pi_encoder_config.input_dim = shared_encoder_config.output_dim
-
+        pi_config.input_dim = pi_encoder_config.output_dim
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
 
         # build vf network
-        vf_config.input_dim = shared_encoder_config.output_dim
+        vf_encoder_config.input_dim = shared_encoder_config.output_dim
+        vf_config.input_dim = vf_encoder_config.output_dim
         vf_config.output_dim = 1
 
         config_ = PPOModuleConfig(
@@ -206,9 +219,10 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi["embedding"])
+        shared_enc_out = self.shared_encoder(batch)
+        pi_enc_out = self.pi_encoder(shared_enc_out)
+
+        action_logits = self.pi(pi_enc_out[ENCODER_OUT])
 
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
@@ -217,7 +231,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        output["state_out"] = pi_enc_out.get("state_out", {})
         return output
 
     @override(RLModule)
@@ -250,7 +264,7 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out = self.shared_encoder(batch)
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi["embedding"])
+        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
 
         output = {}
         if self._is_discrete:
@@ -264,7 +278,7 @@ class PPOTorchRLModule(TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist
 
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf["embedding"]).squeeze(-1)
+        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf[ENCODER_OUT]).squeeze(-1)
         output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
@@ -301,8 +315,8 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
 
-        action_logits = self.pi(encoder_out_pi["embedding"])
-        vf = self.vf(encoder_out_vf["embedding"])
+        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
+        vf = self.vf(encoder_out_vf[ENCODER_OUT])
 
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
