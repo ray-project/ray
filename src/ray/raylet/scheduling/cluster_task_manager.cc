@@ -77,6 +77,52 @@ void ReplyCancelled(const internal::Work &work,
 }
 }  // namespace
 
+bool ClusterTaskManager::CancelAllTaskOwnedBy(
+    const WorkerID &worker_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  auto shapes_it = tasks_to_schedule_.begin();
+  while (shapes_it != tasks_to_schedule_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      if (task.GetTaskSpecification().CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+
+  shapes_it = infeasible_tasks_.begin();
+  while (shapes_it != infeasible_tasks_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      if (task.GetTaskSpecification().CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      infeasible_tasks_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+  return true;
+}
+
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();

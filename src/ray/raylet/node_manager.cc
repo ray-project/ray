@@ -1115,10 +1115,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     failed_nodes_cache_.insert(node_id);
   }
 
-  // TODO(swang): Also clean up any lease requests owned by the failed worker
-  // from the task queues. This is only necessary for lease requests that are
-  // infeasible, since requests that are fulfilled will get canceled during
-  // dispatch.
+  cluster_task_manager_->CancelAllTaskOwnedBy(worker_id);
+
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
     const auto owner_worker_id =
