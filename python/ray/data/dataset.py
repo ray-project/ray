@@ -1133,6 +1133,7 @@ class Dataset(Generic[T]):
         if locality_hints is None:
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
+            print("SPLIT DATASET", blocks, owned_by_consumer)
             return [
                 Dataset(
                     ExecutionPlan(
@@ -3697,6 +3698,7 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
+            assert False
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
             read_stage = None
