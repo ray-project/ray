@@ -12,8 +12,8 @@ cmake(
     cache_entries = {
         "REDIS_PLUS_PLUS_BUILD_ASYNC": "libuv",
         "REDIS_PLUS_PLUS_BUILD_TEST": "OFF",
-        "HIREDIS_LIB": "$EXT_BUILD_DEPS/libhiredis//lib",
-        "HIREDIS_HEADER": "$EXT_BUILD_DEPS/libhiredis/include",
+        "HIREDIS_LIB": "$EXT_BUILD_DEPS/lib",
+        "HIREDIS_HEADER": "$EXT_BUILD_DEPS/include",
         "REDIS_PLUS_PLUS_ASYNC_LIB_HEADER": "$EXT_BUILD_DEPS/libuv_a/include",
         "REDIS_PLUS_PLUS_ASYNC_LIB": "$EXT_BUILD_DEPS/libuv_a/lib",
         "BUILD_SHARED_LIBS": "OFF",
