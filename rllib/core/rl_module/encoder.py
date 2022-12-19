@@ -163,7 +163,7 @@ class LSTMEncoder(Encoder):
             }
         )
 
-    def forward(self, input_dict: SampleBatch):
+    def _forward(self, input_dict: SampleBatch):
         x = input_dict[SampleBatch.OBS]
         states = input_dict[STATE_IN]
         # states are batch-first when coming in
