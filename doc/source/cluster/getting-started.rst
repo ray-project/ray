@@ -26,7 +26,7 @@ or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 
     Ray clusters are only supported on Linux. At your own risk, you may deploy
     Windows and OSX clusters by setting the environment variable
-    ``RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=true`` during deployment and when
+    ``RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1`` during deployment and when
     running Ray applications.
 
 What's next?
