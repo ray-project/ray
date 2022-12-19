@@ -44,6 +44,7 @@ bool HybridSchedulingPolicy::IsNodeFeasible(
   return node_resources.IsFeasible(resource_request);
 }
 
+namespace {
 float ComputeNodeScore(const NodeResources &node_resources, float spread_threshold) {
   float critical_resource_utilization =
       node_resources.CalculateCriticalResourceUtilization();
@@ -52,12 +53,19 @@ float ComputeNodeScore(const NodeResources &node_resources, float spread_thresho
   }
   return critical_resource_utilization;
 }
+}  // namespace
+
+float HybridSchedulingPolicy::CompuateLocalNodeScore(float spread_threshold) const {
+  const auto local_it = nodes_.find(local_node_id_);
+  RAY_CHECK(local_it != nodes_.end());
+  return ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
+}
 
 scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
     std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
-    bool prioritize_local_node,
     size_t num_candidate_nodes,
-    float spread_threshold) const {
+    bool prioritize_local_node,
+    float local_node_score) const {
   RAY_CHECK(!node_scores.empty());
   RAY_CHECK(num_candidate_nodes >= 1);
   // Pick the top num_candidate_nodes nodes with the lowest score.
@@ -75,17 +83,12 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
          const std::pair<scheduling::NodeID, float> &b) { return a.second < b.second; });
 
   if (prioritize_local_node) {
-    const auto local_it = nodes_.find(local_node_id_);
-    RAY_CHECK(local_it != nodes_.end());
-    float local_node_score =
-        ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
     if (local_node_score <= node_scores.front().second) {
       return local_node_id_;
     }
   }
-  std::uniform_int_distribution<size_t> distribution(
-      0, std::min(num_candidate_nodes, node_scores.size()) - 1);
-  size_t node_index = distribution(gen_);
+  size_t node_index = absl::Uniform<size_t>(
+      bitgenref_, 0u, std::min(num_candidate_nodes, node_scores.size()));
   return node_scores[node_index].first;
 }
 
@@ -146,18 +149,22 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
                         static_cast<int32_t>(nodes_.size() * scheduler_top_k_fraction)));
 
   if (!available_nodes.empty()) {
+    bool prioritize_local_node = !force_spillback && local_node_is_available;
     // First prioritize available nodes.
-    return GetBestNode(available_nodes,
-                       !force_spillback && local_node_is_available,
-                       num_candidate_nodes,
-                       spread_threshold);
+    return GetBestNode(
+        available_nodes,
+        num_candidate_nodes,
+        prioritize_local_node,
+        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
   } else if (!feasible_nodes.empty() && !require_node_available) {
+    bool prioritize_local_node = !force_spillback && local_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
-    return GetBestNode(feasible_nodes,
-                       !force_spillback && local_node_is_feasible,
-                       num_candidate_nodes,
-                       spread_threshold);
+    return GetBestNode(
+        feasible_nodes,
+        num_candidate_nodes,
+        prioritize_local_node,
+        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
   } else {
     return scheduling::NodeID::Nil();
   }

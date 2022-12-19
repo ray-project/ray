@@ -684,6 +684,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
@@ -1187,8 +1189,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        ":raylet_lib",
-        "@com_google_absl//absl/random",
+        ":scheduler",
+        "@com_google_absl//absl/random:mock_distributions", 
         "@com_google_googletest//:gtest_main",
     ],
 )

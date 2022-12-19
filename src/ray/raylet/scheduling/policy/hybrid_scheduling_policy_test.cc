@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/random/random.h"
+#include "absl/random/mock_distributions.h"
+#include "absl/random/mocking_bit_gen.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
@@ -21,7 +22,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-using ::testing::_;
+using namespace ::testing;
 using namespace ray::raylet;
 
 NodeResources CreateNodeResources(double available_cpu,
@@ -43,9 +44,10 @@ NodeResources CreateNodeResources(double available_cpu,
 class HybridSchedulingPolicyTest : public ::testing::Test {
  public:
   scheduling::NodeID local_node = scheduling::NodeID(0);
-  scheduling::NodeID remote_node = scheduling::NodeID(1);
-  scheduling::NodeID remote_node_2 = scheduling::NodeID(2);
-  scheduling::NodeID remote_node_3 = scheduling::NodeID(3);
+  scheduling::NodeID n1 = scheduling::NodeID(1);
+  scheduling::NodeID n2 = scheduling::NodeID(2);
+  scheduling::NodeID n3 = scheduling::NodeID(3);
+  scheduling::NodeID n4 = scheduling::NodeID(4);
   absl::flat_hash_map<scheduling::NodeID, Node> nodes;
 
   SchedulingOptions HybridOptions(
@@ -73,6 +75,77 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
     return cluster_resource_manager;
   }
 };
+
+TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
+  std::vector<std::pair<scheduling::NodeID, float>> node_scores{
+      {n3, 0.6},
+      {n4, 0.7},
+      {n1, 0},
+      {n2, 0},
+  };
+
+  // Test return 1 node always return the first node.
+  {
+    HybridSchedulingPolicy policy{local_node, {}, [](auto) { return true; }};
+    EXPECT_EQ(n1,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 1,
+                                 /*prioritize_local_node*/ false,
+                                 /*local_node_score*/ 1));
+  }
+
+  // Test return 3 node calls to the random generator.
+  {
+    absl::MockingBitGen mock;
+    EXPECT_CALL(absl::MockUniform<size_t>(), Call(mock, 0u, 3u))
+        .WillOnce(Return(1))
+        .WillOnce(Return(2))
+        .WillOnce(Return(0));
+    HybridSchedulingPolicy policy{local_node, {}, [](auto) { return true; }};
+    policy.bitgenref_ = absl::BitGenRef{mock};
+    EXPECT_EQ(n2,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 3,
+                                 /*prioritize_local_node*/ false,
+                                 /*local_node_score*/ 1));
+    EXPECT_EQ(n3,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 3,
+                                 /*prioritize_local_node*/ false,
+                                 /*local_node_score*/ 1));
+    EXPECT_EQ(n1,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 3,
+                                 /*prioritize_local_node*/ false,
+                                 /*local_node_score*/ 1));
+  }
+}
+
+TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizeLocalNode) {
+  {
+    std::vector<std::pair<scheduling::NodeID, float>> node_scores{
+        {n3, 0.6},
+        {n4, 0.7},
+        {n1, 0},
+        {n2, 0},
+    };
+
+    HybridSchedulingPolicy policy{local_node, {}, [](auto) { return true; }};
+    // local node score is greater than the smallest one
+    EXPECT_EQ(n1,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 1,
+                                 /*prioritize_local_node*/ true,
+                                 /*local_node_score*/ 0.1));
+
+    // local node score is equal to the smallest one.
+    EXPECT_EQ(local_node,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 1,
+                                 /*prioritize_local_node*/ true,
+                                 /*local_node_score*/ 0));
+  }
+}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -18,6 +18,8 @@
 
 #include <vector>
 
+#include "absl/random/bit_gen_ref.h"
+#include "absl/random/random.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 
 namespace ray {
@@ -55,7 +57,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),
-        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+        bitgen_(),
+        bitgenref_(bitgen_) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -77,11 +80,13 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                       const NodeResources &node_resources,
                       const ResourceRequest &resource_request) const;
 
+  float CompuateLocalNodeScore(float spread_threshold) const;
+
   scheduling::NodeID GetBestNode(
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
-      bool force_spillback,
       size_t num_candidate_nodes,
-      float spread_threshold) const;
+      bool prioritize_local_node,
+      float local_node_score) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
@@ -90,14 +95,13 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
-  scheduling::NodeID ScheduleImpl(
-      const ResourceRequest &resource_request,
-      float spread_threshold,
-      bool force_spillback,
-      bool require_available,
-      NodeFilter node_filter,
-      int32_t schedule_top_k_absolute,
-      float scheduler_top_k_fraction);
+  scheduling::NodeID ScheduleImpl(const ResourceRequest &resource_request,
+                                  float spread_threshold,
+                                  bool force_spillback,
+                                  bool require_available,
+                                  NodeFilter node_filter,
+                                  int32_t schedule_top_k_absolute,
+                                  float scheduler_top_k_fraction);
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;
@@ -107,9 +111,12 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_alive_;
   /// Random number generator to choose a random node out of the top K.
-  mutable std::mt19937_64 gen_;
+  mutable absl::BitGen bitgen_;
+  /// Using BitGenRef to simplify testing.
+  mutable absl::BitGenRef bitgenref_;
 
-  FRIEND_TEST(HybridSchedulingPolicyTest, NumNodesToSelect);
+  FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNode);
+  FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNodePrioritizeLocalNode);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
