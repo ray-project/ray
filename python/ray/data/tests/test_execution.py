@@ -59,6 +59,9 @@ def test_block_bundling():
         make_transform(lambda block: [b * 2 for b in block]), o2, target_block_size=3
     )
     it = executor.execute(o3)
+    # For 20 blocks, 1 row per block and target_block_size=3, there will be 7 tasks
+    # launched.
+    assert o3._execution_state._next_task_index == 7
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)]
     assert output == expected, (output, expected)

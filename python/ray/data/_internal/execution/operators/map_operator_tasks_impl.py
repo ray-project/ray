@@ -5,6 +5,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
+from ray.data._internal.execution.util import _merge_ref_bundles
 from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -58,7 +59,7 @@ class MapOperatorTasksImpl:
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._block_bundle = None
         self._target_block_size = op.target_block_size
-        self._inputs_dep_done = 0
+        self._input_deps_done = 0
         self._op = op
         self._next_task_index = 0
         self._next_output_index = 0
@@ -95,17 +96,6 @@ class MapOperatorTasksImpl:
                 return float("inf")
             return bundle.num_rows()
 
-        def merge_bundle(x: RefBundle, y: RefBundle) -> RefBundle:
-            if x is None:
-                return y
-            elif y is None:
-                return x
-            else:
-                blocks = x.blocks + y.blocks
-                owns_blocks = x.owns_blocks and y.owns_blocks
-                input_metadata = {**x.input_metadata, **y.input_metadata}
-                return RefBundle(blocks, owns_blocks, input_metadata)
-
         num_rows = get_num_rows(self._block_bundle) + get_num_rows(bundle)
         if num_rows > self._target_block_size:
             if self._block_bundle:
@@ -114,12 +104,13 @@ class MapOperatorTasksImpl:
             else:
                 self._create_task(bundle)
         else:
-            self._block_bundle = merge_bundle(self._block_bundle, bundle)
+            self._block_bundle = _merge_ref_bundles(self._block_bundle, bundle)
 
     def inputs_done(self, input_index: int) -> None:
-        self._inputs_dep_done += 1
+        self._input_deps_done += 1
+        assert self._input_deps_done <= len(self._op._input_dependencies)
         if (
-            self._inputs_dep_done == len(self._op._input_dependencies)
+            self._input_deps_done == len(self._op._input_dependencies)
             and self._block_bundle
         ):
             self._create_task(self._block_bundle)
