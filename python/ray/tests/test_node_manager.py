@@ -4,7 +4,9 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     get_resource_usage,
+    format_web_url
 )
+import requests
 import pytest
 import os
 
@@ -67,14 +69,14 @@ def f():
     import time
     time.sleep(300)
 
-refs = [f.remote() for _ in range(10000)]
+refs = [f.remote() for _ in range(10000)]w
 
 ray.get(refs)
   """
     proc = run_string_as_driver_nonblocking(driver)
     ctx = ray.init(address=call_ray_start)
 
-    def check_has_backlog() -> bool:
+    def get_backlog_and_pending():
         resources_batch = get_resource_usage(
             gcs_address=ctx.address_info["gcs_address"]
         )
@@ -83,24 +85,32 @@ ray.get(refs)
             if resources_batch.resource_load_by_shape.resource_demands
             else 0
         )
-        return backlog > 0
 
-    wait_for_condition(check_has_backlog, timeout=10, retry_interval_ms=1000)
+        pending = 0
+        webui_url = ctx.address_info["webui_url"]
+        webui_url = format_web_url(webui_url)
+        response = requests.get(f"{webui_url}/api/cluster_status")
+        response.raise_for_status()
+        demands = response.json()["data"]["clusterStatus"]["loadMetricsReport"]["resourceDemand"]
+        for demand in demands:
+            resource_dict, amount = demand
+            if "CPU" in resource_dict:
+                pending = amount
+
+        return pending, backlog
+
+    def check_backlog(expect_backlog) -> bool:
+        pending, backlog = get_backlog_and_pending()
+        if expect_backlog:
+            return pending > 0 and backlog > 0
+        else:
+            return pending == 0 and backlog == 0
+
+    wait_for_condition(check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog = True)
 
     os.kill(proc.pid, 9)
 
-    def check_no_backlog() -> bool:
-        resources_batch = get_resource_usage(
-            gcs_address=ctx.address_info["gcs_address"]
-        )
-        backlog = (
-            resources_batch.resource_load_by_shape.resource_demands[0].backlog_size
-            if resources_batch.resource_load_by_shape.resource_demands
-            else 0
-        )
-        return backlog == 0
-
-    wait_for_condition(check_no_backlog, timeout=10, retry_interval_ms=1000)
+    wait_for_condition(check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog = False)
 
 
 if __name__ == "__main__":
