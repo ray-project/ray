@@ -209,10 +209,12 @@ class ResourceDemandScheduler:
             Dict of count to add for each node type, and residual of resources
             that still cannot be fulfilled.
         """
-        # Does every node type have gpus?
+        # Does every worker node type have gpus?
+        # (More precisely, does every non-head node type have gpus?)
         all_gpu_node_types = all(
             node_type_config.get("resources").get("GPU", 0) != 0
-            for node_type_config in self.node_types.values()
+            for node_type, node_type_config in self.node_types.items()
+            if node_type != self.head_node_type
         )
         utilization_scorer = partial(
             self.utilization_scorer,

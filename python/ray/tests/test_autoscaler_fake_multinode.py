@@ -103,7 +103,7 @@ def test_autoscaler_all_gpu_node_types():
     gpu_node_type_2 = copy.deepcopy(gpu_node_type_1)
 
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 0, "GPU": 1},
+        head_resources={"CPU": 0},
         worker_node_types={
             "gpu_node_type_1": gpu_node_type_1,
             "gpu_node_type_2": gpu_node_type_2,
