@@ -48,6 +48,22 @@ def test_basic_bulk():
     assert output == expected, (output, expected)
 
 
+def test_block_bundling():
+    executor = BulkExecutor(ExecutionOptions())
+    inputs = _make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(
+        make_transform(lambda block: [b * -1 for b in block]), o1, target_block_size=3
+    )
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]), o2, target_block_size=3
+    )
+    it = executor.execute(o3)
+    output = ref_bundles_to_list(it)
+    expected = [[x * -2] for x in range(20)]
+    assert output == expected, (output, expected)
+
+
 def test_actor_strategy():
     executor = BulkExecutor(ExecutionOptions())
     inputs = _make_ref_bundles([[x] for x in range(20)])

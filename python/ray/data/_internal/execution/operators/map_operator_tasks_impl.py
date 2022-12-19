@@ -56,6 +56,10 @@ class MapOperatorTasksImpl:
         self._ray_remote_args = op.ray_remote_args()
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
+        self._block_bundle = None
+        self._target_block_size = op.target_block_size
+        self._inputs_dep_done = 0
+        self._op = op
         self._next_task_index = 0
         self._next_output_index = 0
         self._obj_store_mem_alloc = 0
@@ -63,7 +67,7 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_cur = 0
         self._obj_store_mem_peak = 0
 
-    def add_input(self, bundle: RefBundle) -> None:
+    def _create_task(self, bundle: RefBundle) -> None:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
@@ -78,6 +82,48 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
+
+    def add_input(self, bundle: RefBundle) -> None:
+        if self._target_block_size is None:
+            self._create_task(bundle)
+            return
+
+        def get_num_rows(bundle: RefBundle):
+            if bundle is None:
+                return 0
+            if bundle.num_rows() is None:
+                return float("inf")
+            return bundle.num_rows()
+
+        def merge_bundle(x: RefBundle, y: RefBundle) -> RefBundle:
+            if x is None:
+                return y
+            elif y is None:
+                return x
+            else:
+                blocks = x.blocks + y.blocks
+                owns_blocks = x.owns_blocks and y.owns_blocks
+                input_metadata = {**x.input_metadata, **y.input_metadata}
+                return RefBundle(blocks, owns_blocks, input_metadata)
+
+        num_rows = get_num_rows(self._block_bundle) + get_num_rows(bundle)
+        if num_rows > self._target_block_size:
+            if self._block_bundle:
+                self._create_task(self._block_bundle)
+                self._block_bundle = bundle
+            else:
+                self._create_task(bundle)
+        else:
+            self._block_bundle = merge_bundle(self._block_bundle, bundle)
+
+    def inputs_done(self, input_index: int) -> None:
+        self._inputs_dep_done += 1
+        if (
+            self._inputs_dep_done == len(self._op._input_dependencies)
+            and self._block_bundle
+        ):
+            self._create_task(self._block_bundle)
+            self._block_bundle = None
 
     def work_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         task = self._tasks.pop(ref)

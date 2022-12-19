@@ -33,6 +33,7 @@ class MapOperator(PhysicalOperator):
         input_op: PhysicalOperator,
         name: str = "Map",
         compute_strategy: Optional[ComputeStrategy] = None,
+        target_block_size: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create a MapOperator.
@@ -48,6 +49,7 @@ class MapOperator(PhysicalOperator):
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
         self._output_metadata: List[BlockMetadata] = []
+        self.target_block_size = target_block_size
         if isinstance(self._strategy, TaskPoolStrategy):
             self._execution_state = MapOperatorTasksImpl(self)
         elif isinstance(self._strategy, ActorPoolStrategy):
@@ -94,6 +96,9 @@ class MapOperator(PhysicalOperator):
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)
+
+    def inputs_done(self, input_index: int) -> None:
+        self._execution_state.inputs_done(input_index)
 
     def has_next(self) -> bool:
         return self._execution_state.has_next()
