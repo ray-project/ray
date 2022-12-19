@@ -135,9 +135,9 @@ const MainNavBar = () => {
 
   return (
     <div className={classes.root}>
-      <div className={classes.logo}>
+      <Link className={classes.logo} to="/new">
         <img width={28} src={Logo} alt="Ray" />
-      </div>
+      </Link>
       {/* TODO (aguo): Get rid of /new prefix */}
       {NAV_ITEMS.map(({ title, path, id }) => (
         <Typography key={id}>
