@@ -277,6 +277,29 @@ def test_capture_child_tasks(ray_start_4_cpus):
     assert res
 
 
+def test_clear_state(ray_start_4_cpus):
+    """Test that clearing state will remove existing placement groups."""
+    manager = PlacementGroupResourceManager(update_interval_s=0)
+    manager.request_resources(REQUEST_1_2_CPU)
+    ray.wait(manager.get_resource_futures(), num_returns=1)
+
+    assert manager.has_resources_ready(REQUEST_1_2_CPU)
+
+    pg_states = _count_pg_states()
+    assert pg_states["CREATED"] == 1
+    assert pg_states["PENDING"] == 0
+    assert pg_states["REMOVED"] == 0
+
+    manager.clear()
+
+    assert not manager.has_resources_ready(REQUEST_1_2_CPU)
+
+    pg_states = _count_pg_states()
+    assert pg_states["CREATED"] == 0
+    assert pg_states["PENDING"] == 0
+    assert pg_states["REMOVED"] == 1
+
+
 if __name__ == "__main__":
     import sys
 

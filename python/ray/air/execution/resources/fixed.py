@@ -73,6 +73,11 @@ class FixedResourceManager(ResourceManager):
     acquiring a resource can change the availability of other requests. Note that
     this behavior may be changed in future implementations.
 
+    The fixed resource manager does not support placement strategies. Using
+    ``STRICT_SPREAD`` will result in an error. ``STRICT_PACK`` will succeed only
+    within a placement group bundle. All other placement group arguments will be
+    ignored.
+
     Args:
         total_resources: Budget of resources to manage. Defaults to all available
             resources in the current task or all cluster resources (if outside a task).
@@ -157,4 +162,5 @@ class FixedResourceManager(ResourceManager):
         self._used_resources.remove(resources)
 
     def clear(self):
-        pass
+        # Reset internal state
+        self.__init__(total_resources=self._total_resources)
