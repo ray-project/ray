@@ -5,7 +5,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     get_resource_usage,
-    format_web_url
+    format_web_url,
 )
 import requests
 import pytest
@@ -88,7 +88,9 @@ ray.get(refs)
         )
 
         pending = 0
-        demands = get_load_metrics_report(webui_url = ctx.address_info["webui_url"])["resourceDemand"]
+        demands = get_load_metrics_report(webui_url=ctx.address_info["webui_url"])[
+            "resourceDemand"
+        ]
         for demand in demands:
             resource_dict, amount = demand
             if "CPU" in resource_dict:
@@ -103,11 +105,15 @@ ray.get(refs)
         else:
             return pending == 0 and backlog == 0
 
-    wait_for_condition(check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog = True)
+    wait_for_condition(
+        check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog=True
+    )
 
     os.kill(proc.pid, 9)
 
-    wait_for_condition(check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog = False)
+    wait_for_condition(
+        check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog=False
+    )
 
 
 if __name__ == "__main__":

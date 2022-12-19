@@ -1643,6 +1643,7 @@ def get_load_metrics_report(webui_url):
     response.raise_for_status()
     return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 
+
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
