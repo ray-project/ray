@@ -391,22 +391,12 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-
-                def is_logfile(key, file_info):
-                    # Allow both windows and posix file separators
-                    normpath = os.path.normpath(file_info.filename)
-                    return os.path.split(normpath)[1].startswith(key)
-
-                # if is_logfile("raylet", file_info):
                 if "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
-                # elif is_logfile("gcs_server", file_info):
                 elif "/gcs_server" in file_info.filename:
                     file_info.worker_pid = "gcs_server"
-                # elif is_logfile("monitor", file_info):
                 elif "/monitor" in file_info.filename:
                     file_info.worker_pid = "autoscaler"
-                # elif is_logfile("runtime_env", file_info):
                 elif "/runtime_env" in file_info.filename:
                     file_info.worker_pid = "runtime_env"
 
@@ -462,13 +452,14 @@ def _is_proc_alive(pid):
         # The process does not exist.
         return False
 
+
 def is_proc_alive(pid):
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            # If OSError is raised, the process is not alive.
-            return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        # If OSError is raised, the process is not alive.
+        return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
