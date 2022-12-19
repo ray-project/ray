@@ -1,6 +1,6 @@
 
 import functools
-from typing import Union, Type, Mapping, Any, Tuple, Optional, List
+from typing import Union, Type, Mapping, Any, Tuple, Optional, List, Callable
 
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
@@ -29,18 +29,20 @@ def _convert_to_canonical_format(spec: SupportedSpecs) -> Union[SpecsAbstract, M
                 spec[key] = TypeSpec(spec[key])
         
         return spec
+
+    if isinstance(spec, type):
+        return TypeSpec(spec)
     
     # otherwise, assume spec is already in canonical format
     return spec
 
-def _should_validate(cls_instance, method, cache: bool = False):
-    return not cache or method.__name__ not in cls_instance.__checked_input_specs_cache__
+def _should_validate(cls_instance, method, tag: str = "input"):
+    cache_store = getattr(cls_instance, f"__checked_{tag}_specs_cache__", None)
+    return cache_store is None or method.__name__ not in cache_store
 
-def _validate(cls_instance, method, data, spec, tag="data"):
+def _validate(*, cls_instance: object, method: Callable, data: Any, spec: SpecsAbstract, filter: bool = False, tag: str = "input"):   
     is_mapping = isinstance(spec, ModelSpec)
-    is_tensor = isinstance(spec, TensorSpec)
-    # use cls_instance to infer cache from
-    cache_miss = _should_validate(cls_instance, method, cache=cache)
+    cache_miss = _should_validate(cls_instance, method, tag=tag)
 
     if is_mapping:
         if not isinstance(data, Mapping):
@@ -59,14 +61,6 @@ def _validate(cls_instance, method, data, spec, tag="data"):
                 f"{cls_instance.__class__.__name__}.{method.__name__}, {e}."
             )
 
-        if not (is_tensor or is_mapping):
-            if not isinstance(data, spec):
-                raise ValueError(
-                    f"Input spec validation failed on "
-                    f"{cls_instance.__class__.__name__}.{method.__name__}, "
-                    f"expected {spec.__name__}, got "
-                    f"{type(data).__name__}."
-                )
     return data
 
 
@@ -89,11 +83,12 @@ def check_input_specs(
                 input_spec_ = getattr(self, input_spec)
                 input_spec_ = _convert_to_canonical_format(input_spec_)
                 input_data_ = _validate(
-                    self,
-                    func,
-                    input_data,
-                    input_spec_,
-                    tag="input_data",
+                    cls_instance=self,
+                    method=func,
+                    data=input_data,
+                    spec=input_spec_,
+                    filter=filter,
+                    tag="input",
                 )
 
                 if filter and isinstance(input_data_, NestedDict):
@@ -128,13 +123,13 @@ def check_output_specs(
 
             if output_spec:
                 output_spec_ = getattr(self, output_spec)
+                output_spec_ = _convert_to_canonical_format(output_spec_)
                 _validate(
-                    self,
-                    func,
-                    output_data,
-                    output_spec_,
-                    cache=cache,
-                    tag="output_data",
+                    cls_instance=self,
+                    method=func,
+                    data=output_data,
+                    spec=output_spec_,
+                    tag="output",
                 )
 
             if cache and func.__name__ not in self.__checked_output_specs_cache__:
