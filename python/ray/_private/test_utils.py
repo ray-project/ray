@@ -18,6 +18,8 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+
+import requests
 from ray._raylet import Config
 
 import grpc
@@ -1633,6 +1635,13 @@ def get_resource_usage(gcs_address, timeout=10):
 
     return resources_batch_data
 
+
+# Gets the load metrics report assuming gcs is local.
+def get_load_metrics_report(webui_url):
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):

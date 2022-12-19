@@ -1,5 +1,6 @@
 import ray
 from ray._private.test_utils import (
+    get_load_metrics_report,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -69,7 +70,7 @@ def f():
     import time
     time.sleep(300)
 
-refs = [f.remote() for _ in range(10000)]w
+refs = [f.remote() for _ in range(10000)]
 
 ray.get(refs)
   """
@@ -87,11 +88,7 @@ ray.get(refs)
         )
 
         pending = 0
-        webui_url = ctx.address_info["webui_url"]
-        webui_url = format_web_url(webui_url)
-        response = requests.get(f"{webui_url}/api/cluster_status")
-        response.raise_for_status()
-        demands = response.json()["data"]["clusterStatus"]["loadMetricsReport"]["resourceDemand"]
+        demands = get_load_metrics_report(webui_url = ctx.address_info["webui_url"])["resourceDemand"]
         for demand in demands:
             resource_dict, amount = demand
             if "CPU" in resource_dict:
