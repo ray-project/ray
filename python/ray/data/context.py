@@ -149,6 +149,7 @@ class DatasetContext:
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
+        self.trace_allocations = True
 
     @staticmethod
     def get_current() -> "DatasetContext":

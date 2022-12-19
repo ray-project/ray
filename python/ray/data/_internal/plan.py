@@ -324,8 +324,7 @@ class ExecutionPlan:
                 )
                 # TODO(ekl) this is confusing; we should be able to get rid of owned
                 # by consumer flag in favor of just properly setting "owns_blocks".
-                if not self._run_by_consumer:
-                    blocks._owned_by_consumer = False
+                blocks._owned_by_consumer = self._run_by_consumer
                 stats = executor.get_stats()
 
             else:

@@ -1133,7 +1133,6 @@ class Dataset(Generic[T]):
         if locality_hints is None:
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
-            print("SPLIT DATASET", blocks, owned_by_consumer)
             return [
                 Dataset(
                     ExecutionPlan(

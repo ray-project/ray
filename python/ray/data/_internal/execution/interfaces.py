@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
 from ray.data._internal.stats import DatasetStats, StatsDict
+from ray.data._internal.util import _trace_deallocation
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
@@ -68,11 +69,15 @@ class RefBundle:
         """
         if self.owns_blocks and DatasetContext.get_current().eager_free:
             size = self.size_bytes()
+            for b in self.blocks:
+                _trace_deallocation(b[0], "RefBundle.destroy_if_owned")
             ray._private.internal_api.free(
                 [b[0] for b in self.blocks], local_only=False
             )
             return size
         else:
+            for b in self.blocks:
+                _trace_deallocation(b[0], "RefBundle.destroy_if_owned", freed=False)
             return 0
 
 
