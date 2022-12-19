@@ -34,17 +34,25 @@ class DatasetLogger:
         # parameter `log_to_stdout = False`, `_logger.propagate` will be set
         # to `False` in order to prevent the root logger from writing the log
         # to stdout.
-        self._logger = logging.getLogger(f"{log_name}.logfile")
-        # We need to set the log level again when explicitly
-        # initializing a new logger (otherwise can have undesirable level).
-        self._logger.setLevel(LOGGER_LEVEL.upper())
+        self.log_name = log_name
+        self._logger = None  # initialized in self._initialize_logger()
+        self._initialize_logger()
 
-        # Add log handler which writes to a separate Datasets log file
-        # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
+    def _initialize_logger(self):
+        """ Internal method to initialize the logger and the extra file handler
+        for writing to the Dataset log file. Not intended (nor should it be necessary)
+        to call explicitly. """
+        # With current implementation, we can only get session_dir
+        # after ray.init() is called. A less hacky way could potentially fix this
         global_node = ray._private.worker._global_node
         if global_node is not None:
-            # With current implementation, we can only get session_dir
-            # after ray.init() is called. A less hacky way could potentially fix this
+            self._logger = logging.getLogger(f"{self.log_name}.logfile")
+            # We need to set the log level again when explicitly
+            # initializing a new logger (otherwise can have undesirable level).
+            self._logger.setLevel(LOGGER_LEVEL.upper())
+
+            # Add log handler which writes to a separate Datasets log file
+            # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
             session_dir = global_node.get_session_dir_path()
             self.datasets_log_path = os.path.join(
                 session_dir,
@@ -71,5 +79,7 @@ class DatasetLogger:
         also removes the need for this getter method:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
+        if not self._logger:
+            self._initialize_logger()
         self._logger.propagate = log_to_stdout
         return self._logger
