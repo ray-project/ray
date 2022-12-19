@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     retry = set()
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39"]:
+        for py_version in ["36", "37", "38", "39", "310"]:
             if "dev" in ray.__version__:
                 url = get_master_wheel_url(
                     ray_commit=ray.__commit__,
