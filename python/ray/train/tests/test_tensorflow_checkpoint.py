@@ -58,7 +58,7 @@ class TestFromModel(unittest.TestCase):
         checkpoint = TensorflowCheckpoint.from_model(
             self.model, preprocessor=DummyPreprocessor(1)
         )
-        loaded_model = checkpoint.get_model(model_definition=get_model)
+        loaded_model = checkpoint.get_model(model=get_model)
         preprocessor = checkpoint.get_preprocessor()
 
         assert compare_weights(loaded_model.get_weights(), self.model.get_weights())
@@ -92,7 +92,7 @@ class TestFromModel(unittest.TestCase):
                 preprocessor=DummyPreprocessor(1),
             )
             with pytest.warns(None):
-                loaded_model = checkpoint.get_model(model_definition=get_model)
+                loaded_model = checkpoint.get_model(model=get_model)
             preprocessor = checkpoint.get_preprocessor()
             assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
             assert preprocessor.multiplier == 1
