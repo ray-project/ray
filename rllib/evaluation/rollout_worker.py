@@ -186,9 +186,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ...     policies={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.99)),
         ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.95)),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
@@ -512,9 +514,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
-
-        if self.config.log_level:
-            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
@@ -1599,8 +1598,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
-        for pid in self.policy_map:
-            policy_states[pid] = self.policy_map[pid].get_state()
+        for pid in self.policy_map.keys():
+            # If required by the user, only capture policies that are actually
+            # trainable. Otherwise, capture all policies (for saving to disk).
+            if (
+                not self.config.checkpoint_trainable_policies_only
+                or self.is_policy_to_train is None
+                or self.is_policy_to_train(pid)
+            ):
+                policy_states[pid] = self.policy_map[pid].get_state()
+
         return {
             # List all known policy IDs here for convenience. When an Algorithm gets
             # restored from a checkpoint, it will not have access to the list of

@@ -491,15 +491,6 @@ class Algorithm(Trainable):
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
-        log_level = self.config.get("log_level")
-        if log_level in ["WARN", "ERROR"]:
-            logger.info(
-                "Current log_level is {}. For more information, "
-                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
-                "-vv flags.".format(log_level)
-            )
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -523,9 +514,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.evaluation(evaluation_config={"
-                f"'off_policy_estimation_methods'={ope_dict}"
-                "})",
+                new="config.evaluation(evaluation_config=config.overrides("
+                f"off_policy_estimation_methods={ope_dict}"
+                "))",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )

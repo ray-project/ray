@@ -166,6 +166,20 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
   }
 
+  void WaitUntilIoServiceDone() {
+    // In this test, io service is running in a different thread.
+    // That means it can have a thread safety issue, if the test thread
+    // touches private attributes while io service is accessing it.
+    // This method returns when there's no more task in the io service,
+    // meaning it can be used to avoid thread-safety issue.
+    // The method should be used after calling APIs that
+    // post a new task to IO service.
+    auto cnt = 0;
+    io_service_.post([&cnt]() { cnt += 1; }, "");
+    auto condition = [&cnt]() { return cnt == 1; };
+    EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
+  }
+
   ExponentialBackOff GetExpBackOff() { return ExponentialBackOff(0, 1); }
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
@@ -425,7 +439,51 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
 }
 
+TEST_F(GcsPlacementGroupManagerTest, TestReschedulingRetry) {
+  ///
+  /// Test when the rescheduling is failed, the scheduling is retried.
+  /// pg scheduled -> pg created -> node dead ->
+  /// pg rescheduled -> rescheduling failed -> retry.
+  ///
+  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+  OnPlacementGroupCreationSuccess(placement_group);
+  WaitUntilIoServiceDone();
+
+  // Placement group is now rescheduled because bundles are killed.
+  mock_placement_group_scheduler_->group_on_dead_node_ =
+      placement_group->GetPlacementGroupID();
+  mock_placement_group_scheduler_->bundles_on_dead_node_.push_back(0);
+  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
+  const auto &bundles =
+      mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
+  EXPECT_TRUE(NodeID::FromBinary(bundles[0]->GetMessage().node_id()).IsNil());
+  EXPECT_FALSE(NodeID::FromBinary(bundles[1]->GetMessage().node_id()).IsNil());
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::RESCHEDULING);
+
+  // Rescheduling failed. It should be retried.
+  placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      placement_group, GetExpBackOff(), true);
+  WaitUntilIoServiceDone();
+  WaitForExpectedPgCount(1);
+  // Verify the pg scheduling is retried when its state is RESCHEDULING.
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
+            placement_group->GetPlacementGroupID());
+}
+
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
+  ///
+  /// Test the basic case.
+  /// pg scheduled -> pg created -> node dead -> pg rescheduled.
+  ///
   auto request1 = Mocker::GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
@@ -436,6 +494,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   OnPlacementGroupCreationSuccess(placement_group);
+  WaitUntilIoServiceDone();
 
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
   // placement group. The placement group state is set to `RESCHEDULING`
@@ -452,23 +511,19 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::RESCHEDULING);
 
   // Test placement group rescheduling success.
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
-  WaitForExpectedPgCount(1);
-  mock_placement_group_scheduler_->placement_groups_.pop_back();
-
-  // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
-  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
-  placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  mock_placement_group_scheduler_->placement_groups_.pop_back();
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
-      placement_group, GetExpBackOff(), true);
-  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-  WaitForExpectedPgCount(1);
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
-            placement_group->GetPlacementGroupID());
+  WaitUntilIoServiceDone();
 }
+
+/// TODO(sang): Currently code is badly structured that it is difficult to test
+/// the following scenarios. We should rewrite some APIs and handle them.
+/// 1. Node is dead before finishing to create a pg
+/// (in this case, we should cancel the in-flight scheduling
+/// and prioritze rescheduling to avoid partially allocated pg,
+/// 2. While doing rescheduling, an additional node is dead.
+/// relevant: https://github.com/ray-project/ray/pull/24875
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
   // Create a placement group and make sure it has been created successfully.

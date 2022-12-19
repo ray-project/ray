@@ -19,7 +19,6 @@ class Distribution(abc.ABC):
         >>> logp = action_dist.logp(action)
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
-
     """
 
     @abc.abstractmethod

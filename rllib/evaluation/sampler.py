@@ -783,31 +783,6 @@ def _process_observations(
         # Check episode termination conditions.
         if dones[env_id]["__all__"]:
             all_agents_done = True
-            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if not episode.is_faulty:
-                if atari_metrics is not None:
-                    for m in atari_metrics:
-                        outputs.append(
-                            m._replace(
-                                custom_metrics=episode.custom_metrics,
-                                hist_data=episode.hist_data,
-                            )
-                        )
-                else:
-                    outputs.append(
-                        RolloutMetrics(
-                            episode.length,
-                            episode.total_reward,
-                            dict(episode.agent_rewards),
-                            episode.custom_metrics,
-                            {},
-                            episode.hist_data,
-                            episode.media,
-                        )
-                    )
-            else:
-                # Add metrics about a faulty episode.
-                outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -960,6 +935,7 @@ def _process_observations(
             # If an episode was marked faulty, perform regular postprocessing
             # (to e.g. properly flush and clean up the SampleCollector's buffers),
             # but then discard the entire batch and don't return it.
+            ma_sample_batch = None
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
@@ -968,9 +944,6 @@ def _process_observations(
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )
             if not episode.is_faulty:
-                if ma_sample_batch:
-                    outputs.append(ma_sample_batch)
-
                 # Call each (in-memory) policy's Exploration.on_episode_end
                 # method.
                 # Note: This may break the exploration (e.g. ParameterNoise) of
@@ -994,6 +967,40 @@ def _process_observations(
                     episode=episode,
                     env_index=env_id,
                 )
+
+            # Now that all callbacks are done and users had the chance to add custom
+            # metrics based on the last observation in the episode, finish up metrics
+            # object and append to `outputs`.
+            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
+            if not episode.is_faulty:
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        outputs.append(
+                            m._replace(
+                                custom_metrics=episode.custom_metrics,
+                                hist_data=episode.hist_data,
+                            )
+                        )
+                else:
+                    outputs.append(
+                        RolloutMetrics(
+                            episode.length,
+                            episode.total_reward,
+                            dict(episode.agent_rewards),
+                            episode.custom_metrics,
+                            {},
+                            episode.hist_data,
+                            episode.media,
+                        )
+                    )
+            else:
+                # Add metrics about a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
+
+            # Only after the RolloutMetrics were appended, append the collected sample
+            # batch, if any.
+            if not episode.is_faulty and ma_sample_batch:
+                outputs.append(ma_sample_batch)
 
             # Terminated: Try to reset the sub environment.
             # Clean up old finished episode.
@@ -1219,9 +1226,11 @@ def _process_policy_eval_results(
             agent_id: AgentID = eval_data[i].agent_id
             episode: Episode = active_episodes[env_id]
             _assert_episode_not_faulty(episode)
-            episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+            episode._set_rnn_state(
+                agent_id, tree.map_structure(lambda x: x[i], rnn_out_cols)
+            )
             episode._set_last_extra_action_outs(
-                agent_id, {k: v[i] for k, v in extra_action_out_cols.items()}
+                agent_id, tree.map_structure(lambda x: x[i], extra_action_out_cols)
             )
             if env_id in off_policy_actions and agent_id in off_policy_actions[env_id]:
                 episode._set_last_action(agent_id, off_policy_actions[env_id][agent_id])

@@ -186,8 +186,9 @@ class ClientBuilder:
             ray_init_kwargs=self._remote_init_kwargs,
             metadata=self._metadata,
         )
-        get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
-        dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
+
+        dashboard_url = ray.util.client.ray._get_dashboard_url()
+
         cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],

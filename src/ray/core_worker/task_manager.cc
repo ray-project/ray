@@ -104,6 +104,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
+    RecordTaskStatusEvent(inserted.first->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
   }
 
   return returned_refs;
@@ -124,7 +125,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      SetTaskStatus(it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL);
       it->second.MarkRetryOnResubmit();
       num_pending_tasks_++;
 
@@ -380,9 +381,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     if (is_application_error) {
-      it->second.SetStatus(rpc::TaskStatus::FAILED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     } else {
-      it->second.SetStatus(rpc::TaskStatus::FINISHED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
     num_pending_tasks_--;
 
@@ -450,7 +451,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
       it->second.MarkRetryOnFailed();
     }
   }
@@ -501,7 +502,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    it->second.SetStatus(rpc::TaskStatus::FAILED);
+    SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -772,7 +773,7 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
     return;
   }
   if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -784,8 +785,47 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
     return;
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   it->second.SetNodeId(node_id);
+  SetTaskStatus(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
+}
+
+void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
+  task_entry.SetStatus(status);
+  RecordTaskStatusEvent(task_entry, status);
+}
+
+rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
+    const TaskSpecification &task_spec) const {
+  rpc::TaskInfoEntry task_info;
+  return task_info;
+
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info.set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info.set_type(type);
+  task_info.set_name(task_spec.GetName());
+  task_info.set_language(task_spec.GetLanguage());
+  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  // NOTE(rickyx): we will have scheduling states recorded in the events list.
+  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info.set_job_id(task_spec.JobId().Binary());
+
+  task_info.set_task_id(task_spec.TaskId().Binary());
+  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info.mutable_required_resources()->insert(resources_map.begin(),
+                                                 resources_map.end());
+  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+
+  return task_info;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -837,6 +877,56 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   task_counter_.FlushOnChangeCallbacks();
+}
+
+void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
+                                        rpc::TaskStatus status) {
+  if (!task_event_buffer_.Enabled()) {
+    return;
+  }
+  // Make task event
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(task_entry.spec.TaskId().Binary());
+  task_event.set_job_id(task_entry.spec.JobId().Binary());
+  task_event.set_attempt_number(task_entry.spec.AttemptNumber());
+  auto state_updates = task_event.mutable_state_updates();
+  switch (status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    // Initialize a new TaskInfoEntry
+    auto task_info = MakeTaskInfoEntry(task_entry.spec);
+    task_event.mutable_task_info()->Swap(&task_info);
+    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    RAY_CHECK(!task_entry.GetNodeId().IsNil())
+        << "Node ID should have been set on the TaskEntry before updating it's status "
+           "to "
+           "SUBMITTED_TO_WORKER.";
+    // Update the node id
+    state_updates->set_node_id(task_entry.GetNodeId().Binary());
+    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  default: {
+    // NOTE: Other task status (e.g. TaskStatus::RUNNING_IN_XXX), should not be set by the
+    // TaskManager.
+    UNREACHABLE;
+  }
+  }
+  task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
