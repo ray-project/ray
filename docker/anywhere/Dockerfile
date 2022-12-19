@@ -12,7 +12,7 @@ cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" "-DN2N_OPTION_
 cmake --build . && \
 cmake --install .
 ## building crate
-RUN cd /root && mkdir -p crate \ 
+RUN cd /root && mkdir -p crate \
 #    groupadd crate \
 #    && useradd -u 1000 -g crate -d crate crate \
     && export PLATFORM="$( \
@@ -89,7 +89,5 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-CMD ["/bin/sh"]
+
 #CMD ["/usr/bin/supernode" "-AS" "-l=${DDNS_HOST}" "-r" "-b" "-v" "-d n2n0"]
-
-
