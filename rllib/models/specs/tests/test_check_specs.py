@@ -5,11 +5,12 @@ import torch
 from typing import Dict, Any, Type
 import unittest
 
-from ray.rllib.models.specs.specs_base import TensorSpec
+from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.models.specs.checker import _convert_to_canonical_format
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -268,6 +269,41 @@ class TestCheckSpecs(unittest.TestCase):
         output = module.forward_pass(torch.rand(2, 4))
         self.assertIsInstance(output, SpecialOutputType)
         self.assertRaises(ValueError, lambda: module.forward_fail(torch.rand(2, 3)))
+
+    def test_convert_to_canonical_format(self):
+
+        # Case: input is a list of strs
+        self.assertDictEqual(
+            _convert_to_canonical_format(["foo", "bar"]).asdict(), 
+            ModelSpec({"foo": None, "bar": None}).asdict()
+        )
+
+        # Case: input is a list of strs and nested strs
+        self.assertDictEqual(
+            _convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
+            ModelSpec({"foo": None, "bar": {"jar": None}}).asdict()
+        )
+
+        # Case: input is a Nested Mapping
+        returned = _convert_to_canonical_format(
+            {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int, "car": None}}
+        )
+        self.assertIsInstance(returned, ModelSpec)
+        self.assertDictEqual(
+            returned.asdict(), 
+            ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int), "car": None}}).asdict()
+        )
+
+        # Case: input is a ModelSpec already
+        returned = _convert_to_canonical_format(ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}}))
+        self.assertIsInstance(returned, ModelSpec)
+        self.assertDictEqual(
+            returned.asdict(),
+            ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}).asdict()
+        )
+        
+
+
 
 
 if __name__ == "__main__":

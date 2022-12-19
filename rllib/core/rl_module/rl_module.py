@@ -196,7 +196,7 @@ class RLModule(abc.ABC):
         has `action_dist` key and its value is an instance of `Distribution`.
         This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> ModelSpec:
@@ -207,27 +207,26 @@ class RLModule(abc.ABC):
         that has `action_dist` key and its value is an instance of
         `Distribution`. This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
     def output_specs_train(self) -> ModelSpec:
         """Returns the output specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
     def input_specs_inference(self) -> ModelSpec:
         """Returns the input specs of the forward_inference method."""
-        return ModelSpec()
+        return {}
 
     def input_specs_exploration(self) -> ModelSpec:
         """Returns the input specs of the forward_exploration method."""
-        return ModelSpec()
+        return {}
 
     def input_specs_train(self) -> ModelSpec:
         """Returns the input specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
-    @check_specs(
-        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
-    )
+    # @check_input_specs("_input_specs_inference", only_keys=True)
+    # @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method.
@@ -247,9 +246,8 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    @check_specs(
-        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
-    )
+    # @check_input_specs("_input_specs_exploration", only_keys=True)
+    # @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -271,7 +269,8 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
+    # @check_input_specs("_input_specs_train", only_keys=True)
+    # @check_output_specs("_output_specs_train")
     def forward_train(
         self,
         batch: SampleBatchType,
