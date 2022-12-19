@@ -6,11 +6,14 @@ Input/Output
 Synthetic Data
 --------------
 
-.. autofunction:: ray.data.range
+.. currentmodule:: ray.data
 
-.. autofunction:: ray.data.range_table
+.. autosummary::
+   :toctree: generated/
 
-.. autofunction:: ray.data.range_tensor
+   range
+   range_table
+   range_tensor
 
 Python Objects
 --------------
