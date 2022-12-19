@@ -69,8 +69,9 @@ class ReplicaState(Enum):
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
     PENDING_INITIALIZATION = 2
-    SUCCEEDED = 3
-    FAILED = 4
+    PENDING_INITIAL_HEALTH_CHECK = 3
+    SUCCEEDED = 4
+    FAILED = 5
 
 
 class ReplicaHealthCheckResponse(Enum):
@@ -459,23 +460,43 @@ class ActorReplicaWrapper:
         # surface exception to each update() cycle.
         if not replica_ready:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
-        else:
-            try:
-                # TODO(simon): fully implement reconfigure for Java replicas.
-                if self._is_cross_language:
-                    return ReplicaStartupStatus.SUCCEEDED, None
 
-                deployment_config, version = ray.get(self._ready_obj_ref)
-                self._max_concurrent_queries = deployment_config.max_concurrent_queries
-                self._graceful_shutdown_timeout_s = (
-                    deployment_config.graceful_shutdown_timeout_s
-                )
-                self._health_check_period_s = deployment_config.health_check_period_s
-                self._health_check_timeout_s = deployment_config.health_check_timeout_s
-                self._node_id = ray.get(self._allocated_obj_ref).hex()
-            except Exception:
-                logger.exception(f"Exception in deployment '{self._deployment_name}'")
-                return ReplicaStartupStatus.FAILED, None
+        # Once replica initialization completed, start initial health check
+        if self._health_check_ref is None:
+            self._health_check_ref = self._actor_handle.check_health.remote()
+        # Wait for health check to complete without blocking
+        if not self._check_obj_ref_ready(self._health_check_ref):
+            return ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK, None
+
+        try:
+            # TODO(simon): fully implement reconfigure for Java replicas.
+            if self._is_cross_language:
+                return ReplicaStartupStatus.SUCCEEDED, None
+
+            deployment_config, version = ray.get(self._ready_obj_ref)
+            self._max_concurrent_queries = deployment_config.max_concurrent_queries
+            self._graceful_shutdown_timeout_s = (
+                deployment_config.graceful_shutdown_timeout_s
+            )
+            self._health_check_period_s = deployment_config.health_check_period_s
+            self._health_check_timeout_s = deployment_config.health_check_timeout_s
+            self._node_id = ray.get(self._allocated_obj_ref).hex()
+        except Exception:
+            logger.exception(f"Exception in deployment '{self._deployment_name}'")
+            return ReplicaStartupStatus.FAILED, None
+
+        # A new replica should not be considered healthy until it passes an initial
+        # health check. Before marking a replica as RUNNING, if an initial health check
+        # fails, mark deployment as UNHEALTHY and restart replica.
+        try:
+            ray.get(self._health_check_ref)
+            self._health_check_ref = None
+        except Exception:
+            logger.exception(
+                f"Deployment {self._deployment_name} failed initial health check."
+            )
+            return ReplicaStartupStatus.FAILED, None
+
         if self._deployment_is_cross_language:
             # todo: The replica's userconfig whitch java client created
             #  is different from the controller's userconfig
@@ -1406,9 +1427,10 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        "The Deployment constructor failed "
-                        f"{failed_to_start_count} times in a row. See "
-                        "logs for details."
+                        f"The Deployment failed to start {failed_to_start_count} "
+                        "times in a row. This may be due to a problem with the "
+                        "deployment constructor or the initial health check failing. "
+                        "See logs for details."
                     ),
                 )
                 return False
@@ -1469,6 +1491,7 @@ class DeploymentState:
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
+                ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK,
             ]:
 
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
@@ -1546,12 +1569,15 @@ class DeploymentState:
 
             pending_allocation = []
             pending_initialization = []
+            pending_initial_health_check = []
 
             for replica, startup_status in slow_start_replicas:
                 if startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
                     pending_allocation.append(replica)
                 if startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
                     pending_initialization.append(replica)
+                if startup_status == ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK:
+                    pending_initial_health_check.append(replica)
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
@@ -1595,6 +1621,22 @@ class DeploymentState:
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
+            
+            if len(pending_initial_health_check) > 0:
+                message = (
+                    f"Deployment {self._name} has {len(pending_initial_health_check)} "
+                    f"replicas that have taken more than {SLOW_STARTUP_WARNING_S}s"
+                    f"to receive a health check response. This may be caused by a slow "
+                    f"check_health method."
+                )
+                logger.warning(message)
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
+                
 
             self._prev_startup_warning = time.time()
 
