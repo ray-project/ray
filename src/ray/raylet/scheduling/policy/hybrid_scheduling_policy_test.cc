@@ -77,6 +77,10 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
 
 TEST_F(HybridSchedulingPolicyTest, NumNodesToSelect) {
   HybridSchedulingPolicy policy{local_node, {}, [](scheduling::NodeID) { return true; }};
+  int32_t schedule_top_k_absolute = 1;
+  for (int32_t schedule_top_k_absolute = 1; schedule_top_k_absolute <= 10; schedule_top_k_absolute++) {
+    EXPECT_EQ(schedule_top_k_absolute, NumNodesToSelect(schedule_top_k_absolute, 0, 10, 10));
+  }
 }
 
 int main(int argc, char **argv) {
