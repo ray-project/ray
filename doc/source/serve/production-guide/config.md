@@ -67,24 +67,6 @@ deployments:
 
 The file uses the same `fruit:deployment_graph` import path that was used with `serve run` and it has five entries in the `deployments` list– one for each deployment. All the entries contain a `name` setting and some other configuration options such as `num_replicas` or `user_config`.
 
-## The `user_config` parameter
-
-The `user_config` field can be used to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve will then apply it to all running and future deployment replicas. The application of user configuration *will not* restart the replica. This means you can use this field to dynamically:
-- adjust model weights and versions without restarting the cluster.
-- adjust traffic splitting percentage for your model composition graph.
-- configure any feature flag, A/B tests, and hyper-parameters for your deployments.
-
-The enable your deployment supports the user configuration feature, you just need to implement a `reconfigure` method that takes one argument:
-
-```python
-@serve.deployment
-class Model:
-    def reconfigure(self, config: Dict[str, Any]):
-        self.threshold = config["threshold"]
-```
-
-The reconfigure method is called when the class is created if user_config is set. In particular, it's also called when new replicas are created in the future if scale up your deployment later. The reconfigure method is also called each time user_config is updated.
-
 :::{tip}
 Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `PearStand`, including its `name` and `user_config`, and the file would still be valid. When we deploy the file, the `PearStand` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the deployment graph's code.
 :::
@@ -188,3 +170,31 @@ Serve will set `num_replicas=5`, using the config file value, and `max_concurren
 :::{tip}
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It will treat these missing options as though the user never set them and will use defaults instead. This dictionary overriding behavior also applies to `user_config`.
 :::
+
+## Dynamically adjusting parameters in deployment
+
+The `user_config` field can be used to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve will then apply it to all running and future deployment replicas. The application of user configuration *will not* restart the replica. This means you can use this field to dynamically:
+- adjust model weights and versions without restarting the cluster.
+- adjust traffic splitting percentage for your model composition graph.
+- configure any feature flag, A/B tests, and hyper-parameters for your deployments.
+
+The enable your deployment supports the user configuration feature, you just need to implement a `reconfigure` method that takes one argument:
+
+```python
+@serve.deployment
+class Model:
+    def reconfigure(self, config: Dict[str, Any]):
+        self.threshold = config["threshold"]
+```
+
+The reconfigure method is called when the class is created if user_config is set. In particular, it's also called when new replicas are created in the future if scale up your deployment later. The reconfigure method is also called each time user_config is updated.
+
+The corresponding YAML snippet is
+
+```yaml
+...
+deployments:
+    - name: Model
+      user_config:
+        threshold: 1.5
+```
