@@ -69,7 +69,7 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
     if __name__ == "__main__":
         spark = SparkSession \
             .builder \
-            .appName("Ray on spark example 1") \
+            .appName("long running ray cluster on spark") \
             .config("spark.task.cpus", "4") \
             .getOrCreate()
 
