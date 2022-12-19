@@ -210,7 +210,7 @@ class TensorflowCheckpoint(Checkpoint):
 
     def get_model(
         self,
-        model: Optional[Union[tf.Keras.Model, Callable[[], tf.keras.Model]]] = None,
+        model: Optional[Union[tf.keras.Model, Callable[[], tf.keras.Model]]] = None,
         model_definition: Optional[Callable[[], tf.keras.Model]] = None,
     ) -> tf.keras.Model:
         """Retrieve the model stored in this checkpoint.
@@ -226,7 +226,8 @@ class TensorflowCheckpoint(Checkpoint):
         if model_definition is not None:
             warnings.warn(
                 "The `model_definition` parameter is deprecated. Use the `model` "
-                "parameter instead."
+                "parameter instead.",
+                DeprecationWarning,
             )
             model = model_definition
         if callable(model) and self._flavor is not self.Flavor.MODEL_WEIGHTS:
@@ -267,10 +268,10 @@ class TensorflowCheckpoint(Checkpoint):
         return model
 
     def _get_model_from_weights(
-        self, model: Union[tf.Keras.Model, Callable[[], tf.keras.Model]]
+        self, model: Union[tf.keras.Model, Callable[[], tf.keras.Model]]
     ) -> tf.keras.Model:
         assert self._flavor is self.Flavor.MODEL_WEIGHTS
-        assert self.model is not None
+        assert model is not None
 
         if callable(model):
             model = model()
@@ -292,4 +293,4 @@ class TensorflowCheckpoint(Checkpoint):
         assert self._flavor is self.Flavor.SAVED_MODEL
 
         with self.as_directory() as checkpoint_dir:
-            keras.models.load_model(checkpoint_dir)
+            return keras.models.load_model(checkpoint_dir)

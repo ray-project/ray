@@ -48,7 +48,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
-    "sphinx_thebe",
+    # "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
 ]

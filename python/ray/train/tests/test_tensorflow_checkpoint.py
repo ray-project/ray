@@ -37,6 +37,13 @@ def get_model():
     )
 
 
+def test_model_definition_raises_deprecation_warning():
+    model = get_model()
+    checkpoint = TensorflowCheckpoint.from_model(model)
+    with pytest.deprecated_call():
+        checkpoint.get_model(model_definition=get_model)
+
+
 def compare_weights(w1: List[ndarray], w2: List[ndarray]) -> bool:
     if not len(w1) == len(w2):
         return False
