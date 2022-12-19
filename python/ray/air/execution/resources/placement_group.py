@@ -98,7 +98,7 @@ class PlacementGroupResourceManager(ResourceManager):
         # - A ``PlacementGroup.ready()`` future is scheduled ("staging future")
         # - We update the scheduling state when we need to
         #   (e.g. when ``has_resources_ready()`` is called)
-        # - When staging futures resolved, a placement group is moved from "staging"
+        # - When staging futures resolve, a placement group is moved from "staging"
         #   to "ready"
         # - When a resource request is canceled, we remove a placement group from
         #   "staging". If there are not staged placement groups

@@ -120,8 +120,7 @@ class ResourceManager(abc.ABC):
         In this case, the futures can be awaited externally by an outer control loop.
 
         When a resource future resolved, you may want to call ``update_state()``
-        to force the resource manager to update its internal state, which will
-        make the resources ready to be acquired on the next call.
+        to force the resource manager to update its internal state immediately.
         """
         return []
 
