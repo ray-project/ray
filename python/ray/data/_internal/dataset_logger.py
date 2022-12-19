@@ -35,10 +35,10 @@ class DatasetLogger:
         # to `False` in order to prevent the root logger from writing the log
         # to stdout.
         self.log_name = log_name
-        self._logger = None  # initialized in self._initialize_logger()
-        self._initialize_logger()
+        # Lazily initialized in self._initialize_logger()
+        self._logger = None
 
-    def _initialize_logger(self):
+    def _initialize_logger(self) -> logging.Logger:
         """Internal method to initialize the logger and the extra file handler
         for writing to the Dataset log file. Not intended (nor should it be necessary)
         to call explicitly."""
@@ -54,16 +54,17 @@ class DatasetLogger:
             # Add log handler which writes to a separate Datasets log file
             # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
             session_dir = global_node.get_session_dir_path()
-            self.datasets_log_path = os.path.join(
+            datasets_log_path = os.path.join(
                 session_dir,
                 DatasetLogger.DEFAULT_DATASET_LOG_PATH,
             )
             # Add a FileHandler to write to the specific Ray Datasets log file,
             # using the standard default logger format used by the root logger
-            file_log_handler = logging.FileHandler(self.datasets_log_path)
+            file_log_handler = logging.FileHandler(datasets_log_path)
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
             file_log_handler.setFormatter(file_log_formatter)
             self._logger.addHandler(file_log_handler)
+        return self._logger
 
     def get_logger(self, log_to_stdout: bool = True):
         """
@@ -80,6 +81,6 @@ class DatasetLogger:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
         if not self._logger:
-            self._initialize_logger()
+            self._logger = self._initialize_logger()
         self._logger.propagate = log_to_stdout
         return self._logger
