@@ -481,7 +481,6 @@ class VectorEnvWrapper(BaseEnv):
         # If exceptions were returned, return MultiEnvDict mapping env indices to
         # these exceptions (for obs and infos).
         if isinstance(obs, Exception):
-            assert isinstance(infos, Exception)
             return {env_id: obs}, {env_id: infos}
         # Otherwise, return a MultiEnvDict (with single agent ID) and the actual
         # obs and info dicts.
