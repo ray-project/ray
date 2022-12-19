@@ -40,16 +40,12 @@ class ResourceRequest:
     Ray to scale up (autoscaling).
 
     Resource requests are compatible with the most fine-grained low-level resource
-    backend, which are Ray placement groups. Depending on the resource backend,
-    some arguments that are applicable to placement groups will not be respected
-    by other backends. This will be called out in the docstrings of the respective
-    backends.
+    backend, which are Ray placement groups.
 
     Args:
         bundles: A list of bundles which represent the resources requirements.
             E.g. ``[{"CPU": 1, "GPU": 1}]``.
-        strategy: The scheduling strategy to acquire the bundles. This is only
-            relevant if the resources are requested as placement groups.
+        strategy: The scheduling strategy to acquire the bundles.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -196,11 +192,10 @@ class ResourceRequest:
 @DeveloperAPI
 @dataclass
 class AcquiredResource(abc.ABC):
-    """Base class for available resources that have been acquired.
+    """Base class for resources that have been acquired.
 
-    Available here means that the resources are available for immediate scheduling.
-    E.g. for placement groups, this means that the placement group has been
-    created.
+    Acquired resources can be associated to Ray objects, which can then be
+    scheduled using these resources.
 
     Internally this can point e.g. to a placement group, a placement
     group bundle index, or just raw resources.
@@ -208,8 +203,6 @@ class AcquiredResource(abc.ABC):
     The main API is the `annotate_remote_objects` method. This will associate
     remote Ray objects (tasks and actors) with the acquired resources by setting
     the Ray remote options to use the acquired resources.
-
-    Parameters other than the `request` should be private.
     """
 
     resource_request: ResourceRequest

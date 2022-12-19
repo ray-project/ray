@@ -69,24 +69,14 @@ class PlacementGroupAcquiredResource(AcquiredResource):
 class PlacementGroupResourceManager(ResourceManager):
     """Resource manager using placement groups as the resource backend.
 
-    Ray core does not emit events when resources are available. Instead, we
-    have to periodically request and update the scheduling state of the
-    placement groups.
+    This manager will use placement groups to fulfill resource requests. Requesting
+    a resource will schedule the placement group. Acquiring a resource will
+    return a ``PlacementGroupAcquiredResource`` that can be used to schedule
+    Ray tasks and actors on the placement group. Freeing an acquired resource
+    will destroy the associated placement group.
 
-    Internally, the placement group lifecycle is like this:
-    - Resources are requested with ``request_resources()``
-    - A placement group is scheduled ("staged")
-    - A ``PlacementGroup.ready()`` is scheduled ("staging future")
-    - We update the scheduling state when we need to
-        (e.g. when ``has_resources_ready()`` is called)
-    - When staging futures resolved, a placement group is moved from "staging"
-        to "ready"
-    - When a resource request is canceled, we remove a placement group from "staging".
-        If there are not staged placement groups (because they are already "ready"),
-        we remove one from "ready" instead.
-    - When a resource is acquired, the pg is removed from "ready" and moved
-        to "acquired"
-    - When a resource is freed, the pg is removed from "acquired" and destroyed
+    Ray core does not emit events when resources are available. Instead, the
+    scheduling state has to be periodically updated.
 
     Per default, placement group scheduling state is refreshed every time when
     resource state is inquired, but not more often than once every ``update_interval_s``
@@ -102,18 +92,44 @@ class PlacementGroupResourceManager(ResourceManager):
     _resource_cls: AcquiredResource = PlacementGroupAcquiredResource
 
     def __init__(self, update_interval_s: float = 0.1):
+        # Internally, the placement group lifecycle is like this:
+        # - Resources are requested with ``request_resources()``
+        # - A placement group is scheduled ("staged")
+        # - A ``PlacementGroup.ready()`` future is scheduled ("staging future")
+        # - We update the scheduling state when we need to
+        #   (e.g. when ``has_resources_ready()`` is called)
+        # - When staging futures resolved, a placement group is moved from "staging"
+        #   to "ready"
+        # - When a resource request is canceled, we remove a placement group from
+        #   "staging". If there are not staged placement groups
+        #   (because they are already "ready"), we remove one from "ready" instead.
+        # - When a resource is acquired, the pg is removed from "ready" and moved
+        #   to "acquired"
+        # - When a resource is freed, the pg is removed from "acquired" and destroyed
+
+        # Mapping of placement group to request
         self._pg_to_request: Dict[PlacementGroup, ResourceRequest] = {}
+
+        # PGs that are staged but not "ready", yet (i.e. not CREATED)
         self._request_to_staged_pgs: Dict[
             ResourceRequest, Set[PlacementGroup]
         ] = defaultdict(set)
+
+        # PGs that are CREATED and can be used by tasks and actors
         self._request_to_ready_pgs: Dict[
             ResourceRequest, Set[PlacementGroup]
         ] = defaultdict(set)
 
+        # Staging futures used to update internal state.
+        # We keep a double mapping here for better lookup efficiency.
         self._staging_future_to_pg: Dict[ray.ObjectRef, PlacementGroup] = dict()
         self._pg_to_staging_future: Dict[PlacementGroup, ray.ObjectRef] = dict()
+
+        # Set of acquired PGs. We keep track of these here to make sure we
+        # only free PGs that this manager managed.
         self._acquired_pgs: Set[PlacementGroup] = set()
 
+        # Minimum time between updates of the internal state
         self.update_interval_s = update_interval_s
         self._last_update = time.monotonic() - self.update_interval_s - 1
 
@@ -129,8 +145,7 @@ class PlacementGroupResourceManager(ResourceManager):
         ready, not_ready = ray.wait(
             list(self._staging_future_to_pg.keys()),
             num_returns=len(self._staging_future_to_pg),
-            # Todo: Set to 0 once https://github.com/ray-project/ray/pull/30210 resolved
-            timeout=1e-6,
+            timeout=0,
         )
         for future in ready:
             # Remove staging future
@@ -211,6 +226,9 @@ class PlacementGroupResourceManager(ResourceManager):
 
         for acquired_pg in self._acquired_pgs:
             remove_placement_group(acquired_pg)
+
+        # Reset internal state
+        self.__init__(update_interval_s=self.update_interval_s)
 
     def __del__(self):
         self.clear()

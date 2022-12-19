@@ -17,21 +17,22 @@ class ResourceManager(abc.ABC):
     A resource manager can be used to request resources from a Ray cluster and
     allocate them to remote Ray tasks.
 
-    Because Ray clusters can autoscale, we need to request resources before
-    we can allocate them. Effectively this means we have to keep track
-    of requested resources (which can trigger autoscaling). Once the requested
-    resources are available to be scheduled, the control loop can acquire them.
+    Resources have to be requested before they can be acquired.
 
-    This separation also ensures that requests can be cancelled before they resolve
-    if resources are not needed anymore.
+    Resources managed by the resource manager can be in three states:
 
-    Thus, resources managed by the resource manager have three states:
-
-    1. Requested but not available (ready). The resource request is received,
-       but the resources are not available for use of remote Ray objects, yet.
-    2. Requested and ready. The resources can be acquired and subsequently used by
-       remote Ray objects.
-    3. Acquired. These resources have been acquired by a caller.
+    1. "Requested":  The resources have been requested but are not yet available to
+       schedule remote Ray objects. The resource request may trigger autoscaling,
+       and can be cancelled if no longer needed.
+    2. "Ready": The requested resources are now available to schedule remote Ray
+       objects. They can be acquired and subsequently used remote Ray objects.
+       The resource request can still be cancelled if no longer needed.
+    3. "Acquired": The resources have been acquired by a caller to use for scheduling
+       remote Ray objects. Note that it is the responsibility of the caller to
+       schedule the Ray objects with these resources.
+       The associated resource request has been removed and can no longer be cancelled.
+       The acquired resources can be returned to the resource manager when they are no
+       longer used.
 
     The flow is as follows:
 
@@ -66,51 +67,82 @@ class ResourceManager(abc.ABC):
     """
 
     def request_resources(self, resource_request: ResourceRequest):
-        """Request resources, e.g. schedule placement group."""
+        """Request resources.
+
+        Depending on the backend, resources can trigger autoscaling. Requested
+        resources can be ready or not ready. Once they are "ready", they can
+        be acquired and used by remote Ray objects.
+
+        Resource requests can be cancelled anytime using ``cancel_resource_request()``.
+        Once acquired, the resource request is removed. Acquired resources can be
+        returned with ``free_resources()``.
+        """
         raise NotImplementedError
 
     def cancel_resource_request(self, resource_request: ResourceRequest):
-        """Cancel resource request, e.g. remove placement group."""
+        """Cancel resource request.
+
+        Resource requests can be cancelled anytime before a resource is acquired.
+        Acquiring a resource will remove the associated resource request.
+        Acquired resources can be returned with ``free_resources()``.
+        """
         raise NotImplementedError
 
     def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
-        """Returns True if resources for the given request are available"""
+        """Returns True if resources for the given request are ready to be acquired."""
         raise NotImplementedError
 
     def acquire_resources(
         self, resource_request: ResourceRequest
     ) -> Optional[AcquiredResource]:
-        """Acquire resources. Returns None if resources are not available."""
+        """Acquire resources. Returns None if resources are not ready to be acquired.
+
+        Acquiring resources will remove the associated resource request.
+        Acquired resources can be returned with ``free_resources()``.
+        """
         raise NotImplementedError
 
     def free_resources(self, acquired_resource: AcquiredResource):
-        """Free resources from usage."""
+        """Free acquired resources from usage and return them to the resource manager.
+
+        Freeing resources will return the resources to the manager, but there are
+        no guarantees about the tasks and actors scheduled on the resources. The caller
+        should make sure that any references to tasks or actors scheduled on the
+        resources have been removed before calling ``free_resources()``.
+        """
         raise NotImplementedError
 
     def get_resource_futures(self) -> List[ray.ObjectRef]:
         """Return futures for resources to await.
 
         Depending on the backend, we use resource futures to determine availability
-        of resources (e.g. placement groups). In this case, they can be awaited
-        externally by an outer control loop.
+        of resources (e.g. placement groups) or resolution of requests.
+        In this case, the futures can be awaited externally by an outer control loop.
 
         When a resource future resolved, you may want to call ``update_state()``
         to force the resource manager to update its internal state, which will
-        make the resources available to be used on the next call.
+        make the resources ready to be acquired on the next call.
         """
         return []
 
     def update_state(self):
-        """Reconcile internal state with cluster state.
+        """Update internal state of the resource manager.
 
-        Depending on the backend, resource futures can be awaited externally
-        (with ``get_resource_futures()``). If such a future resolved, the outer
-        control loop can instruct the resource manager to update its internal state.
+        The resource manager may have internal state that needs periodic updating.
+        For instance, depending on the backend, resource futures can be awaited
+        externally (with ``get_resource_futures()``).
+
+        If such a future resolved, the outer control loop can instruct the resource
+        manager to update its internal state immediately.
         """
         pass
 
     def clear(self):
-        """Reset and clear all used resources."""
+        """Reset internal state and clear all resources.
+
+        Calling this method will reset the resource manager to its initialization state.
+        All resources will be removed.
+        """
         raise NotImplementedError
 
     def __reduce__(self):
@@ -119,5 +151,5 @@ class ResourceManager(abc.ABC):
         Shared resource managers should live on an actor.
         """
         raise ValueError(
-            f"Resource managers cannot be serialized." f"Resource manager: {str(self)}"
+            f"Resource managers cannot be serialized. Resource manager: {str(self)}"
         )
