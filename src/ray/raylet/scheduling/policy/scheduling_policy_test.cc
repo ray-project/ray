@@ -615,6 +615,38 @@ TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionWorkingWhenNormalResourc
   ASSERT_TRUE(to_schedule.status.IsSuccess());
 }
 
+TEST_F(SchedulingPolicyTest, HybridTopKTest) {
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  // Unavailable node
+  nodes.emplace(remote_node_2, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  // Infeasible node
+  nodes.emplace(remote_node_3, CreateNodeResources(0, 0, 0, 0, 0, 0));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
+      local_node, cluster_resource_manager, [](auto) { return true; });
+
+  std::map<scheduling::NodeID, size_t> decisions;
+  size_t num_node_0_picks = 0;
+  size_t num_node_1_picks = 0;
+  for (int i = 0; i < 1000; i++) {
+    auto to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Random());
+    ASSERT_TRUE(to_schedule.ToInt() >= 0);
+    ASSERT_TRUE(to_schedule.ToInt() <= 1);
+    if (to_schedule.ToInt() == 0) {
+      num_node_0_picks++;
+    } else {
+      num_node_1_picks++;
+    }
+  }
+  // It's extremely unlikely the only node 0 or node 1 is picked for 1000 runs.
+  ASSERT_TRUE(num_node_0_picks > 0);
+  ASSERT_TRUE(num_node_1_picks > 0);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

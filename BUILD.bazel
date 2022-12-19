@@ -1179,6 +1179,20 @@ cc_test(
 )
 
 cc_test(
+    name = "hybrid_scheduling_policy_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_task_manager_test",
     size = "small",
     srcs = [
