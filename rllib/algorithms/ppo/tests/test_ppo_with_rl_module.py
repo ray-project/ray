@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 import tree
 import gym
+import torch
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
@@ -267,8 +268,11 @@ class TestPPO(unittest.TestCase):
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    # TODO: LSTM = True
-                    for lstm in [False]:
+                    for lstm in [True, False]:
+                        if lstm and shared_encoder:
+                            # Not yet implemented
+                            # TODO (Artur): Implement
+                            continue
                         print(
                             f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
                             f"{shared_encoder}] | LSTM={lstm}"
@@ -280,15 +284,17 @@ class TestPPO(unittest.TestCase):
 
                         obs = env.reset()
 
+                        batch = {
+                            SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+                        }
+
                         if lstm:
-                            batch = {
-                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                                "state_in": module.pi_encoder.get_inital_state(),
-                            }
-                        else:
-                            batch = {
-                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
-                            }
+                            state_in = module.pi_encoder.get_inital_state()
+                            state_in = tree.map_structure(
+                                lambda x: x[None], convert_to_torch_tensor(state_in)
+                            )
+                            batch["state_in"] = state_in
+                            batch["seq_lens"] = torch.Tensor([1])
 
                         if fwd_fn == "forward_exploration":
                             module.forward_exploration(batch)
@@ -300,8 +306,11 @@ class TestPPO(unittest.TestCase):
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    # TODO: LSTM = True
-                    for lstm in [False]:
+                    for lstm in [True, False]:
+                        if lstm and shared_encoder:
+                            # Not yet implemented
+                            # TODO (Artur): Implement
+                            continue
                         print(
                             f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
                             f"{shared_encoder}] | LSTM={lstm}"
@@ -318,6 +327,10 @@ class TestPPO(unittest.TestCase):
                         if lstm:
                             # TODO (Artur): Multiple states
                             state_in = module.pi_encoder.get_inital_state()
+                            state_in = tree.map_structure(
+                                lambda x: x[None], convert_to_torch_tensor(state_in)
+                            )
+                            output_states = state_in
                         while tstep < 10:
                             if lstm:
                                 input_batch = {
@@ -343,7 +356,12 @@ class TestPPO(unittest.TestCase):
                             }
                             if lstm:
                                 assert "state_out" in fwd_out
-                                output_batch["state_in"] = state_in
+                                if tstep > 0:  # First states are already added
+                                    output_states = tree.map_structure(
+                                        lambda *s: torch.cat((s[0], s[1])),
+                                        output_states,
+                                        state_in,
+                                    )
                                 state_in = fwd_out["state_out"]
                             batches.append(output_batch)
                             obs = new_obs
@@ -356,10 +374,13 @@ class TestPPO(unittest.TestCase):
                             k: convert_to_torch_tensor(np.array(v))
                             for k, v in batch.items()
                         }
+                        if lstm:
+                            fwd_in["state_in"] = output_states
+                            fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([1] * 10)
 
                         # forward train
-                        # before training make sure it's on the right device and it's on
-                        # trianing mode
+                        # before training make sure module is on the right device and in
+                        # training mode
                         module.to("cpu")
                         module.train()
                         fwd_out = module.forward_train(fwd_in)
