@@ -6,7 +6,7 @@ import ray
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class RayExecutor(Executor):
     """`RayExecutor` is a drop-in replacement for `ProcessPoolExecutor` and
     `ThreadPoolExecutor` from `concurrent.futures` but distributes and executes
@@ -68,7 +68,7 @@ class RayExecutor(Executor):
                 result = future.result()
         """
         self._check_shutdown_lock()
-        oref = self.__remote_fn.remote(fn, *args, **kwargs)
+        oref = self.__remote_fn.options(name=fn.__name__).remote(fn, *args, **kwargs)
         future = oref.future()
         self._futures[oref] = future
         return future
