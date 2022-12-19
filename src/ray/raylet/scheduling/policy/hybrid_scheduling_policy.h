@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <vector>
 
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
@@ -78,18 +80,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   scheduling::NodeID GetBestNode(
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
       bool force_spillback,
-      int k,
+      int32_t num_candidate_nodes,
       float spread_threshold) const;
-
-  /// Identifier of local node.
-  const scheduling::NodeID local_node_id_;
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
-  /// Function Checks if node is alive.
-  std::function<bool(scheduling::NodeID)> is_node_alive_;
-  /// Random number generator to choose a random node out of the top K.
-  mutable std::mt19937_64 gen_;
 
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
@@ -104,9 +96,26 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       bool force_spillback,
       bool require_available,
       NodeFilter node_filter,
-      int schedule_top_k_absolute,
+      int32_t schedule_top_k_absolute,
       float scheduler_top_k_fraction,
       int64_t max_pending_lease_requests_per_scheduling_category);
+
+  int32_t NumNodesToSelect(
+      int32_t schedule_top_k_absolute,
+      float scheduler_top_k_fraction,
+      int64_t max_pending_lease_requests_per_scheduling_category) const;
+
+  /// Identifier of local node.
+  const scheduling::NodeID local_node_id_;
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
+  /// Function Checks if node is alive.
+  std::function<bool(scheduling::NodeID)> is_node_alive_;
+  /// Random number generator to choose a random node out of the top K.
+  mutable std::mt19937_64 gen_;
+
+  FRIEND_TEST(HybridSchedulingPolicyTest, NumNodesToSelect);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

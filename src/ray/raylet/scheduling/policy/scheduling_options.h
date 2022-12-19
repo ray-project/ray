@@ -153,7 +153,7 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
-  int schedule_top_k_absolute;
+  int32_t schedule_top_k_absolute;
   float scheduler_top_k_fraction;
   int64_t max_pending_lease_requests_per_scheduling_category;
 
@@ -166,7 +166,7 @@ struct SchedulingOptions {
       bool avoid_gpu_nodes,
       double max_cpu_fraction_per_node = 1.0,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
-      int schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
+      int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
       float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction(),
       int64_t max_pending_lease_requests_per_scheduling_category =
           RayConfig::instance().max_pending_lease_requests_per_scheduling_category())

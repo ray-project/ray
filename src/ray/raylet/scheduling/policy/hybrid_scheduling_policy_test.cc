@@ -18,10 +18,10 @@
 
 namespace ray {
 
-namespace raylet {
+namespace raylet_scheduling_policy {
 
 using ::testing::_;
-using namespace ray::raylet_scheduling_policy;
+using namespace ray::raylet;
 
 NodeResources CreateNodeResources(double available_cpu,
                                   double total_cpu,
@@ -75,7 +75,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
   }
 };
 
-TEST_F(HybridSchedulingPolicyTest, AvailableTieBreakTest) {
+TEST_F(HybridSchedulingPolicyTest, NumNodesToSelect) {
   // In this test, the local node and a remote node are both available. The remote node
   // has a lower critical resource utilization so we schedule on it.
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
@@ -90,224 +90,11 @@ TEST_F(HybridSchedulingPolicyTest, AvailableTieBreakTest) {
   ASSERT_EQ(to_schedule, remote_node);
 }
 
-TEST_F(HybridSchedulingPolicyTest, AvailableOverFeasibleTest) {
-  // In this test, the local node is feasible and has a lower critical resource
-  // utilization, but the remote node can run the task immediately, so we pick the remote
-  // node.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 1));
-  nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 1));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
-  ASSERT_EQ(to_schedule, remote_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, InfeasibleTest) {
-  // All the nodes are infeasible, so we return -1.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
-  nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 0, 0));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
-  ASSERT_TRUE(to_schedule.IsNil());
-}
-
-TEST_F(HybridSchedulingPolicyTest, BarelyFeasibleTest) {
-  // Test the edge case where a task requires all of a node's resources, and the node is
-  // fully utilized.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-
-  nodes.emplace(local_node, CreateNodeResources(0, 1, 0, 0, 0, 1));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
-  ASSERT_EQ(to_schedule, local_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
-  // Same as AvailableTruncationTest except now none of the nodes are available, but the
-  // tie break logic should apply to feasible nodes too.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-  nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 1));
-  nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 1));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, false, false));
-  ASSERT_EQ(to_schedule, local_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
-  // The local node is better, but we force spillback, so we'll schedule on a non-local
-  // node anyways.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
-  nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 10));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, true));
-  ASSERT_EQ(to_schedule, remote_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
-  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 1, 1));
-  nodes.emplace(remote_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-
-  {
-    // The local node is better, but it has GPUs, the request is
-    // non GPU, and the remote node does not have GPUs, thus
-    // we should schedule on remote node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-    const auto to_schedule =
-        raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, cluster_resource_manager, [](auto) { return true; })
-            .Schedule(ResourceMapToResourceRequest({{"CPU", 1}}, false),
-                      HybridOptions(0.51, false, true, true));
-    ASSERT_EQ(to_schedule, remote_node);
-  }
-  {
-    // A GPU request should be scheduled on a GPU node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
-    const auto to_schedule =
-        raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
-    ASSERT_EQ(to_schedule, local_node);
-  }
-  {
-    // A CPU request can be be scheduled on a CPU node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-    const auto to_schedule =
-        raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
-    ASSERT_EQ(to_schedule, remote_node);
-  }
-  {
-    // A mixed CPU/GPU request should be scheduled on a GPU node.
-    const ResourceRequest req =
-        ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-    const auto to_schedule =
-        raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
-    ASSERT_EQ(to_schedule, local_node);
-  }
-}
-
-TEST_F(HybridSchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
-  // Schedule on remote node, even though the request is CPU only, because
-  // we can not schedule on CPU nodes.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-  nodes.emplace(local_node, CreateNodeResources(0, 10, 0, 0, 0, 0));
-  nodes.emplace(remote_node, CreateNodeResources(1, 1, 0, 0, 1, 1));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  const auto to_schedule =
-      raylet_scheduling_policy::CompositeSchedulingPolicy(
-          local_node, cluster_resource_manager, [](auto) { return true; })
-          .Schedule(req, HybridOptions(0.51, false, true, true));
-  ASSERT_EQ(to_schedule, remote_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, ForceSpillbackTest) {
-  // The local node is available but disqualified.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-
-  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
-  nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 1));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, false));
-  ASSERT_EQ(to_schedule, remote_node);
-}
-
-TEST_F(HybridSchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
-  // The local node is better, but we force spillback, so we'll schedule on a non-local
-  // node anyways.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-
-  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
-  nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 0));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, false));
-  ASSERT_TRUE(to_schedule.IsNil());
-}
-
-TEST_F(HybridSchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
-  // Prefer to schedule on CPU nodes first.
-  // GPU nodes should be preferred as a last resort.
-
-  // local {CPU:2, GPU:1}
-  // Remote {CPU: 2}
-  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
-  nodes.emplace(remote_node, CreateNodeResources(2, 2, 0, 0, 0, 0));
-  nodes.emplace(remote_node_2, CreateNodeResources(3, 3, 0, 0, 0, 0));
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req,
-                                   HybridOptions(0.51,
-                                                 false,
-                                                 true,
-                                                 /*gpu_avoid_scheduling*/ true));
-  ASSERT_EQ(to_schedule, remote_node);
-
-  req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
-  to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req,
-                              HybridOptions(0.51,
-                                            false,
-                                            true,
-                                            /*gpu_avoid_scheduling*/ true));
-  ASSERT_EQ(to_schedule, remote_node_2);
-
-  req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
-  to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req,
-                              HybridOptions(0.51,
-                                            false,
-                                            true,
-                                            /*gpu_avoid_scheduling*/ true));
-  ASSERT_EQ(to_schedule, local_node);
-
-  req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
-  to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req,
-                              HybridOptions(0.51,
-                                            false,
-                                            true,
-                                            /*gpu_avoid_scheduling*/ true));
-  ASSERT_EQ(to_schedule, remote_node);
-}
-
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
 
-}  // namespace raylet
+}  // namespace raylet_scheduling_policy
 
 }  // namespace ray
