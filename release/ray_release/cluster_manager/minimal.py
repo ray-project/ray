@@ -21,7 +21,7 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    extra_tags_resource_types = ["instance"]
+    extra_tags_resource_types = ["instance", "volume", "host-reservation"]
 
     @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
     def create_cluster_env(self):
