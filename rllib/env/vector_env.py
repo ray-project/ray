@@ -288,10 +288,6 @@ class _VectorizedGymEnv(VectorEnv):
                 obs, infos = self.reset_at(i, seed=seeds[i], options=options[i])
                 if not isinstance(obs, Exception):
                     break
-                assert isinstance(infos, Exception), (
-                    "ERROR: If VectorEnv.reset_at() returns an Exception as "
-                    "observation, the returned info dict must be an Exception, too!"
-                )
             resetted_obs.append(obs)
             resetted_infos.append(infos)
         return resetted_obs, resetted_infos
