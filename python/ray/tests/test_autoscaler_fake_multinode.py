@@ -1,3 +1,4 @@
+import copy
 import pytest
 import platform
 
@@ -82,6 +83,44 @@ def test_zero_cpu_default_actor():
         actor = Actor.remote()
         ray.get(actor.ping.remote())
         ray.shutdown()
+    finally:
+        cluster.shutdown()
+
+
+def test_autoscaler_all_gpu_node_types():
+    """Validates that CPU tasks still trigger upscaling
+    when all available node types have GPUs.
+    """
+    gpu_node_type_1 = {
+        "resources": {
+            "CPU": 1,
+            "GPU": 1,
+        },
+        "node_config": {},
+        "min_workers": 0,
+        "max_workers": 1,
+    },
+    gpu_node_type_2 = copy.deepcopy(gpu_node_type_1)
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0, "GPU": 1},
+        worker_node_types={
+            "gpu_node_type_1": gpu_node_type_1,
+            "gpu_node_type_2": gpu_node_type_2,
+        }
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+
+        @ray.remote(num_cpus=1)
+        def task():
+            return True
+
+        assert ray.get(task.remote(), timeout=60), "Failed to schedule CPU task."
+        ray.shutdown()
+
     finally:
         cluster.shutdown()
 
