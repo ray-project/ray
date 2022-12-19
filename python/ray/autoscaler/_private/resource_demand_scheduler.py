@@ -815,7 +815,7 @@ def _resource_based_utilization_scorer(
     resources: List[ResourceDict],
     *,
     node_availability_summary: NodeAvailabilitySummary,
-    all_gpu_node_types: bool = False
+    all_gpu_node_types: bool = False,
 ) -> Optional[Tuple[float, float]]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
@@ -875,11 +875,13 @@ def _default_utilization_scorer(
     node_type: str,
     *,
     node_availability_summary: NodeAvailabilitySummary,
-    all_gpu_node_types: bool = False
+    all_gpu_node_types: bool = False,
 ):
     return _resource_based_utilization_scorer(
-        node_resources, resources, node_availability_summary=node_availability_summary,
-        all_gpu_node_types=all_gpu_node_types
+        node_resources,
+        resources,
+        node_availability_summary=node_availability_summary,
+        all_gpu_node_types=all_gpu_node_types,
     )
 
 
