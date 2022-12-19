@@ -265,11 +265,8 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
         "gymnasium==0.26.3",
-        "gym>=0.21.0,<0.24.0",
+        "gym==0.26.2",
         "lz4",
-        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
-        # Todo: Remove this when safe?
-        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
