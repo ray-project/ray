@@ -39,9 +39,9 @@ class DatasetLogger:
         self._initialize_logger()
 
     def _initialize_logger(self):
-        """ Internal method to initialize the logger and the extra file handler
+        """Internal method to initialize the logger and the extra file handler
         for writing to the Dataset log file. Not intended (nor should it be necessary)
-        to call explicitly. """
+        to call explicitly."""
         # With current implementation, we can only get session_dir
         # after ray.init() is called. A less hacky way could potentially fix this
         global_node = ray._private.worker._global_node
