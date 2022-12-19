@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
-from ray.air import _DatasetIterator
+from ray.air import _DatasetIterator, _DatasetPipelineIterator
+
+from ray.data import Dataset, DatasetPipeline
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
@@ -215,7 +217,10 @@ class DataParallelIngestSpec:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
             for i, dataset_split in enumerate(dataset_splits):
-                dataset_splits[i] = _DatasetIterator(dataset_split)
+                if isinstance(dataset_split, Dataset):
+                    dataset_splits[i] = _DatasetIterator(dataset_split)
+                elif isinstance(dataset_split, DatasetPipeline):
+                    dataset_splits[i] = _DatasetPipelineIterator(dataset_split)
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]
