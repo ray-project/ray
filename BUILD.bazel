@@ -1188,6 +1188,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "@com_google_absl//absl/random",
         "@com_google_googletest//:gtest_main",
     ],
 )

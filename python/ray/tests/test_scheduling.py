@@ -70,6 +70,7 @@ def test_hybrid_policy(ray_start_cluster):
         memory=num_cpus,
         _system_config={
             "scheduler_top_k_absolute": 1,
+            "scheduler_top_k_fraction": 0,
         },
     )
     cluster.add_node(

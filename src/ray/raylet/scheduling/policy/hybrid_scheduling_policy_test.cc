@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/random/random.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
@@ -53,8 +54,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
       bool require_node_available,
       bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes(),
       int schedule_top_k_absolute = 1,
-      float scheduler_top_k_fraction = 0.1,
-      int64_t max_pending_lease_requests_per_scheduling_category = 5) {
+      float scheduler_top_k_fraction = 0.1) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
@@ -63,8 +63,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
                              /*max_cpu_fraction_per_node*/ 1.0,
                              /*scheduling_context*/ nullptr,
                              schedule_top_k_absolute,
-                             scheduler_top_k_fraction,
-                             max_pending_lease_requests_per_scheduling_category);
+                             scheduler_top_k_fraction);
   }
 
   ClusterResourceManager MockClusterResourceManager(
@@ -74,14 +73,6 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
     return cluster_resource_manager;
   }
 };
-
-TEST_F(HybridSchedulingPolicyTest, NumNodesToSelect) {
-  HybridSchedulingPolicy policy{local_node, {}, [](scheduling::NodeID) { return true; }};
-  int32_t schedule_top_k_absolute = 1;
-  for (int32_t schedule_top_k_absolute = 1; schedule_top_k_absolute <= 10; schedule_top_k_absolute++) {
-    EXPECT_EQ(schedule_top_k_absolute, NumNodesToSelect(schedule_top_k_absolute, 0, 10, 10));
-  }
-}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

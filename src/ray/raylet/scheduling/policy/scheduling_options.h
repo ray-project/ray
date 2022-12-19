@@ -156,7 +156,6 @@ struct SchedulingOptions {
   bool node_affinity_soft = false;
   int32_t schedule_top_k_absolute;
   float scheduler_top_k_fraction;
-  int64_t max_pending_lease_requests_per_scheduling_category;
 
  private:
   SchedulingOptions(
@@ -168,9 +167,7 @@ struct SchedulingOptions {
       double max_cpu_fraction_per_node = 1.0,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
-      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction(),
-      int64_t max_pending_lease_requests_per_scheduling_category =
-          RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
+      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
@@ -179,9 +176,7 @@ struct SchedulingOptions {
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         scheduling_context(std::move(scheduling_context)),
         schedule_top_k_absolute(schedule_top_k_absolute),
-        scheduler_top_k_fraction(scheduler_top_k_fraction),
-        max_pending_lease_requests_per_scheduling_category(
-            max_pending_lease_requests_per_scheduling_category) {}
+        scheduler_top_k_fraction(scheduler_top_k_fraction) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
   friend class HybridSchedulingPolicyTest;

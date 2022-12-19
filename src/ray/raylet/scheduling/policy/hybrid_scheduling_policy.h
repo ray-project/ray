@@ -80,7 +80,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   scheduling::NodeID GetBestNode(
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
       bool force_spillback,
-      int32_t num_candidate_nodes,
+      size_t num_candidate_nodes,
       float spread_threshold) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
@@ -97,13 +97,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       bool require_available,
       NodeFilter node_filter,
       int32_t schedule_top_k_absolute,
-      float scheduler_top_k_fraction,
-      int64_t max_pending_lease_requests_per_scheduling_category);
-
-  int32_t NumNodesToSelect(int32_t schedule_top_k_absolute,
-                           float scheduler_top_k_fraction,
-                           int64_t max_pending_lease_requests_per_scheduling_category,
-                           size_t num_nodes) const;
+      float scheduler_top_k_fraction);
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

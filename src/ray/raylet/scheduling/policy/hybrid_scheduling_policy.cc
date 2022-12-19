@@ -56,8 +56,10 @@ float ComputeNodeScore(const NodeResources &node_resources, float spread_thresho
 scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
     std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
     bool prioritize_local_node,
-    int32_t num_candidate_nodes,
+    size_t num_candidate_nodes,
     float spread_threshold) const {
+  RAY_CHECK(!node_scores.empty());
+  RAY_CHECK(num_candidate_nodes >= 1);
   // Pick the top num_candidate_nodes nodes with the lowest score.
   // First, sort nodes so that we always break ties between nodes in the same
   // order.
@@ -81,10 +83,9 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
       return local_node_id_;
     }
   }
-
-  std::uniform_int_distribution<int> distribution(
-      0, std::min(num_candidate_nodes, static_cast<int>(node_scores.size())) - 1);
-  int node_index = distribution(gen_);
+  std::uniform_int_distribution<size_t> distribution(
+      0, std::min(num_candidate_nodes, node_scores.size()) - 1);
+  size_t node_index = distribution(gen_);
   return node_scores[node_index].first;
 }
 
@@ -95,8 +96,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     bool require_node_available,
     NodeFilter node_filter,
     int32_t schedule_top_k_absolute,
-    float scheduler_top_k_fraction,
-    int64_t max_pending_lease_requests_per_scheduling_category) {
+    float scheduler_top_k_fraction) {
   // Nodes that are feasible and currently have available resources.
   std::vector<std::pair<scheduling::NodeID, float>> available_nodes;
   // Nodes that are feasible but currently do not have available resources.
@@ -140,11 +140,10 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     }
   }
 
-  int32_t num_candidate_nodes =
-      NumNodesToSelect(schedule_top_k_absolute,
-                       scheduler_top_k_fraction,
-                       max_pending_lease_requests_per_scheduling_category,
-                       nodes_.size());
+  size_t num_candidate_nodes = std::max<int32_t>(
+      1,
+      std::max<int32_t>(schedule_top_k_absolute,
+                        static_cast<int32_t>(nodes_.size() * scheduler_top_k_fraction)));
 
   if (!available_nodes.empty()) {
     // First prioritize available nodes.
@@ -175,20 +174,17 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                         options.require_node_available,
                         NodeFilter::kAny,
                         options.schedule_top_k_absolute,
-                        options.scheduler_top_k_fraction,
-                        options.max_pending_lease_requests_per_scheduling_category);
+                        options.scheduler_top_k_fraction);
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id =
-      ScheduleImpl(resource_request,
-                   options.spread_threshold,
-                   options.avoid_local_node,
-                   /*require_node_available*/ true,
-                   NodeFilter::kNonGpu,
-                   options.schedule_top_k_absolute,
-                   options.scheduler_top_k_fraction,
-                   options.max_pending_lease_requests_per_scheduling_category);
+  auto best_node_id = ScheduleImpl(resource_request,
+                                   options.spread_threshold,
+                                   options.avoid_local_node,
+                                   /*require_node_available*/ true,
+                                   NodeFilter::kNonGpu,
+                                   options.schedule_top_k_absolute,
+                                   options.scheduler_top_k_fraction);
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
@@ -201,22 +197,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                       options.require_node_available,
                       NodeFilter::kAny,
                       options.schedule_top_k_absolute,
-                      options.scheduler_top_k_fraction,
-                      options.max_pending_lease_requests_per_scheduling_category);
-}
-
-int32_t HybridSchedulingPolicy::NumNodesToSelect(
-    int32_t schedule_top_k_absolute,
-    float scheduler_top_k_fraction,
-    int64_t max_pending_lease_requests_per_scheduling_category,
-    size_t num_nodes) const {
-  int32_t top_k = schedule_top_k_absolute;
-  if (top_k <= 0) {
-    top_k = std::max(
-        static_cast<uint64_t>(max_pending_lease_requests_per_scheduling_category),
-        static_cast<uint64_t>(scheduler_top_k_fraction * num_nodes));
-  }
-  return top_k;
+                      options.scheduler_top_k_fraction);
 }
 
 }  // namespace raylet_scheduling_policy
