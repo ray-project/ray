@@ -46,12 +46,12 @@ class TfRLTrainer(RLTrainer):
         batch = NestedDict(batch)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        infos = self._do_update_fn(batch)
+        infos = self.strategy.run(self._do_update_fn, args=(batch,))
         loss = infos["loss"]
         fwd_out = infos["fwd_out"]
         post_processed_gradients = infos["post_processed_gradients"]
         results = self.compile_results(batch, fwd_out, loss, post_processed_gradients)
-        return results
+        # return results
 
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
@@ -77,9 +77,10 @@ class TfRLTrainer(RLTrainer):
                 zip(gradients[key], self._module.trainable_variables()[key])
             )
 
-    def make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+    def make_distributed(self):
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
             module = self.module_class.from_model_config(**self.module_config)
-            optimizer = self.optimizer_class(self.optimizer_config)
-        return module, optimizer
+            optimizer = self.optimizer_class(module, self.optimizer_config)
+        self._module = module
+        self._rl_optimizer = optimizer

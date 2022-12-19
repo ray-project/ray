@@ -1,6 +1,7 @@
 import abc
 from typing import Any, Mapping, Union, Type
 
+import tensorflow as tf
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -27,17 +28,14 @@ class RLTrainer:
         module_config: Mapping[str, Any],
         optimizer_class: Type[RLOptimizer],
         optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
+        scaling_config: Mapping[str, Any],
+        distributed: bool = False
     ):
         self.module_class = module_class
         self.module_config = module_config
         self.optimizer_class = optimizer_class
         self.optimizer_config = optimizer_config
-        if distributed:
-            self._module, self._rl_optimizer = self.make_distributed()
-        else:
-            self._module = module_class.from_model_config(**module_config)
-            self._rl_optimizer = optimizer_class(optimizer_config)
+        self.distributed = distributed
 
     @staticmethod
     def on_after_compute_gradients(
@@ -79,10 +77,25 @@ class RLTrainer:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        return {
-            "avg_reward": batch["rewards"].mean(),
-            **loss_numpy,
-        }
+        tf.print("loss: ", loss_numpy)
+        tf.print("gradients: ", post_processed_gradients)
+        print("loss: ", loss_numpy)
+        print("gradients: ", post_processed_gradients)
+        print(dir(post_processed_gradients["policy"]))
+        print(dir(loss_numpy["total_loss"]))
+        print(type(post_processed_gradients["policy"][0]))
+        print(type(loss_numpy["total_loss"]))
+        # print(loss_numpy["total_loss"].eval())
+        print(loss_numpy["total_loss"].numpy())
+        assert False
+        # print(convert_to_numpy(post_processed_gradients))
+        # print("loss: ", loss_numpy)
+        # grads = convert_to_numpy(post_processed_gradients)
+        # return {
+        #     "avg_reward": batch["rewards"].mean(),
+        #     **loss_numpy,
+        # }
+        return {}
 
     @abc.abstractmethod
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
@@ -122,3 +135,11 @@ class RLTrainer:
             "module_state": self._module.get_state(),
             "optimizer_state": self._rl_optimizer.get_state(),
         }
+
+    def init_trainer(self) -> None:
+        """Initialize the model."""
+        if self.distributed:
+            self._module, self._rl_optimizer = self.make_distributed()
+        else:
+            self._module = self.module_class.from_model_config(**self.module_config)
+            self._rl_optimizer = self.optimizer_class(self._module, self.optimizer_config)

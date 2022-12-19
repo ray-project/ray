@@ -1,11 +1,22 @@
+import gym
 import numpy as np
 
 import ray
 
+from ray.rllib.algorithms import AlgorithmConfig
+from ray.rllib.offline import IOContext
+from ray.rllib.offline.dataset_reader import (
+    DatasetReader,
+    get_dataset_and_shards,
+)
+
+from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
+from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
+from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
-from ray.air.config import ScalingConfig
 
 
 class TrainerRunner:
@@ -20,9 +31,10 @@ class TrainerRunner:
         >>> trainer_runner.apply(lambda w: w.get_weights())
     """
 
-    def __init__(self, trainer_class, trainer_config, framework="torch"):
+    def __init__(self, trainer_class, trainer_config, compute_config, framework="tf"):
         """ """
         self._trainer_config = trainer_config
+        self._compute_config = compute_config
 
         # TODO: remove the _compute_necessary_resources and just use
         # trainer_config["use_gpu"] and trainer_config["num_workers"]
@@ -50,18 +62,19 @@ class TrainerRunner:
 
         # TODO: let's not pass this into the config which will cause
         # information leakage into the SARLTrainer about other workers.
-        _scaling_config = {"world_size": resources["num_workers"]}
-        trainer_config["_scaling_config"] = _scaling_config
+        scaling_config = {"world_size": resources["num_workers"]}
+        trainer_config["scaling_config"] = scaling_config
+        trainer_config["distributed"] = True
         self.backend_executor.start(
-            train_cls=trainer_class, train_cls_args=(trainer_config,)
+            train_cls=trainer_class, train_cls_kwargs=trainer_config
         )
         self.workers = [w.actor for w in self.backend_executor.worker_group.workers]
 
-        ray.get([w._init_model.remote() for w in self.workers])
+        ray.get([w.make_distributed.remote() for w in self.workers])
 
     def _compute_necessary_resources(self):
-        num_gpus = self._trainer_config.get("num_gpus", 0)
-        num_workers = self._trainer_config.get("num_training_workers", 0)
+        num_gpus = self._compute_config.get("num_gpus", 0)
+        num_workers = self._compute_config.get("num_training_workers", 0)
         if num_workers and num_gpus:
             assert num_workers == num_gpus, (
                 "If num_training_workers and "
@@ -100,13 +113,49 @@ class TrainerRunner:
 
 
 if __name__ == "__main__":
+    ray.init()
+    env = gym.make("CartPole-v0")
+    trainer_class = TfRLTrainer
+    trainer_cfg = dict(module_class=DiscreteBCTFModule,
+                        module_config={"observation_space": env.observation_space,
+                                    "action_space": env.action_space,
+                                    "model_config": {"hidden_dim": 32}
+                                    },
+                        optimizer_class=BCTFOptimizer,
+                        optimizer_config={})
+    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=dict(num_gpus=1))
+    env = gym.make("CartPole-v1")
+
+    # path = "s3://air-example-data/rllib/cartpole/large.json"
+    path = "tests/data/cartpole/large.json"
+    input_config = {"format": "json", "paths": path}
+    dataset, _ = get_dataset_and_shards(
+        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    )
+    batch_size = 500
+    ioctx = IOContext(
+        config=(
+            AlgorithmConfig()
+            .training(train_batch_size=batch_size)
+            .offline_data(actions_in_input_normalized=True)
+        ),
+        worker_index=0,
+    )
+    reader = DatasetReader(dataset, ioctx)
+    num_epochs = 100
+    total_timesteps_of_training = 1000000
+    inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
+    for _ in range(num_epochs):
+        for _ in range(inter_steps):
+            batch = reader.next()
+            runner.update(batch)
+
     # test 1: check distributed training ok
     # construct TrainerRunner()
     # construct dataset
     # call TrainerRunner.update with batch from dataset
     # check if gradients are same across workers
     # check if weights are same across workers
-    pass
 
     # test 2: check add remove module / optimizer ok
     # check if memory usage all right after adding / removing module
