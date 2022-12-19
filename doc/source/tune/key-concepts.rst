@@ -22,6 +22,8 @@ The following figure shows an overview of these components, which we cover in de
 
 .. image:: images/tune_flow.png
 
+.. _tune_60_seconds_trainables:
+
 Trainables
 ----------
 
@@ -88,6 +90,8 @@ Here's an example covering all search space functions. Again,
     :language: python
     :start-after: __config_start__
     :end-before: __config_end__
+
+.. _tune_60_seconds_trials:
 
 Trials
 ------
