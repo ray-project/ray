@@ -36,7 +36,7 @@ class DatasetLogger:
         # to stdout.
         self.log_name = log_name
         # Lazily initialized in self._initialize_logger()
-        self._logger = None
+        self.logger = None
 
     def _initialize_logger(self) -> logging.Logger:
         """Internal method to initialize the logger and the extra file handler
@@ -46,10 +46,10 @@ class DatasetLogger:
         # after ray.init() is called. A less hacky way could potentially fix this
         global_node = ray._private.worker._global_node
         if global_node is not None:
-            self._logger = logging.getLogger(f"{self.log_name}.logfile")
+            self.logger = logging.getLogger(f"{self.log_name}.logfile")
             # We need to set the log level again when explicitly
             # initializing a new logger (otherwise can have undesirable level).
-            self._logger.setLevel(LOGGER_LEVEL.upper())
+            self.logger.setLevel(LOGGER_LEVEL.upper())
 
             # Add log handler which writes to a separate Datasets log file
             # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
@@ -63,8 +63,8 @@ class DatasetLogger:
             file_log_handler = logging.FileHandler(datasets_log_path)
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
             file_log_handler.setFormatter(file_log_formatter)
-            self._logger.addHandler(file_log_handler)
-        return self._logger
+            self.logger.addHandler(file_log_handler)
+        return self.logger
 
     def get_logger(self, log_to_stdout: bool = True):
         """
@@ -80,7 +80,7 @@ class DatasetLogger:
         also removes the need for this getter method:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
-        if not self._logger:
-            self._logger = self._initialize_logger()
-        self._logger.propagate = log_to_stdout
-        return self._logger
+        if not self.logger:
+            self.logger = self._initialize_logger()
+        self.logger.propagate = log_to_stdout
+        return self.logger
