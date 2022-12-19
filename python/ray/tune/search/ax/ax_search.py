@@ -18,7 +18,7 @@ from ray.tune.search import (
     Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 
 try:
     import ax
@@ -87,6 +87,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         config = {
@@ -97,13 +98,15 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(metric="score")
+        ax_search = AxSearch()
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
                 search_alg=ax_search,
+                metric="score",
+                mode="max",
             ),
             param_space=config,
         )
@@ -115,6 +118,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         parameters = [
@@ -125,9 +129,9 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(space=parameters, metric="score")
+        ax_search = AxSearch(space=parameters, metric="score", mode="max")
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
@@ -297,7 +301,17 @@ class AxSearch(Searcher):
                 return None
 
         self._live_trial_mapping[trial_id] = trial_index
-        return unflatten_dict(parameters)
+        try:
+            suggested_config = unflatten_list_dict(parameters)
+        except AssertionError:
+            # Fails to unflatten if keys are out of order, which only happens
+            # if search space includes a list with both constants and
+            # tunable hyperparameters:
+            # Ex: "a": [1, tune.uniform(2, 3), 4]
+            suggested_config = unflatten_list_dict(
+                {k: parameters[k] for k in sorted(parameters.keys())}
+            )
+        return suggested_config
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
@@ -385,15 +399,15 @@ class AxSearch(Searcher):
                 )
             )
 
-        # Fixed vars
+        # Parameter name is e.g. "a/b/c" for nested dicts,
+        # "a/d/0", "a/d/1" for nested lists (using the index in the list)
         fixed_values = [
-            {"name": "/".join(path), "type": "fixed", "value": val}
+            {"name": "/".join(str(p) for p in path), "type": "fixed", "value": val}
             for path, val in resolved_vars
         ]
-
-        # Parameter name is e.g. "a/b/c" for nested dicts
         resolved_values = [
-            resolve_value("/".join(path), domain) for path, domain in domain_vars
+            resolve_value("/".join(str(p) for p in path), domain)
+            for path, domain in domain_vars
         ]
 
         return fixed_values + resolved_values

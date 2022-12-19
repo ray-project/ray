@@ -189,6 +189,12 @@ class UnflattenDictTest(unittest.TestCase):
         )
         assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
 
+    def test_unflatten_noop(self):
+        """Unflattening an already unflattened dict should be a noop."""
+        unflattened = {"a": 1, "b": {"c": {"d": [1, 2]}, "e": 3}, "f": {"g": 3}}
+        assert unflattened == unflatten_dict(unflattened)
+        assert unflattened == unflatten_list_dict(unflattened)
+
     def test_raises_error_on_key_conflict(self):
         """Ensure that an informative exception is raised on key conflict."""
         with self.assertRaisesRegex(TypeError, r"Cannot unflatten dict"):

@@ -518,7 +518,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
-        self.assertEqual(config1["b"]["y"], 4)
+        self.assertEqual(config["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
@@ -780,6 +780,7 @@ class SearchSpaceTest(unittest.TestCase):
                 "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
+        # Only Float domain is supported
         with self.assertRaises(ValueError):
             converted_config = DragonflySearch.convert_search_space(config)
 
