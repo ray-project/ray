@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 import random
+import tree  # pip install dm-tree
 import unittest
 
 import ray
@@ -176,10 +177,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "p{}".format(
-                        agent_id % 2
-                    )
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -199,8 +198,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -219,8 +218,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -288,7 +287,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -318,7 +317,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
 
     def test_custom_rnn_state_values(self):
-        h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
+        h = {"some": {"here": np.array([1.0, 2.0, 3.0])}}
 
         class StatefulPolicy(RandomPolicy):
             def compute_actions(
@@ -332,7 +331,13 @@ class TestMultiAgentEnv(unittest.TestCase):
                 timestep=None,
                 **kwargs
             ):
-                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
+                obs_shape = (len(obs_batch),)
+                actions = np.zeros(obs_shape, dtype=np.int32)
+                states = tree.map_structure(
+                    lambda x: np.ones(obs_shape + x.shape) * x, h
+                )
+
+                return actions, [states], {}
 
             def get_initial_state(self):
                 return [{}]  # empty dict
@@ -357,11 +362,11 @@ class TestMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         batch = convert_ma_batch_to_sample_batch(batch)
         self.assertEqual(batch.count, 5)
-        self.assertEqual(batch["state_in_0"][0], {})
-        self.assertEqual(batch["state_out_0"][0], h)
+        check(batch["state_in_0"][0], {})
+        check(batch["state_out_0"][0], h)
         for i in range(1, 5):
-            self.assertEqual(batch["state_in_0"][i], h)
-            self.assertEqual(batch["state_out_0"][i], h)
+            check(batch["state_in_0"][i], h)
+            check(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
         # TODO(avnishn): This test only works with the old api
@@ -427,7 +432,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -470,10 +475,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
 
         def gen_policy():
-            config = {
-                "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                "n_step": random.choice([1, 2, 3, 4, 5]),
-            }
+            config = PGConfig.overrides(
+                gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+                lr=random.choice([0.001, 0.002, 0.003]),
+            )
             return PolicySpec(config=config)
 
         config = (
@@ -485,7 +490,9 @@ class TestMultiAgentEnv(unittest.TestCase):
                     "policy_1": gen_policy(),
                     "policy_2": gen_policy(),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "policy_1",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "policy_1"
+                ),
             )
             .framework("tf")
         )

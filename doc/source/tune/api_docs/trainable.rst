@@ -24,6 +24,9 @@ Function API
 The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
 one for each Tune trial.
 
+The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
+
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
 
 .. literalinclude:: /tune/doc_code/trainable.py
@@ -97,6 +100,9 @@ separate process (using the :ref:`Ray Actor API <actor-guide>`).
      Each time, the Trainable object executes one logical iteration of training in the tuning process,
      which may include one or more iterations of actual training.
   3. ``cleanup`` is invoked when training is finished.
+
+The ``config`` argument in the ``setup`` method is a dictionary populated automatically by Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads
     (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
@@ -234,7 +240,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
-then you should use this:
+then you should use :ref:`tune-with-resources` like this:
 
 .. code-block:: python
    :emphasize-lines: 4-10
@@ -308,3 +314,9 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
+.. _tune-with-resources:
+
+tune.with_resources
+--------------------
+
+.. autofunction:: ray.tune.with_resources

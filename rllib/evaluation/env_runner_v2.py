@@ -1,8 +1,8 @@
+from collections import defaultdict
 import logging
 import time
-from collections import defaultdict
+import tree  # pip install dm_tree
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
-
 import numpy as np
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
@@ -543,13 +543,20 @@ class EnvRunnerV2:
                     # Create a fake observation by sampling the original env
                     # observation space.
                     obs_space = get_original_space(policy.observation_space)
+                    # Although there is no obs for this agent, there may be
+                    # good rewards and info dicts for it.
+                    # This is the case for e.g. OpenSpiel games, where a reward
+                    # is only earned with the last step, but the obs for that
+                    # step is {}.
+                    reward = rewards[env_id].get(agent_id, 0.0)
+                    info = infos[env_id].get(agent_id, {})
                     values_dict = {
                         SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
-                        SampleBatch.REWARDS: 0.0,
+                        SampleBatch.REWARDS: reward,
                         SampleBatch.DONES: True,
-                        SampleBatch.INFOS: {},
+                        SampleBatch.INFOS: info,
                         SampleBatch.NEXT_OBS: obs_space.sample(),
                     }
 
@@ -1059,13 +1066,18 @@ class EnvRunnerV2:
                 agent_id: AgentID = eval_data[i].agent_id
                 input_dict: TensorStructType = eval_data[i].data.raw_dict
 
-                rnn_states: List[StateBatches] = [c[i] for c in rnn_out]
-                fetches: Dict = {k: v[i] for k, v in extra_action_out.items()}
+                rnn_states: List[StateBatches] = tree.map_structure(
+                    lambda x: x[i], rnn_out
+                )
+
+                # extra_action_out could be a nested dict
+                fetches: Dict = tree.map_structure(lambda x: x[i], extra_action_out)
 
                 # Post-process policy output by running them through action connectors.
                 ac_data = ActionConnectorDataType(
                     env_id, agent_id, input_dict, (action, rnn_states, fetches)
                 )
+
                 action_to_send, rnn_states, fetches = policy.action_connectors(
                     ac_data
                 ).output

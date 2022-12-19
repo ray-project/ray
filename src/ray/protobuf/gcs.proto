@@ -256,6 +256,8 @@ message TaskEvents {
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
   optional ProfileEvents profile_events = 5;
+  // Job id of the task
+  bytes job_id = 6;
 }
 
 // Represents a compact list of task state events by different tasks,
@@ -263,8 +265,10 @@ message TaskEvents {
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped task events due to buffer size limit on workers.
-  int32 num_task_events_dropped = 2;
+  // Number of dropped profile task events due to buffer size limit on workers.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of dropped status task events due to buffer size limit on workers.
+  int32 num_status_task_events_dropped = 4;
 }
 
 message ResourceTableData {
