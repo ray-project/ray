@@ -1,10 +1,16 @@
-from typing import Literal, Optional, Union
+import sys
+from typing import Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
 from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 def map_batches(
