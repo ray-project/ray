@@ -81,8 +81,8 @@ def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
             if log_once("tf1.RunOptions_not_available"):
                 logger.exception(
                     "Can not access tf.RunOptions.FULL_TRACE. This may be because "
-                    "you have used `ray.init(local_mode=True)`. RLlib will use timeline without "
-                    "`options=tf.RunOptions.FULL_TRACE`."
+                    "you have used `ray.init(local_mode=True)`. RLlib will use "
+                    "timeline without `options=tf.RunOptions.FULL_TRACE`."
                 )
         run_metadata = tf1.RunMetadata()
         start = time.time()
