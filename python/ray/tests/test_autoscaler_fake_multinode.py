@@ -89,7 +89,7 @@ def test_zero_cpu_default_actor():
 
 def test_autoscaler_all_gpu_node_types():
     """Validates that CPU tasks still trigger upscaling
-    when all available node types have GPUs.
+    when all available non-head node types have GPUs.
     """
     gpu_node_type_1 = (
         {
