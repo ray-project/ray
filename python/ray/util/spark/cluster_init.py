@@ -458,12 +458,12 @@ def _init_ray_cluster(
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
-    temp_dir_unique_suffix = uuid.uuid4().hex[:8]
+    cluster_unique_suffix = uuid.uuid4().hex[:8]
 
     if ray_temp_root_dir is None:
         ray_temp_root_dir = start_hook.get_default_temp_dir()
     ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-{ray_head_port}-{temp_dir_unique_suffix}"
+        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_suffix}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
 
@@ -629,7 +629,7 @@ def _init_ray_cluster(
         # NB: Not reachable.
         yield 0
 
-    spark_job_group_id = f"ray-cluster-job-head-{ray_head_ip}-port-{ray_head_port}"
+    spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_suffix}"
 
     ray_cluster_handler = RayClusterOnSpark(
         address=f"{ray_head_ip}:{ray_head_port}",
