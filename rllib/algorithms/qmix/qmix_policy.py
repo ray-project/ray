@@ -22,7 +22,7 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 
 # Torch must be installed.
-torch, nn = try_import_torch(error=True)
+torch, nn = try_import_torch(error=False)
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +167,12 @@ class QMixTorchPolicy(TorchPolicy):
     """
 
     def __init__(self, obs_space, action_space, config):
+        # We want to error out on instantiation and not on import, because tune
+        # imports all RLlib algorithms when registering them
+        # TODO (Artur): Find a way to only import algorithms when needed
+        if not torch:
+            raise ImportError("Could not import PyTorch, which QMix requires.")
+
         _validate(obs_space, action_space)
         config = dict(ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
