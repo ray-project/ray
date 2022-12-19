@@ -214,6 +214,7 @@ message ApplicationStatusInfo {
 message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
+  string app_name = 3;
 }
 
 // RPC Schema

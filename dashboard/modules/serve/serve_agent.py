@@ -45,6 +45,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
+    # TODO(sihanwang) Changed to application instead of deployments
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
@@ -74,32 +75,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/json",
         )
 
-    @routes.get("/api/serve/deployments/status")
-    @optional_utils.init_ray_and_catch_exceptions()
-    async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
-
-        controller = await self.get_serve_controller()
-
-        if controller is None:
-            status_json = ServeStatusSchema.get_empty_schema_dict()
-            status_json_str = json.dumps(status_json)
-        else:
-            from ray.serve._private.common import StatusOverview
-            from ray.serve.generated.serve_pb2 import (
-                StatusOverview as StatusOverviewProto,
-            )
-
-            serve_status = await controller.get_serve_status.remote()
-            proto = StatusOverviewProto.FromString(serve_status)
-            status = StatusOverview.from_proto(proto)
-            status_json_str = serve_status_to_schema(status).json()
-
-        return Response(
-            text=status_json_str,
-            content_type="application/json",
-        )
-
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_application(self, req: Request) -> Response:
@@ -110,10 +85,79 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
+    @routes.delete("/api/serve/applications/{app_name}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def delete_serve_application(self, req: Request) -> Response:
+        from ray import serve
+
+        app_name = req.match_info["app_name"]
+
+        controller = await self.get_serve_controller()
+        controller.delete_apps.remote(app_name)
+
+        return Response()
+
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve.schema import ServeDeploySchema
+        from ray.serve._private.api import serve_start
+
+        config = ServeDeploySchema.parse_obj(await req.json())
+
+        client = serve_start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
+        )
+
+        for app_schema in config.applications:
+            client.deploy_app(app_schema)
+
+        return Response()
+
+    @routes.get("/api/serve/applications/status/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_all_applications_statuses(self, req: Request) -> Response:
+
+        from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
+
+        controller = await self.get_serve_controller()
+
+        status_json_list = []
+
+        if controller is None:
+            status_json = ServeStatusSchema.get_empty_schema_dict()
+            status_json_str = json.dumps(status_json)
+        else:
+            from ray.serve._private.common import StatusOverview
+            from ray.serve.generated.serve_pb2 import (
+                StatusOverview as StatusOverviewProto,
+            )
+
+            serve_statuses = await controller.get_serve_status.remote()
+
+            for serve_status in serve_statuses:
+                proto = StatusOverviewProto.FromString(serve_status)
+                status = StatusOverview.from_proto(proto)
+                # status_json_str = serve_status_to_schema(status).json()
+                status_json_list.append(
+                    json.loads(serve_status_to_schema(status).json())
+                )
+
+        return Response(
+            text=json.dumps(status_json_list),
+            content_type="application/json",
+        )
+
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
+        from ray.serve.schema import ServeDeploySchema
         from ray.serve._private.api import serve_start
 
         config = ServeApplicationSchema.parse_obj(await req.json())

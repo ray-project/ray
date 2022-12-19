@@ -11,10 +11,11 @@ except ImportError:
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 
-DEPLOY_PATH = "/api/serve/deployments/"
+DEPLOY_APP_PATH = "/api/serve/applications/"
+# TODO(sihanwang) Changed to INFO_APPLICATION_PATH
 INFO_PATH = "/api/serve/deployments/"
-STATUS_PATH = "/api/serve/deployments/status"
-DELETE_PATH = "/api/serve/deployments/"
+STATUS_APP_PATH = "/api/serve/applications/status/"
+DELETE_APP_PATH = "/api/serve/application/{app_name}"
 
 
 class ServeSubmissionClient(SubmissionClient):
@@ -68,7 +69,7 @@ class ServeSubmissionClient(SubmissionClient):
         )
 
     def deploy_application(self, config: Dict) -> None:
-        response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
+        response = self._do_request("PUT", DEPLOY_APP_PATH, json_data=config)
 
         if response.status_code != 200:
             self._raise_error(response)
@@ -81,13 +82,13 @@ class ServeSubmissionClient(SubmissionClient):
             self._raise_error(response)
 
     def get_status(self) -> Union[Dict, None]:
-        response = self._do_request("GET", STATUS_PATH)
+        response = self._do_request("GET", STATUS_APP_PATH)
         if response.status_code == 200:
             return response.json()
         else:
             self._raise_error(response)
 
-    def delete_application(self) -> None:
-        response = self._do_request("DELETE", DELETE_PATH)
+    def delete_application(self, app_name: str = "") -> None:
+        response = self._do_request("DELETE", DELETE_APP_PATH.format(app_name=app_name))
         if response.status_code != 200:
             self._raise_error(response)

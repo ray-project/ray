@@ -16,17 +16,18 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
-py_test_run_all_subdirectory(
+py_test(
+    name= "test_serve_agent",
     size = "medium",
-    include = ["**/test*.py"],
-    exclude = [
-        "client/node_modules/**",
-        "modules/test/**", 
-        "modules/node/tests/test_node.py", 
-        "tests/test_dashboard.py", 
-        "tests/test_state_head.py"
-    ],
-    extra_srcs = [],
+    srcs = ["modules/serve/tests/test_serve_agent.py"],
+    #exclude = [
+    #    "client/node_modules/**",
+    #    "modules/test/**", 
+    #    "modules/node/tests/test_node.py", 
+    #    "tests/test_dashboard.py", 
+    #    "tests/test_state_head.py"
+    #],
+    #extra_srcs = [],
     data = [
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",

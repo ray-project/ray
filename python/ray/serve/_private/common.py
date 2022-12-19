@@ -33,6 +33,7 @@ class ApplicationStatus(str, Enum):
     DEPLOYING = "DEPLOYING"
     RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    DELETING = "DELETING"
 
 
 @dataclass(eq=True)
@@ -93,6 +94,7 @@ class DeploymentStatusInfo:
 class StatusOverview:
     app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
+    app_name: str = ""
 
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
@@ -131,6 +133,7 @@ class StatusOverview:
 
         # Return protobuf encapsulating application and deployment protos
         return StatusOverviewProto(
+            app_name=self.app_name,
             app_status=app_status_proto,
             deployment_statuses=deployment_status_proto_list,
         )
@@ -147,7 +150,11 @@ class StatusOverview:
             deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
 
         # Recreate StatusInfo
-        return cls(app_status=app_status, deployment_statuses=deployment_statuses)
+        return cls(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+            app_name=proto.app_name,
+        )
 
 
 HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"

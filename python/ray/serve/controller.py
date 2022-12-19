@@ -15,18 +15,17 @@ from ray._private.utils import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
 from ray._private.gcs_utils import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
     ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    DeploymentStatusInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
@@ -49,6 +48,7 @@ from ray.serve._private.utils import (
     get_random_letters,
 )
 from ray.types import ObjectRef
+from ray.serve._private.application_state import ApplicationStateManager
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -146,15 +146,14 @@ class ServeController:
             all_serve_actor_names,
         )
 
-        # Reference to Ray task executing most recent deployment request
-        self.config_deployment_request_ref: ObjectRef = None
-
-        # Unix timestamp of latest config deployment request. Defaults to 0.
-        self.deployment_timestamp = 0
-
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
+
+        # Manage all applications' state
+        self.application_state_manager = ApplicationStateManager(
+            self.deployment_state_manager
+        )
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -253,9 +252,9 @@ class ServeController:
                         logger.exception("Exception updating HTTP state.")
                 try:
                     self.deployment_state_manager.update()
+                    self.application_state_manager.update()
                 except Exception:
                     logger.exception("Exception updating deployment state.")
-
             try:
                 self._put_serve_snapshot()
             except Exception:
@@ -408,15 +407,38 @@ class ServeController:
 
         return updating
 
-    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_group(self, app_name, deployment_args_list: List[Dict]) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
         dictionaries in the list. Effectively executes an atomic deploy on a
         group of deployments.
         """
+        deploy_success = [self.deploy(**args) for args in deployment_args_list]
+        self.application_state_manager.deploy_application(
+            app_name, deployment_args_list
+        )
+        return deploy_success
 
-        return [self.deploy(**args) for args in deployment_args_list]
+    def list_apps(self) -> List[str]:
+        return self.application_state_manager.get_all_apps()
+
+    def delete_apps(self, names: Iterable[str]):
+        deployments_to_delete = []
+        for name in names:
+            deployments_to_delete.extend(
+                self.application_state_manager.get_deployments_by_app(name)
+            )
+            self.application_state_manager.delete_application(name)
+        self.delete_deployments(deployments_to_delete)
+
+    def get_app_status(self, names: Iterable[str]) -> ApplicationStatus:
+        statuses = []
+        for name in names:
+            status = self.application_state_manager.get_app_status(name)
+            if status:
+                statuses.append(status)
+        return statuses
 
     def deploy_app(
         self, config: ServeApplicationSchema, update_time: bool = True
@@ -437,45 +459,46 @@ class ServeController:
             update_time: Whether to update the deployment_timestamp.
         """
 
-        if update_time:
-            self.deployment_timestamp = time.time()
-
         config_dict = config.dict(exclude_unset=True)
 
         # Compare new config options with old ones and set versions of new deployments
-        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-
-        if config_checkpoint is not None:
-            _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
+        config_checkpoints = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if config_checkpoints is None:
+            config_checkpoints_dict = {}
+        else:
+            config_checkpoints_dict = pickle.loads(config_checkpoints)
+        if config.app_name in config_checkpoints_dict:
+            _, last_config_dict, last_version_dict = config_checkpoints_dict[
+                config.app_name
+            ]
             updated_version_dict = _generate_deployment_config_versions(
                 config_dict, last_config_dict, last_version_dict
             )
         else:
             updated_version_dict = _generate_deployment_config_versions(config_dict)
 
+        config_checkpoints_dict[config.app_name] = (
+            time.time(),
+            config_dict,
+            updated_version_dict,
+        )
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps(
-                (self.deployment_timestamp, config_dict, updated_version_dict)
-            ),
+            pickle.dumps(config_checkpoints_dict),
         )
 
         deployment_override_options = config_dict.get("deployments", [])
 
-        if self.config_deployment_request_ref is not None:
-            ray.cancel(self.config_deployment_request_ref)
-            logger.info(
-                "Received new config deployment request. Cancelling "
-                "previous request."
-            )
-
-        self.config_deployment_request_ref = run_graph.options(
-            runtime_env=config.runtime_env
-        ).remote(
+        deploy_obj_ref = run_graph.options(runtime_env=config.runtime_env).remote(
             config.import_path,
             config.runtime_env,
             deployment_override_options,
             updated_version_dict,
+            config.app_name,
+            config_dict.get("route_prefix", None),
+        )
+        self.application_state_manager.create_application_state(
+            config.app_name, deploy_obj_ref=deploy_obj_ref
         )
 
     def delete_deployment(self, name: str):
@@ -564,45 +587,56 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    async def get_serve_status(self) -> bytes:
+    async def get_serve_status(self, app_name: str = "") -> Union[bytes, List[bytes]]:
+        """Return applicaition status
 
-        serve_app_status = ApplicationStatus.RUNNING
-        serve_app_message = ""
-        deployment_timestamp = self.deployment_timestamp
+        Args:
+            app_name: if provided, the method will return single application status. It not provided,
+            the method will return all application status
+        """
 
-        if self.config_deployment_request_ref:
-            finished, pending = ray.wait(
-                [self.config_deployment_request_ref], timeout=0
+        def prepare_status_overview(name):
+            app_status = self.application_state_manager.get_app_status(name)
+            if app_status is None:
+                raise Exception(f"App {name} doesn't exist")
+            deployment_statuses = (
+                self.application_state_manager.get_deployments_statuses_by_app(name)
             )
+            status_info = StatusOverview(
+                app_name=name,
+                app_status=app_status,
+                deployment_statuses=deployment_statuses,
+            )
+            return status_info
 
-            if pending:
-                serve_app_status = ApplicationStatus.DEPLOYING
-            else:
-                try:
-                    await finished[0]
-                except RayTaskError:
-                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
-                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+        if app_name:
+            status_info = prepare_status_overview(app_name)
+            return status_info.to_proto().SerializeToString()
+        else:
+            application_statuses = []
+            for name in self.application_state_manager.get_all_apps():
+                status_info = prepare_status_overview(name)
+                application_statuses.append(status_info.to_proto().SerializeToString())
+            return application_statuses
 
-        app_status = ApplicationStatusInfo(
-            serve_app_status, serve_app_message, deployment_timestamp
-        )
-        deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
-
-        status_info = StatusOverview(
-            app_status=app_status,
-            deployment_statuses=deployment_statuses,
-        )
-
-        return status_info.to_proto().SerializeToString()
-
-    def get_app_config(self) -> Dict:
+    def get_app_config(self, app_name: str = "") -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            _, config, _ = pickle.loads(checkpoint)
+            config_checkpoints_dict = pickle.loads(checkpoint)
+            if app_name not in config_checkpoints_dict:
+                return ServeApplicationSchema.get_empty_schema_dict()
+            _, config, _ = config_checkpoints_dict[app_name]
+
             return config
+
+    def get_deployment_status(self, name: str) -> Union[None, DeploymentStatusInfo]:
+        """Get deployment status by deployment name"""
+        status = self.deployment_state_manager.get_deployment_statuses([name])
+        if not status:
+            return None
+        return status[0]
 
 
 def _generate_deployment_config_versions(
@@ -696,6 +730,8 @@ def run_graph(
     graph_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
+    app_name: str = "",
+    route_prefix: str = None,
 ):
     """
     Deploys a Serve application to the controller's Ray cluster.
@@ -708,6 +744,9 @@ def run_graph(
         deployment_versions: Versions of each deployment, each of which is
             the same as the last deployment if it is a config update or
             a new randomly generated version if it is a code update
+        app_name: application name. If specified, application will be deployed
+            without removing existing applications.
+        route_prefix: route_prefix. Define the route path for the application.
     """
     try:
         from ray import serve
@@ -744,7 +783,7 @@ def run_graph(
             app.deployments[name].set_options(**options, _internal=True)
 
         # Run the graph locally on the cluster
-        serve.run(app)
+        serve.run(app, app_name=app_name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_app() is called.

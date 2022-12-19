@@ -452,11 +452,27 @@ def list_deployments() -> Dict[str, Deployment]:
 
 
 @PublicAPI(stability="beta")
+def delete(app_name: str, _blocking: bool = True):
+    """Delete app by name
+
+    Delete the app with all corresponding deployments
+
+    Args:
+        app_name: the name of app to delete
+
+    """
+    client = get_global_client(_health_check_controller=True)
+    client.delete_apps([app_name], blocking=_blocking)
+
+
+@PublicAPI(stability="beta")
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    app_name: str = "",
+    route_prefix: str = None,
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -473,6 +489,10 @@ def run(
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
         port: Port for HTTP server. Defaults to 8000.
+        app_name: Application name. If not provided, destroy all existing applications.
+        route_prefix: Route prefix for HTTP requests. If not provided, it will use
+            ingrerss deployment route prefix. By default, the ingress route
+            prefix is '/'.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
@@ -517,6 +537,14 @@ def run(
             f"Got unexpected type {type(target)} instead."
         )
 
+    # Set route prefix for the aplication
+    if route_prefix:
+        ingress._route_prefix = route_prefix
+
+    remove_past_deployments = True
+    if app_name:
+        remove_past_deployments = False
+
     parameter_group = []
 
     for deployment in deployments:
@@ -534,7 +562,10 @@ def run(
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
-        parameter_group, _blocking=_blocking, remove_past_deployments=True
+        app_name,
+        parameter_group,
+        _blocking=_blocking,
+        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:

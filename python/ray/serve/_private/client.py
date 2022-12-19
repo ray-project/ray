@@ -159,7 +159,7 @@ class ServeControllerClient:
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
 
-            status = self.get_serve_status().get_deployment_status(name)
+            status = ray.get(self._controller.get_deployment_status.remote(name))
 
             if status is None:
                 raise RuntimeError(
@@ -194,7 +194,7 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            curr_status = self.get_serve_status().get_deployment_status(name)
+            curr_status = ray.get(self._controller.get_deployment_status.remote(name))
             if curr_status is None:
                 break
             logger.debug(
@@ -241,6 +241,7 @@ class ServeControllerClient:
     @_ensure_connected
     def deploy_group(
         self,
+        app_name,
         deployments: List[Dict],
         _blocking: bool = True,
         remove_past_deployments: bool = True,
@@ -262,7 +263,7 @@ class ServeControllerClient:
             )
 
         updating_list = ray.get(
-            self._controller.deploy_group.remote(deployment_args_list)
+            self._controller.deploy_group.remote(app_name, deployment_args_list)
         )
 
         tags = []
@@ -293,6 +294,22 @@ class ServeControllerClient:
             self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
 
     @_ensure_connected
+    def delete_apps(self, app_names: List[str], blocking: bool = True):
+        logger.info(f"Deleting app {app_names}")
+        self._controller.delete_apps.remote(app_names)
+        if blocking:
+            start = time.time()
+            while time.time() - start < 60:
+                curr_statuses = ray.get(
+                    self._controller.get_app_status.remote(app_names)
+                )
+                if not curr_statuses:
+                    break
+                time.sleep(CLIENT_POLLING_INTERVAL_S)
+            else:
+                raise TimeoutError(f"Deployment {app_names} wasn't deleted after 60s.")
+
+    @_ensure_connected
     def deploy_app(
         self, config: ServeApplicationSchema, _blocking: bool = False
     ) -> None:
@@ -303,7 +320,7 @@ class ServeControllerClient:
 
             start = time.time()
             while time.time() - start < timeout_s:
-                curr_status = self.get_serve_status()
+                curr_status = self.get_serve_status(config.app_name)
                 if curr_status.app_status.status == ApplicationStatus.RUNNING:
                     break
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
@@ -348,9 +365,9 @@ class ServeControllerClient:
         return ray.get(self._controller.get_app_config.remote())
 
     @_ensure_connected
-    def get_serve_status(self) -> StatusOverview:
+    def get_serve_status(self, app_name: str = "") -> StatusOverview:
         proto = StatusOverviewProto.FromString(
-            ray.get(self._controller.get_serve_status.remote())
+            ray.get(self._controller.get_serve_status.remote(app_name))
         )
         return StatusOverview.from_proto(proto)
 

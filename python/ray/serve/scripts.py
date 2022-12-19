@@ -24,7 +24,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
@@ -174,7 +174,7 @@ def deploy(config_file_name: str, address: str):
         config = yaml.safe_load(config_file)
 
     # Schematize config to validate format.
-    ServeApplicationSchema.parse_obj(config)
+    ServeDeploySchema.parse_obj(config)
     ServeSubmissionClient(address).deploy_application(config)
 
     cli_logger.newline()
@@ -297,7 +297,7 @@ def run(
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+            config = ServeDeploySchema.parse_obj(yaml.safe_load(config_file))
         is_config = True
     else:
         import_path = config_or_import_path
@@ -325,10 +325,11 @@ def run(
 
     try:
         if is_config:
-            client.deploy_app(config, _blocking=gradio)
-            cli_logger.success("Submitted deploy config successfully.")
-            if gradio:
-                handle = serve.get_deployment("DAGDriver").get_handle()
+            for application_schema in config.applications:
+                client.deploy_app(application_schema, _blocking=gradio)
+                cli_logger.success("Submitted deploy config successfully.")
+                if gradio:
+                    handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
@@ -387,18 +388,19 @@ def config(address: str):
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def status(address: str):
-    app_status = ServeSubmissionClient(address).get_status()
-    if app_status is not None:
+    app_statuses = ServeSubmissionClient(address).get_status()
+    if app_statuses is not None:
         # Ensure multi-line strings in app_status is dumped/printed correctly
         yaml.SafeDumper.add_representer(str, str_presenter)
-        print(
-            yaml.safe_dump(
-                # Ensure exception tracebacks in app_status are printed correctly
-                process_dict_for_yaml_dump(app_status),
-                default_flow_style=False,
-                sort_keys=False,
+        for app_status in app_statuses:
+            print(
+                yaml.safe_dump(
+                    # Ensure exception tracebacks in app_status are printed correctly
+                    process_dict_for_yaml_dump(app_status),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
             )
-        )
 
 
 @cli.command(
@@ -461,8 +463,23 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
+@click.option(
+    "--app-name",
+    default="",
+    type=str,
+)
+@click.option(
+    "--route-prefix",
+    default=None,
+    type=str,
+)
 def build(
-    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+    import_path: str,
+    app_dir: str,
+    kubernetes_format: bool,
+    output_path: Optional[str],
+    app_name: Optional[str],
+    route_prefix: Optional[str],
 ):
     sys.path.insert(0, app_dir)
 
@@ -474,18 +491,31 @@ def build(
         )
 
     app = build_app(node)
-    schema = ServeApplicationSchema(
-        import_path=import_path,
-        runtime_env={},
-        host="0.0.0.0",
-        port=8000,
+
+    schema_config = {
+        "runtime_env": {},
+        "host": "0.0.0.0",
+        "port": 8000,
+        "import_path": import_path,
+    }
+    if app_name:
+        schema_config["app_name"] = app_name
+    if route_prefix:
+        schema_config["route_prefix"] = route_prefix
+    app_schema = ServeApplicationSchema(
+        **schema_config,
         deployments=[deployment_to_schema(d) for d in app.deployments.values()],
     )
 
+    deploy_schema = ServeDeploySchema(
+        host="0.0.0.0", port=8000, applications=[app_schema]
+    )
+
     if kubernetes_format:
-        config = schema.kubernetes_dict(exclude_unset=True)
+        config = app_schema.kubernetes_dict(exclude_unset=True)
+        pass
     else:
-        config = schema.dict(exclude_unset=True)
+        config = deploy_schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "

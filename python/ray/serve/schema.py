@@ -242,6 +242,20 @@ class DeploymentSchema(
 
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    app_name: str = Field(
+        default="",
+        description=(
+            "Application name, the name should be unique within the serve instance"
+        ),
+    )
+    route_prefix: str = Field(
+        default=None,
+        description=(
+            "route prefix to route different requests to different app. "
+            "If not set, it will by default to use ingress deployment route prefix. "
+            "By default, the route prefix is '/' "
+        ),
+    )
     import_path: str = Field(
         default=None,
         description=(
@@ -397,7 +411,33 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="beta")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new port instead."
+        ),
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        default=[],
+        description=("Deployment options that override options specified in the code."),
+    )
+
+
+@PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    app_name: str = Field(default="Application name")
     app_status: ApplicationStatusInfo = Field(
         ...,
         description=(
@@ -438,6 +478,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
     return ServeStatusSchema(
+        app_name=serve_status.app_name,
         app_status=serve_status.app_status,
         deployment_statuses=serve_status.deployment_statuses,
     )
