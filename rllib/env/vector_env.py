@@ -313,7 +313,7 @@ class _VectorizedGymEnv(VectorEnv):
             if self.restart_failed_sub_environments:
                 logger.exception(e.args[0])
                 self.restart_at(index)
-                obs_and_infos = e, e
+                obs_and_infos = e, {}
             else:
                 raise e
 

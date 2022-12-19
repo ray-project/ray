@@ -8,7 +8,6 @@ marwil-halfcheetah-v4:
     stop:
         time_total_s: 1800
     config:
-        framework: "torch"
         # Use input produced by expert SAC algo.
         input: "dataset"
         input_config:
