@@ -178,7 +178,7 @@ The `user_config` field can be used to supply structured configuration for your 
 - adjust traffic splitting percentage for your model composition graph.
 - configure any feature flag, A/B tests, and hyper-parameters for your deployments.
 
-The enable your deployment supports the user configuration feature, you just need to implement a `reconfigure` method that takes one argument:
+To enable the `user_config` feature, you need to implement a `reconfigure` method that takes a dictionary as its only argument:
 
 ```python
 @serve.deployment
@@ -187,7 +187,7 @@ class Model:
         self.threshold = config["threshold"]
 ```
 
-The reconfigure method is called when the class is created if user_config is set. In particular, it's also called when new replicas are created in the future if scale up your deployment later. The reconfigure method is also called each time user_config is updated.
+If the `user_config` is set when the deployment is created (e.g. in the decorator or the Serve config file), this `reconfigure` method is called right after the deployment's `__init__` method, and the `user_config` is passed in as an argument. You can also trigger the `reconfigure` method by updating your Serve config file with a new `user_config` and reapplying it to your Ray cluster.
 
 The corresponding YAML snippet is
 
