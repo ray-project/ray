@@ -38,6 +38,7 @@ def _flatten_index(index: SeqStrType) -> Sequence[str]:
         return tuple(itertools.chain.from_iterable([_flatten_index(y) for y in index]))
 
 
+@ExperimentalAPI
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
     SeqStrType. This is needed for the tree functions to work.

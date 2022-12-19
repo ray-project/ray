@@ -64,7 +64,7 @@ def input_to_output_spec(
     assert num_input_feature_dims >= 1, "Must specify at least one feature dim"
     num_dims = [len(v.shape) != len for v in input_spec.values()]
     assert all(
-        [nd == num_dims[0] for nd in num_dims]
+        nd == num_dims[0] for nd in num_dims
     ), "All specs in input_spec must all have the same number of dimensions"
 
     # All keys in input should have the same numbers of dims

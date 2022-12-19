@@ -45,7 +45,7 @@ class TorchVectorEncoder(TorchModel):
             output_feature_spec=TorchTensorSpec("f", f=config.hidden_layer_sizes[-1]),
         )
         # Returns the size of the feature dimension for the input tensors
-        prev_size = sum([v.shape[-1] for v in input_spec.values()])
+        prev_size = sum(v.shape[-1] for v in input_spec.values())
 
         # Construct layers
         layers = []
