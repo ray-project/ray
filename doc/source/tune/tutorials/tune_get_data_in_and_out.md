@@ -53,7 +53,7 @@ Variables are the parameters we want to tune. They will be different for every [
 Constants are the parameters that are the same for every Trial. Those can be the number of epochs, model hyperparameters we want to set but not tune, the dataset and so on. Often, the constants will be quite large (e.g. the dataset or the model).
 
 ```{warning}
-Objects from the outer scope of the `training_function` will also be automatically copiedm serialized and sent to Trial Actors, which may lead to unintended behavior. Examples include global locks not working (as each Actor operates on a copy) or general errors related to serialization. Best practice is to not refer to any objects from outer scope in the `training_function`.
+Objects from the outer scope of the `training_function` will also be automatically serialized and sent to Trial Actors, which may lead to unintended behavior. Examples include global locks not working (as each Actor operates on a copy) or general errors related to serialization. Best practice is to not refer to any objects from outer scope in the `training_function`.
 ```
 
 ### Search space
