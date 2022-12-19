@@ -67,6 +67,24 @@ deployments:
 
 The file uses the same `fruit:deployment_graph` import path that was used with `serve run` and it has five entries in the `deployments` list– one for each deployment. All the entries contain a `name` setting and some other configuration options such as `num_replicas` or `user_config`.
 
+## The `user_config` parameter
+
+The `user_config` field can be used to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve will then apply it to all running and future deployment replicas. The application of user configuration *will not* restart the replica. This means you can use this field to dynamically:
+- adjust model weights and versions without restarting the cluster.
+- adjust traffic splitting percentage for your model composition graph.
+- configure any feature flag, A/B tests, and hyper-parameters for your deployments.
+
+The enable your deployment supports the user configuration feature, you just need to implement a `reconfigure` method that takes one argument:
+
+```python
+@serve.deployment
+class Model:
+    def reconfigure(self, config: Dict[str, Any]):
+        self.threshold = config["threshold"]
+```
+
+The reconfigure method is called when the class is created if user_config is set. In particular, it's also called when new replicas are created in the future if scale up your deployment later. The reconfigure method is also called each time user_config is updated.
+
 :::{tip}
 Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `PearStand`, including its `name` and `user_config`, and the file would still be valid. When we deploy the file, the `PearStand` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the deployment graph's code.
 :::
