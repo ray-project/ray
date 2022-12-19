@@ -5035,7 +5035,7 @@ def test_read_write_local_node(ray_start_cluster):
         locations = []
         for block in blocks:
             locations.extend(location_data[block]["node_ids"])
-        assert set(locations) == {ray.get_runtime_context().node_id.hex()}
+        assert set(locations) == {ray.get_runtime_context().get_node_id()}
 
     local_path = "local://" + data_path
     # Plain read.
@@ -5087,7 +5087,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
@@ -5121,7 +5121,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())

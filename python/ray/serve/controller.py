@@ -777,7 +777,7 @@ class ServeControllerAvatar:
             self._controller = None
         if self._controller is None:
             # Used for scheduling things to the head node explicitly.
-            head_node_id = ray.get_runtime_context().node_id.hex()
+            head_node_id = ray.get_runtime_context().get_node_id()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(

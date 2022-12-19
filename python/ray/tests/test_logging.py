@@ -314,7 +314,7 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     p = init_log_pubsub()
     print_after.remote(print_msg.remote())
     msgs = get_log_message(
-        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex()
+        p, num=3, timeout=1, job_id=ray.get_runtime_context().get_job_id()
     )
 
     assert len(msgs) == 1, msgs
