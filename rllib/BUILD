@@ -48,7 +48,7 @@
 # - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
 # - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.yml.
-# - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
+# - "multi_gpu": Indicating that a test will definitely be run in the Large GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.large.yml.
 # - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
 #   to certain incompatibilities.
@@ -1792,6 +1792,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"]
+)
+
+py_test(
     name = "test_marl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1799,10 +1806,17 @@ py_test(
 )
 
 py_test(
-    name = "test_rl_optimizer",
+    name = "test_rl_optimizer_torch",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer.py"]
+    srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
+)
+
+py_test(
+    name = "test_rl_optimizer_tf",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1906,6 +1920,14 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/specs/tests/test_model_spec.py"]
+)
+
+# test TorchVectorEncoder
+py_test(
+    name = "test_torch_vector_encoder",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
 )
 
 
@@ -2029,7 +2051,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy", "gpu"],
+    tags = ["team:rllib", "policy", "multi_gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -2108,7 +2130,7 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "policutils"],
+    tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
@@ -2499,7 +2521,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_pg",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "multi_gpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPG"]

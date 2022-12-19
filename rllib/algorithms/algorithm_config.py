@@ -414,7 +414,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = "WARN"
+        self.log_level = DEPRECATED_VALUE
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -490,7 +490,22 @@ class AlgorithmConfig:
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            config["multiagent"][k] = config.pop(k)
+            # convert policies dict to something human-readable
+            if k == "policies" and isinstance(self.multiagent[k], dict):
+                policies_dict = {}
+                for policy_id, policy_spec in self.multiagent[k].items():
+                    if isinstance(policy_spec, PolicySpec):
+                        policies_dict[policy_id] = (
+                            policy_spec.policy_class,
+                            policy_spec.observation_space,
+                            policy_spec.action_space,
+                            policy_spec.config,
+                        )
+                    else:
+                        policies_dict[policy_id] = policy_spec
+                config["multiagent"][k] = policies_dict
+            else:
+                config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
@@ -1408,6 +1423,20 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.model.update(model)
+            if (
+                model.get("_use_default_native_models", DEPRECATED_VALUE)
+                != DEPRECATED_VALUE
+            ):
+                deprecation_warning(
+                    old="AlgorithmConfig.training(_use_default_native_models=True)",
+                    help="_use_default_native_models is not supported "
+                    "anymore. To get rid of this error, set `experimental("
+                    "_enable_rl_module_api` to True. Native models will "
+                    "be better supported by the upcoming RLModule API.",
+                    # Error out if user tries to enable this
+                    error=model["_use_default_native_models"],
+                )
+
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
         if max_requests_in_flight_per_sampler_worker is not NotProvided:
@@ -2017,7 +2046,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = NotProvided,
+        log_level: Optional[str] = DEPRECATED_VALUE,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2051,8 +2080,16 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level is not NotProvided:
-            self.log_level = log_level
+        if log_level != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.log_level",
+                help=(
+                    "RLlib no longer has a separate logging configuration from the rest"
+                    " of Ray. Configure logging on the root logger; RLlib messages "
+                    "will be propagated up the logger hierarchy to be handled there."
+                ),
+                error=False,
+            )
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
