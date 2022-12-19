@@ -162,6 +162,12 @@ def test_log_file_exists(shutdown_only):
             filename = path.stem
             suffix = path.suffix
             if component in filename:
+                # core-worker log also contains "worker keyword". We ignore this case.
+                if (
+                    component == ray_constants.PROCESS_TYPE_WORKER
+                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
+                ):
+                    continue
                 if suffix in suffixes:
                     return True
                 else:
