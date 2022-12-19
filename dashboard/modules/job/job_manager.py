@@ -142,7 +142,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    WAIT_FOR_JOB_TERMINATION_S = 5
+    DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
     VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
@@ -404,21 +404,26 @@ class JobSupervisor:
                         )
                         pass
                     else:
-                        # Wait for job to terminate gracefully, otherwise kill process
+                        # Wait for job to exit gracefully, otherwise kill process
                         # forcefully after timeout.
                         try:
-                            await asyncio.wait_for(
-                                polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                            stop_job_wait_time = int(
+                                os.environ.get(
+                                    "RAY_JOB_STOP_WAIT_TIME_S",
+                                    self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                                )
                             )
+                            await asyncio.wait_for(polling_task, stop_job_wait_time)
                             logger.info(
-                                f"Job {self._job_id} has been terminated gracefully."
+                                f"Job {self._job_id} has been terminated gracefully "
+                                f"with {stop_signal}."
                             )
                         except asyncio.TimeoutError:
                             logger.warning(
                                 f"Attempt to gracefully terminate job {self._job_id} "
-                                "through SIGTERM has timed out after "
-                                f"{self.WAIT_FOR_JOB_TERMINATION_S} seconds. Job is "
-                                "now being force-killed."
+                                f"through {stop_signal} has timed out after "
+                                f"{stop_job_wait_time} seconds. Job is now being "
+                                "force-killed."
                             )
                             polling_task.cancel()
                             child_process.kill()

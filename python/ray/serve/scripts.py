@@ -299,7 +299,10 @@ def run(
     )
     if "env_vars" not in final_runtime_env:
         final_runtime_env["env_vars"] = {}
+    # Send interrupt signal to run_script, which triggers shutdown of Serve.
     final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
+    # Make sure Serve is shutdown correctly before the job is forcefully killed.
+    final_runtime_env["env_vars"]["RAY_JOB_STOP_WAIT_TIME_S"] = "30"
 
     # The job to run on the cluster, which imports and runs the serve app.
     with open(run_script.__file__, "r") as f:

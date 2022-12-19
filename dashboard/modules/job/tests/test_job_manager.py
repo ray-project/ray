@@ -816,7 +816,11 @@ while True:
 
 
 @pytest.mark.asyncio
-async def test_stop_job_timeout(job_manager):
+@pytest.mark.parametrize(
+    "use_env_var,stop_timeout",
+    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+)
+async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
     """
     Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
     """
@@ -826,14 +830,19 @@ import signal
 import time
 def handler(*args):
     print('SIGTERM signal handled!');
-    pass
 signal.signal(signal.SIGTERM, handler)
 
 while True:
     print('Waiting...')
     time.sleep(1)\"
 """
-    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+    if use_env_var:
+        job_id = await job_manager.submit_job(
+            entrypoint=entrypoint,
+            runtime_env={"env_vars": {"RAY_JOB_STOP_WAIT_TIME_S": str(stop_timeout)}},
+        )
+    else:
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
     await async_wait_for_condition(
         lambda: "Waiting..." in job_manager.get_job_logs(job_id)
@@ -844,11 +853,24 @@ while True:
     await async_wait_for_condition(
         lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
     )
+
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
+        # Job should not be stopped before the specified timeout. (e.g. at 9 seconds)
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=0.9 * stop_timeout,
+        )
+
+    # Job should be stopped after the specified timeout. (e.g. at 10 seconds)
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
         job_manager=job_manager,
         job_id=job_id,
-        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S,
+        timeout=0.1 * stop_timeout,
     )
 
 
