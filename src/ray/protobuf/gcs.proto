@@ -256,6 +256,8 @@ message TaskEvents {
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
   optional ProfileEvents profile_events = 5;
+  // Job id of the task
+  bytes job_id = 6;
 }
 
 // Represents a compact list of task state events by different tasks,

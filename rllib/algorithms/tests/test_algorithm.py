@@ -196,7 +196,7 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
@@ -271,6 +271,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
                 always_attach_evaluation_results=True,
             )
+            .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
