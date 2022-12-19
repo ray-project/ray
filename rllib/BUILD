@@ -1922,6 +1922,14 @@ py_test(
     srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
+# test TorchVectorEncoder
+py_test(
+    name = "test_torch_vector_encoder",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Offline
