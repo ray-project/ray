@@ -431,7 +431,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
+    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
 
     assert calculated_stats[DatasetStats.OUTPUT_NUM_ROWS] == {
         "min": min(block_params["num_rows"]),
@@ -476,9 +476,8 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
-    stats.stage_stats["read"] = calculated_stats
-    summarized_str = stats._summarize_blocks("read", False)
+    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
+    summarized_str = DatasetStats._summarize_blocks(calculated_stats, False)
     summarized_lines = summarized_str.split("\n")
 
     assert (
@@ -556,15 +555,21 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats("read", block_meta_list, False)
+    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
     wall_time_stats = calculated_stats.get(DatasetStats.WALL_TIME)
-    assert stats.get_total_wall_time() == wall_time_stats.get("max")
+    assert DatasetStats.get_total_wall_time(
+        [calculated_stats],
+    ) == wall_time_stats.get("max")
 
     cpu_time_stats = calculated_stats.get(DatasetStats.CPU_TIME)
-    assert stats.get_total_cpu_time() == cpu_time_stats.get("sum")
+    assert DatasetStats.get_total_cpu_time(
+        [calculated_stats],
+    ) == cpu_time_stats.get("sum")
 
     peak_memory_stats = calculated_stats.get(DatasetStats.PEAK_HEAP_MEMORY)
-    assert stats.get_max_heap_memory() == peak_memory_stats.get("max")
+    assert DatasetStats.get_max_heap_memory(
+        [calculated_stats],
+    ) == peak_memory_stats.get("max")
 
 
 if __name__ == "__main__":

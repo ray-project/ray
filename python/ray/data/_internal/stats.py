@@ -210,8 +210,6 @@ class DatasetStats:
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
-        # Dict of summary statistics aggregated by stage. Keyed by stage_name
-        self.stage_stats: Dict[str, Dict[str, Any]] = {}
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -281,8 +279,8 @@ class DatasetStats:
                 out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
-                self._calculate_blocks_stats(stage_name, metadata, is_substage=False)
-                blocks_stats_str = self._summarize_blocks(stage_name, is_substage=False)
+                block_stats = self._calculate_blocks_stats(metadata, is_substage=False)
+                blocks_stats_str = DatasetStats._summarize_blocks(block_stats, is_substage=False)
                 out += blocks_stats_str
         elif len(self.stages) > 1:
             rounded_total = round(self.time_total_s, 2)
@@ -300,10 +298,8 @@ class DatasetStats:
                     out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
-                    self._calculate_blocks_stats(stage_name, metadata, is_substage=True)
-                    blocks_stats_str = self._summarize_blocks(
-                        stage_name, is_substage=True
-                    )
+                    block_stats = self._calculate_blocks_stats(metadata, is_substage=True)
+                    blocks_stats_str = DatasetStats._summarize_blocks(block_stats, is_substage=True)
                     out += blocks_stats_str
         out += self._summarize_iter()
         return out
@@ -329,7 +325,7 @@ class DatasetStats:
         return out
 
     def _calculate_blocks_stats(
-        self, stage_name: str, blocks: List[BlockMetadata], is_substage: bool
+        self, blocks: List[BlockMetadata], is_substage: bool
     ) -> Dict[str, Union[str, Dict[str, Any]]]:
         """Calculate the stats for a given list of blocks from a stage.
 
@@ -433,13 +429,13 @@ class DatasetStats:
             }
             stage_summary_stats[DatasetStats.NODE_COUNT] = node_counts_stats
 
-        self.stage_stats[stage_name] = stage_summary_stats
         return stage_summary_stats
 
-    def _summarize_blocks(self, stage_name: str, is_substage: bool) -> str:
-        """For the stage with a given `stage_name`, returns a formatted string
-        using pre-calculated stage statistics from `self._calculate_block_stats(...)`
-        (which should be called prior to this method).
+    @staticmethod
+    def _summarize_blocks(stage_stats: Dict[str, Any], is_substage: bool) -> str:
+        """For a given (pre-calculated) statistics dict from 
+        `self._calculate_block_stats(...)`, returns a human-friendly string
+        that summarizes stage execution statistics.
 
         Args:
             stage_name: Name of the stage
@@ -449,7 +445,6 @@ class DatasetStats:
             String with summary statistics for executing the given stage.
         """
         indent = "\t" if is_substage else ""
-        stage_stats = self.stage_stats.get(stage_name, {})
         out = stage_stats.get(DatasetStats.BLOCK_EXECUTION_SUMMARY, "")
 
         wall_time_stats = stage_stats.get(DatasetStats.WALL_TIME, {})
@@ -512,27 +507,38 @@ class DatasetStats:
             )
         return out
 
-    def get_total_wall_time(self) -> float:
-        """Returns the sum of maximum wall time per stage over all stages."""
+    @staticmethod
+    def get_total_wall_time(list_of_stage_stats: List[Dict[str, Any]]) -> float:
+        """ For a given list of pre-calculated stage statistics, e.g. from
+        self._calculate_blocks_stats(...), returns the sum of maximum 
+        wall time per stage over all stages."""
         total_wall_time = 0
-        for stage_name, ss in self.stage_stats.items():
-            stage_wall_time_stats = ss.get(DatasetStats.WALL_TIME)
+        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
+            stage_wall_time_stats = stage_stats.get(DatasetStats.WALL_TIME)
             if stage_wall_time_stats:
                 total_wall_time += stage_wall_time_stats.get("max", 0)
         return total_wall_time
 
-    def get_total_cpu_time(self) -> float:
+    @staticmethod
+    def get_total_cpu_time(list_of_stage_stats: List[Dict[str, Any]]) -> float:
+        """ For a given list of pre-calculated stage statistics, e.g. from
+        self._calculate_blocks_stats(...), returns the sum of total 
+        CPU time per stage over all stages."""
         total_cpu_time = 0
-        for stage_name, ss in self.stage_stats.items():
-            stage_cpu_time_stats = ss.get(DatasetStats.CPU_TIME)
+        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
+            stage_cpu_time_stats = stage_stats.get(DatasetStats.CPU_TIME)
             if stage_cpu_time_stats:
                 total_cpu_time += stage_cpu_time_stats.get("sum", 0)
         return total_cpu_time
 
-    def get_max_heap_memory(self) -> float:
+    @staticmethod
+    def get_max_heap_memory(list_of_stage_stats: List[Dict[str, Any]]) -> float:
+        """ For a given list of pre-calculated stage statistics, e.g. from
+        self._calculate_blocks_stats(...), returns the maximum heap memory usage
+        per stage over all stages."""
         max_heap_memory = 0
-        for stage_name, ss in self.stage_stats.items():
-            stage_heap_memory_stats = ss.get(DatasetStats.PEAK_HEAP_MEMORY)
+        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
+            stage_heap_memory_stats = stage_stats.get(DatasetStats.PEAK_HEAP_MEMORY)
             if stage_heap_memory_stats:
                 max_heap_memory = max(
                     max_heap_memory, stage_heap_memory_stats.get("max", 0)
