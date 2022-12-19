@@ -515,9 +515,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ):
             tf1.enable_eager_execution()
 
-        if self.config.log_level:
-            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
-
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
         elif self.config.log_level == "DEBUG":
@@ -1601,8 +1598,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
-        for pid in self.policy_map:
-            policy_states[pid] = self.policy_map[pid].get_state()
+        for pid in self.policy_map.keys():
+            # If required by the user, only capture policies that are actually
+            # trainable. Otherwise, capture all policies (for saving to disk).
+            if (
+                not self.config.checkpoint_trainable_policies_only
+                or self.is_policy_to_train is None
+                or self.is_policy_to_train(pid)
+            ):
+                policy_states[pid] = self.policy_map[pid].get_state()
+
         return {
             # List all known policy IDs here for convenience. When an Algorithm gets
             # restored from a checkpoint, it will not have access to the list of

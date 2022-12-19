@@ -2276,6 +2276,14 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/ray-get-loop`
+    - :doc:`/ray-core/patterns/unnecessary-ray-get`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+
+
     Args:
         object_refs: Object ref of the object to get or a list of object refs
             to get.
@@ -2355,6 +2363,12 @@ def put(
 
     The object may not be evicted while a reference to the returned ID exists.
 
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/return-ray-put`
+    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
+    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+
     Args:
         value: The Python object to be stored.
         _owner [Experimental]: The actor that should own this object. This
@@ -2431,6 +2445,11 @@ def wait(
     This method will issue a warning if it's running inside an async context.
     Instead of ``ray.wait(object_refs)``, you can use
     ``await asyncio.wait(object_refs)``.
+
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/limit-pending-tasks`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
         object_refs: List of object refs for objects that may
@@ -2930,7 +2949,7 @@ def remote(
 
         Instead, use ray.put to create a copy of the object in the object store.
 
-        See :ref:`more info here <tip-delay-get>`.
+        See :ref:`more info here <ray-pass-large-arg-by-value>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
@@ -2939,6 +2958,7 @@ def remote(
             return values to return during execution, and the caller will
             receive an ObjectRef[ObjectRefGenerator] (note, this setting is
             experimental).
+            See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
