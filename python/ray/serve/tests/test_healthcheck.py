@@ -4,6 +4,7 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
@@ -200,6 +201,27 @@ def test_consecutive_failures(serve_instance):
     check_fails_3_times()
     ray.get(counter.reset.remote())
     check_fails_3_times()
+
+
+def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
+    """If a deployment always fails health check, the deployment should be unhealthy."""
+
+    @serve.deployment
+    class AlwaysUnhealthy:
+        def check_health(self):
+            raise Exception("intended to fail")
+
+        def __call__(self, *args):
+            return ray.get_runtime_context().current_actor
+
+    with pytest.raises(RuntimeError):
+        serve.run(AlwaysUnhealthy.bind())
+
+    app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+    assert (
+        app_status["deployment_statuses"][0]["name"] == "AlwaysUnhealthy"
+        and app_status["deployment_statuses"][0]["status"] == "UNHEALTHY"
+    )
 
 
 if __name__ == "__main__":

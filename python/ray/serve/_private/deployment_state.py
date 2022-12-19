@@ -1621,7 +1621,7 @@ class DeploymentState:
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
-            
+
             if len(pending_initial_health_check) > 0:
                 message = (
                     f"Deployment {self._name} has {len(pending_initial_health_check)} "
@@ -1636,7 +1636,6 @@ class DeploymentState:
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
-                
 
             self._prev_startup_warning = time.time()
 
