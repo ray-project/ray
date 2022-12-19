@@ -184,9 +184,8 @@ def _sliding_window(iterable: Iterable, n: int, clear_block_after_read: bool = F
         yield tuple(window)
     for elem in it:
         block_ref = window.popleft()
-        if clear_block_after_read:
+        if clear_block_after_read and DatasetContext.get_current().eager_free:
             _trace_deallocation(block_ref, "block_batching._sliding_window")
-            ray._private.internal_api.free(block_ref, local_only=False)
         else:
             _trace_deallocation(
                 block_ref, "block_batching._sliding_window", freed=False

@@ -71,9 +71,6 @@ class RefBundle:
             size = self.size_bytes()
             for b in self.blocks:
                 _trace_deallocation(b[0], "RefBundle.destroy_if_owned")
-            ray._private.internal_api.free(
-                [b[0] for b in self.blocks], local_only=False
-            )
             return size
         else:
             for b in self.blocks:

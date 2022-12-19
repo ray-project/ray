@@ -260,12 +260,12 @@ class _MemActor:
                 from ray import cloudpickle as pickle
 
                 try:
-                    obj = ray.get(ref, timeout=1.0)
+                    obj = ray.get(ref, timeout=5.0)
                     size_bytes = len(pickle.dumps(obj))
                 except Exception:
-                    logger.info("[mem_tracing] ERROR getting size")
+                    print("[mem_tracing] ERROR getting size")
                     size_bytes = -1
-            logger.info(f"[mem_tracing] Allocated {size_bytes} bytes at {loc}: {ref}")
+            print(f"[mem_tracing] Allocated {size_bytes} bytes at {loc}: {ref}")
             entry = {
                 "size_bytes": size_bytes,
                 "loc": loc,
@@ -278,51 +278,55 @@ class _MemActor:
         ref = ref[0]
         size_bytes = self.allocated.get(ref, {}).get("size_bytes", 0)
         if freed:
-            logger.info(f"[mem_tracing] Freed {size_bytes} bytes at {loc}: {ref}")
+            print(f"[mem_tracing] Freed {size_bytes} bytes at {loc}: {ref}")
             if ref in self.allocated:
                 self.cur_mem -= size_bytes
                 self.deallocated[ref] = self.allocated[ref]
                 self.deallocated[ref]["dealloc_loc"] = loc
                 del self.allocated[ref]
             else:
-                logger.info(
-                    f"[mem_tracing] WARNING: allocation of {ref} was not traced!"
-                )
+                print(f"[mem_tracing] WARNING: allocation of {ref} was not traced!")
         else:
-            logger.info(
-                f"[mem_tracing] Skipped freeing {size_bytes} bytes at {loc}: {ref}"
-            )
+            print(f"[mem_tracing] Skipped freeing {size_bytes} bytes at {loc}: {ref}")
             self.skip_dealloc[ref] = loc
 
     def leak_report(self):
-        logger.info("[mem_tracing] ===== Leaked objects =====")
+        print("[mem_tracing] ===== Leaked objects =====")
         for ref in self.allocated:
             size_bytes = self.allocated[ref].get("size_bytes")
             loc = self.allocated[ref].get("loc")
             if ref in self.skip_dealloc:
                 dealloc_loc = self.skip_dealloc[ref]
-                logger.info(
+                print(
                     f"[mem_tracing] Leaked object, created at {loc}, size "
                     f"{size_bytes}, skipped dealloc at {dealloc_loc}: {ref}"
                 )
             else:
-                logger.info(
+                print(
                     f"[mem_tracing] Leaked object, created at {loc}, "
                     f"size {size_bytes}: {ref}"
                 )
-        logger.info("[mem_tracing] ===== End leaked objects =====")
-        logger.info("[mem_tracing] ===== Freed objects =====")
+        print("[mem_tracing] ===== End leaked objects =====")
+        print("[mem_tracing] ===== Freed objects =====")
         for ref in self.deallocated:
             size_bytes = self.deallocated[ref].get("size_bytes")
             loc = self.deallocated[ref].get("loc")
             dealloc_loc = self.deallocated[ref].get("dealloc_loc")
-            logger.info(
+            print(
                 f"[mem_tracing] Freed obj from {loc} at {dealloc_loc}, "
                 f"size {size_bytes}: {ref}"
             )
-        logger.info("[mem_tracing] ===== End freed objects =====")
-        logger.info(f"[mem_tracing] Peak size bytes {self.peak_mem}")
-        logger.info(f"[mem_tracing] Current size bytes {self.cur_mem}")
+            ok = False
+            try:
+                ray.get(ref)
+            except Exception as e:
+                print("Exception", e)
+                ok = True
+            if not ok:
+                print("OBJECT WAS NOT PROPERLY DEALLOCATED", ref)
+        print("[mem_tracing] ===== End freed objects =====")
+        print(f"[mem_tracing] Peak size bytes {self.peak_mem}")
+        print(f"[mem_tracing] Current size bytes {self.cur_mem}")
 
 
 def _get_mem_actor():
@@ -339,6 +343,8 @@ def _trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
 
 
 def _trace_deallocation(ref: ray.ObjectRef, loc: str, freed: bool = True) -> None:
+    if freed:
+        ray._private.internal_api.free(ref, local_only=False)
     ctx = DatasetContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()

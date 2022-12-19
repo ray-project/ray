@@ -85,7 +85,6 @@ class MapOperatorTasksImpl:
         all_refs = list(ray.get(ref))
         block_refs = all_refs[:-1]
         block_metas = ray.get(all_refs[-1])
-        ray._private.internal_api.free([ref], local_only=False)
         del ref
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:

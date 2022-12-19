@@ -4,6 +4,7 @@ from typing import Iterator, List, Optional, Tuple
 import numpy as np
 
 from ray.data.block import Block, BlockMetadata
+from ray.data._internal.util import _trace_allocation
 from ray.types import ObjectRef
 
 
@@ -23,6 +24,8 @@ class BlockList:
         owned_by_consumer: bool,
     ):
         assert len(blocks) == len(metadata), (blocks, metadata)
+        for b in blocks:
+            _trace_allocation(b, "BlockList.__init__")
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata

@@ -74,6 +74,12 @@ DEFAULT_NEW_EXECUTION_BACKEND = bool(
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "1")))
 
+# Whether to trace allocations / eager free (new backend only). This adds significant
+# performance overheads and should only be used for debugging.
+DEFAULT_TRACE_ALLOCATIONS = bool(
+    int(os.environ.get("RAY_DATASET_TRACE_ALLOCATIONS", "0"))
+)
+
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -125,6 +131,7 @@ class DatasetContext:
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
+        trace_allocations: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -149,7 +156,7 @@ class DatasetContext:
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
-        self.trace_allocations = True
+        self.trace_allocations = trace_allocations
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -189,6 +196,7 @@ class DatasetContext:
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
+                    trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                 )
 
             return _default_context
