@@ -256,6 +256,115 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.cluster_manager.maximum_uptime_minutes,
         )
 
+    def testClusterComputeExtraTags(self):
+        sdk = MockSDK()
+        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = self.cls(
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+        )
+        cluster_manager.set_cluster_compute(self.cluster_compute)
+
+        # No extra tags specified
+        self.assertEqual(
+            cluster_manager.cluster_compute_with_extra_tags, self.cluster_compute
+        )
+
+        # Extra tags specified
+        cluster_manager.extra_tags = {"foo": "bar"}
+        assert (
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
+                0
+            ]["ResourceType"]
+            == "instance"
+        )
+        assert (
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
+                0
+            ]["Tags"][0]["Key"]
+            == "foo"
+        )
+        assert (
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
+                0
+            ]["Tags"][0]["Value"]
+            == "bar"
+        )
+        assert len(
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"]
+        ) == len(cluster_manager.extra_tags_resource_types)
+        assert (
+            len(
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ][0]["Tags"]
+            )
+            == 1
+        )
+        assert "aws" not in cluster_manager.cluster_compute
+
+        # Test merging
+        cluster_compute_with_tags = self.cluster_compute.copy()
+        cluster_compute_with_tags["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "fake", "Tags": []},
+                {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
+            ]
+        }
+        cluster_manager.set_cluster_compute(cluster_compute_with_tags)
+
+        assert (
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
+                1
+            ]["Tags"][0]["Key"]
+            == "key"
+        )
+        assert (
+            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
+                1
+            ]["Tags"][0]["Value"]
+            == "val"
+        )
+        for i, resource in enumerate(cluster_manager.extra_tags_resource_types):
+            assert (
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ][i + 1]["ResourceType"]
+                == resource
+            )
+            assert (
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ][i + 1]["Tags"][-1]["Key"]
+                == "foo"
+            )
+            assert (
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ][i + 1]["Tags"][-1]["Value"]
+                == "bar"
+            )
+        assert (
+            len(
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ]
+            )
+            == len(cluster_manager.extra_tags_resource_types) + 1
+        )
+        assert (
+            len(
+                cluster_manager.cluster_compute_with_extra_tags["aws"][
+                    "TagSpecifications"
+                ][1]["Tags"]
+            )
+            == 2
+        )
+        assert (
+            len(cluster_manager.cluster_compute["aws"]["TagSpecifications"][1]["Tags"])
+            == 1
+        )
+
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):
         # Find existing env and succeed

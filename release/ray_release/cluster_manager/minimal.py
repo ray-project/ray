@@ -1,4 +1,5 @@
 import time
+from copy import deepcopy
 
 from ray_release.exception import (
     ClusterEnvBuildError,
@@ -19,6 +20,8 @@ class MinimalClusterManager(ClusterManager):
 
     Builds app config and compute template but does not start or stop session.
     """
+
+    extra_tags_resource_types = ["instance"]
 
     @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
     def create_cluster_env(self):
@@ -224,7 +227,7 @@ class MinimalClusterManager(ClusterManager):
                         dict(
                             name=self.cluster_compute_name,
                             project_id=self.project_id,
-                            config=self.cluster_compute,
+                            config=self.cluster_compute_with_extra_tags,
                         )
                     )
                     self.cluster_compute_id = result.result.id
@@ -247,6 +250,39 @@ class MinimalClusterManager(ClusterManager):
                     f"name {self.cluster_compute_name} and "
                     f"ID {self.cluster_compute_id}"
                 )
+
+    @property
+    def cluster_compute_with_extra_tags(self) -> dict:
+        if self.extra_tags and self._get_cloud_provider() == "AWS":
+            cluster_compute = self.cluster_compute.copy()
+            if "aws" in cluster_compute:
+                cluster_compute["aws"] = deepcopy(cluster_compute["aws"])
+            else:
+                cluster_compute["aws"] = {}
+            cluster_compute["aws"].setdefault("TagSpecifications", [])
+            tag_specifications = cluster_compute["aws"]["TagSpecifications"]
+            for resource in self.extra_tags_resource_types:
+                resource_tags: dict = next(
+                    (
+                        x
+                        for x in tag_specifications
+                        if x.get("ResourceType", "") == resource
+                    ),
+                    None,
+                )
+                if resource_tags is None:
+                    resource_tags = {"ResourceType": resource, "Tags": []}
+                    tag_specifications.append(resource_tags)
+                tags = resource_tags["Tags"]
+                for key, value in self.extra_tags.items():
+                    tags.append({"Key": key, "Value": value})
+            return cluster_compute
+        else:
+            return self.cluster_compute
+
+    def _get_cloud_provider(self) -> str:
+        assert self.cluster_compute and "cloud_id" in self.cluster_compute
+        return self.sdk.get_cloud(self.cluster_compute["cloud_id"]).result.provider
 
     def build_configs(self, timeout: float = 30.0):
         try:

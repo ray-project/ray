@@ -11,12 +11,15 @@ if TYPE_CHECKING:
 
 
 class ClusterManager(abc.ABC):
+    extra_tags_resource_types: list
+
     def __init__(
         self,
         test_name: str,
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
+        extra_tags: Optional[dict] = None,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
@@ -24,6 +27,7 @@ class ClusterManager(abc.ABC):
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
+        self.extra_tags = extra_tags
 
         self.cluster_name = (
             f"{test_name}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
@@ -76,6 +80,10 @@ class ClusterManager(abc.ABC):
             f"__compute__{self.test_name}__"
             f"{dict_hash(self.cluster_compute)}"
         )
+
+    @property
+    def cluster_compute_with_extra_tags(self) -> dict:
+        raise NotImplementedError
 
     def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError
