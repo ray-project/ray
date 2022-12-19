@@ -26,8 +26,10 @@ class DBReporter(Reporter):
             "team": test.get("team", ""),
             "frequency": test.get("frequency", ""),
             "cluster_url": result.cluster_url or "",
+            "session_id": result.session_id or "",
             "wheel_url": result.wheels_url or "",
             "buildkite_url": result.buildkite_url or "",
+            "buildkite_job_id": result.buildkite_job_id or "",
             "runtime": result.runtime or -1.0,
             "stable": result.stable,
             "return_code": result.return_code,
@@ -35,6 +37,7 @@ class DBReporter(Reporter):
             # Todo: Activate again once we thinned these out a bit or find another
             # way to reduce the size.
             "prometheus_metrics": {},  # result.prometheus_metrics or {},
+            "extra_tags": result.extra_tags or {},
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")

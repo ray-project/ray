@@ -72,6 +72,18 @@ command_runner_to_file_manager = {
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
 
 
+def _get_extra_tags_from_env_vars() -> dict:
+    env_vars = (
+        "BUILDKITE_JOB_ID",
+        "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_RETRY_COUNT",
+        "BUILDKITE_SOURCE",
+        "RELEASE_FREQUENCY",
+    )
+    return {key.lower(): os.getenv(key, "") for key in env_vars}
+
+
 def run_release_test(
     test: Test,
     anyscale_project: str,
@@ -93,7 +105,9 @@ def run_release_test(
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
     if buildkite_url:
-        buildkite_url += "#" + os.getenv("BUILDKITE_JOB_ID", "")
+        buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+        buildkite_url += "#" + buildkite_job_id
+        result.buildkite_job_id = buildkite_job_id
     result.buildkite_url = buildkite_url
 
     working_dir = test["working_dir"]
@@ -126,10 +140,16 @@ def run_release_test(
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
+    extra_tags = _get_extra_tags_from_env_vars()
+    result.extra_tags = extra_tags
+
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"], anyscale_project, smoke_test=smoke_test
+            test["name"],
+            anyscale_project,
+            smoke_test=smoke_test,
+            extra_tags=extra_tags,
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
@@ -235,6 +255,7 @@ def run_release_test(
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
+        result.session_id = cluster_manager.cluster_id
 
         # Upload files
         buildkite_group(":wrench: Preparing remote environment")
