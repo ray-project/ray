@@ -806,10 +806,11 @@ def start(
                 if dashboard_url:
                     cli_logger.print(
                         cf.bold(
-                            "  RAY_ADDRESS='http://<dashboard URL>' ray job submit "
+                            "  RAY_ADDRESS='http://<dashboard URL>:{}' ray job submit "
                             "--working-dir . "
                             "-- python my_script.py"
                         ),
+                        ray_params.dashboard_port,
                     )
                 cli_logger.newline()
                 cli_logger.print(
