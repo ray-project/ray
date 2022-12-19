@@ -73,9 +73,11 @@ if __name__ == "__main__":
             },
             # Map to either random behavior or PR learning behavior based on
             # the agent's ID.
-            policy_mapping_fn=lambda agent_id, **kwargs: ["pg_policy", "random"][
-                agent_id % 2
-            ],
+            policy_mapping_fn=(
+                lambda agent_id, episode, worker, **kwargs: (
+                    ["pg_policy", "random"][agent_id % 2]
+                )
+            ),
             # We wouldn't have to specify this here as the RandomPolicy does
             # not learn anyways (it has an empty `learn_on_batch` method), but
             # it's good practice to define this list here either way.
