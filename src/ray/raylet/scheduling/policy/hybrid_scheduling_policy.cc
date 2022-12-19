@@ -143,7 +143,8 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
   int32_t num_candidate_nodes =
       NumNodesToSelect(schedule_top_k_absolute,
                        scheduler_top_k_fraction,
-                       max_pending_lease_requests_per_scheduling_category);
+                       max_pending_lease_requests_per_scheduling_category,
+                       nodes_.size());
 
   if (!available_nodes.empty()) {
     // First prioritize available nodes.
@@ -207,12 +208,13 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
 int32_t HybridSchedulingPolicy::NumNodesToSelect(
     int32_t schedule_top_k_absolute,
     float scheduler_top_k_fraction,
-    int64_t max_pending_lease_requests_per_scheduling_category) const {
+    int64_t max_pending_lease_requests_per_scheduling_category,
+    size_t num_nodes) const {
   int32_t top_k = schedule_top_k_absolute;
   if (top_k <= 0) {
     top_k = std::max(
         static_cast<uint64_t>(max_pending_lease_requests_per_scheduling_category),
-        static_cast<uint64_t>(scheduler_top_k_fraction * nodes_.size()));
+        static_cast<uint64_t>(scheduler_top_k_fraction * num_nodes));
   }
   return top_k;
 }

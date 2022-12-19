@@ -100,10 +100,10 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       float scheduler_top_k_fraction,
       int64_t max_pending_lease_requests_per_scheduling_category);
 
-  int32_t NumNodesToSelect(
-      int32_t schedule_top_k_absolute,
-      float scheduler_top_k_fraction,
-      int64_t max_pending_lease_requests_per_scheduling_category) const;
+  int32_t NumNodesToSelect(int32_t schedule_top_k_absolute,
+                           float scheduler_top_k_fraction,
+                           int64_t max_pending_lease_requests_per_scheduling_category,
+                           size_t num_nodes) const;
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

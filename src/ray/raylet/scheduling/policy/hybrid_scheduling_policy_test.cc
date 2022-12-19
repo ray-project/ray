@@ -76,18 +76,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
 };
 
 TEST_F(HybridSchedulingPolicyTest, NumNodesToSelect) {
-  // In this test, the local node and a remote node are both available. The remote node
-  // has a lower critical resource utilization so we schedule on it.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-
-  nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
-  nodes.emplace(remote_node, CreateNodeResources(1.5, 2, 0, 0, 0, 0));
-
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
-  ASSERT_EQ(to_schedule, remote_node);
+  HybridSchedulingPolicy policy{local_node, {}, [](scheduling::NodeID) { return true; }};
 }
 
 int main(int argc, char **argv) {

@@ -20,9 +20,10 @@
 namespace ray {
 namespace raylet {
 class SchedulingPolicyTest;
-class HybridSchedulingPolicyTest;
 }  // namespace raylet
 namespace raylet_scheduling_policy {
+
+class HybridSchedulingPolicyTest;
 
 // Different scheduling types. Please refer to
 // scheduling_policy.h to see detailed behaviors.
@@ -183,7 +184,7 @@ struct SchedulingOptions {
             max_pending_lease_requests_per_scheduling_category) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
-  friend class ::ray::raylet::HybridSchedulingPolicyTest;
+  friend class HybridSchedulingPolicyTest;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
