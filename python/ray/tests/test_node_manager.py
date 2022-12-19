@@ -5,9 +5,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     get_resource_usage,
-    format_web_url,
 )
-import requests
 import pytest
 import os
 
