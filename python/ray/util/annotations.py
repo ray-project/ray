@@ -129,9 +129,7 @@ def Deprecated(*args, **kwargs):
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
     def inner(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
-        obj.__doc__ += f"{doc_message}"
+        _append_doc(obj, message=doc_message, directive="warning")
         _mark_annotated(obj)
 
         if not warning:
