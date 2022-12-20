@@ -25,6 +25,9 @@ from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 _logger = logging.getLogger(__name__)
 
+exit_handler_executed = False
+
+
 if __name__ == "__main__":
     arg_list = sys.argv[1:]
 
@@ -110,21 +113,19 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     try:
-
-        exit_handler_executed = False
-        exit_handler_lock = threading.Lock()
+        exit_handler_lock = threading.RLock()
 
         def exit_handler():
-            nonlocal exit_handler_executed
+            global exit_handler_executed
             with exit_handler_lock:
-                exit_handler_executed = True
-                process.terminate()
-                try_clean_temp_dir_at_exit()
+                if not exit_handler_executed:
+                    exit_handler_executed = True
+                    process.terminate()
+                    try_clean_temp_dir_at_exit()
 
         def sigterm_handler(*args):
             exit_handler()
             os._exit(143)
-
 
         def sighup_handler(*args):
             exit_handler()
@@ -132,7 +133,7 @@ if __name__ == "__main__":
 
         # When spark application is terminated, all pyspark task worker descendant
         # processes will receive SIGHUP signal, we need to handle it properly.
-        signal.signal(signal.SIGHUP, sigterm_handler)
+        signal.signal(signal.SIGHUP, sighup_handler)
 
         # When spark job is canceled, all pyspark task workers of this job will
         # receive SIGKILL signal, because we register PR_SET_PDEATHSIG signal for
