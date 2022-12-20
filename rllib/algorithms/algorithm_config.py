@@ -3,6 +3,7 @@ import gym
 from gym.spaces import Space
 import logging
 import math
+import os
 from typing import (
     Any,
     Callable,
@@ -317,7 +318,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = False
+        self.enable_connectors = bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -422,7 +423,9 @@ class AlgorithmConfig:
 
         # `self.rl_module()`
         self.rl_module_class = None
-        self._enable_rl_module_api = False
+        self._enable_rl_module_api = bool(
+            os.environ.get("RLLIB_ENABLE_RL_MODULE", False)
+        )
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False

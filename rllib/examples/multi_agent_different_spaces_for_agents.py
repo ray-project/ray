@@ -103,9 +103,6 @@ def get_cli_args():
         action="store_true",
         help="Init Ray in local mode for easier debugging.",
     )
-    parser.add_argument(
-        "--enable-rl-module-api", action="store_true", help="Use RLModule API."
-    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -143,9 +140,6 @@ if __name__ == "__main__":
         "framework": args.framework,
         "eager_tracing": args.eager_tracing,
     }
-
-    if args.enable_rl_module_api:
-        config.update(_enable_rl_module_api=True, enable_connectors=True)
 
     tune.Tuner(
         args.run,

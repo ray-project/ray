@@ -56,9 +56,6 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
-parser.add_argument(
-    "--enable-rl-module-api", action="store_true", help="Use RLModule API."
-)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -79,7 +76,7 @@ if __name__ == "__main__":
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
 
-        if args.enable_rl_module_api:
+        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # just change the gammas between the two policies.
             # changing the module is not a critical part of this example.
             # the important part is that the policies are different.
@@ -112,11 +109,6 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
-
-    if args.enable_rl_module_api:
-        config = config.rollouts(enable_connectors=True).rl_module(
-            _enable_rl_module_api=True
-        )
 
     stop = {
         "episode_reward_mean": args.stop_reward,

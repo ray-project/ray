@@ -83,9 +83,6 @@ def get_cli_args():
         help="How many episodes to play against the user on the command "
         "line after training has finished.",
     )
-    parser.add_argument(
-        "--enable-rl-module-api", action="store_true", help="Use RLModule API."
-    )
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
     return args
@@ -184,10 +181,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)
-
-    def fn(configs):
-        return OpenSpielEnv(pyspiel.load_game(args.env))
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
@@ -226,11 +220,6 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
-
-    if args.enable_rl_module_api:
-        config = config.rollouts(enable_connectors=True).rl_module(
-            _enable_rl_module_api=True
-        )
 
     stop = {
         "timesteps_total": args.stop_timesteps,
