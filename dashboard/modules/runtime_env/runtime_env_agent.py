@@ -227,7 +227,6 @@ class RuntimeEnvAgent(
         # be confined to the runtime env agent log file `self.LOG_FILENAME`.
         self._logger.propagate = False
 
-
     def uris_parser(self, runtime_env):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
