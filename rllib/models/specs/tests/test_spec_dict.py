@@ -3,6 +3,7 @@ import numpy as np
 
 from ray.rllib.models.specs.specs_np import NPTensorSpec
 from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.checker import check_input_specs
 
 
 class TypeClass1:
@@ -93,6 +94,83 @@ class TestSpecDict(unittest.TestCase):
         }
 
         spec_2.validate(tensor_5)
+
+    def test_spec_check_integration(self):
+        class Model:
+            @property
+            def nested_key_spec(self):
+                return ["a", ("b", "c"), ("d",), ("e", "f"), ("e", "g")]
+
+            @property
+            def dict_key_spec_with_none_leaves(self):
+                return {
+                    "a": None,
+                    "b": {
+                        "c": None,
+                    },
+                    "d": None,
+                    "e": {
+                        "f": None,
+                        "g": None,
+                    },
+                }
+
+            @property
+            def spec_with_type_and_tensor_leaves(self):
+                return {"a": TypeClass1, "b": NPTensorSpec("b, h", h=3)}
+
+            @check_input_specs("nested_key_spec")
+            def forward_nested_key(self, input_dict):
+                return input_dict
+
+            @check_input_specs("dict_key_spec_with_none_leaves")
+            def forward_dict_key_with_none_leaves(self, input_dict):
+                return input_dict
+
+            @check_input_specs("spec_with_type_and_tensor_leaves")
+            def forward_spec_with_type_and_tensor_leaves(self, input_dict):
+                return input_dict
+
+        model = Model()
+
+        # test nested key spec
+        input_dict_1 = {
+            "a": 1,
+            "b": {
+                "c": 2,
+                "foo": 3,
+            },
+            "d": 3,
+            "e": {
+                "f": 4,
+                "g": 5,
+            },
+        }
+
+        # should run fine
+        model.forward_nested_key(input_dict_1)
+        model.forward_dict_key_with_none_leaves(input_dict_1)
+
+        # test missing key
+        input_dict_2 = {
+            "a": 1,
+            "b": {
+                "c": 2,
+                "foo": 3,
+            },
+            "d": 3,
+            "e": {
+                "f": 4,
+            },
+        }
+
+        self.assertRaises(ValueError, lambda: model.forward_nested_key(input_dict_2))
+
+        self.assertRaises(
+            ValueError, lambda: model.forward_dict_key_with_none_leaves(input_dict_2)
+        )
+
+        # test extra key
 
 
 if __name__ == "__main__":
