@@ -48,14 +48,14 @@ if __name__ == "__main__":
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=(sys.version_info.major, sys.version_info.minor),
+                    py_version=py_version,
                 )
             else:
                 url = get_release_wheel_url(
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=(sys.version_info.major, sys.version_info.minor),
+                    py_version=py_version,
                 )
             if requests.head(url).status_code != 200:
                 print("URL not found (yet?):", url)
