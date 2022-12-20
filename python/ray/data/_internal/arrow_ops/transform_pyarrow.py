@@ -62,11 +62,11 @@ def unify_schemas(
         # If we have pyarrow extension types that may potentially be variable shaped,
         # examine the first schema to gather the columns that need type conversions.
         for col_idx in range(len(schemas[0].types)):
-            tensor_array_types = []
-            for s in schemas:
-                col_type = s.types[col_idx]
-                if isinstance(col_type, pyarrow.ExtensionType):
-                    tensor_array_types.append(col_type)
+            tensor_array_types = [
+                s.types[col_idx]
+                for s in schemas
+                if isinstance(s.types[col_idx], pyarrow.ExtensionType)
+            ]
             if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
                 if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                     new_type = tensor_array_types[0]
