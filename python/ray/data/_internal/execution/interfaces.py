@@ -31,11 +31,6 @@ class RefBundle:
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
 
-    # Serializable extra data passed from upstream operator. This can be
-    # used to implement per-block behavior, for example, the last task
-    # for a Limit() operation truncates the block at a certain row.
-    input_metadata: Dict[str, Any] = field(default_factory=lambda: {})
-
     def __post_init__(self):
         for b in self.blocks:
             assert isinstance(b, tuple), b
