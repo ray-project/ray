@@ -7,11 +7,7 @@ from ray.air.config import (
     CheckpointConfig,
 )
 from ray.air.data_batch_type import DataBatchType
-from ray.air.dataset_iterator import (
-    DatasetIterator,
-    _DatasetIterator,
-    _DatasetPipelineIterator,
-)
+from ray.air.dataset_iterator import DatasetIterator
 from ray.air.result import Result
 
 __all__ = [

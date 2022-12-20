@@ -307,15 +307,11 @@ class DatasetConfig:
         transform: Whether to transform the dataset with the fitted preprocessor.
             This must be enabled at least for the dataset that is fit.
             True by default.
-        use_stream_api: Whether the dataset should be streamed into memory using
-            pipelined reads. When enabled, get_dataset_shard() returns DatasetPipeline
-            instead of Dataset. The amount of memory to use is controlled
-            by `stream_window_size`. False by default.
-        stream_window_size: Configure the streaming window size in bytes.
-            A good value is something like 20% of object store memory.
-            If set to -1, then an infinite window size will be used (similar to
-            bulk ingest). This only has an effect if use_stream_api is set.
-            Set to 1.0 GiB by default.
+        max_object_store_memory_fraction: The maximum fraction of Ray's
+            shared-memory object store to use for the transformed Dataset. Note
+            that the absolute memory capacity used is based on the object store
+            capacity at invocation time; this does not currently cover
+            autoscaling cases where the size of the cluster may change.
         global_shuffle: Whether to enable global shuffle (per pipeline window
             in streaming mode). Note that this is an expensive all-to-all operation,
             and most likely you want to use local shuffle instead.
@@ -335,8 +331,7 @@ class DatasetConfig:
     split: Optional[bool] = None
     required: Optional[bool] = None
     transform: Optional[bool] = None
-    use_stream_api: Optional[bool] = None
-    stream_window_size: Optional[float] = None
+    max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
 
@@ -354,10 +349,7 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            use_stream_api=self.use_stream_api or False,
-            stream_window_size=self.stream_window_size
-            if self.stream_window_size is not None
-            else 1024 * 1024 * 1024,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction or -1,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             randomize_block_order=self.randomize_block_order
@@ -433,12 +425,9 @@ class DatasetConfig:
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
             transform=self.transform if other.transform is None else other.transform,
-            use_stream_api=self.use_stream_api
-            if other.use_stream_api is None
-            else other.use_stream_api,
-            stream_window_size=self.stream_window_size
-            if other.stream_window_size is None
-            else other.stream_window_size,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if other.max_object_store_memory_fraction is None
+            else other.max_object_store_memory_fraction,
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,

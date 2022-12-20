@@ -140,7 +140,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
         1,
         False,
         {"train": 10, "test": 10},
-        dataset_config={"train": DatasetConfig(use_stream_api=True)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
@@ -150,7 +150,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
         2,
         False,
         {"train": 5, "test": 10},
-        dataset_config={"train": DatasetConfig(use_stream_api=True)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
@@ -205,7 +205,7 @@ def test_fit_transform_config(ray_start_4_cpus):
 
 class TestStream(DataParallelTrainer):
     _dataset_config = {
-        "train": DatasetConfig(split=True, required=True, use_stream_api=True),
+        "train": DatasetConfig(split=True, required=True, max_object_store_memory_fraction=0.3),
     }
 
     def __init__(self, check_results_fn, **kwargs):
@@ -231,7 +231,7 @@ class TestStream(DataParallelTrainer):
 
 class TestBatch(TestStream):
     _dataset_config = {
-        "train": DatasetConfig(split=True, required=True, use_stream_api=False),
+        "train": DatasetConfig(split=True, required=True),
     }
 
 
@@ -255,7 +255,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         checker,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(stream_window_size=-1)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
     )
     test.fit()
 
@@ -268,7 +268,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     prep = BatchMapper(rand, batch_format="pandas")
     ds = ray.data.range_table(5, parallelism=1)
 
-    # Test the default 1GiB window size.
+    # Test 50% object store memory..
     def checker(shard, results):
         results = [sorted(r) for r in results]
         assert int(results[0][0]) != results[0][0]
@@ -284,27 +284,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         checker,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig()},
-    )
-    test.fit()
-
-    # Test a smaller window size.
-    def checker(shard, results):
-        results = [sorted(r) for r in results]
-        assert int(results[0][0]) != results[0][0]
-        assert len(results[0]) == 5, results
-        assert results[0] != results[1], results
-        stats = shard.stats()
-        assert (
-            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
-            in stats
-        ), stats
-
-    test = TestStream(
-        checker,
-        preprocessor=prep,
-        datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(stream_window_size=10)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=0.5)},
     )
     test.fit()
 
