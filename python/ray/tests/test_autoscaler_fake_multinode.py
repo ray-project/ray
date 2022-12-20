@@ -88,8 +88,8 @@ def test_zero_cpu_default_actor():
 
 
 def test_autoscaler_all_gpu_node_types():
-    """Validates that CPU tasks still trigger upscaling
-    when all available non-head node types have GPUs.
+    """Validates that CPU tasks can trigger GPU upscaling.
+    See https://github.com/ray-project/ray/pull/31202.
     """
     gpu_node_type_1 = (
         {
