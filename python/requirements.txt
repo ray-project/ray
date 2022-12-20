@@ -26,8 +26,8 @@ grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin
 grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
 grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'
 grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'
-numpy>=1.16; python_version < '3.9'
-numpy>=1.19.3; python_version >= '3.9'
+numpy>=1.16, < 1.24.0; python_version < '3.9'
+numpy>=1.19.3, < 1.24.0; python_version >= '3.9'
 packaging; python_version >= '3.10'
 typing_extensions; python_version < '3.8'
 

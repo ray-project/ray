@@ -68,7 +68,7 @@ Get started by installing Ray AIR:
     # Consider running the following to ensure that the code below runs properly:
     pip install -U pandas>=1.3.5
     pip install -U torch>=1.12
-    pip install -U numpy>=1.19.5
+    pip install -U "numpy>=1.19.5,<1.24.0"
     pip install -U tensorflow>=2.6.2
     pip install -U pyarrow>=6.0.1
 

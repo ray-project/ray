@@ -13,5 +13,5 @@ post_build_cmds:
   # tensorflow=2.6, which requires numpy~=1.19.2. This is ok because the test
   # doesn't actually use tensorflow, but in the long term, but we should
   # consider upgrading to tensorflow 2.7 as a long term solution.
-  - pip install -U numpy>=1.20
+  - pip install -U "numpy>=1.20,<1.24.0"
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
