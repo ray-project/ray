@@ -18,6 +18,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
@@ -120,26 +121,29 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    config = {
-        "env": BasicMultiAgentMultiSpaces,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 1,
-        "multiagent": {
+    config = (
+        AlgorithmConfig()
+        .environment(env=BasicMultiAgentMultiSpaces)
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        )
+        .training(train_batch_size=1024)
+        .rollouts(num_rollout_workers=1, rollout_fragment_length="auto")
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .multi_agent(
             # Use a simple set of policy IDs. Spaces for the individual policies
             # will be inferred automatically using reverse lookup via the
             # `policy_mapping_fn` and the env provided spaces for the different
             # agents. Alternatively, you could use:
             # policies: {main0: PolicySpec(...), main1: PolicySpec}
-            "policies": {"main0", "main1"},
+            policies={"main0", "main1"},
             # Simple mapping fn, mapping agent0 to main0 and agent1 to main1.
-            "policy_mapping_fn": (lambda aid, episode, worker, **kw: f"main{aid[-1]}"),
+            policy_mapping_fn=(lambda aid, episode, worker, **kw: f"main{aid[-1]}"),
             # Only train main0.
-            "policies_to_train": ["main0"],
-        },
-        "framework": args.framework,
-        "eager_tracing": args.eager_tracing,
-    }
+            policies_to_train=["main0"],
+        )
+    )
 
     tune.Tuner(
         args.run,
