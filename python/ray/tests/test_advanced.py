@@ -52,6 +52,30 @@ def test_internal_free(shutdown_only):
         ray.get(big_id)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_internal_free_non_owned(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def gen_data():
+        return ray.put(np.zeros(1024 * 1024))
+
+    @ray.remote
+    def do_free(ref_list):
+        ray._private.internal_api.free(ref_list, local_only=False)
+
+    ref_1 = ray.put(np.zeros(1024 * 1024))
+    ref_2 = ray.put(np.zeros(1024 * 1024))
+    ref_3 = ray.get(gen_data.remote())
+    ref_4 = ray.get(gen_data.remote())
+
+    ray.get(do_free.remote([ref_1, ref_2, ref_3, ref_4]))
+
+    for ref in [ref_1, ref_2, ref_3, ref_4]:
+        with pytest.raises(ObjectFreedError):
+            ray.get(ref)
+
+
 def test_multiple_waits_and_gets(shutdown_only):
     # It is important to use three workers here, so that the three tasks
     # launched in this experiment can run at the same time.
