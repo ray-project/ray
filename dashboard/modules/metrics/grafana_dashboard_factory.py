@@ -416,7 +416,7 @@ PANEL_TEMPLATE = {
             "$$hashKey": "object:2987",
             "alias": "MAX + PENDING",
             "dashes": True,
-            "color": "#ff9a00",
+            "color": "#777777",
             "fill": 0,
             "stack": False,
         },
