@@ -824,12 +824,15 @@ def _resource_based_utilization_scorer(
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
     # if there *is* a GPU task, then CPU tasks can be scheduled as well.
-    if AUTOSCALER_CONSERVE_GPU_NODES:
-        # If all available node types have GPUs, don't avoid upscaling.
-        if all_gpu_node_types:
-            pass
-        elif is_gpu_node and not any_gpu_task:
-            return None
+    if not AUTOSCALER_CONSERVE_GPU_NODES:
+        # Skip GPU node avoidance if this is explicitly disabled.
+        pass
+    elif all_gpu_node_types:
+        # If ALL available non-head node types have GPUs, don't avoid upscaling.
+        pass
+    elif is_gpu_node and not any_gpu_task:
+        # Avoid upscaling the gpu node if the workload does not require GPUs.
+        return None
 
     fittable = []
     resource_types = set()
