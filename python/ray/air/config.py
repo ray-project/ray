@@ -334,6 +334,7 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
 
     def __repr__(self):
         return _repr_dataclass(self)
@@ -355,6 +356,9 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if self.per_epoch_preprocessor is not None
+            else None,
         )
 
     @staticmethod
@@ -434,6 +438,9 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if other.per_epoch_preprocessor is None
+            else other.per_epoch_preprocessor,
         )
         return new_config
 

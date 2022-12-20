@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray.air import session, DatasetIterator
 from ray.air.config import DatasetConfig, ScalingConfig
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -363,6 +364,57 @@ def test_randomize_block_order(ray_start_4_cpus):
     test.fit()
 
     # TODO(swang): Check that order is randomized on each epoch.
+
+
+@ray.remote
+class DummyTrainer:
+    pass
+
+def iterate_twice(trainer, dataset, prep=None, **kwargs):
+    dataset_config = DatasetConfig(split=True, required=True,
+            **kwargs).fill_defaults()
+    spec = DataParallelIngestSpec({"train": dataset_config})
+    spec.preprocess_datasets(prep, {"train": dataset})
+    it = spec.get_dataset_shards([trainer])[0]["train"]
+
+    results = []
+    for _ in range(2):
+        result = []
+        for batch in it.iter_batches():
+            for row in batch["value"]:
+                result.append(row)
+        results.append(result)
+    return results
+
+
+def test_per_epoch_preprocessor(ray_start_4_cpus):
+    trainer = DummyTrainer.remote()
+    def check(results):
+        assert len(results[0]) == 5, results
+        assert results[0] == results[1], results
+        assert all(x % 2 == 0 for x in results[0]), results
+
+    def multiply(x):
+        return x * 2
+
+    ds = ray.data.range_table(5)
+    results = iterate_twice(
+            trainer, ds,
+            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+            randomize_block_order=False)
+    check(results)
+    results = iterate_twice(
+            trainer, ds,
+            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+            max_object_store_memory_fraction=1,
+            randomize_block_order=False)
+    check(results)
+    results = iterate_twice(
+            trainer, ds,
+            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+            max_object_store_memory_fraction=0.3,
+            randomize_block_order=False)
+    check(results)
 
 
 if __name__ == "__main__":

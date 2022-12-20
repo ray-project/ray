@@ -7,6 +7,7 @@ from ray.air.config import DatasetConfig
 from ray.air._internal.dataset_iterator_impl import BulkDatasetIterator, PipelinedDatasetIterator
 
 from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
@@ -183,6 +184,9 @@ class DataParallelIngestSpec:
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
+            if config.per_epoch_preprocessor is not None:
+                config.per_epoch_preprocessor.fit(dataset)
+
             if config.max_object_store_memory_fraction >= 0:
                 if config.max_object_store_memory_fraction < 1:
                     object_store_memory = _estimate_avail_object_store_memory()
@@ -191,14 +195,23 @@ class DataParallelIngestSpec:
                         bytes_per_window=stream_window_size
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
-                    if self.preprocessor:
+                    if self.preprocessor or config.per_epoch_preprocessor:
+                        if self.preprocessor is not None:
+                            preprocessor = self.preprocessor
+                            if config.per_epoch_preprocessor is not None:
+                                preprocessor = Chain(preprocessor, config.per_epoch_preprocessor)
+                        else:
+                            preprocessor = config.per_epoch_preprocessor
                         # TODO: Replace with self.preprocessor.transform when possible.
-                        prep = self.preprocessor.transform_batch
+                        prep = preprocessor.transform_batch
                         dataset = dataset.map_batches(prep, batch_format="pandas")
                 else:
                     # If the window size is infinity, the preprocessor is cached and
                     # we don't need to re-apply it each time.
                     dataset = dataset.repeat()
+                    if config.per_epoch_preprocessor:
+                        prep = config.per_epoch_preprocessor.transform_batch
+                        dataset = dataset.map_batches(prep, batch_format="pandas")
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
@@ -224,7 +237,8 @@ class DataParallelIngestSpec:
 
             for i, dataset_split in enumerate(dataset_splits):
                 if isinstance(dataset_split, Dataset):
-                    dataset_splits[i] = BulkDatasetIterator(dataset_split)
+                    dataset_splits[i] = BulkDatasetIterator(dataset_split,
+                            per_epoch_preprocessor=config.per_epoch_preprocessor)
                 elif isinstance(dataset_split, DatasetPipeline):
                     dataset_splits[i] = PipelinedDatasetIterator(dataset_split)
 

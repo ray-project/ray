@@ -12,9 +12,11 @@ class BulkDatasetIterator(DatasetIterator):
         self,
         # base_dataset: Dataset,
         base_dataset,
+        per_epoch_preprocessor: Optional["Preprocessor"] =None,
     ):
         self._base_dataset = base_dataset
         self._epoch = 0
+        self._per_epoch_preprocessor = per_epoch_preprocessor
 
     def iter_batches(
         self,
@@ -27,7 +29,12 @@ class BulkDatasetIterator(DatasetIterator):
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[DataBatchType]:
         self._epoch += 1
-        return self._base_dataset.iter_batches(
+
+        ds = self._base_dataset
+        if self._per_epoch_preprocessor is not None:
+            ds = self._per_epoch_preprocessor.transform(ds)
+
+        return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
