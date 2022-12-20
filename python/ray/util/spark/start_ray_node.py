@@ -7,7 +7,6 @@ import fcntl
 import signal
 import socket
 import logging
-import threading
 from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
@@ -24,8 +23,6 @@ from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 
 _logger = logging.getLogger(__name__)
-
-exit_handler_executed = False
 
 
 if __name__ == "__main__":
@@ -113,27 +110,21 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     try:
-        exit_handler_lock = threading.RLock()
-
-        def exit_handler():
-            global exit_handler_executed
-            with exit_handler_lock:
-                if not exit_handler_executed:
-                    exit_handler_executed = True
-                    process.terminate()
-                    try_clean_temp_dir_at_exit()
-
-        def sigterm_handler(*args):
-            exit_handler()
-            os._exit(143)
 
         def sighup_handler(*args):
-            exit_handler()
-            os._exit(129)
+            pass
 
-        # When spark application is terminated, all pyspark task worker descendant
-        # processes will receive SIGHUP signal, we need to handle it properly.
+        # When spark application is terminated, this process will receive both
+        # SIGHUP (comes from pyspark application termination) and SIGTERM signal
+        # (comes from parent process died signal PR_SET_PDEATHSIG).
+        # Ignore the SIGHUP signal, sigterm_handler is responsible for all cleanup
+        # job.
         signal.signal(signal.SIGHUP, sighup_handler)
+
+        def sigterm_handler(*args):
+            process.terminate()
+            try_clean_temp_dir_at_exit()
+            os._exit(143)
 
         # When spark job is canceled, all pyspark task workers of this job will
         # receive SIGKILL signal, because we register PR_SET_PDEATHSIG signal for

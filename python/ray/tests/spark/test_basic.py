@@ -160,7 +160,13 @@ def test_sighup_handling_on_spark_app_termination():
     )
     ray_temp_root_dir = tempfile.mkdtemp()
     init_ray_cluster(num_worker_nodes=1, ray_temp_root_dir=ray_temp_root_dir)
-    spark.stop()  # terminate spark application
+    # Terminate ray head node first, now the ray worker node is still running,
+    # so it cannot clean temp dir now.
+    ray.util.spark.cluster_init._active_ray_cluster.head_proc.terminate()
+    # terminate spark application, it will send SIGHUP to all pyspark task worker
+    # descendant processes, so we can test whether `start_ray_node` can handle
+    # SIGHUP correctly and deleting temp dir successfully.
+    spark.stop()
     time.sleep(10)
     # assert temp dir is removed.
     assert len(os.listdir(ray_temp_root_dir)) == 1 and os.listdir(ray_temp_root_dir)[
