@@ -136,8 +136,6 @@ class SelfPlayCallback(DefaultCallbacks):
         # it next, keeping the snapshot fixed and only improving the "main"
         # policy.
         if win_rate > args.win_rate_threshold:
-            print("=" * 80)
-            print("win-rate threshold reached -> snapshotting current policy.")
             self.current_opponent += 1
             new_pol_id = f"main_v{self.current_opponent}"
             print(f"adding new opponent to the mix ({new_pol_id}).")
