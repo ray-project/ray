@@ -20,7 +20,6 @@ import json
 import time
 import requests
 import pprint
-import sys
 
 import ray._private.runtime_env.constants as ray_constants
 from ray._private.utils import get_master_wheel_url, get_release_wheel_url
