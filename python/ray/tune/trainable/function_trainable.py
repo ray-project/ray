@@ -122,6 +122,7 @@ class FuncCheckpointUtil:
         assert not os.path.exists(os.path.join(perm_checkpoint_dir, TEMP_MARKER))
         return perm_checkpoint_dir
 
+
 @DeveloperAPI
 class _StatusReporter:
     def __init__(
