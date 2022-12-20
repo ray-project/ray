@@ -72,8 +72,8 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipelines
------------------------
+Converting to Pipeline
+----------------------
 
 .. autosummary::
    :toctree: doc/
