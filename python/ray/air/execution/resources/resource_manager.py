@@ -15,7 +15,7 @@ class ResourceManager(abc.ABC):
     """Resource manager interface.
 
     A resource manager can be used to request resources from a Ray cluster and
-    allocate them to remote Ray tasks.
+    allocate them to remote Ray tasks or actors.
 
     Resources have to be requested before they can be acquired.
 
