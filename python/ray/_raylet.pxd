@@ -69,6 +69,7 @@ cdef extern from "Python.h":
     ctypedef struct CPyThreadState "PyThreadState":
         int recursion_limit
         int recursion_remaining
+        int recursion_depth
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
