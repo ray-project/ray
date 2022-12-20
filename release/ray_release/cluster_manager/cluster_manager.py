@@ -11,15 +11,12 @@ if TYPE_CHECKING:
 
 
 class ClusterManager(abc.ABC):
-    extra_tags_resource_types: list
-
     def __init__(
         self,
         test_name: str,
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
-        extra_tags: Optional[dict] = None,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
@@ -27,7 +24,6 @@ class ClusterManager(abc.ABC):
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
-        self.extra_tags = extra_tags
 
         self.cluster_name = (
             f"{test_name}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
@@ -42,6 +38,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute = None
         self.cluster_compute_name = None
         self.cluster_compute_id = None
+        self.cloud_provider = None
 
         self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
         self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
@@ -66,13 +63,24 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_env)}"
         )
 
-    def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
+    def set_cluster_compute(
+        self,
+        cluster_compute: Dict[str, Any],
+        extra_tags: Optional[Dict[str, str]] = None,
+    ):
+        extra_tags = extra_tags or {}
         self.cluster_compute = cluster_compute
         self.cluster_compute.setdefault(
             "idle_termination_minutes", self.autosuspend_minutes
         )
         self.cluster_compute.setdefault(
             "maximum_uptime_minutes", self.maximum_uptime_minutes
+        )
+        self.cloud_provider = self.get_cloud_provider(cluster_compute)
+        self.cluster_compute = self.annotate_cluster_compute(
+            self.cluster_compute,
+            cloud_provider=self.cloud_provider,
+            extra_tags=extra_tags,
         )
 
         self.cluster_compute_name = (
@@ -81,9 +89,16 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_compute)}"
         )
 
-    @property
-    def cluster_compute_with_extra_tags(self) -> dict:
+    def get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
         raise NotImplementedError
+
+    def annotate_cluster_compute(
+        self,
+        cluster_compute: Dict[str, Any],
+        cloud_provider: str,
+        extra_tags: Dict[str, str],
+    ) -> Dict[str, Any]:
+        return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError

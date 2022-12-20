@@ -72,7 +72,7 @@ command_runner_to_file_manager = {
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
 
 
-def _get_extra_tags_from_env_vars() -> dict:
+def _get_extra_tags() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
@@ -142,7 +142,8 @@ def run_release_test(
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
-    extra_tags = _get_extra_tags_from_env_vars()
+    # Extra tags to be set on resources on cloud provider's side
+    extra_tags = _get_extra_tags()
     result.extra_tags = extra_tags
 
     # Instantiate managers and command runner
@@ -151,7 +152,6 @@ def run_release_test(
             test["name"],
             anyscale_project,
             smoke_test=smoke_test,
-            extra_tags=extra_tags,
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
@@ -216,7 +216,10 @@ def run_release_test(
 
         # Set cluster compute here. Note that this may use timeouts provided
         # above.
-        cluster_manager.set_cluster_compute(cluster_compute)
+        cluster_manager.set_cluster_compute(
+            cluster_compute,
+            extra_tags=extra_tags,
+        )
 
         buildkite_group(":nut_and_bolt: Setting up local environment")
         driver_setup_script = test.get("driver_setup", None)

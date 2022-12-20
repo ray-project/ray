@@ -17,6 +17,14 @@ RELEASE_AWS_ANYSCALE_SECRET_ARN = DeferredEnvVar(
     "anyscale-token20210505220406333800000001-BcUuKB",
 )
 
+# If changed, update
+# test_cluster_manager::MinimalSessionManagerTest.testClusterComputeExtraTags
+RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING = [
+    "instance",
+    "volume",
+    "host-reservation",
+]
+
 
 def maybe_fetch_api_token():
     from anyscale.authenticate import AuthenticationBlock

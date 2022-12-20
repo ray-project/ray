@@ -266,103 +266,63 @@ class MinimalSessionManagerTest(unittest.TestCase):
         cluster_manager.set_cluster_compute(self.cluster_compute)
 
         # No extra tags specified
-        self.assertEqual(
-            cluster_manager.cluster_compute_with_extra_tags, self.cluster_compute
-        )
+        self.assertEqual(cluster_manager.cluster_compute, self.cluster_compute)
 
         # Extra tags specified
-        cluster_manager.extra_tags = {"foo": "bar"}
-        assert (
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
-                0
-            ]["ResourceType"]
-            == "instance"
+        cluster_manager.set_cluster_compute(
+            self.cluster_compute, extra_tags={"foo": "bar"}
         )
-        assert (
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
-                0
-            ]["Tags"][0]["Key"]
-            == "foo"
-        )
-        assert (
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
-                0
-            ]["Tags"][0]["Value"]
-            == "bar"
-        )
-        assert len(
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"]
-        ) == len(cluster_manager.extra_tags_resource_types)
-        assert (
-            len(
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ][0]["Tags"]
-            )
-            == 1
-        )
-        assert "aws" not in cluster_manager.cluster_compute
 
-        # Test merging
-        cluster_compute_with_tags = self.cluster_compute.copy()
+        # All ResourceTypes as in
+        # ray_release.aws.RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
+        target_cluster_compute["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "instance", "Tags": [{"Key": "foo", "Value": "bar"}]},
+                {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
+                {
+                    "ResourceType": "host-reservation",
+                    "Tags": [{"Key": "foo", "Value": "bar"}],
+                },
+            ]
+        }
+        self.assertEqual(
+            cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+        )
+
+        # Test merging with already existing tags
+        cluster_compute_with_tags = TEST_CLUSTER_COMPUTE.copy()
         cluster_compute_with_tags["aws"] = {
             "TagSpecifications": [
                 {"ResourceType": "fake", "Tags": []},
                 {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
             ]
         }
-        cluster_manager.set_cluster_compute(cluster_compute_with_tags)
+        cluster_manager.set_cluster_compute(
+            cluster_compute_with_tags, extra_tags={"foo": "bar"}
+        )
 
-        assert (
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
-                1
-            ]["Tags"][0]["Key"]
-            == "key"
-        )
-        assert (
-            cluster_manager.cluster_compute_with_extra_tags["aws"]["TagSpecifications"][
-                1
-            ]["Tags"][0]["Value"]
-            == "val"
-        )
-        for i, resource in enumerate(cluster_manager.extra_tags_resource_types):
-            assert (
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ][i + 1]["ResourceType"]
-                == resource
-            )
-            assert (
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ][i + 1]["Tags"][-1]["Key"]
-                == "foo"
-            )
-            assert (
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ][i + 1]["Tags"][-1]["Value"]
-                == "bar"
-            )
-        assert (
-            len(
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ]
-            )
-            == len(cluster_manager.extra_tags_resource_types) + 1
-        )
-        assert (
-            len(
-                cluster_manager.cluster_compute_with_extra_tags["aws"][
-                    "TagSpecifications"
-                ][1]["Tags"]
-            )
-            == 2
-        )
-        assert (
-            len(cluster_manager.cluster_compute["aws"]["TagSpecifications"][1]["Tags"])
-            == 1
+        # All ResourceTypes as in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
+        target_cluster_compute["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "fake", "Tags": []},
+                {
+                    "ResourceType": "instance",
+                    "Tags": [
+                        {"Key": "key", "Value": "val"},
+                        {"Key": "foo", "Value": "bar"},
+                    ],
+                },
+                {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
+                {
+                    "ResourceType": "host-reservation",
+                    "Tags": [{"Key": "foo", "Value": "bar"}],
+                },
+            ]
+        }
+        self.assertEqual(
+            cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
