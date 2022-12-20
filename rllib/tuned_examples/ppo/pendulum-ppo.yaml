@@ -3,7 +3,7 @@ pendulum-ppo:
     env: Pendulum-v1
     run: PPO
     stop:
-        episode_reward_mean: -500
+        episode_reward_mean: -400
         timesteps_total: 400000
     config:
         # Works for both torch and tf.
