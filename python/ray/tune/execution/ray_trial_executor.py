@@ -13,7 +13,7 @@ from functools import partial
 from typing import Callable, Dict, Iterable, List, Optional, Set, Union, Tuple
 
 import ray
-from ray.air import Checkpoint, AcquiredResource, ResourceRequest
+from ray.air import Checkpoint, AcquiredResources, ResourceRequest
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air.execution import ResourceManager
@@ -227,13 +227,13 @@ class RayTrialExecutor:
         # Actor re-use.
         # For details, see docstring of `_maybe_cache_trial_actor()`
         self._reuse_actors = reuse_actors
-        self._resources_to_cached_actors: Dict[
-            ResourceRequest, List[Tuple[ray.actor.ActorHandle, AcquiredResource]]
+        self._resource_request_to_cached_actors: Dict[
+            ResourceRequest, List[Tuple[ray.actor.ActorHandle, AcquiredResources]]
         ] = defaultdict(list)
 
         # Trials for which we requested resources
         self._staged_trials = set()
-        self._trial_to_acquired_resource: Dict[Trial, AcquiredResource] = {}
+        self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
         self._buffer_length = result_buffer_length or int(
@@ -253,7 +253,7 @@ class RayTrialExecutor:
     def setup(
         self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
     ) -> None:
-        if len(self._resources_to_cached_actors) > 0:
+        if len(self._resource_request_to_cached_actors) > 0:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run."
@@ -335,7 +335,7 @@ class RayTrialExecutor:
         for trial in self._staged_trials:
             resource_request = trial.placement_group_factory
             # If we have a cached actor for these resources, return
-            if self._resources_to_cached_actors[resource_request]:
+            if self._resource_request_to_cached_actors[resource_request]:
                 return trial
 
             # If the resources are available from the resource manager, return
@@ -351,10 +351,10 @@ class RayTrialExecutor:
             return None
 
         resource_request = trial.placement_group_factory
-        if not self._resources_to_cached_actors[resource_request]:
+        if not self._resource_request_to_cached_actors[resource_request]:
             return None
 
-        actor, acquired_resource = self._resources_to_cached_actors[
+        actor, acquired_resources = self._resource_request_to_cached_actors[
             resource_request
         ].pop(0)
 
@@ -370,7 +370,7 @@ class RayTrialExecutor:
                 "implemented and return True."
             )
 
-        self._trial_to_acquired_resource[trial] = acquired_resource
+        self._trial_to_acquired_resources[trial] = acquired_resources
 
         # We are reusing an existing actor (and its resources),
         # so we need to cancel the resource request that we originally scheduled
@@ -402,16 +402,16 @@ class RayTrialExecutor:
         _actor_cls = _class_cache.get(trainable_cls)
 
         resource_request = trial.placement_group_factory
-        acquired_resource = self._resource_manager.acquire_resources(
+        acquired_resources = self._resource_manager.acquire_resources(
             resource_request=resource_request
         )
 
-        if not acquired_resource:
+        if not acquired_resources:
             return None
 
-        self._trial_to_acquired_resource[trial] = acquired_resource
+        self._trial_to_acquired_resources[trial] = acquired_resources
 
-        [full_actor_class] = acquired_resource.annotate_remote_objects([_actor_cls])
+        [full_actor_class] = acquired_resources.annotate_remote_entities([_actor_cls])
 
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
@@ -580,17 +580,17 @@ class RayTrialExecutor:
         if not self._reuse_actors:
             return False
 
-        acquired_resource = self._trial_to_acquired_resource[trial]
-        cached_resources = acquired_resource.resource_request
+        acquired_resources = self._trial_to_acquired_resources[trial]
+        cached_resource_request = acquired_resources.resource_request
 
         staged_resource_count = self._count_staged_resources()
         if (
             # If we have at least one cached actor already
-            any(v for v in self._resources_to_cached_actors.values())
+            any(v for v in self._resource_request_to_cached_actors.values())
             # and we haven't requested resources for an actor with the
             # same resources as the actor we want to cache
-            and len(self._resources_to_cached_actors[cached_resources])
-            >= staged_resource_count[cached_resources]
+            and len(self._resource_request_to_cached_actors[cached_resource_request])
+            >= staged_resource_count[cached_resource_request]
             # then we don't have an immediate need for the actor and don't
             # want to cache it.
         ):
@@ -603,10 +603,10 @@ class RayTrialExecutor:
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
 
-        self._resources_to_cached_actors[cached_resources].append(
-            (trial.runner, acquired_resource)
+        self._resource_request_to_cached_actors[cached_resource_request].append(
+            (trial.runner, acquired_resources)
         )
-        self._trial_to_acquired_resource.pop(trial)
+        self._trial_to_acquired_resources.pop(trial)
 
         trial.set_runner(None)
 
@@ -647,10 +647,10 @@ class RayTrialExecutor:
             with self._change_working_directory(trial):
                 future = trial.runner.stop.remote()
 
-            acquired_resource = self._trial_to_acquired_resource.pop(trial)
+            acquired_resources = self._trial_to_acquired_resources.pop(trial)
             self._futures[future] = (
                 _ExecutorEventType.STOP_RESULT,
-                acquired_resource,
+                acquired_resources,
             )
             if self._trial_cleanup:  # force trial cleanup within a deadline
                 self._trial_cleanup.add(future)
@@ -819,14 +819,14 @@ class RayTrialExecutor:
 
         return (
             trial in self._staged_trials
-            or self._resources_to_cached_actors[resource_request]
+            or self._resource_request_to_cached_actors[resource_request]
             or len(self._staged_trials) < self._max_staged_actors
             or self._resource_manager.has_resources_ready(resource_request)
         )
 
     def _occupied_resources(self) -> dict:
         total_resources = {"CPU": 0, "GPU": 0}
-        for allocated_resource in self._trial_to_acquired_resource.values():
+        for allocated_resource in self._trial_to_acquired_resources.values():
             resource_request = allocated_resource.resource_request
             for bundle_resources in resource_request.bundles:
                 for key, val in bundle_resources.items():
@@ -890,16 +890,16 @@ class RayTrialExecutor:
 
         staged_resources = self._count_staged_resources()
 
-        for resource_request, actors in self._resources_to_cached_actors.items():
+        for resource_request, actors in self._resource_request_to_cached_actors.items():
             while len(actors) > staged_resources.get(resource_request, 0) or (
                 force_all and len(actors)
             ):
-                actor, acquired_resource = actors[-1]
+                actor, acquired_resources = actors[-1]
                 actors.pop()
                 future = actor.stop.remote()
                 self._futures[future] = (
                     _ExecutorEventType.STOP_RESULT,
-                    acquired_resource,
+                    acquired_resources,
                 )
                 if self._trial_cleanup:  # force trial cleanup within a deadline
                     self._trial_cleanup.add(future)
@@ -907,7 +907,7 @@ class RayTrialExecutor:
     def _resolve_stop_event(
         self,
         future: ray.ObjectRef,
-        acquired_resource: AcquiredResource,
+        acquired_resources: AcquiredResources,
         timeout: Optional[float] = None,
     ):
         """Resolve stopping future (Trainable.cleanup() and free resources."""
@@ -928,7 +928,7 @@ class RayTrialExecutor:
                     f"{traceback.format_exc()}"
                 )
         finally:
-            self._resource_manager.free_resources(acquired_resource)
+            self._resource_manager.free_resources(acquired_resources)
 
     def _do_force_trial_cleanup(self) -> None:
         if self._trial_cleanup:
@@ -937,7 +937,7 @@ class RayTrialExecutor:
                 if not next_future_to_clean:
                     break
                 if next_future_to_clean in self._futures:
-                    event_type, acquired_resource = self._futures.pop(
+                    event_type, acquired_resources = self._futures.pop(
                         next_future_to_clean
                     )
 
@@ -945,7 +945,7 @@ class RayTrialExecutor:
 
                     # Clean this future
                     self._resolve_stop_event(
-                        next_future_to_clean, acquired_resource, timeout=0.01
+                        next_future_to_clean, acquired_resources, timeout=0.01
                     )
 
                 else:
@@ -1089,12 +1089,12 @@ class RayTrialExecutor:
             if not ready:
                 continue
 
-            event_type, acquired_resource = self._futures.pop(ready[0])
+            event_type, acquired_resources = self._futures.pop(ready[0])
 
             # It could be STOP future after all, if so, deal with it here.
             if event_type == _ExecutorEventType.STOP_RESULT:
                 # Blocking here is ok as the future returned
-                self._resolve_stop_event(ready[0], acquired_resource, timeout=None)
+                self._resolve_stop_event(ready[0], acquired_resources, timeout=None)
 
         for staged_trial in self._staged_trials:
             resource_request = staged_trial.placement_group_factory
@@ -1172,7 +1172,8 @@ class RayTrialExecutor:
             ###################################################################
             # when next_trial_exists and there are cached resources
             ###################################################################
-            # There could be existing PGs from either `self._resources_to_cached_actors`
+            # There could be existing PGs from either
+            # `self._resource_request_to_cached_actors`
             # or from ready trials. If so and if there is indeed
             # a next trial to run, we return `PG_READY` future for trial
             # runner. The next trial can then be scheduled on this PG.
@@ -1180,7 +1181,7 @@ class RayTrialExecutor:
                 if (
                     sum(
                         len(cached)
-                        for cached in self._resources_to_cached_actors.values()
+                        for cached in self._resource_request_to_cached_actors.values()
                     )
                     > 0
                 ):
@@ -1249,14 +1250,14 @@ class RayTrialExecutor:
             ###################################################################
             # non PG_READY event
             ###################################################################
-            result_type, trial_or_acquired_resource = self._futures.pop(ready_future)
+            result_type, trial_or_acquired_resources = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 # This will block, which is ok as the stop future returned
                 self._resolve_stop_event(
-                    ready_future, trial_or_acquired_resource, timeout=None
+                    ready_future, trial_or_acquired_resources, timeout=None
                 )
             else:
-                trial = trial_or_acquired_resource
+                trial = trial_or_acquired_resources
                 assert isinstance(trial, Trial)
                 try:
                     future_result = ray.get(ready_future)
