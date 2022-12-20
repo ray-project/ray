@@ -5,7 +5,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpec, SpecsAbstract
+from ray.rllib.models.specs.specs_base import TensorSpec, Spec
 
 
 _MISSING_KEYS_FROM_SPEC = (
@@ -28,7 +28,7 @@ IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
 @PublicAPI(stability="alpha")
-class ModelSpec(NestedDict[SpecsAbstract], SpecsAbstract):
+class SpecDict(NestedDict[Spec], Spec):
     """A NestedDict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.
@@ -37,7 +37,7 @@ class ModelSpec(NestedDict[SpecsAbstract], SpecsAbstract):
 
         Basic validation:
         -----------------
-        >>> spec_dict = ModelSpec({
+        >>> spec_dict = SpecDict({
         ...     "obs": {
         ...         "arm":      TensorSpec("b, dim_arm", dim_arm=64),
         ...         "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
@@ -94,7 +94,7 @@ class ModelSpec(NestedDict[SpecsAbstract], SpecsAbstract):
         super().__init__(*args, **kwargs)
         self._keys_set = set(self.keys())
     
-    @override(SpecsAbstract)
+    @override(Spec)
     def validate(
         self,
         data: DATA_TYPE,
@@ -124,7 +124,7 @@ class ModelSpec(NestedDict[SpecsAbstract], SpecsAbstract):
 
         for spec_name, spec in self.items():
             data_to_validate = data[spec_name]
-            if isinstance(spec, SpecsAbstract):
+            if isinstance(spec, Spec):
                 try:
                     spec.validate(data_to_validate)
                 except ValueError as e:
@@ -147,7 +147,7 @@ class ModelSpec(NestedDict[SpecsAbstract], SpecsAbstract):
 
     @override(NestedDict)
     def __repr__(self) -> str:
-        return f"ModelSpec({repr(self._data)})"
+        return f"SpecDict({repr(self._data)})"
 
 
 @DeveloperAPI
@@ -174,7 +174,7 @@ def check_specs(
 
         >>> class MyModel(nn.Module):
         ...     def input_spec(self):
-        ...         return ModelSpec({"obs": TensorSpec("b, d", d=64)})
+        ...         return SpecDict({"obs": TensorSpec("b, d", d=64)})
         ...
         ...     @check_specs(input_spec="input_spec")
         ...     def forward(self, input_data, return_loss=False):
@@ -192,7 +192,7 @@ def check_specs(
             other keyword argument thereafter. It should return a single object
             (i.e. not a tuple).
         input_spec: `self` should have an instance method whose name matches the string
-            in input_spec and returns the `ModelSpec`, `TensorSpec`, or simply the
+            in input_spec and returns the `SpecDict`, `TensorSpec`, or simply the
             `Type` that the `input_data` should comply with.
         output_spec: `self` should have an instance method whose name matches the
             string in output_spec and returns the spec that the output should comply
@@ -232,7 +232,7 @@ def check_specs(
                 return not cache or func.__name__ not in self.__checked_specs_cache__
 
             def validate(data, spec, exact_match, tag="data"):
-                is_mapping = isinstance(spec, ModelSpec)
+                is_mapping = isinstance(spec, SpecDict)
                 is_tensor = isinstance(spec, TensorSpec)
                 cache_miss = should_validate()
 
@@ -277,7 +277,7 @@ def check_specs(
                     tag="input_data",
                 )
 
-                if filter and isinstance(input_spec_, (ModelSpec, TensorSpec)):
+                if filter and isinstance(input_spec_, (SpecDict, TensorSpec)):
                     # filtering should happen regardless of cache
                     input_data_ = input_data_.filter(input_spec_)
 
@@ -327,7 +327,7 @@ def check_input_specs(
                     tag="input_data",
                 )
 
-                if filter and isinstance(input_spec_, (ModelSpec, TensorSpec)):
+                if filter and isinstance(input_spec_, (SpecDict, TensorSpec)):
                     # filtering should happen regardless of cache
                     input_data_ = input_data_.filter(input_spec_)
 
@@ -379,14 +379,14 @@ def check_output_specs(
 
     return decorator
 
-def convert_to_canonical_format(spec) -> ModelSpec:
+def convert_to_canonical_format(spec) -> SpecDict:
     return spec
 
 def should_validate(cls_instance, method, cache: bool = False):
     return not cache or method.__name__ not in cls_instance.__checked_input_specs_cache__
 
 def validate(cls_instance, method, data, spec, exact_match, tag="data"):
-    is_mapping = isinstance(spec, ModelSpec)
+    is_mapping = isinstance(spec, SpecDict)
     is_tensor = isinstance(spec, TensorSpec)
     # use cls_instance to infer cache from
     cache_miss = should_validate(cls_instance, method, cache=cache)

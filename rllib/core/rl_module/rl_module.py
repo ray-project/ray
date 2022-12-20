@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import SpecDict, check_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
@@ -188,7 +188,7 @@ class RLModule(abc.ABC):
         return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> ModelSpec:
+    def output_specs_inference(self) -> SpecDict:
         """Returns the output specs of the forward_inference method.
 
         Override this method to customize the output specs of the inference call.
@@ -199,7 +199,7 @@ class RLModule(abc.ABC):
         return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecDict:
         """Returns the output specs of the forward_exploration method.
 
         Override this method to customize the output specs of the inference call.
@@ -209,19 +209,19 @@ class RLModule(abc.ABC):
         """
         return {"action_dist": Distribution}
 
-    def output_specs_train(self) -> ModelSpec:
+    def output_specs_train(self) -> SpecDict:
         """Returns the output specs of the forward_train method."""
         return {}
 
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecDict:
         """Returns the input specs of the forward_inference method."""
         return {}
 
-    def input_specs_exploration(self) -> ModelSpec:
+    def input_specs_exploration(self) -> SpecDict:
         """Returns the input specs of the forward_exploration method."""
         return {}
 
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecDict:
         """Returns the input specs of the forward_train method."""
         return {}
 

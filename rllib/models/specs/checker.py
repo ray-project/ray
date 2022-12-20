@@ -6,23 +6,23 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpec, SpecsAbstract, TypeSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_base import TensorSpec, Spec, TypeSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 
 NestedKeys = List[Union[str, Tuple[str, ...]]]
-Constraint = Union[Type, Tuple[Type, ...], SpecsAbstract]
+Constraint = Union[Type, Tuple[Type, ...], Spec]
 SupportedSpecs = Union[NestedKeys, NestedDict[Optional[Constraint]]]
 
 
-def _convert_to_canonical_format(spec: SupportedSpecs) -> Union[SpecsAbstract, ModelSpec]:
+def _convert_to_canonical_format(spec: SupportedSpecs) -> Union[Spec, SpecDict]:
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
         spec = [(k,) if isinstance(k, str) else k for k in spec]
-        return ModelSpec({k: None for k in spec})
+        return SpecDict({k: None for k in spec})
     
     # convert spec of form tree of constraints to model_spec
     if isinstance(spec, Mapping):
-        spec = ModelSpec(spec)
+        spec = SpecDict(spec)
         for key in spec:
             # if values are types or tuple of types, convert to TypeSpec
             if isinstance(spec[key], (type, tuple)):
@@ -40,8 +40,8 @@ def _should_validate(cls_instance, method, tag: str = "input"):
     cache_store = getattr(cls_instance, f"__checked_{tag}_specs_cache__", None)
     return cache_store is None or method.__name__ not in cache_store
 
-def _validate(*, cls_instance: object, method: Callable, data: Any, spec: SpecsAbstract, filter: bool = False, tag: str = "input"):   
-    is_mapping = isinstance(spec, ModelSpec)
+def _validate(*, cls_instance: object, method: Callable, data: Any, spec: Spec, filter: bool = False, tag: str = "input"):   
+    is_mapping = isinstance(spec, SpecDict)
     cache_miss = _should_validate(cls_instance, method, tag=tag)
 
     if is_mapping:

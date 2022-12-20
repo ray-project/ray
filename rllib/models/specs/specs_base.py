@@ -13,7 +13,7 @@ _INVALID_TYPE = "Expected data type {} but found {}"
 
 
 @DeveloperAPI
-class SpecsAbstract(abc.ABC):
+class Spec(abc.ABC):
     @DeveloperAPI
     @abc.abstractstaticmethod
     def validate(self, data: Any) -> None:
@@ -27,11 +27,11 @@ class SpecsAbstract(abc.ABC):
         """
 
 @DeveloperAPI
-class TypeSpec(SpecsAbstract):
+class TypeSpec(Spec):
     """A base class that checks the type of the input data.
 
     Args:
-        type: The type of the object.
+        dtype: The type of the object.
 
     Examples:
         >>> spec = TypeSpec(tf.Tensor)
@@ -42,7 +42,7 @@ class TypeSpec(SpecsAbstract):
     def __init__(self, dtype: Type) -> None:
         self.dtype = dtype
     
-    @override(SpecsAbstract)
+    @override(Spec)
     def validate(self, data: Any) -> None:
         if not isinstance(data, self.dtype):
             raise ValueError(_INVALID_TYPE.format(self.dtype, type(data)))
@@ -56,7 +56,7 @@ class TypeSpec(SpecsAbstract):
         return not self == other
 
 @DeveloperAPI
-class TensorSpec(SpecsAbstract):
+class TensorSpec(Spec):
     """A base class that specifies the shape and dtype of a tensor.
 
     Args:
@@ -115,7 +115,7 @@ class TensorSpec(SpecsAbstract):
         """Returns a dtype specifying the tensor dtype."""
         return self._dtype
 
-    @override(SpecsAbstract)
+    @override(Spec)
     def validate(self, tensor: TensorType) -> None:
         """Checks if the shape and dtype of the tensor matches the specification.
 

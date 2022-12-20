@@ -1916,10 +1916,10 @@ py_test(
 
 # test ModelSpec
 py_test(
-    name = "test_model_spec",
+    name = "test_spec_dict",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_model_spec.py"]
+    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 

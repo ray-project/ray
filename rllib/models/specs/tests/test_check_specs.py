@@ -6,7 +6,7 @@ from typing import Dict, Any, Type
 import unittest
 
 from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -20,11 +20,11 @@ class AbstractInterfaceClass(abc.ABC):
     input/output constraints."""
 
     @property
-    def input_spec(self) -> ModelSpec:
+    def input_spec(self) -> SpecDict:
         pass
 
     @property
-    def output_spec(self) -> ModelSpec:
+    def output_spec(self) -> SpecDict:
         pass
 
     @check_input_specs("input_spec", filter=True, cache=False)
@@ -73,12 +73,12 @@ class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
 
     @property
-    def input_spec(self) -> ModelSpec:
-        return ModelSpec({"input": (float, int)})
+    def input_spec(self) -> SpecDict:
+        return SpecDict({"input": (float, int)})
 
     @property
-    def output_spec(self) -> ModelSpec:
-        return ModelSpec({"output": float})
+    def output_spec(self) -> SpecDict:
+        return SpecDict({"output": float})
 
 
 class CorrectImplementation(InputNumberOutputFloat):
@@ -272,31 +272,31 @@ class TestCheckSpecs(unittest.TestCase):
         # Case: input is a list of strs
         self.assertDictEqual(
             _convert_to_canonical_format(["foo", "bar"]).asdict(), 
-            ModelSpec({"foo": None, "bar": None}).asdict()
+            SpecDict({"foo": None, "bar": None}).asdict()
         )
 
         # Case: input is a list of strs and nested strs
         self.assertDictEqual(
             _convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
-            ModelSpec({"foo": None, "bar": {"jar": None}}).asdict()
+            SpecDict({"foo": None, "bar": {"jar": None}}).asdict()
         )
 
         # Case: input is a Nested Mapping
         returned = _convert_to_canonical_format(
             {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int, "car": None}}
         )
-        self.assertIsInstance(returned, ModelSpec)
+        self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
             returned.asdict(), 
-            ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int), "car": None}}).asdict()
+            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int), "car": None}}).asdict()
         )
 
-        # Case: input is a ModelSpec already
-        returned = _convert_to_canonical_format(ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}}))
-        self.assertIsInstance(returned, ModelSpec)
+        # Case: input is a SpecDict already
+        returned = _convert_to_canonical_format(SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}}))
+        self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
             returned.asdict(),
-            ModelSpec({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}).asdict()
+            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}).asdict()
         )
         
 

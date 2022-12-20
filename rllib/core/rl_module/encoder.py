@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import SpecDict, check_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.primitives import FCNet
 
@@ -66,10 +66,10 @@ class Encoder(nn.Module):
         raise []
 
     def input_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
     def output_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
     @check_specs(input_spec="_input_spec", output_spec="_output_spec")
     def forward(self, input_dict):
@@ -91,12 +91,12 @@ class FullyConnectedEncoder(Encoder):
         )
 
     def input_spec(self):
-        return ModelSpec(
+        return SpecDict(
             {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
         )
 
     def output_spec(self):
-        return ModelSpec(
+        return SpecDict(
             {"embedding": TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
 
@@ -125,7 +125,7 @@ class LSTMEncoder(Encoder):
 
     def input_spec(self):
         config = self.config
-        return ModelSpec(
+        return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
                 SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
@@ -142,7 +142,7 @@ class LSTMEncoder(Encoder):
 
     def output_spec(self):
         config = self.config
-        return ModelSpec(
+        return SpecDict(
             {
                 "embedding": TorchTensorSpec("bxt, h", h=config.output_dim),
                 "state_out": {
@@ -181,10 +181,10 @@ class IdentityEncoder(Encoder):
         super().__init__(config)
 
     def input_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
     def output_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
     def _forward(self, input_dict):
         return input_dict

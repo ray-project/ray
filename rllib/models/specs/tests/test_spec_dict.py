@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 from ray.rllib.models.specs.specs_np import NPTensorSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 
 
 class TypeClass1:
@@ -13,11 +13,11 @@ class TypeClass2:
     pass
 
 
-class TestModelSpec(unittest.TestCase):
+class TestSpecDict(unittest.TestCase):
     def test_basic_validation(self):
 
         h1, h2 = 3, 4
-        spec_1 = ModelSpec(
+        spec_1 = SpecDict(
             {
                 "out_tensor_1": NPTensorSpec("b, h", h=h1),
                 "out_tensor_2": NPTensorSpec("b, h", h=h2),
@@ -68,7 +68,7 @@ class TestModelSpec(unittest.TestCase):
         self.assertRaises(ValueError, lambda: spec_1.validate(tensor_4))
 
         # test nested specs
-        spec_2 = ModelSpec(
+        spec_2 = SpecDict(
             {
                 "encoder": {
                     "input": NPTensorSpec("b, h", h=h1),
