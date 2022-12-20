@@ -313,13 +313,23 @@ def test_gpu_node_avoid_cpu_task():
         },
     }
     r1 = [{"CPU": 1}] * 100
+    # max_to_add ten nodes allowed. All chosen to be "cpu".
     assert get_nodes_for(
         types,
         {},
         "empty_node",
-        100,
+        10,
         r1,
     ) == {"cpu": 10}
+    # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
+    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        11,
+        r1,
+    ) == {"cpu": 10, "gpu": 1}
     r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
     assert get_nodes_for(
         types,
