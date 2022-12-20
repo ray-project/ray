@@ -93,7 +93,7 @@ def test_util_score():
     )
     assert _resource_based_utilization_scorer(
         {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 0.5, 0.5)
+    ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
         {"GPU": 4},
         [{"GPU": 1}, {"GPU": 1}],
