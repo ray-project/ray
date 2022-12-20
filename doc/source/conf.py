@@ -81,6 +81,8 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
+html_baseurl = "https://docs.ray.io/en/latest"
+
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
 # - Bash prompts ("$ ")
