@@ -30,7 +30,7 @@ class ResourceManager(abc.ABC):
     3. "Acquired": The resources have been acquired by a caller to use for scheduling
        remote Ray objects. Note that it is the responsibility of the caller to
        schedule the Ray objects with these resources.
-       The associated resource request has been removed and can no longer be cancelled.
+       The associated resource request has been completed and can no longer be cancelled.
        The acquired resources can be returned to the resource manager when they are no
        longer used.
 
