@@ -318,7 +318,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
+        self.enable_connectors = False
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -423,9 +423,7 @@ class AlgorithmConfig:
 
         # `self.rl_module()`
         self.rl_module_class = None
-        self._enable_rl_module_api = bool(
-            os.environ.get("RLLIB_ENABLE_RL_MODULE", False)
-        )
+        self._enable_rl_module_api = False
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -767,6 +765,12 @@ class AlgorithmConfig:
                 "Please enable connectors via "
                 "`config.rollouts(enable_connectors=True)`."
             )
+
+        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
+            # enable RLModule API and connectors if env variable is set
+            # (to be used in unittesting)
+            self._enable_rl_module_api = True
+            self.enable_connectors = True
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
