@@ -83,11 +83,12 @@ class TorchVisionPreprocessor(Preprocessor):
             return np.array([self._fn(array).numpy() for array in batch])
 
         if isinstance(np_data, dict):
-            outputs = {
-                column: transform(batch)
-                for column, batch in np_data.items()
-                if column in self._columns
-            }
+            outputs = {}
+            for column, batch in np_data.items():
+                if column in self._columns:
+                    outputs[column] = transform(batch)
+                else:
+                    outputs[column] = batch
         else:
             outputs = transform(np_data)
 

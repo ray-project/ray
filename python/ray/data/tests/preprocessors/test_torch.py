@@ -35,11 +35,14 @@ class TestTorchVisionPreprocessor:
 
         transformed_dataset = preprocessor.transform(dataset)
 
+        assert transformed_dataset.schema().names == ["image", "label"]
         transformed_images = [
             record["image"] for record in transformed_dataset.take_all()
         ]
         assert all(image.shape == (3, 32, 32) for image in transformed_images)
         assert all(image.dtype == np.double for image in transformed_images)
+        labels = {record["label"] for record in transformed_dataset.take_all()}
+        assert labels == {0, 1}
 
     def test_batch_transform_images(self):
         dataset = ray.data.from_items(
@@ -62,11 +65,14 @@ class TestTorchVisionPreprocessor:
 
         transformed_dataset = preprocessor.transform(dataset)
 
+        assert transformed_dataset.schema().names == ["image", "label"]
         transformed_images = [
             record["image"] for record in transformed_dataset.take_all()
         ]
         assert all(image.shape == (3, 64, 64) for image in transformed_images)
         assert all(image.dtype == np.double for image in transformed_images)
+        labels = {record["label"] for record in transformed_dataset.take_all()}
+        assert labels == {0, 1}
 
     def test_transform_ragged_images(self):
         dataset = ray.data.from_items(
@@ -80,7 +86,7 @@ class TestTorchVisionPreprocessor:
 
         transformed_dataset = preprocessor.transform(dataset)
 
-        assert transformed_dataset.schema().names == ["image"]
+        assert transformed_dataset.schema().names == ["image", "label"]
         transformed_images = [
             record["image"] for record in transformed_dataset.take_all()
         ]
@@ -89,3 +95,5 @@ class TestTorchVisionPreprocessor:
             (3, 32, 32),
         ]
         assert all(image.dtype == np.double for image in transformed_images)
+        labels = {record["label"] for record in transformed_dataset.take_all()}
+        assert labels == {0, 1}
