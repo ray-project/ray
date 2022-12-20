@@ -142,7 +142,9 @@ def test_gpu_node_util_score():
         [{"CPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     )
-    import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
     gpu_ok = utilization_score[0]
     assert gpu_ok is False
     assert _resource_based_utilization_scorer(
