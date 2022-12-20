@@ -1,8 +1,10 @@
 import time
-from copy import deepcopy
 from typing import Dict, Any
 
-from ray_release.aws import RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+from ray_release.aws import (
+    add_tags_to_aws_config,
+    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+)
 from ray_release.exception import (
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
@@ -261,24 +263,10 @@ class MinimalClusterManager(ClusterManager):
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
-        aws = deepcopy(cluster_compute.get("aws", {}))
-        cluster_compute["aws"] = aws
-        tag_specifications = aws.setdefault("TagSpecifications", [])
-        for resource in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING:
-            resource_tags: dict = next(
-                (
-                    x
-                    for x in tag_specifications
-                    if x.get("ResourceType", "") == resource
-                ),
-                None,
-            )
-            if resource_tags is None:
-                resource_tags = {"ResourceType": resource, "Tags": []}
-                tag_specifications.append(resource_tags)
-            tags = resource_tags["Tags"]
-            for key, value in extra_tags.items():
-                tags.append({"Key": key, "Value": value})
+        aws = cluster_compute.get("aws", {})
+        cluster_compute["aws"] = add_tags_to_aws_config(
+            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        )
         return cluster_compute
 
     def get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
