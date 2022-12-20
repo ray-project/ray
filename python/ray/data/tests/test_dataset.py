@@ -5393,6 +5393,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 
 def test_ragged_tensors(ray_start_regular_shared):
+    """Test Arrow type promotion between ArrowTensorType and
+    ArrowVariableShapedTensorType when a column contains ragged tensors."""
     import numpy as np
 
     ds = ray.data.from_items(

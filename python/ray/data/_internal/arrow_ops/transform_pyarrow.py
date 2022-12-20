@@ -53,6 +53,8 @@ def take_table(
 def unify_schemas(
     schemas: List["pyarrow.Schema"],
 ) -> "pyarrow.Schema":
+    """Version of `pyarrow.unify_schemas()` which also handles checks for
+    variable-shaped tensors in the given schemas."""
     schemas_to_unify = []
     schema_tensor_field_overrides = {}
 
