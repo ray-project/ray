@@ -12,10 +12,12 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
+import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
 
@@ -62,7 +64,7 @@ const columns = [
   { label: "Driver Pid" },
 ];
 
-const JobList = () => {
+const JobList = ({ newIA = false }: { newIA?: boolean }) => {
   const classes = useStyles();
   const {
     msg,
@@ -139,7 +141,11 @@ const JobList = () => {
                 .map((job, index) => {
                   const { job_id, submission_id } = job;
                   return (
-                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                    <JobRow
+                      key={job_id ?? submission_id ?? index}
+                      job={job}
+                      newIA={newIA}
+                    />
                   );
                 })}
             </TableBody>
@@ -147,6 +153,24 @@ const JobList = () => {
         </TableContainer>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Jobs page for the new information hierarchy
+ */
+export const NewIAJobsPage = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Jobs",
+          id: "jobs",
+          path: "/new/jobs",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

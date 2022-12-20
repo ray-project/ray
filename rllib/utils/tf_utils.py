@@ -18,7 +18,9 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)
@@ -228,14 +230,15 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["Policy"], config: PartialAlgorithmConfigDict
-) -> Type["Policy"]:
+    orig_cls: Type["TFPolicy"],
+    config: Union["AlgorithmConfig", PartialAlgorithmConfigDict],
+) -> Type[Union["TFPolicy", "EagerTFPolicy", "EagerTFPolicyV2"]]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Algorithm config dict.
+        config: The Algorithm config dict or AlgorithmConfig object.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
@@ -247,6 +250,8 @@ def get_tf_eager_cls_if_necessary(
         raise ImportError("Could not import tensorflow!")
 
     if framework == "tf2":
+        if not tf1.executing_eagerly():
+            tf1.enable_eager_execution()
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy

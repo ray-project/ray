@@ -8,6 +8,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
@@ -131,6 +132,7 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -144,6 +146,7 @@ class TestExternalEnv(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
@@ -158,10 +161,12 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 batch_mode="complete_episodes",
                 num_rollout_workers=0,
+                enable_connectors=False,
             ),
         )
         for _ in range(3):
             batch = ev.sample()
+            batch = convert_ma_batch_to_sample_batch(batch)
             self.assertEqual(batch.count, 50)
             self.assertEqual(batch["actions"][0], 42)
             self.assertEqual(batch["actions"][-1], 42)
@@ -174,6 +179,7 @@ class TestExternalEnv(unittest.TestCase):
                 rollout_fragment_length=40,
                 num_rollout_workers=0,
                 sample_async=True,
+                enable_connectors=False,
             ),
         )
         self.assertRaises(Exception, lambda: ev.sample())
@@ -186,7 +192,7 @@ class TestExternalEnv(unittest.TestCase):
         config = (
             DQNConfig()
             .environment("test3")
-            .rollouts(num_rollout_workers=0)
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
             .exploration(exploration_config={"epsilon_timesteps": 100})
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -207,7 +213,11 @@ class TestExternalEnv(unittest.TestCase):
 
     def test_train_cartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
-        config = PGConfig().environment("test").rollouts(num_rollout_workers=0)
+        config = (
+            PGConfig()
+            .environment("test")
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()
             reached = False
@@ -226,7 +236,11 @@ class TestExternalEnv(unittest.TestCase):
 
     def test_train_cartpole_multi(self):
         register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
-        config = PGConfig().environment("test2").rollouts(num_rollout_workers=0)
+        config = (
+            PGConfig()
+            .environment("test2")
+            .rollouts(num_rollout_workers=0, enable_connectors=False)
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()
             reached = False
@@ -242,19 +256,6 @@ class TestExternalEnv(unittest.TestCase):
                     break
             if not reached:
                 raise Exception("failed to improve reward")
-
-    def test_external_env_horizon_not_supported(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: SimpleServing(MockEnv(25)),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=10,
-                horizon=20,
-                batch_mode="complete_episodes",
-                num_rollout_workers=0,
-            ),
-        )
-        self.assertRaises(ValueError, lambda: ev.sample())
 
 
 if __name__ == "__main__":

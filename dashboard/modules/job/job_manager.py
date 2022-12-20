@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import signal
 import string
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
@@ -140,6 +142,7 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    WAIT_FOR_JOB_TERMINATION_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
     def __init__(
@@ -303,21 +306,15 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
-        try:
-            while child_process is not None:
-                return_code = child_process.poll()
-                if return_code is not None:
-                    # subprocess finished with return code
-                    return return_code
-                else:
-                    # still running, yield control, 0.1s by default
-                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except Exception:
-            if child_process:
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
-            return 1
+    async def _polling(self, child_process: subprocess.Popen) -> int:
+        while child_process is not None:
+            return_code = child_process.poll()
+            if return_code is not None:
+                # subprocess finished with return code
+                return return_code
+            else:
+                # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     async def run(
         self,
@@ -375,12 +372,38 @@ class JobSupervisor:
             )
 
             if self._stop_event.is_set():
-                polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
+                    polling_task.cancel()
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                    child_process.kill()
+                    try:
+                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                    except ProcessLookupError:
+                        # Process already completed.
+                        logger.info(
+                            f"Job {self._job_id} completed on its own before it could "
+                            "be manually terminated."
+                        )
+                        pass
+                    else:
+                        # Wait for job to terminate gracefully, otherwise kill process
+                        # forcefully after timeout.
+                        try:
+                            await asyncio.wait_for(
+                                polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                            )
+                            logger.info(
+                                f"Job {self._job_id} has been terminated gracefully."
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Attempt to gracefully terminate job {self._job_id} "
+                                "through SIGTERM has timed out after "
+                                f"{self.WAIT_FOR_JOB_TERMINATION_S} seconds. Job is "
+                                "now being force-killed."
+                            )
+                            polling_task.cancel()
+                            child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -453,7 +476,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
-        create_task(self._recover_running_jobs())
+        run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
@@ -464,7 +487,7 @@ class JobManager:
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                create_task(self._monitor_job(job_id))
+                run_background_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -517,6 +540,12 @@ class JobManager:
                 is_alive = False
                 job_status = await self._job_info_client.get_status(job_id)
                 job_error_message = None
+                if job_status == JobStatus.FAILED:
+                    job_error_message = (
+                        "See more details from the dashboard "
+                        "`Job` page or the state API `ray list jobs`."
+                    )
+
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -790,7 +819,9 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
+            run_background_task(
+                self._monitor_job(submission_id, job_supervisor=supervisor)
+            )
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,

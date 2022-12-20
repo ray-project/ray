@@ -487,13 +487,19 @@ class SimpleListCollector(SampleCollector):
                 other_batches = {}
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            if (
-                any(pre_batch[SampleBatch.DONES][:-1])
-                or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
-            ):
+            if any(pre_batch[SampleBatch.DONES][:-1]):
+                raise ValueError(
+                    "Batches sent to postprocessing must be from a single trajectory "
+                    "(DONE=False everywhere, except the last DONE, which can be either "
+                    "True or False)!",
+                    pre_batch,
+                )
+            elif len(set(pre_batch[SampleBatch.EPS_ID])) > 1:
+                episode_ids = set(pre_batch[SampleBatch.EPS_ID])
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
-                    "from a single trajectory.",
+                    "from a single episode! Your trajectory contains data from "
+                    f"{len(episode_ids)} episodes ({list(episode_ids)}).",
                     pre_batch,
                 )
             # Call the Policy's Exploration's postprocess method.

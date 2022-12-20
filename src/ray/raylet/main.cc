@@ -284,13 +284,22 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
+  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client](
+  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
                      const boost::system::error_code &error, int signal_number) {
+    // Make the shutdown handler idempotent since graceful shutdown can be triggered
+    // by many places.
+    if (*shutted_down) {
+      RAY_LOG(INFO) << "Raylet already received SIGTERM. It will ignore the request.";
+      return;
+    }
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+    *shutted_down = true;
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();

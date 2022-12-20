@@ -28,6 +28,9 @@ class AlwaysSameHeuristic(Policy):
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
+    def is_recurrent(self) -> bool:
+        return True
+
     def compute_actions(
         self,
         obs_batch,

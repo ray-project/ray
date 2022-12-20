@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -132,7 +133,9 @@ class GcsActor {
   }
 
   ~GcsActor() {
-    if (last_metric_state_) {
+    // We don't decrement the value when it becomes DEAD because we don't want to
+    // lose the # of dead actors count when this class is GC'ed.
+    if (last_metric_state_ && last_metric_state_.value() != rpc::ActorTableData::DEAD) {
       RAY_LOG(DEBUG) << "Decrementing state at "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " " << GetActorTableData().class_name();
@@ -446,6 +449,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     return actor_state_counter_->Get(std::make_pair(state, name));
   }
 
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
+  }
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -539,6 +546,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    actor_delta->set_start_time(actor.start_time());
+    actor_delta->set_end_time(actor.end_time());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());
@@ -631,6 +640,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
+
+  UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -639,6 +650,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+
+  /// Total number of successfully created actors in the cluster lifetime.
+  int64_t liftime_num_created_actors_ = 0;
 
   // Debug info.
   enum CountType {

@@ -129,45 +129,56 @@ class SampleBatch(dict):
     samples, each with an "obs" and "reward" attribute.
     """
 
-    # Outputs from interacting with the environment
-    OBS = "obs"
+    # On rows in SampleBatch:
+    # Each comment signifies how values relate to each other within a given row.
+    # A row generally signifies one timestep. Most importantly, at t=0, SampleBatch.OBS
+    # will usually be the reset-observation, while SampleBatch.ACTIONS will be the
+    # action based on the reset-observation and so on. This scheme is derived from
+    # RLlib's sampling logic.
+
+    # # Outputs from interacting with the environment:
+
+    OBS = "obs"  # Observation that we compute SampleBatch.ACTIONS from
     CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
-    ACTIONS = "actions"
-    REWARDS = "rewards"
-    PREV_ACTIONS = "prev_actions"
-    PREV_REWARDS = "prev_rewards"
-    DONES = "dones"
-    INFOS = "infos"
-    SEQ_LENS = "seq_lens"
-    # This is only computed and used when RE3 exploration strategy is enabled
-    OBS_EMBEDS = "obs_embeds"
-    T = "t"
+    NEXT_OBS = "new_obs"  # Observation returned after stepping with SampleBatch.ACTIONS
+    ACTIONS = "actions"  # Action based on SampleBatch.OBS
+    REWARDS = "rewards"  # Reward returned after stepping with SampleBatch.ACTIONS
+    PREV_ACTIONS = "prev_actions"  # Action chosen before SampleBatch.ACTIONS
+    PREV_REWARDS = "prev_rewards"  # Reward received before SampleBatch.REWARDS
+    DONES = "dones"  # Done returned after stepping with SampleBatch.ACTIONS
+    INFOS = "infos"  # Infos returned after stepping with SampleBatch.ACTIONS
 
-    # decision transformer
-    RETURNS_TO_GO = "returns_to_go"
-    ATTENTION_MASKS = "attention_masks"
+    # # Additional keys filled by RLlib to manage the data above:
 
-    # Extra action fetches keys.
-    ACTION_DIST_INPUTS = "action_dist_inputs"
-    ACTION_PROB = "action_prob"
-    ACTION_LOGP = "action_logp"
-
-    # Uniquely identifies an episode.
-    EPS_ID = "eps_id"
-    # An env ID (e.g. the index for a vectorized sub-env).
-    ENV_ID = "env_id"
+    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
+    T = "t"  # Timestep counter
+    EPS_ID = "eps_id"  # Uniquely identifies an episode
+    ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
+    AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Uniquely identifies an agent within an episode.
-    AGENT_INDEX = "agent_index"
+    # # Algorithm-specific keys:
+
+    # Extra action fetches keys.
+    ACTION_DIST_INPUTS = "action_dist_inputs"
+    ACTION_PROB = "action_prob"
+    ACTION_LOGP = "action_logp"
+    ACTION_DIST = "action_dist"
 
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
+
+    # RE 3
+    # This is only computed and used when RE3 exploration strategy is enabled.
+    OBS_EMBEDS = "obs_embeds"
+
+    # Decision Transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
@@ -1586,8 +1597,13 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
             batch = batch.policy_batches[DEFAULT_POLICY_ID]
         else:
             raise ValueError(
-                "Off-Policy Estimation is not implemented for "
-                "multi-agent batches. You can set "
-                "`off_policy_estimation_methods: {}` to resolve this."
+                "RLlib tried to convert a multi agent-batch with data from more "
+                "than one policy to a single-agent batch. This is not supported and "
+                "may be due to a number of issues. Here are two possible ones:"
+                "1) Off-Policy Estimation is not implemented for "
+                "multi-agent batches. You can set `off_policy_estimation_methods: {}` "
+                "to resolve this."
+                "2) Loading multi-agent data for offline training is not implemented."
+                "Load single-agent data instead to resolve this."
             )
     return batch

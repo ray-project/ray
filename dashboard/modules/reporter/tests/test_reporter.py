@@ -4,7 +4,12 @@ import sys
 
 import pytest
 import requests
+import numpy as np
+import time
 
+from multiprocessing import Process
+
+import psutil
 import ray
 from mock import patch
 from ray._private import ray_constants
@@ -24,6 +29,14 @@ except ImportError:
     prometheus_client = None
 
 logger = logging.getLogger(__name__)
+
+
+def random_work():
+    import time
+
+    for _ in range(10000):
+        time.sleep(0.1)
+        np.random.rand(5 * 1024 * 1024)  # 40 MB
 
 
 def test_node_physical_stats(enable_test_module, shutdown_only):
@@ -277,6 +290,74 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             # Unless K8s disk usage display is enabled, we should get dummy values.
             assert root_usage.total == 1
             assert root_usage.free == 1
+
+
+def test_reporter_worker_cpu_percent():
+    raylet_dummy_proc_f = psutil.Process
+    agent_mock = Process(target=random_work)
+    children = [Process(target=random_work) for _ in range(2)]
+
+    class ReporterAgentDummy(object):
+        _workers = {}
+
+        def _get_raylet_proc(self):
+            return raylet_dummy_proc_f()
+
+        def _get_agent_proc(self):
+            return psutil.Process(agent_mock.pid)
+
+        def _generate_worker_key(self, proc):
+            return (proc.pid, proc.create_time())
+
+    obj = ReporterAgentDummy()
+
+    try:
+        agent_mock.start()
+        for child_proc in children:
+            child_proc.start()
+        children_pids = {p.pid for p in children}
+        workers = ReporterAgent._get_workers(obj)
+        # In the first run, the percent should be 0.
+        assert all([worker["cpu_percent"] == 0.0 for worker in workers])
+        for _ in range(10):
+            time.sleep(0.1)
+            workers = ReporterAgent._get_workers(obj)
+            workers_pids = {w["pid"] for w in workers}
+
+            # Make sure all children are registered.
+            for pid in children_pids:
+                assert pid in workers_pids
+
+            for worker in workers:
+                if worker["pid"] in children_pids:
+                    # Subsequent run shouldn't be 0.
+                    worker["cpu_percent"] > 0
+
+        # Kill one of the child procs and test it is cleaned.
+        print("killed ", children[0].pid)
+        children[0].kill()
+        wait_for_condition(lambda: not children[0].is_alive())
+        workers = ReporterAgent._get_workers(obj)
+        workers_pids = {w["pid"] for w in workers}
+        assert children[0].pid not in workers_pids
+        assert children[1].pid in workers_pids
+
+        children[1].kill()
+        wait_for_condition(lambda: not children[1].is_alive())
+        workers = ReporterAgent._get_workers(obj)
+        workers_pids = {w["pid"] for w in workers}
+        assert children[0].pid not in workers_pids
+        assert children[1].pid not in workers_pids
+
+    except Exception as e:
+        logger.exception(e)
+        raise
+    finally:
+        for child_proc in children:
+            if child_proc.is_alive():
+                child_proc.kill()
+        if agent_mock.is_alive():
+            agent_mock.kill()
 
 
 if __name__ == "__main__":

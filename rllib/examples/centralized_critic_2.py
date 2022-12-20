@@ -119,7 +119,12 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .rollouts(
+            batch_mode="complete_episodes",
+            num_rollout_workers=0,
+            # TODO(avnishn) make a new example compatible w connectors.
+            enable_connectors=False,
+        )
         .callbacks(FillInActions)
         .training(model={"custom_model": "cc_model"})
         .multi_agent(
@@ -127,7 +132,7 @@ if __name__ == "__main__":
                 "pol1": (None, observer_space, action_space, {}),
                 "pol2": (None, observer_space, action_space, {}),
             },
-            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
             if agent_id == 0
             else "pol2",
             observation_fn=central_critic_observer,

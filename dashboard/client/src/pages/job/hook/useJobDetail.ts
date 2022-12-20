@@ -1,14 +1,12 @@
 import { useContext, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobDetail } from "../../../service/job";
 
-export const useJobDetail = (props: RouteComponentProps<{ id: string }>) => {
-  const {
-    match: { params },
-  } = props;
+export const useJobDetail = () => {
+  const params = useParams() as { id: string };
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
   const { ipLogMap } = useContext(GlobalContext);

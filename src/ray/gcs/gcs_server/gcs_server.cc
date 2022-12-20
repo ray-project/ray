@@ -20,6 +20,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -167,12 +168,23 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init GCS task manager.
+  InitGcsTaskManager();
+
   // Install event listeners.
   InstallEventListeners();
 
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+
+  // Init usage stats client
+  // This is done after the RPC server starts
+  // since we need to know the port the rpc server listens on.
+  InitUsageStatsClient();
+  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
@@ -227,6 +239,8 @@ void GcsServer::Stop() {
     } else {
       gcs_ray_syncer_->Stop();
     }
+
+    gcs_task_manager_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -486,21 +500,6 @@ std::string GcsServer::StorageType() const {
   return RayConfig::instance().gcs_storage();
 }
 
-void GcsServer::StoreGcsServerAddressInRedis() {
-  std::string ip = config_.node_ip_address;
-  if (ip.empty()) {
-    ip = GetValidLocalIp(
-        GetPort(),
-        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
-  }
-  std::string address = ip + ":" + std::to_string(GetPort());
-  RAY_LOG(INFO) << "Gcs server address = " << address;
-
-  RAY_CHECK_OK(GetOrConnectRedis()->GetPrimaryContext()->RunArgvAsync(
-      {"SET", "GcsServerAddress", address}));
-  RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
-}
-
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
@@ -549,6 +548,11 @@ void GcsServer::InitStatsHandler() {
 
 void GcsServer::InitFunctionManager() {
   function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+}
+
+void GcsServer::InitUsageStatsClient() {
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
 }
 
 void GcsServer::InitKVManager() {
@@ -621,6 +625,14 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitGcsTaskManager() {
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
+  // Register service.
+  task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
+                                                        *gcs_task_manager_));
+  rpc_server_.RegisterService(*task_info_service_);
 }
 
 void GcsServer::InstallEventListeners() {
@@ -737,6 +749,7 @@ void GcsServer::InstallEventListeners() {
 void GcsServer::RecordMetrics() const {
   gcs_actor_manager_->RecordMetrics();
   gcs_placement_group_manager_->RecordMetrics();
+  gcs_task_manager_->RecordMetrics();
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
@@ -759,7 +772,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
-         << runtime_env_manager_->DebugString() << "\n\n";
+         << runtime_env_manager_->DebugString() << "\n\n"
+         << gcs_task_manager_->DebugString() << "\n\n";
   if (gcs_ray_syncer_) {
     stream << gcs_ray_syncer_->DebugString();
   }

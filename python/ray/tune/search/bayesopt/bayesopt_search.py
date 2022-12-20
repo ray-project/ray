@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.search.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized, Uniform
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
@@ -372,28 +372,26 @@ class BayesOptSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
+        save_object = self.get_state()
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(
-                (
-                    self.optimizer,
-                    self._buffered_trial_results,
-                    self._total_random_search_trials,
-                    self._config_counter,
-                    self._points_to_evaluate,
-                ),
-                f,
-            )
+            pickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
+            save_object = pickle.load(f)
+
+        if isinstance(save_object, dict):
+            self.set_state(save_object)
+        else:
+            # Backwards compatibility
             (
                 self.optimizer,
                 self._buffered_trial_results,
                 self._total_random_search_trials,
                 self._config_counter,
                 self._points_to_evaluate,
-            ) = pickle.load(f)
+            ) = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
@@ -419,7 +417,9 @@ class BayesOptSearch(Searcher):
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler is not None:
+                if domain.sampler is not None and not isinstance(
+                    domain.sampler, Uniform
+                ):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler)

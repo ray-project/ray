@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+from pathlib import Path
 import shutil
 
 import pytest
@@ -8,8 +9,8 @@ import pandas as pd
 
 import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray import air, tune
+from ray.air import Checkpoint, session
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
@@ -122,8 +123,8 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     trial.on_checkpoint(
         _TrackedCheckpoint(checkpoint_data, storage_mode=CheckpointStorage.MEMORY)
     )
-    trial.pickled_error_file = None
-    trial.error_file = None
+    trial.pickled_error_filename = None
+    trial.error_filename = None
     result_grid = ResultGrid(None)
 
     # Internal result grid conversion
@@ -259,28 +260,88 @@ def test_result_grid_df(ray_start_2_cpus):
 
 
 def test_num_errors_terminated(tmpdir):
-    error_file = tmpdir / "error.txt"
-    with open(error_file, "w") as fp:
+    error_filename = "error.txt"
+
+    trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
+
+    # Only create 1 shared trial logdir for this test
+    trials[0].init_logdir()
+    for trial in trials[1:]:
+        trial.relative_logdir = trials[0].relative_logdir
+
+    # Store a shared error file inside
+    error_path = Path(trials[0].logdir) / error_filename
+    with open(error_path, "w") as fp:
         fp.write("Test error\n")
 
-    trials = [Trial("foo", stub=True) for i in range(10)]
-    trials[4].status = Trial.ERROR
-    trials[6].status = Trial.ERROR
-    trials[8].status = Trial.ERROR
+    for i in [4, 6, 8]:
+        trials[i].status = Trial.ERROR
+        trials[i].error_filename = error_filename
 
-    trials[4].error_file = error_file
-    trials[6].error_file = error_file
-    trials[8].error_file = error_file
+    for i in [3, 5]:
+        trials[i].status = Trial.TERMINATED
 
-    trials[3].status = Trial.TERMINATED
-    trials[5].status = Trial.TERMINATED
-
-    experiment_dir = create_tune_experiment_checkpoint(trials)
-    result_grid = ResultGrid(tune.ExperimentAnalysis(experiment_dir))
+    create_tune_experiment_checkpoint(trials, local_checkpoint_dir=str(tmpdir))
+    result_grid = ResultGrid(tune.ExperimentAnalysis(tmpdir))
     assert len(result_grid.errors) == 3
     assert result_grid.num_errors == 3
     assert result_grid.num_terminated == 2
-    shutil.rmtree(experiment_dir)
+
+
+def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
+    def train_func(config):
+        data = {"it": 0}
+        if session.get_checkpoint():
+            data = session.get_checkpoint().to_dict()
+
+        while True:
+            data["it"] += 1
+            checkpoint = Checkpoint.from_dict(data)
+            session.report(data, checkpoint=checkpoint)
+
+    num_to_keep = 2
+    total_iters = 6
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=tune.TuneConfig(
+            num_samples=1,
+        ),
+        run_config=air.RunConfig(
+            name="exp_dir",
+            local_dir=str(tmpdir / "ray_results"),
+            stop={"it": total_iters},
+            checkpoint_config=air.CheckpointConfig(
+                # Keep the latest checkpoints
+                checkpoint_score_attribute="it",
+                num_to_keep=num_to_keep,
+            ),
+        ),
+    )
+    result_grid = tuner.fit()
+
+    assert result_grid[0].checkpoint
+    for (checkpoint, metric) in result_grid[0].best_checkpoints:
+        assert checkpoint
+    assert len(result_grid[0].best_checkpoints) == num_to_keep
+
+    # Move the experiment directory
+    shutil.move(tmpdir / "ray_results", tmpdir / "moved_ray_results")
+    os.rename(
+        tmpdir / "moved_ray_results" / "exp_dir",
+        tmpdir / "moved_ray_results" / "new_exp_dir",
+    )
+
+    result_grid = tune.Tuner.restore(
+        str(tmpdir / "moved_ray_results" / "new_exp_dir")
+    ).get_results()
+    checkpoint_data = []
+
+    assert len(result_grid[0].best_checkpoints) == num_to_keep
+    for (checkpoint, _) in result_grid[0].best_checkpoints:
+        assert checkpoint
+        assert "moved_ray_results" in checkpoint._local_path
+        checkpoint_data.append(checkpoint.to_dict()["it"])
+    assert set(checkpoint_data) == {5, 6}
 
 
 if __name__ == "__main__":

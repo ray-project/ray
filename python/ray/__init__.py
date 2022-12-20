@@ -70,14 +70,6 @@ def _configure_system():
                 "#m1-mac-apple-silicon-support for more details."
             )
 
-    if "OMP_NUM_THREADS" not in os.environ:
-        logger.debug(
-            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-            "degradation with many workers (issue #6998). You can "
-            "override this by explicitly setting OMP_NUM_THREADS."
-        )
-        os.environ["OMP_NUM_THREADS"] = "1"
-
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
@@ -201,11 +193,6 @@ serialization = _DeprecationWrapper("serialization", ray._private.serialization)
 state = _DeprecationWrapper("state", ray._private.state)
 
 
-_subpackages = [
-    "data",
-    "workflow",
-]
-
 __all__ = [
     "__version__",
     "_config",
@@ -241,7 +228,13 @@ __all__ = [
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
-] + _subpackages
+]
+
+# Subpackages
+__all__ += [
+    "data",
+    "workflow",
+]
 
 # ID types
 __all__ += [
@@ -268,7 +261,7 @@ else:
     def __getattr__(name: str):
         import importlib
 
-        if name in _subpackages:
+        if name in ["data", "workflow"]:
             return importlib.import_module("." + name, __name__)
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

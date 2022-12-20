@@ -21,6 +21,7 @@ const useStyles = makeStyles((theme) => ({
 
 type JobRowProps = {
   job: UnifiedJob;
+  newIA?: boolean;
 };
 
 export const JobRow = ({
@@ -33,20 +34,20 @@ export const JobRow = ({
     start_time,
     end_time,
     entrypoint,
+    driver_agent_http_address,
   },
+  newIA = false,
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
-  const { progress, error } = useJobProgress(job_id ?? undefined);
+  const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
   const classes = useStyles();
 
   const progressBar = (() => {
+    if (!driverExists) {
+      return <MiniTaskProgressBar />;
+    }
     if (!progress || error) {
-      if (status === "SUCCEEDED" || status === "FAILED") {
-        // Show a fake all-green progress bar.
-        return <MiniTaskProgressBar numFinished={1} showTooltip={false} />;
-      } else {
-        return "unavailable";
-      }
+      return "unavailable";
     }
     if (status === "SUCCEEDED" || status === "FAILED") {
       // TODO(aguo): Show failed tasks in progress bar once supported.
@@ -56,10 +57,38 @@ export const JobRow = ({
     }
   })();
 
+  const logsLink = (() => {
+    let link: string | undefined;
+    if (driver_agent_http_address) {
+      link = `/log/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
+    } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+      link = `/log/${encodeURIComponent(
+        ipLogMap[driver_info.node_ip_address],
+      )}`;
+    }
+
+    if (link) {
+      link += `?fileName=${
+        type === "DRIVER" ? job_id : `driver-${submission_id}`
+      }`;
+      return (
+        <Link to={link} target="_blank">
+          Log
+        </Link>
+      );
+    }
+
+    return "-";
+  })();
+
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
+        {job_id ? (
+          <Link to={newIA ? `${job_id}` : `/job/${job_id}`}>{job_id}</Link>
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
@@ -84,20 +113,7 @@ export const JobRow = ({
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
-        {driver_info && ipLogMap[driver_info.node_ip_address] ? (
-          <Link
-            to={`/log/${encodeURIComponent(
-              ipLogMap[driver_info.node_ip_address],
-            )}?fileName=${
-              type === "DRIVER" ? job_id : `driver-${submission_id}`
-            }`}
-            target="_blank"
-          >
-            Log
-          </Link>
-        ) : (
-          "-"
-        )}
+        {logsLink}
       </TableCell>
       <TableCell align="center">
         {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}

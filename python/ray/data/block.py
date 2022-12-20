@@ -137,7 +137,7 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
-BlockPartitionMetadata = "BlockMetadata"
+BlockPartitionMetadata = List["BlockMetadata"]
 
 # TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.

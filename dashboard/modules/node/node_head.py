@@ -300,7 +300,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             elif isinstance(reply, grpc.RpcError):
                 if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                     logger.exception(
-                        f"Cannot reach the node, {node_id}, after timeout {TIMEOUT}."
+                        f"Cannot reach the node, {node_id}, after timeout {TIMEOUT}. "
+                        "This node may have been overloaded, terminated, or "
+                        "the network is slow."
                     )
                 elif reply.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.exception(

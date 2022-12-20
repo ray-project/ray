@@ -156,6 +156,9 @@ if __name__ == "__main__":
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # TODO(avnishn): This example uses functions specific to episode v1
+            # that is not compatible with episode v2. Needs to be updated
+            "enable_connectors": False,
         },
     )
     # there is only one trial involved.

@@ -22,6 +22,8 @@ The following figure shows an overview of these components, which we cover in de
 
 .. image:: images/tune_flow.png
 
+.. _tune_60_seconds_trainables:
+
 Trainables
 ----------
 
@@ -68,6 +70,8 @@ Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
+.. _tune-key-concepts-search-spaces:
+
 Search Spaces
 -------------
 
@@ -86,6 +90,8 @@ Here's an example covering all search space functions. Again,
     :language: python
     :start-after: __config_start__
     :end-before: __config_end__
+
+.. _tune_60_seconds_trials:
 
 Trials
 ------
@@ -362,6 +368,8 @@ allowing you to do ad-hoc data analysis over your results.
     :language: python
     :start-after: __results_start__
     :end-before: __results_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 What's Next?
 -------------

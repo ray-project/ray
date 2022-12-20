@@ -1,6 +1,7 @@
 import copy
 import os
 import math
+import logging
 import warnings
 import shutil
 import tempfile
@@ -9,6 +10,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tu
 
 import ray
 import ray.cloudpickle as pickle
+from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -27,8 +29,14 @@ if TYPE_CHECKING:
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
+_CONVERTED_TRAINABLE_KEY = "_converted_trainable"
 _PARAM_SPACE_KEY = "_param_space"
 _EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
+
+logger = logging.getLogger(__name__)
+
+TrainableType = Union[str, Callable, Type[Trainable]]
+TrainableTypeOrTrainer = Union[TrainableType, "BaseTrainer"]
 
 
 class TunerInternal:
@@ -64,14 +72,7 @@ class TunerInternal:
         self,
         restore_path: str = None,
         resume_config: Optional[_ResumeConfig] = None,
-        trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
-        ] = None,
+        trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -87,10 +88,14 @@ class TunerInternal:
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
+        self._missing_params_error_message = None
+
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
-                path_or_uri=restore_path, resume_config=resume_config
+                path_or_uri=restore_path,
+                resume_config=resume_config,
+                overwrite_trainable=trainable,
             )
             return
 
@@ -99,7 +104,7 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._is_restored = False
-        self._trainable = trainable
+        self.trainable = trainable
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
@@ -123,8 +128,19 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
             pickle.dump(self, fp)
 
-        with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-            pickle.dump(self._trainable, fp)
+        try:
+            with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
+                pickle.dump(self.trainable, fp)
+        except TypeError as e:
+            inspect_serializability(self.trainable)
+            msg = (
+                "The provided trainable is not serializable, which is a requirement "
+                "since the trainable is serialized and deserialized when transferred "
+                "to remote workers. See above for a trace of the non-serializable "
+                "objects that were found in your trainable."
+            )
+            raise TypeError(msg) from e
+
         self._maybe_warn_resource_contention()
 
     def get_run_config(self) -> RunConfig:
@@ -149,7 +165,11 @@ class TunerInternal:
             concurrent_trials = math.inf
 
         actual_concurrency = min(
-            (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
+            (
+                (cpus_total // cpus_per_trial) if cpus_per_trial else 0,
+                num_samples,
+                concurrent_trials,
+            )
         )
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
@@ -157,7 +177,7 @@ class TunerInternal:
         if not ray.is_initialized():
             return
 
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self.converted_trainable
 
         # This may not be precise, but we don't have a great way of
         # accessing the actual scaling config if it is being tuned.
@@ -191,8 +211,84 @@ class TunerInternal:
                 stacklevel=4,
             )
 
+    def _validate_overwrite_trainable(
+        self,
+        original_trainable: TrainableTypeOrTrainer,
+        overwrite_trainable: Optional[TrainableTypeOrTrainer],
+    ):
+        """Determines whether the new `overwrite_trainable` is compatible
+        with the restored experiment with some basic sanity checks
+        (ensuring same type and name as the original trainable).
+        """
+
+        # Check if the trainable was wrapped with `tune.with_parameters`,
+        # Set the Tuner to fail on fit if the trainable is not re-specified.
+        trainable_wrapped_params = getattr(
+            original_trainable, "_attached_param_names", None
+        )
+        if trainable_wrapped_params and not overwrite_trainable:
+            self._missing_params_error_message = (
+                "The original trainable cannot be used to resume training, since "
+                "`tune.with_parameters` attached references to objects "
+                "in the Ray object store that may not exist anymore. "
+                "You must re-supply the trainable with the same parameters "
+                f"{trainable_wrapped_params} attached:\n\n"
+                "from ray import tune\n\n"
+                "# Reconstruct the trainable with the same parameters\n"
+                "trainable_with_params = tune.with_parameters(trainable, ...)\n"
+                "tuner = tune.Tuner.restore(\n"
+                "    ..., overwrite_trainable=trainable_with_params\n"
+                ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
+                "#tune-with-parameters for more details."
+            )
+        if not overwrite_trainable:
+            return
+
+        error_message = (
+            "Usage of `overwrite_trainable` is limited to re-specifying the "
+            "same trainable that was passed to `Tuner`, in the case "
+            "that the trainable is not serializable (e.g. it holds object references)."
+        )
+
+        if type(original_trainable) != type(overwrite_trainable):
+            raise ValueError(
+                f"{error_message}\n"
+                f"Got new trainable of type {type(overwrite_trainable)} "
+                f"but expected {type(original_trainable)}."
+            )
+
+        from ray.train.trainer import BaseTrainer
+
+        if isinstance(overwrite_trainable, BaseTrainer):
+            if overwrite_trainable.run_config != original_trainable.run_config:
+                warnings.warn(
+                    "Overwriting the AIR Trainer with a new `RunConfig` is not "
+                    "supported - the restored experiment will continue with the old "
+                    "config. To avoid this warning, revert changes made to `RunConfig`."
+                )
+                overwrite_trainable.run_config = original_trainable.run_config
+        else:
+            original_name = Experiment.get_trainable_name(original_trainable)
+            overwrite_name = Experiment.get_trainable_name(overwrite_trainable)
+            if original_name != overwrite_name:
+                raise ValueError(
+                    f"{error_message}\nGot new trainable with identifier "
+                    f"{overwrite_name} but expected {original_name}."
+                )
+
+        logger.warning(
+            "The trainable will be overwritten - this should be done with caution: "
+            "it's possible to supply an incompatible trainable, and there are "
+            "no guarantees that the resumed experiment will continue successfully. "
+            "If you encounter errors during training, ensure that you are passing "
+            "in the same trainable that was passed into the initial `Tuner` object."
+        )
+
     def _restore_from_path_or_uri(
-        self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
+        self,
+        path_or_uri: str,
+        resume_config: Optional[_ResumeConfig],
+        overwrite_trainable: Optional[TrainableTypeOrTrainer],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -218,13 +314,25 @@ class TunerInternal:
             tuner = pickle.load(fp)
             self.__dict__.update(tuner.__dict__)
 
+        self._validate_overwrite_trainable(trainable, overwrite_trainable)
+        if overwrite_trainable:
+            trainable = overwrite_trainable
+
         self._is_restored = True
-        self._trainable = trainable
+        self.trainable = trainable
         self._resume_config = resume_config
 
         if not synced:
             # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
+            self._experiment_checkpoint_dir = os.path.abspath(
+                os.path.expanduser(path_or_uri)
+            )
+
+            # Update local_dir to use the parent of the experiment path
+            # provided to `Tuner.restore`
+            experiment_path = Path(self._experiment_checkpoint_dir)
+            self._run_config.local_dir = str(experiment_path.parent)
+            self._run_config.name = experiment_path.name
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -280,7 +388,7 @@ class TunerInternal:
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._convert_trainable(self._trainable),
+            self.converted_trainable,
             run_config.local_dir,
             run_config.name,
         )
@@ -292,18 +400,32 @@ class TunerInternal:
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    @staticmethod
-    def _convert_trainable(trainable: Any) -> Type[Trainable]:
+    @property
+    def trainable(self) -> TrainableTypeOrTrainer:
+        return self._trainable
+
+    @property
+    def converted_trainable(self) -> TrainableType:
+        return self._converted_trainable
+
+    @trainable.setter
+    def trainable(self, trainable: TrainableTypeOrTrainer):
+        self._trainable = trainable
+        self._converted_trainable = self._convert_trainable(trainable)
+
+    def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
+        """Converts an AIR Trainer to a Tune trainable and saves the converted
+        trainable. If not using an AIR Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
-        if isinstance(trainable, BaseTrainer):
-            trainable = trainable.as_trainable()
-        else:
-            trainable = trainable
-        return trainable
+        return (
+            trainable.as_trainable()
+            if isinstance(trainable, BaseTrainer)
+            else trainable
+        )
 
     def fit(self) -> ResultGrid:
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
         if not self._is_restored:
             param_space = copy.deepcopy(self._param_space)
@@ -323,7 +445,7 @@ class TunerInternal:
             )
         return ResultGrid(self._experiment_analysis)
 
-    def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
+    def _get_tune_run_arguments(self, trainable: TrainableType) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
         checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
         checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
@@ -402,7 +524,9 @@ class TunerInternal:
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
-    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
+    def _fit_internal(
+        self, trainable: TrainableType, param_space
+    ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
             **self._get_tune_run_arguments(trainable),
@@ -423,8 +547,11 @@ class TunerInternal:
         self.clear_remote_string_queue()
         return analysis
 
-    def _fit_resume(self, trainable) -> ExperimentAnalysis:
+    def _fit_resume(self, trainable: TrainableType) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        if self._missing_params_error_message:
+            raise ValueError(self._missing_params_error_message)
+
         resume = "AUTO"
 
         if self._resume_config:
@@ -444,6 +571,8 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=resume,
+                search_alg=self._tune_config.search_alg,
+                scheduler=self._tune_config.scheduler,
             ),
             **self._tuner_kwargs,
         }
@@ -456,6 +585,7 @@ class TunerInternal:
         state["_tuner_kwargs"] = state["_tuner_kwargs"].copy()
         state["_tuner_kwargs"].pop("_remote_string_queue", None)
         state.pop(_TRAINABLE_KEY, None)
+        state.pop(_CONVERTED_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
         return state

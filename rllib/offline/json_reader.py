@@ -26,6 +26,7 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     SampleBatch,
     concat_samples,
+    convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import unpack_if_needed
@@ -306,6 +307,8 @@ class JsonReader(InputReader):
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
+
+        batch = convert_ma_batch_to_sample_batch(batch)
 
         if isinstance(batch, SampleBatch):
             out = []

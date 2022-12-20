@@ -249,7 +249,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"
         ] = ViewRequirement()
-        batch = rollout_worker_w_api.sample()
+        batch = convert_ma_batch_to_sample_batch(rollout_worker_w_api.sample())
         self.assertTrue("next_actions" in batch)
         self.assertTrue("2nd_next_actions" in batch)
         expected_a_ = None  # expected next action
@@ -283,10 +283,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         rw = RolloutWorker(
@@ -326,10 +326,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         max_seq_len = 50
         rollout_fragment_length = 201
         policies = {
-            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         config = (
@@ -360,7 +360,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id),
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                "p{}".format(agent_id)
+            ),
             count_steps_by="agent_steps",
         )
 

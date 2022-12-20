@@ -15,8 +15,6 @@ cql-halfcheetahbulletenv-v0:
             paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
         actions_in_input_normalized: true
 
-        soft_horizon: False
-        horizon: 1000
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]

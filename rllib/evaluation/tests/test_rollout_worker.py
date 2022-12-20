@@ -244,7 +244,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -284,7 +285,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             ),
@@ -336,7 +338,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -375,10 +378,10 @@ class TestRolloutWorker(unittest.TestCase):
 
             # create input reader functions
             def dataset_reader_creator(ioctx):
-                config = {
-                    "input": "dataset",
-                    "input_config": {"format": "json", "paths": data_file},
-                }
+                config = AlgorithmConfig().offline_data(
+                    input_="dataset",
+                    input_config={"format": "json", "paths": data_file},
+                )
                 _, shards = get_dataset_and_shards(config, num_workers=0)
                 return DatasetReader(shards[0], ioctx)
 
@@ -473,7 +476,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -487,8 +491,8 @@ class TestRolloutWorker(unittest.TestCase):
         # Clipping: True (clip between -1.0 and 1.0).
         config = (
             AlgorithmConfig()
-                .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
-                .environment(clip_rewards=True)
+            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .environment(clip_rewards=True)
         )
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
@@ -552,86 +556,6 @@ class TestRolloutWorker(unittest.TestCase):
         result2 = collect_metrics(ws2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
         ev2.stop()
-
-    def test_hard_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: MockEnv2(episode_length=10),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=4,
-                soft_horizon=False,
-            ),
-        )
-        samples = convert_ma_batch_to_sample_batch(ev.sample())
-        # Three logical episodes and correct episode resets (always after 4
-        # steps).
-        self.assertEqual(len(set(samples["eps_id"])), 3)
-        for i in range(4):
-            self.assertEqual(np.argmax(samples["obs"][i]), i)
-        self.assertEqual(np.argmax(samples["obs"][4]), 0)
-        # 3 done values.
-        self.assertEqual(sum(samples["dones"]), 3)
-        ev.stop()
-
-        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
-        ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=6,
-                soft_horizon=False,
-            ),
-        )
-        samples = convert_ma_batch_to_sample_batch(ev.sample())
-        # 12 steps due to `complete_episodes` batch_mode.
-        self.assertEqual(len(samples["eps_id"]), 12)
-        # Two logical episodes and correct episode resets (always after 6(!)
-        # steps).
-        self.assertEqual(len(set(samples["eps_id"])), 2)
-        # 2 done values after 6 and 12 steps.
-        check(
-            samples["dones"],
-            [
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-            ],
-        )
-        ev.stop()
-
-    def test_soft_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: MockEnv(episode_length=10),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=4,
-                soft_horizon=True,
-            ),
-        )
-        samples = ev.sample()
-        # three logical episodes
-        self.assertEqual(len(set(samples["eps_id"])), 3)
-        # only 1 hard done value
-        self.assertEqual(sum(samples["dones"]), 1)
-        ev.stop()
 
     def test_metrics(self):
         ev = RolloutWorker(
@@ -815,7 +739,7 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),
@@ -840,7 +764,7 @@ class TestRolloutWorker(unittest.TestCase):
                 count_steps_by="agent_steps",
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),

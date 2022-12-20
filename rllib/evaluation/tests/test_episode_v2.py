@@ -63,7 +63,7 @@ class TestEpisodeV2(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_singleagent_env(self):
+    def test_single_agent_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
             default_policy_class=EchoPolicy,
@@ -79,7 +79,7 @@ class TestEpisodeV2(unittest.TestCase):
             # A batch of 100. 4 episodes, each 25.
             self.assertEqual(len(set(sample_batch["eps_id"])), 8)
 
-    def test_multiagent_env(self):
+    def test_multi_agent_env(self):
         temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)
         ev = RolloutWorker(
             env_creator=lambda _: temp_env,
@@ -87,7 +87,9 @@ class TestEpisodeV2(unittest.TestCase):
             config=AlgorithmConfig()
             .multi_agent(
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: str(agent_id),
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    str(agent_id)
+                ),
             )
             .rollouts(enable_connectors=True, num_rollout_workers=0),
         )

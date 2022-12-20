@@ -1,6 +1,5 @@
 import sys
 from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
-import warnings
 
 import numpy as np
 
@@ -47,7 +46,7 @@ class BatchMapper(Preprocessor):
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
         ...     return batch.drop("Y", axis="columns")
         >>>
-        >>> preprocessor = BatchMapper(fn)
+        >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={X: int64})
         >>>
@@ -88,13 +87,12 @@ class BatchMapper(Preprocessor):
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
         if not batch_format:
-            warnings.warn(
-                "batch_format will be a required argument for BatchMapper in future "
-                "releases. Defaulting to 'pandas' batch format.",
-                DeprecationWarning,
+            raise DeprecationWarning(
+                "batch_format is a required argument for BatchMapper from Ray 2.1."
+                "You must specify either 'pandas' or 'numpy' batch format."
             )
-            batch_format = BatchFormat.PANDAS
-        if batch_format and batch_format not in [
+
+        if batch_format not in [
             BatchFormat.PANDAS,
             BatchFormat.NUMPY,
         ]:
