@@ -17,7 +17,7 @@ import sys
 
 from lxml import etree
 
-from ray.rllib.contrib.sumo.connector import SUMOConnector, DEFAULT_CONFIG
+from ray.rllib.examples.simulators.sumo.connector import SUMOConnector, DEFAULT_CONFIG
 
 # """ Import SUMO library """
 if "SUMO_HOME" in os.environ:
@@ -29,7 +29,6 @@ else:
 
 ###############################################################################
 
-logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 ###############################################################################

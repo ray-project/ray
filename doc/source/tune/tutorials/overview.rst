@@ -79,6 +79,14 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
+    .. link-button:: ../tutorials/tune_get_data_in_and_out
+        :type: ref
+        :text: Getting Data in and out of Tune
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
     .. link-button:: ../examples/tune_analyze_results
         :type: ref
         :text: Analyzing Tune Experiment Results

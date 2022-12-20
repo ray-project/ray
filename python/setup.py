@@ -218,7 +218,7 @@ if setup_spec.type == SetupType.RAY:
         # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
     if sys.version_info >= (3, 7) and sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1, < 8.0.0"
+        pyarrow_dep = "pyarrow >= 6.0.1"
     else:
         # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
@@ -241,7 +241,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
-            "prometheus_client >= 0.7.1, < 0.14.0",
+            "prometheus_client >= 0.7.1",
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
