@@ -77,7 +77,6 @@ def _get_extra_tags() -> dict:
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
         "BUILDKITE_PIPELINE_SLUG",
-        "BUILDKITE_RETRY_COUNT",
         "BUILDKITE_SOURCE",
         "RELEASE_FREQUENCY",
     )
