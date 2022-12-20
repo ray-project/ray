@@ -115,7 +115,7 @@ def test_autoscaler_all_gpu_node_types():
 
         # Make sure the task can be scheduled.
         # Since the head has 0 CPUs, this requires upscaling a GPU worker.
-        ray.get(task.remote(), timeout=60)
+        ray.get(task.remote(), timeout=30)
         ray.shutdown()
 
     finally:
