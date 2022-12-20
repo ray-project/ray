@@ -34,30 +34,45 @@ class DatasetLogger:
         # parameter `log_to_stdout = False`, `_logger.propagate` will be set
         # to `False` in order to prevent the root logger from writing the log
         # to stdout.
-        self._logger = logging.getLogger(f"{log_name}.logfile")
+        self.log_name = log_name
+        # Lazily initialized in self._initialize_logger()
+        self._logger = None
+
+    def _initialize_logger(self) -> logging.Logger:
+        """Internal method to initialize the logger and the extra file handler
+        for writing to the Dataset log file. Not intended (nor should it be necessary)
+        to call explicitly. Assumes that `ray.init()` has already been called prior
+        to calling this method; otherwise raises a `ValueError`."""
+        # With current implementation, we can only get the global node session
+        # directory path after ray.init() is called. A less hacky way could
+        # potentially fix this.
+        global_node = ray._private.worker._global_node
+        if global_node is None:
+            raise ValueError(
+                "DatasetLogger._initialize_logger() must be called after ray.init()."
+            )
+
+        logger = logging.getLogger(f"{self.log_name}.logfile")
         # We need to set the log level again when explicitly
         # initializing a new logger (otherwise can have undesirable level).
-        self._logger.setLevel(LOGGER_LEVEL.upper())
+        logger.setLevel(LOGGER_LEVEL.upper())
 
         # Add log handler which writes to a separate Datasets log file
         # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`
-        global_node = ray._private.worker._global_node
-        if global_node is not None:
-            # With current implementation, we can only get session_dir
-            # after ray.init() is called. A less hacky way could potentially fix this
-            session_dir = global_node.get_session_dir_path()
-            self.datasets_log_path = os.path.join(
-                session_dir,
-                DatasetLogger.DEFAULT_DATASET_LOG_PATH,
-            )
-            # Add a FileHandler to write to the specific Ray Datasets log file,
-            # using the standard default logger format used by the root logger
-            file_log_handler = logging.FileHandler(self.datasets_log_path)
-            file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
-            file_log_handler.setFormatter(file_log_formatter)
-            self._logger.addHandler(file_log_handler)
+        session_dir = global_node.get_session_dir_path()
+        datasets_log_path = os.path.join(
+            session_dir,
+            DatasetLogger.DEFAULT_DATASET_LOG_PATH,
+        )
+        # Add a FileHandler to write to the specific Ray Datasets log file,
+        # using the standard default logger format used by the root logger
+        file_log_handler = logging.FileHandler(datasets_log_path)
+        file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
+        file_log_handler.setFormatter(file_log_formatter)
+        logger.addHandler(file_log_handler)
+        return logger
 
-    def get_logger(self, log_to_stdout: bool = True):
+    def get_logger(self, log_to_stdout: bool = True) -> logging.Logger:
         """
         Returns the underlying Logger, with the `propagate` attribute set
         to the same value as `log_to_stdout`. For example, when
@@ -71,5 +86,7 @@ class DatasetLogger:
         also removes the need for this getter method:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
+        if self._logger is None:
+            self._logger = self._initialize_logger()
         self._logger.propagate = log_to_stdout
         return self._logger
