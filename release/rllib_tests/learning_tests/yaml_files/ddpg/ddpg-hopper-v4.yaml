@@ -1,5 +1,5 @@
-ddpg-hopperbulletenv-v0:
-    env: HopperBulletEnv-v0
+ddpg-hopper-v4:
+    env: Hopper-v4
     run: DDPG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:

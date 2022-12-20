@@ -1,6 +1,6 @@
 """Learning regression tests for RLlib (torch and tf).
 
-Runs Atari/PyBullet benchmarks for all major algorithms.
+Runs Atari/MuJoCo benchmarks for all major algorithms.
 """
 
 import json

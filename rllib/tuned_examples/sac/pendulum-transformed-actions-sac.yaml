@@ -26,7 +26,6 @@ transformed-actions-pendulum-sac-dummy-torch:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: true
         n_step: 1
         rollout_fragment_length: 1
         train_batch_size: 256

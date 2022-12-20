@@ -10,6 +10,7 @@ from ray.rllib.env import PettingZooEnv
 from ray.tune.registry import register_env
 
 
+# TODO(sven): Move into rllib/env/wrappers/tests/.
 class TestPettingZooEnv(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()
@@ -28,18 +29,13 @@ class TestPettingZooEnv(unittest.TestCase):
         # Register env
         register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 
-        # Create dummy env for extracting observation- and action spaces.
-        env = PettingZooEnv(env_creator(None))
-        observation_space = env.observation_space
-        action_space = env.action_space
-        del env
-
         config = (
             PPOConfig()
             .environment("pistonball", env_config={"local_ratio": 0.5})
             .multi_agent(
-                # Setup a single, shared policy for all agents.
-                policies={"av": (None, observation_space, action_space, {})},
+                # Set of policy IDs (by default, will use Algorithms's
+                # default policy class, the env's/agent's obs/act spaces and config={}).
+                policies={"av"},
                 # Map all agents to that policy.
                 policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
@@ -60,10 +56,6 @@ class TestPettingZooEnv(unittest.TestCase):
 
     def test_pettingzoo_env(self):
         register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
-        env = PettingZooEnv(simple_spread_v2.env())
-        observation_space = env.observation_space
-        action_space = env.action_space
-        del env
 
         config = (
             PPOConfig()
@@ -72,9 +64,9 @@ class TestPettingZooEnv(unittest.TestCase):
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(
-                # Set of policy IDs (by default, will use Trainer's
-                # default policy class, the env's obs/act spaces and config={}).
-                policies={"av": (None, observation_space, action_space, {})},
+                # Set of policy IDs (by default, will use Algorithm's
+                # default policy class, the env's/agent's obs/act spaces and config={}).
+                policies={"av"},
                 # Mapping function that always returns "av" as policy ID to use
                 # (for any agent).
                 policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",

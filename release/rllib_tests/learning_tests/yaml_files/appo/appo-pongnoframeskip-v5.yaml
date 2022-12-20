@@ -1,5 +1,5 @@
-appo-pongnoframeskip-v4:
-    env: PongNoFrameskip-v4
+appo-pongnoframeskip-v5:
+    env: ALE/Pong-v5
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -8,6 +8,11 @@ appo-pongnoframeskip-v4:
     stop:
         time_total_s: 1800
     config:
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         vtrace: True
         use_kl_loss: False
         rollout_fragment_length: 50

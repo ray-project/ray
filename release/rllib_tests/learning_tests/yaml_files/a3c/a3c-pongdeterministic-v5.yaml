@@ -1,5 +1,5 @@
-a3c-pongdeterministic-v4:
-    env: PongDeterministic-v4
+a3c-pongdeterministic-v5:
+    env: ALE/Pong-v5
     run: A3C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -8,6 +8,11 @@ a3c-pongdeterministic-v4:
     stop:
         time_total_s: 3600
     config:
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            repeat_action_probability: 0.0
+            frameskip: 4
+            full_action_space: false
         num_gpus: 0
         num_workers: 16
         max_requests_in_flight_per_sampler_worker: 1

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException

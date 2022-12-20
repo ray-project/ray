@@ -567,15 +567,15 @@ py_test(
 )
 
 # PPO
-# py_test(
-#    name = "learning_tests_cartpole_ppo",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
-#    args = ["--dir=tuned_examples/ppo"]
-# )
+py_test(
+    name = "learning_tests_cartpole_truncated_ppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
+    args = ["--dir=tuned_examples/ppo"]
+)
 
 py_test(
     name = "learning_tests_pendulum_ppo",
@@ -1266,11 +1266,11 @@ py_test(
 # A2C/A3C
 
 py_test(
-    name = "test_a3c_torch_pong_deterministic_v4",
+    name = "test_a3c_torch_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"torch\", \"num_workers\": 2, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'",
@@ -1279,11 +1279,11 @@ py_test(
 )
 
 py_test(
-    name = "test_a3c_tf_pong_ram_v4",
+    name = "test_a3c_tf_pong_ram_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "Pong-ram-v4",
+        "--env", "ALE/Pong-ram-v5",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2}'",
@@ -1387,11 +1387,11 @@ py_test(
 )
 
 py_test(
-    name = "test_dqn_pong_deterministic_v4",
+    name = "test_dqn_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000}, \"num_steps_sampled_before_learning_starts\": 10000, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
@@ -1428,13 +1428,13 @@ py_test(
 )
 
 py_test(
-    name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
+    name = "test_impala_pong_v5_40k_ts_1G_obj_store",
     main = "train.py",
     srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "IMPALA",
         "--stop", "'{\"timesteps_total\": 30000}'",
         "--ray-object-store-memory=1000000000",
@@ -1475,7 +1475,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "Pong-v0",
+        "--env", "ALE/Pong-v5",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1}'"
@@ -2260,6 +2260,13 @@ py_test(
     size = "medium",
     srcs = ["tests/backward_compat/test_backward_compat.py"],
     data = glob(["tests/backward_compat/checkpoints/**"]),
+)
+
+py_test(
+    name = "tests/backward_compat/test_gym_env_apis",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
 py_test(

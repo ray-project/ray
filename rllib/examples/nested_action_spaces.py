@@ -1,5 +1,5 @@
 import argparse
-from gym.spaces import Dict, Tuple, Box, Discrete
+from gymnasium.spaces import Dict, Tuple, Box, Discrete
 import os
 
 import ray

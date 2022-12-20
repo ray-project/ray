@@ -1,6 +1,7 @@
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import pyspiel
+from typing import Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -23,9 +24,9 @@ class OpenSpielEnv(MultiAgentEnv):
         )
         self.action_space = Discrete(self.env.num_distinct_actions())
 
-    def reset(self):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         self.state = self.env.new_initial_state()
-        return self._get_obs()
+        return self._get_obs(), {}
 
     def step(self, action):
         # Before applying action(s), there could be chance nodes.
@@ -64,12 +65,16 @@ class OpenSpielEnv(MultiAgentEnv):
             rewards[ag] += penalty
 
         # Are we done?
-        is_done = self.state.is_terminal()
-        dones = dict(
-            {ag: is_done for ag in range(self.num_agents)}, **{"__all__": is_done}
+        is_terminated = self.state.is_terminal()
+        terminateds = dict(
+            {ag: is_terminated for ag in range(self.num_agents)},
+            **{"__all__": is_terminated}
+        )
+        truncateds = dict(
+            {ag: False for ag in range(self.num_agents)}, **{"__all__": False}
         )
 
-        return obs, rewards, dones, {}
+        return obs, rewards, terminateds, truncateds, {}
 
     def render(self, mode=None) -> None:
         if mode == "human":

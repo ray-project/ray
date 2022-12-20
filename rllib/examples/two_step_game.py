@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import logging
 import os
 

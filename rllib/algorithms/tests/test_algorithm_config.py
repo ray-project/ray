@@ -116,7 +116,9 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_detect_atari_env(self):
         """Tests that we can properly detect Atari envs."""
-        config = AlgorithmConfig().environment(env="BreakoutNoFrameskip-v4")
+        config = AlgorithmConfig().environment(
+            env="ALE/Breakout-v5", env_config={"frameskip": 1}
+        )
         config.validate()
         self.assertTrue(config.is_atari)
 
@@ -130,7 +132,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
         config = AlgorithmConfig().environment(
-            env=lambda ctx: gym.make("BreakoutNoFrameskip-v4")
+            env=lambda ctx: gym.make(
+                "GymV26Environment-v0",
+                env_id="ALE/Breakout-v5",
+                make_kwargs={"frameskip": 1},
+            )
         )
         config.validate()
         # We do not auto-detect callable env makers for Atari envs.

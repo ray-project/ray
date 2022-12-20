@@ -12,7 +12,7 @@ Run this example with defaults (using Tune):
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -35,36 +35,41 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
         self.agents = {"agent0", "agent1"}
         self._agent_ids = set(self.agents)
 
-        self.dones = set()
+        self.terminateds = set()
+        self.truncateds = set()
 
         # Provide full (preferred format) observation- and action-spaces as Dicts
         # mapping agent IDs to the individual agents' spaces.
-        self._spaces_in_preferred_format = True
+        self._obs_space_in_preferred_format = True
         self.observation_space = gym.spaces.Dict(
             {
                 "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
                 "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
             }
         )
+        self._action_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)}
         )
 
         super().__init__()
 
-    def reset(self):
-        self.dones = set()
-        return {i: self.observation_space[i].sample() for i in self.agents}
+    def reset(self, *, seed=None, options=None):
+        self.terminateds = set()
+        self.truncateds = set()
+        return {i: self.observation_space[i].sample() for i in self.agents}, {}
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
+        obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
             obs[i] = self.observation_space[i].sample()
             rew[i] = 0.0
-            done[i] = False
+            terminated[i] = False
+            truncated[i] = False
             info[i] = {}
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        terminated["__all__"] = len(self.terminateds) == len(self.agents)
+        truncated["__all__"] = len(self.truncteds) == len(self.agents)
+        return obs, rew, terminated, truncated, info
 
 
 def get_cli_args():

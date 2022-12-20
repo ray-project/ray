@@ -20,7 +20,8 @@ class TestReservoirBuffer(unittest.TestCase):
                         SampleBatch.OBS: [np.random.random((4,))],
                         SampleBatch.NEXT_OBS: [np.random.random((4,))],
                         SampleBatch.REWARDS: [np.random.rand()],
-                        SampleBatch.DONES: [np.random.choice([False, True])],
+                        SampleBatch.TERMINATEDS: [np.random.choice([False, True])],
+                        SampleBatch.TRUNCATEDS: [np.random.choice([False, True])],
                         "batch_id": [self.batch_id],
                     }
                 )
@@ -61,7 +62,8 @@ class TestReservoirBuffer(unittest.TestCase):
                         SampleBatch.REWARDS: 2 * [np.random.rand()],
                         SampleBatch.OBS: 2 * [np.random.random((4,))],
                         SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
-                        SampleBatch.DONES: [False, True],
+                        SampleBatch.TERMINATEDS: [False, True],
+                        SampleBatch.TRUNCATEDS: [False, False],
                         SampleBatch.AGENT_INDEX: 2 * [0],
                         "batch_id": 2 * [self.batch_id],
                     }

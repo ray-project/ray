@@ -1,17 +1,20 @@
 import base64
+import numpy as np
 import io
 import zlib
 from typing import Dict
 
-import gym
-import numpy as np
-
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.gym import try_import_gymnasium_and_gym
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
-text_space_class = getattr(gym.spaces, "Text", None)
+gym, old_gym = try_import_gymnasium_and_gym()
+
+old_gym_text_class = None
+if old_gym:
+    old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -152,7 +155,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _tuple(space)
     elif isinstance(space, gym.spaces.Dict):
         return _dict(space)
-    elif text_space_class and isinstance(space, text_space_class):
+    elif isinstance(space, gym.spaces.Text):
         return _text(space)
     elif isinstance(space, Simplex):
         return _simplex(space)
@@ -160,6 +163,19 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _repeated(space)
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
+    # Old gym Spaces.
+    elif old_gym and isinstance(space, old_gym.spaces.Box):
+        return _box(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Discrete):
+        return _discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.MultiDiscrete):
+        return _multi_discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Tuple):
+        return _tuple(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Dict):
+        return _dict(space)
+    elif old_gym and old_gym_text_class and isinstance(space, old_gym_text_class):
+        return _text(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -236,9 +252,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return FlexDict(spaces=spaces)
 
     def _text(d: Dict) -> "gym.spaces.Text":
-        if not text_space_class:
-            raise ValueError("gym.spaces.Text is only available on gym >= 0.25.0")
-        return text_space_class(**__common(d))
+        return gym.spaces.Text(**__common(d))
 
     space_map = {
         "box": _box,

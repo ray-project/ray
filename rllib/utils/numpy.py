@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from types import MappingProxyType
@@ -236,7 +236,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
