@@ -95,7 +95,7 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310", "311")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310" "311")
   PY_MMS=("3.6"
           "3.7"
           "3.8"
