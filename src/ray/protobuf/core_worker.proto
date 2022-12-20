@@ -322,6 +322,25 @@ message PlasmaObjectReadyRequest {
 
 message PlasmaObjectReadyReply {}
 
+message DeleteObjectsRequest {
+  // List of object ids to delete.
+  repeated bytes object_ids = 1;
+  // Whether to only free local objects.
+  bool local_only = 2;
+}
+
+message DeleteObjectsReply {}
+
+message SpillObjects2Request {
+  repeated ObjectReference object_refs_to_spill = 1;
+  DeleteObjectsRequest delete_request = 2;
+}
+
+message SpillObjects2Reply {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
 }
@@ -415,6 +434,8 @@ service CoreWorkerService {
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Delete objects explicitly.
+  rpc DeleteObjects(DeleteObjectsRequest) returns (DeleteObjectsReply);
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.

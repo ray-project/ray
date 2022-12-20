@@ -635,11 +635,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Delete a list of objects from the plasma object store.
   ///
+  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
+  /// for objects we do not own.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Delete a list of objects from the plasma object store; called by Delete().
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
+  /// the cluster.
+  void DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
@@ -1017,6 +1027,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleLocalGC(rpc::LocalGCRequest request,
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Delete objects explicitly.
+  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
+                           rpc::DeleteObjectsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
