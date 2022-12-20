@@ -10,7 +10,10 @@ import pytest
 
 import ray._private.profiling as profiling
 import ray.cluster_utils
-from ray._private.test_utils import RayTestTimeoutException, client_test_enabled
+from ray._private.test_utils import (
+    client_test_enabled,
+    wait_for_condition,
+)
 from ray.exceptions import ObjectFreedError
 
 if client_test_enabled():
@@ -172,7 +175,16 @@ def test_running_function_on_all_workers(ray_start_regular):
         " gcs to bootstrap all component."
     ),
 )
-def test_profiling_api(ray_start_2_cpus):
+def test_profiling_api(shutdown_only):
+
+    ray.init(
+        num_cpus=2,
+        _system_config={
+            "task_events_report_interval_ms": 200,
+            "enable_timeline": True,
+        },
+    )
+
     @ray.remote
     def f(delay):
         with profiling.profile("custom_event", extra_data={"name": "custom name"}):
@@ -188,15 +200,12 @@ def test_profiling_api(ray_start_2_cpus):
     x = f.remote(1)
     ray.get([g.remote([x]), g.remote([x])])
 
-    # Wait until all of the profiling information appears in the profile
-    # table.
-    timeout_seconds = 20
-    start_time = time.time()
-    while True:
+    def verify():
         profile_data = ray.timeline()
-        event_types = {event["cat"] for event in profile_data}
-        expected_types = [
-            "task",
+        actual_types = {event["cat"] for event in profile_data}
+        expected_types = {
+            "task::f",  # for f
+            "task::g",  # for g
             "task:deserialize_arguments",
             "task:execute",
             "task:store_outputs",
@@ -206,24 +215,37 @@ def test_profiling_api(ray_start_2_cpus):
             "ray.wait",
             "submit_task",
             "fetch_and_run_function",
-            # TODO (Alex) :https://github.com/ray-project/ray/pull/9346
-            # "register_remote_function",
             "custom_event",  # This is the custom one from ray.profile.
+        }
+        assert expected_types == actual_types
+        return True
+
+    wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
+
+    # Test for content of the profiling events.
+    @ray.remote
+    def k():
+        exec_time_us = time.time() * (10**6)
+        worker_id = ray._private.worker.global_worker.core_worker.get_worker_id().hex()
+        return worker_id, exec_time_us
+
+    k_worker_id, k_exec_time_us = ray.get(k.remote())
+
+    def verify():
+        profile_data = ray.timeline()
+        k_events = [
+            event for event in profile_data if event["tid"] == f"worker:{k_worker_id}"
         ]
+        assert len(k_events) > 0
+        for event in k_events:
+            if event["name"] == "task:execute":
+                reported_exec_time = event["ts"]
+                # diff smaller than 3 secs, a fine-tuned threshold from running locally.
+                assert abs(reported_exec_time - k_exec_time_us) < 3 * (10**6)
 
-        if all(expected_type in event_types for expected_type in expected_types):
-            break
+        return True
 
-        if time.time() - start_time > timeout_seconds:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for information in "
-                "profile table. Missing events: {}.".format(
-                    set(expected_types) - set(event_types)
-                )
-            )
-
-        # The profiling information only flushes once every second.
-        time.sleep(1.1)
+    wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
 
 
 def test_wait_cluster(ray_start_cluster_enabled):

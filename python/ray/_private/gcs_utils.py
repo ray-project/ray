@@ -34,6 +34,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceUsageBatchData,
     TablePrefix,
     TablePubsub,
+    TaskEvents,
     WorkerTableData,
 )
 
@@ -54,6 +55,7 @@ __all__ = [
     "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
+    "TaskEvents",
     "ResourceDemand",
     "ResourceLoad",
     "ResourceMap",
