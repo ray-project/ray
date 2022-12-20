@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
+from ray_release.exception import CloudInfoError
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
 
 if TYPE_CHECKING:
@@ -90,7 +91,11 @@ class ClusterManager(abc.ABC):
         )
 
     def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
-        raise NotImplementedError
+        assert cluster_compute and "cloud_id" in cluster_compute
+        try:
+            return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
+        except Exception as e:
+            raise CloudInfoError(f"Could not obtain cloud information: {e}") from e
 
     def annotate_cluster_compute(
         self,
