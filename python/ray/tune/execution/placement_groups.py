@@ -1,7 +1,9 @@
+import warnings
 from typing import Dict, Optional
 from ray.air.execution.resources.request import ResourceRequest
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.placement_group import placement_group
 
 
 @PublicAPI(stability="beta")
@@ -88,7 +90,15 @@ class PlacementGroupFactory(ResourceRequest):
 
     """
 
-    pass
+    def __call__(self, *args, **kwargs):
+        warnings.warn(
+            "Calling PlacementGroupFactory objects is deprecated. Use "
+            "`to_placement_group()` instead.",
+            DeprecationWarning,
+        )
+        kwargs.update(self._bound.kwargs)
+        # Call with bounded *args and **kwargs
+        return placement_group(*self._bound.args, **kwargs)
 
 
 @DeveloperAPI
