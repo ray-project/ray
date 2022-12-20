@@ -16,7 +16,6 @@ pendulum-ppo:
         gamma: 0.95
         lr: 0.0003
         sgd_minibatch_size: 64
-        num_sgd_iter: 6
         observation_filter: MeanStdFilter
         seed: 42
         enable_connectors: true
