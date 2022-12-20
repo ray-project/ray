@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
@@ -31,7 +31,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
         for a in self.avail:
             self.action_mask[a] = 1
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = 0
         return {
             "agent_1": {
@@ -42,7 +42,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "obs": self.observation_space["obs"].sample(),
                 "action_mask": self.action_mask,
             },
-        }
+        }, {}
 
     def step(self, action_dict):
         if self.state > 0:
@@ -62,8 +62,9 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "action_mask": self.action_mask,
             },
         }
-        dones = {"__all__": self.state >= 20}
-        return obs, rewards, dones, {}
+        terminateds = {"__all__": False}
+        truncateds = {"__all__": self.state >= 20}
+        return obs, rewards, terminateds, truncateds, {}
 
 
 class TestQMix(unittest.TestCase):

@@ -15,7 +15,7 @@ def test_reset():
     envs = init_several_env(max_steps, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -76,7 +76,7 @@ def test_step():
     envs = init_several_env(max_steps, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -84,7 +84,7 @@ def test_step():
             policy_id: random.randint(0, env.NUM_ACTIONS - 1)
             for policy_id in env.players_ids
         }
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=1)
         assert not done["__all__"]
@@ -96,7 +96,7 @@ def test_multiple_steps():
     envs = init_several_env(max_steps, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -105,7 +105,7 @@ def test_multiple_steps():
                 policy_id: random.randint(0, env.NUM_ACTIONS - 1)
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"]
@@ -117,7 +117,7 @@ def test_multiple_episodes():
     envs = init_several_env(max_steps, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -128,12 +128,12 @@ def test_multiple_episodes():
                 policy_id: random.randint(0, env.NUM_ACTIONS - 1)
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
-                obs = env.reset()
+                obs, info = env.reset()
                 check_obs(obs, grid_size)
                 assert_logger_buffer_size(env, n_steps=0)
                 step_i = 0
@@ -181,7 +181,7 @@ def assert_info(
             "player_red": p_red_act[step_i - 1],
             "player_blue": p_blue_act[step_i - 1],
         }
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=step_i)
         assert not done["__all__"] or (step_i == max_steps and done["__all__"])
@@ -199,7 +199,7 @@ def assert_info(
             else:
                 assert info["player_blue"]["pick_own_color"] == blue_own
 
-            obs = env.reset()
+            obs, info = env.reset()
             check_obs(obs, grid_size)
             assert_logger_buffer_size(env, n_steps=0)
             step_i = 0
@@ -225,7 +225,7 @@ def test_logged_info_no_picking():
     envs = init_several_env(max_steps, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -250,7 +250,7 @@ def test_logged_info_no_picking():
     envs = init_several_env(max_steps, grid_size, players_can_pick_same_coin=False)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -285,7 +285,7 @@ def test_logged_info__red_pick_red_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -310,7 +310,7 @@ def test_logged_info__red_pick_red_all_the_time():
     envs = init_several_env(max_steps, grid_size, players_can_pick_same_coin=False)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -345,7 +345,7 @@ def test_logged_info__blue_pick_red_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -370,7 +370,7 @@ def test_logged_info__blue_pick_red_all_the_time():
     envs = init_several_env(max_steps, grid_size, players_can_pick_same_coin=False)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -405,7 +405,7 @@ def test_logged_info__blue_pick_blue_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -430,7 +430,7 @@ def test_logged_info__blue_pick_blue_all_the_time():
     envs = init_several_env(max_steps, grid_size, players_can_pick_same_coin=False)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -465,7 +465,7 @@ def test_logged_info__red_pick_blue_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -490,7 +490,7 @@ def test_logged_info__red_pick_blue_all_the_time():
     envs = init_several_env(max_steps, grid_size, players_can_pick_same_coin=False)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -525,7 +525,7 @@ def test_logged_info__both_pick_blue_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -560,7 +560,7 @@ def test_logged_info__both_pick_red_all_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -607,7 +607,7 @@ def test_logged_info__both_pick_red_half_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -642,7 +642,7 @@ def test_logged_info__both_pick_blue_half_the_time():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -677,7 +677,7 @@ def test_logged_info__both_pick_blue():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -712,7 +712,7 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
     envs = init_several_env(max_steps, grid_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
         overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
@@ -786,7 +786,7 @@ def test_observations_are_invariant_to_the_player_trained_in_reset():
                 "player_red": p_red_act[step_i - 1],
                 "player_blue": p_blue_act[step_i - 1],
             }
-            _, _, _, _ = env.step(actions)
+            _, _, _, _, _ = env.step(actions)
 
             if step_i == max_steps:
                 break
@@ -857,7 +857,7 @@ def test_observations_are_invariant_to_the_player_trained_in_step():
                 "player_red": p_red_act[step_i - 1],
                 "player_blue": p_blue_act[step_i - 1],
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
 
             # assert observations are symmetrical respective to the actions
             if step_i % 2 == 1:
