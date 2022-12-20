@@ -811,8 +811,8 @@ def _resource_based_utilization_scorer(
     is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
 
-    # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
-    # if there *is* a GPU task, then CPU tasks can be scheduled as well.
+    # Prefer not to launch a GPU node if there aren't any GPU requirements in the
+    # resource bundle.
     if AUTOSCALER_CONSERVE_GPU_NODES:
         if is_gpu_node and not any_gpu_task:
             # The lowest possible score.
