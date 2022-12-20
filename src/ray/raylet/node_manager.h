@@ -693,7 +693,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetTaskFailureReason(const TaskID &task_id,
-                            const rpc::RayErrorInfo &failure_reason);
+                            const rpc::RayErrorInfo &failure_reason,
+                            bool should_retry);
 
   /// Checks the expiry time of the task failures and garbage collect them.
   void GCTaskFailureReason();

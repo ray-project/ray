@@ -540,13 +540,18 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
-                                         bool mark_task_object_failed) {
+                                         bool mark_task_object_failed,
+                                         bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  const bool will_retry = RetryTaskIfPossible(
-      task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+  bool will_retry = false;
+  if (!fail_immediately) {
+    will_retry = RetryTaskIfPossible(
+        task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+  }
+
   if (!will_retry && mark_task_object_failed) {
     FailPendingTask(task_id, error_type, status, ray_error_info);
   }

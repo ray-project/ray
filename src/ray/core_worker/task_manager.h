@@ -49,7 +49,8 @@ class TaskFinisherInterface {
                                       rpc::ErrorType error_type,
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                                      bool mark_task_object_failed = true) = 0;
+                                      bool mark_task_object_failed = true,
+                                      bool fail_immediately = false) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
                                            const NodeID &node_id) = 0;
@@ -185,12 +186,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed. If this is set to false, then the caller is
   /// responsible for later failing or completing the task.
+  /// \param[in] fail_immediately whether to fail the task and ignore
+  /// the retries that are available.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override;
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override;
 
   /// A pending task failed. This will mark the task as failed.
   /// This doesn't always mark the return object as failed

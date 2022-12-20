@@ -2941,8 +2941,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         RetriableLIFOWorkerKillingPolicy worker_killing_policy;
-        auto worker_to_kill =
+        auto worker_to_kill_and_should_retry =
             worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+        auto worker_to_kill = worker_to_kill_and_should_retry.first;
+        bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -2973,7 +2975,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
-                               std::move(task_failure_reason));
+                               std::move(task_failure_reason),
+                               should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -3069,9 +3072,10 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 }
 
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
-                                       const rpc::RayErrorInfo &failure_reason) {
+                                       const rpc::RayErrorInfo &failure_reason,
+                                       bool should_retry) {
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
-  ray::TaskFailureEntry entry(failure_reason);
+  ray::TaskFailureEntry entry(failure_reason, should_retry);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
