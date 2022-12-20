@@ -150,6 +150,24 @@ class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
         )
 
 
+def test_sighup_handling_on_spark_app_termination():
+    os.environ["SPARK_WORKER_CORES"] = "1"
+    spark = (
+        SparkSession.builder.master("local-cluster[1, 1, 1024]")
+        .config("spark.task.cpus", "1")
+        .config("spark.task.maxFailures", "1")
+        .getOrCreate()
+    )
+    ray_temp_root_dir = tempfile.mkdtemp()
+    init_ray_cluster(num_worker_nodes=1, ray_temp_root_dir=ray_temp_root_dir)
+    spark.stop()
+    time.sleep(10)
+    # assert temp dir is removed.
+    assert len(os.listdir(ray_temp_root_dir)) == 1 and os.listdir(
+        ray_temp_root_dir
+    )[0].endswith(".lock")
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
