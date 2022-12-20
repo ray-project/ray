@@ -1,6 +1,6 @@
 from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
 import tree  # pip install dm_tree
