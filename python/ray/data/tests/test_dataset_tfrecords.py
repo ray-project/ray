@@ -45,11 +45,11 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
         "bytes_list": object,
     }
     assert list(df["int64"]) == [1]
-    assert list(df["int64_list"]) == [[1, 2, 3, 4]]
+    assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
     assert list(df["float"]) == [1.0]
-    assert list(df["float_list"]) == [[1.0, 2.0, 3.0, 4.0]]
+    assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
     assert list(df["bytes"]) == [b"abc"]
-    assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
+    assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):

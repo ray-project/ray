@@ -27,6 +27,9 @@
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 
@@ -78,7 +81,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
+/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs

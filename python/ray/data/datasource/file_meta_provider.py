@@ -252,6 +252,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
     def prefetch_file_metadata(
         self,
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        **ray_remote_args,
     ) -> Optional[List[Any]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
@@ -317,6 +318,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     def prefetch_file_metadata(
         self,
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
@@ -325,7 +327,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         )
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces)
+            return _fetch_metadata_remotely(pieces, **ray_remote_args)
         else:
             return _fetch_metadata(pieces)
 

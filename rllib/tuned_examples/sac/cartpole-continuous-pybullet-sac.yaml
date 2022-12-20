@@ -8,9 +8,6 @@ cartpole-sac:
         # Works for both torch and tf.
         framework: tf
         gamma: 0.95
-        no_done_at_end: false
-        horizon: 200
-        soft_horizon: true
         n_step: 3
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer

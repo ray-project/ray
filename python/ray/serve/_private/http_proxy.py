@@ -6,6 +6,7 @@ import pickle
 import socket
 import time
 from typing import Callable, List, Dict, Optional, Tuple
+from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
@@ -55,7 +56,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     retries = 0
     backoff_time_s = 0.05
     backoff = False
-    loop = asyncio.get_event_loop()
+    loop = get_or_create_event_loop()
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
@@ -246,7 +247,7 @@ class HTTPProxy:
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
-            call_in_event_loop=asyncio.get_event_loop(),
+            call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
@@ -414,7 +415,7 @@ class HTTPProxyActor:
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
-        self.running_task = asyncio.get_event_loop().create_task(self.run())
+        self.running_task = get_or_create_event_loop().create_task(self.run())
 
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.

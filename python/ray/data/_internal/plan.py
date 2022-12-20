@@ -1,7 +1,6 @@
 import copy
 import functools
 import itertools
-import logging
 import uuid
 from typing import (
     TYPE_CHECKING,
@@ -27,6 +26,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 class Stage:
@@ -241,6 +241,13 @@ class ExecutionPlan:
                         self._stages_after_snapshot.append(a)
                 else:
                     self.execute()
+            elif len(self._stages_after_snapshot) == 1 and isinstance(
+                self._stages_after_snapshot[-1], RandomizeBlocksStage
+            ):
+                # If RandomizeBlocksStage is last stage, we execute it (regardless of
+                # the fetch_if_missing), since RandomizeBlocksStage is just changing
+                # the order of references (hence super cheap).
+                self.execute()
             else:
                 return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
@@ -319,8 +326,11 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
-                if context.enable_auto_log_stats:
-                    logger.info(stats.summary_string(include_parent=False))
+
+                stats_summary_string = stats.summary_string(include_parent=False)
+                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                    stats_summary_string,
+                )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats

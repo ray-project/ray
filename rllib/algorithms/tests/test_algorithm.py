@@ -48,9 +48,7 @@ class TestAlgorithm(unittest.TestCase):
             policy_map_capacity=2,
         ).evaluation(
             evaluation_num_workers=1,
-            evaluation_config={
-                "num_cpus_per_worker": 0.1,
-            },
+            evaluation_config=pg.PGConfig.overrides(num_cpus_per_worker=0.1),
         )
         # Don't override existing model settings.
         config.model.update(
@@ -198,7 +196,7 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
@@ -234,9 +232,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=2,
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
+                evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -272,11 +268,10 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=2,
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
+                evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
                 always_attach_evaluation_results=True,
             )
+            .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -411,12 +406,12 @@ class TestAlgorithm(unittest.TestCase):
             .evaluation(
                 evaluation_interval=1,
                 evaluation_num_workers=1,
-                evaluation_config={
-                    "env": "CartPole-v1",
-                    "input": "sampler",
-                    "observation_space": None,  # Test, whether this is inferred.
-                    "action_space": None,  # Test, whether this is inferred.
-                },
+                evaluation_config=BCConfig.overrides(
+                    env="CartPole-v1",
+                    input_="sampler",
+                    observation_space=None,  # Test, whether this is inferred.
+                    action_space=None,  # Test, whether this is inferred.
+                ),
             )
             .offline_data(input_=[input_file])
         )

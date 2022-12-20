@@ -802,7 +802,7 @@ class ExperimentAnalysis:
             for checkpoint, path in self._checkpoints_and_paths:
                 try:
                     trial = _load_trial_from_checkpoint(
-                        checkpoint, stub=True, local_dir=str(path)
+                        checkpoint, stub=True, new_local_dir=str(path)
                     )
                 except Exception:
                     logger.warning(

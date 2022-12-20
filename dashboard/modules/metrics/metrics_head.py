@@ -39,6 +39,7 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
+PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -97,6 +98,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     ):
         super().__init__(dashboard_head)
         self.http_session = http_session or aiohttp.ClientSession()
+        self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -122,18 +124,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Endpoint that checks if grafana is running
         """
-        grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
-
         # If disabled, we don't want to show the metrics tab at all.
-        if grafana_host == GRAFANA_HOST_DISABLED_VALUE:
+        if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Grafana disabled",
                 grafana_host=GRAFANA_HOST_DISABLED_VALUE,
             )
 
-        grafana_iframe_host = os.environ.get(GRAFANA_IFRAME_HOST_ENV_VAR, grafana_host)
-        path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
+        grafana_iframe_host = os.environ.get(
+            GRAFANA_IFRAME_HOST_ENV_VAR, self.grafana_host
+        )
+        path = f"{self.grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
             async with self._session.get(path) as resp:
                 if resp.status != 200:
@@ -160,12 +162,47 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
 
         except Exception as e:
-            logger.warning(
+            logger.debug(
                 "Error fetching grafana endpoint. Is grafana running?", exc_info=e
             )
 
             return dashboard_optional_utils.rest_response(
                 success=False, message="Grafana healtcheck failed", exception=str(e)
+            )
+
+    @routes.get("/api/prometheus_health")
+    async def prometheus_health(self, req) -> bool:
+        try:
+            path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
+
+            async with self._session.get(path) as resp:
+                if resp.status != 200:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                    )
+
+                text = await resp.text()
+                # Basic sanity check of prometheus health check schema
+                if "Prometheus" not in text:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                        text=text,
+                    )
+
+                return dashboard_optional_utils.rest_response(
+                    success=True,
+                    message="prometheus running",
+                )
+        except Exception as e:
+            logger.debug(
+                "Error fetching prometheus endpoint. Is prometheus running?", exc_info=e
+            )
+            return dashboard_optional_utils.rest_response(
+                success=False, message="prometheus healthcheck failed.", reason=str(e)
             )
 
     @routes.get("/api/progress")

@@ -196,6 +196,15 @@ with one of the following:
 
 .. tabbed:: TensorFlow
 
+    .. warning::
+        Ray will not automatically set any environment variables or configuration
+        related to local parallelism / threading
+        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
+        If you desire greater control over TensorFlow threading, use
+        the ``tf.config.threading`` module (eg.
+        ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
+        at the beginning of your ``train_loop_per_worker`` function.
+
     .. code-block:: python
 
         from ray.air import ScalingConfig
@@ -518,7 +527,6 @@ appropriately in distributed training.
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -543,12 +551,7 @@ appropriately in distributed training.
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                # To fetch non-DDP state_dict
-                # w/o DDP: model.state_dict()
-                # w/  DDP: model.module.state_dict()
-                # See: https://github.com/ray-project/ray/issues/20915
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
@@ -705,7 +708,6 @@ Checkpoints can be loaded into the training function in 2 steps:
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -742,7 +744,6 @@ Checkpoints can be loaded into the training function in 2 steps:
                 loss.backward()
                 optimizer.step()
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
