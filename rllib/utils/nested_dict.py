@@ -17,8 +17,7 @@ from typing import (
     Union,
 )
 
-
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 
 SeqStrType = Union[str, Sequence[str]]
@@ -39,7 +38,7 @@ def _flatten_index(index: SeqStrType) -> Sequence[str]:
         return tuple(itertools.chain.from_iterable([_flatten_index(y) for y in index]))
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
     SeqStrType. This is needed for the tree functions to work.
@@ -58,7 +57,7 @@ class StrKey(str):
             return (self,) > tuple(other)
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     """A nested dict type:
         * The nested dict gives access to nested elements as a sequence of

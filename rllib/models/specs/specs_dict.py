@@ -1,8 +1,6 @@
 from typing import Union, Mapping, Any
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
-
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_base import Spec
 
@@ -25,7 +23,7 @@ DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
-@PublicAPI(stability="alpha")
+@ExperimentalAPI
 class SpecDict(NestedDict[Spec], Spec):
     """A NestedDict containing `TensorSpec` and `Types`.
 
@@ -148,7 +146,7 @@ class SpecDict(NestedDict[Spec], Spec):
         return f"SpecDict({repr(self._data)})"
 
 
-@DeveloperAPI
+@ExperimentalAPI
 def check_specs(
     input_spec: str = "",
     output_spec: str = "",

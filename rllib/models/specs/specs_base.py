@@ -1,4 +1,5 @@
 import abc
+from copy import deepcopy
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -111,6 +112,43 @@ class TensorSpec(Spec):
     def full_shape(self) -> Tuple[int]:
         """Returns a `tuple` specifying the concrete tensor shape (only ints)."""
         return self._full_shape
+
+    def rdrop(self, n: int) -> "TensorSpec":
+        """Drops the last n dimensions.
+
+        Returns of copy of TensorSpec with the rightmost
+        n dimensions removed.
+
+        Args:
+            n: A positive number of dimensions to remove from the right
+
+        Returns:
+            A copy of the tensor spec with the last n dims removed
+
+        Raises:
+            IndexError: If n is greater than the number of indices in self
+            AssertionError: If n is negative or not an int
+        """
+        assert isinstance(n, int) and n >= 0, "n must be a positive integer or zero"
+        self = deepcopy(self)
+        self._expected_shape = self.shape[:-n]
+        self._full_shape = self._get_full_shape()
+        return self
+
+    def append(self, spec: "TensorSpec") -> "TensorSpec":
+        """Appends the given TensorSpec to the self TensorSpec.
+
+        Args:
+            spec: The TensorSpec to append to the current TensorSpec
+
+        Returns:
+            A new tensor spec resulting from the concatenation of self and spec
+
+        """
+        self = deepcopy(self)
+        self._expected_shape = (*self.shape, *spec.shape)
+        self._full_shape = self._get_full_shape()
+        return self
 
     @property
     def dtype(self) -> Any:
