@@ -26,6 +26,7 @@ class Spec(abc.ABC):
             ValueError: If the data does not match this spec.
         """
 
+
 @DeveloperAPI
 class TypeSpec(Spec):
     """A base class that checks the type of the input data.
@@ -41,7 +42,7 @@ class TypeSpec(Spec):
 
     def __init__(self, dtype: Type) -> None:
         self.dtype = dtype
-    
+
     @override(Spec)
     def validate(self, data: Any) -> None:
         if not isinstance(data, self.dtype):
@@ -54,6 +55,7 @@ class TypeSpec(Spec):
 
     def __ne__(self, other: "TypeSpec") -> bool:
         return not self == other
+
 
 @DeveloperAPI
 class TensorSpec(Spec):

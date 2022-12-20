@@ -10,7 +10,11 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.checker import _convert_to_canonical_format, check_input_specs, check_output_specs
+from ray.rllib.models.specs.checker import (
+    _convert_to_canonical_format,
+    check_input_specs,
+    check_output_specs,
+)
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -271,14 +275,14 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a list of strs
         self.assertDictEqual(
-            _convert_to_canonical_format(["foo", "bar"]).asdict(), 
-            SpecDict({"foo": None, "bar": None}).asdict()
+            _convert_to_canonical_format(["foo", "bar"]).asdict(),
+            SpecDict({"foo": None, "bar": None}).asdict(),
         )
 
         # Case: input is a list of strs and nested strs
         self.assertDictEqual(
             _convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
-            SpecDict({"foo": None, "bar": {"jar": None}}).asdict()
+            SpecDict({"foo": None, "bar": {"jar": None}}).asdict(),
         )
 
         # Case: input is a Nested Mapping
@@ -287,20 +291,26 @@ class TestCheckSpecs(unittest.TestCase):
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
-            returned.asdict(), 
-            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int), "car": None}}).asdict()
+            returned.asdict(),
+            SpecDict(
+                {
+                    "foo": {"bar": TorchTensorSpec("b")},
+                    "jar": {"tar": TypeSpec(int), "car": None},
+                }
+            ).asdict(),
         )
 
         # Case: input is a SpecDict already
-        returned = _convert_to_canonical_format(SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}}))
+        returned = _convert_to_canonical_format(
+            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}})
+        )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
             returned.asdict(),
-            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}).asdict()
+            SpecDict(
+                {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}
+            ).asdict(),
         )
-        
-
-
 
 
 if __name__ == "__main__":

@@ -7,7 +7,6 @@ from torch.distributions import Categorical
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override

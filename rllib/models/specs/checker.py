@@ -1,22 +1,20 @@
-
+from collections import abc
 import functools
-from typing import Union, Type, Mapping, Any, Tuple, Optional, List, Callable
+from typing import Union, Mapping, Any, Callable
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
 
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpec, Spec, TypeSpec
+from ray.rllib.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
-from collections import abc
+
 
 def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
         spec = [(k,) if isinstance(k, str) else k for k in spec]
         return SpecDict({k: None for k in spec})
-    
+
     # convert spec of form tree of constraints to model_spec
     if isinstance(spec, abc.Mapping):
         spec = SpecDict(spec)
@@ -28,23 +26,31 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     if isinstance(spec, type):
         return TypeSpec(spec)
-    
+
     # otherwise, assume spec is already in canonical format
     return spec
+
 
 def _should_validate(cls_instance, method, tag: str = "input"):
     cache_store = getattr(cls_instance, f"__checked_{tag}_specs_cache__", None)
     return cache_store is None or method.__name__ not in cache_store
 
-def _validate(*, cls_instance: object, method: Callable, data: Any, spec: Spec, filter: bool = False, tag: str = "input"):   
+
+def _validate(
+    *,
+    cls_instance: object,
+    method: Callable,
+    data: Any,
+    spec: Spec,
+    filter: bool = False,
+    tag: str = "input",
+):
     is_mapping = isinstance(spec, SpecDict)
     cache_miss = _should_validate(cls_instance, method, tag=tag)
 
     if is_mapping:
         if not isinstance(data, Mapping):
-            raise ValueError(
-                f"{tag} must be a Mapping, got {type(data).__name__}"
-            )
+            raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
         if cache_miss or filter:
             data = NestedDict(data)
 
@@ -60,14 +66,12 @@ def _validate(*, cls_instance: object, method: Callable, data: Any, spec: Spec, 
     return data
 
 
-
 def check_input_specs(
     input_spec: str,
     *,
     filter: bool = False,
     cache: bool = False,
 ):
-
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, input_data, **kwargs):
@@ -132,10 +136,8 @@ def check_output_specs(
                 self.__checked_output_specs_cache__[func.__name__] = True
 
             return output_data
-            
 
         wrapper.__checked_output_specs__ = True
         return wrapper
 
     return decorator
-
