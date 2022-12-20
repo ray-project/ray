@@ -1,9 +1,9 @@
 .. _input-output:
 
-.. currentmodule:: ray.data
-
 Input/Output
 ============
+
+.. currentmodule:: ray.data
 
 Synthetic Data
 --------------
