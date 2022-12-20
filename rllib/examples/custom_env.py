@@ -14,8 +14,8 @@ For CLI options:
 $ python custom_env.py --help
 """
 import argparse
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 import random
@@ -85,11 +85,12 @@ class SimpleCorridor(gym.Env):
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
         # Set the seed. This is only used for the final (reach goal) reward.
-        self.seed(config.worker_index * config.num_workers)
+        self.reset(seed=config.worker_index * config.num_workers)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
+        random.seed(seed)
         self.cur_pos = 0
-        return [self.cur_pos]
+        return [self.cur_pos], {}
 
     def step(self, action):
         assert action in [0, 1], action
@@ -97,12 +98,15 @@ class SimpleCorridor(gym.Env):
             self.cur_pos -= 1
         elif action == 1:
             self.cur_pos += 1
-        done = self.cur_pos >= self.end_pos
+        done = truncated = self.cur_pos >= self.end_pos
         # Produce a random reward when we reach the goal.
-        return [self.cur_pos], random.random() * 2 if done else -0.1, done, {}
-
-    def seed(self, seed=None):
-        random.seed(seed)
+        return (
+            [self.cur_pos],
+            random.random() * 2 if done else -0.1,
+            done,
+            truncated,
+            {},
+        )
 
 
 class CustomModel(TFModelV2):

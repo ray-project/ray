@@ -10,7 +10,7 @@ This example shows:
     (in the model).
 """
 import argparse
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import os
 

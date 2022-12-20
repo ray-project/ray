@@ -108,6 +108,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                 agent_index=agent_index,
                 env_id=env_id,
                 init_obs=d[SampleBatch.NEXT_OBS],
+                init_infos=d.get(SampleBatch.INFOS),
             )
         else:
             agent_collector.add_action_reward_next_obs(d)

@@ -1,5 +1,5 @@
 from typing import Any, List
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 import numpy as np
 import tree

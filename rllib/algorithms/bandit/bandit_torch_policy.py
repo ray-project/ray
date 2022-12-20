@@ -1,6 +1,6 @@
 import logging
 import time
-from gym import spaces
+from gymnasium import spaces
 
 import ray
 from ray.rllib.algorithms.bandit.bandit_torch_model import (

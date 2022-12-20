@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 import logging
 import importlib.util
 import os

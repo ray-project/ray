@@ -1,4 +1,4 @@
-from gym.spaces import Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, ENV_STATE
@@ -36,13 +36,11 @@ class TwoStepGame(MultiAgentEnv):
             else:
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
 
-    def seed(self, seed=None):
-        if seed:
+    def reset(self, *, seed=None, options=None):
+        if seed is not None:
             np.random.seed(seed)
-
-    def reset(self):
         self.state = np.array([1, 0, 0])
-        return self._obs()
+        return self._obs(), {}
 
     def step(self, action_dict):
         if self.actions_are_logits:
@@ -59,10 +57,10 @@ class TwoStepGame(MultiAgentEnv):
             else:
                 self.state = np.array([0, 0, 1])
             global_rew = 0
-            done = False
+            terminated = False
         elif state_index == 1:
             global_rew = 7
-            done = True
+            terminated = True
         else:
             if action_dict[self.agent_1] == 0 and action_dict[self.agent_2] == 0:
                 global_rew = 0
@@ -70,13 +68,17 @@ class TwoStepGame(MultiAgentEnv):
                 global_rew = 8
             else:
                 global_rew = 1
-            done = True
+            terminated = True
 
         rewards = {self.agent_1: global_rew / 2.0, self.agent_2: global_rew / 2.0}
         obs = self._obs()
-        dones = {"__all__": done}
-        infos = {}
-        return obs, rewards, dones, infos
+        terminateds = {"__all__": terminated}
+        truncateds = {"__all__": False}
+        infos = {
+            self.agent_1: {"done": terminateds["__all__"]},
+            self.agent_2: {"done": terminateds["__all__"]},
+        }
+        return obs, rewards, terminateds, truncateds, infos
 
     def _obs(self):
         if self.with_state:
@@ -115,10 +117,9 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
         self._agent_ids = {"agents"}
-        self._skip_env_checking = True
 
-    def reset(self):
-        return self.env.reset()
+    def reset(self, *, seed=None, options=None):
+        return self.env.reset(seed=seed, options=options)
 
     def step(self, actions):
         return self.env.step(actions)

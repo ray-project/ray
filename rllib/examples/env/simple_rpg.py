@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete, Box, Dict
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box, Dict
 
 from ray.rllib.utils.spaces.repeated import Repeated
 
@@ -42,8 +42,8 @@ class SimpleRPG(gym.Env):
         # Observation is a list of players.
         self.observation_space = Repeated(self.player_space, max_len=MAX_PLAYERS)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         return self.observation_space.sample()
 
     def step(self, action):
-        return self.observation_space.sample(), 1, True, {}
+        return self.observation_space.sample(), 1, True, False, {}

@@ -16,7 +16,7 @@ from pprint import pformat
 
 from numpy.random import RandomState
 
-import gym
+import gymnasium as gym
 from ray.rllib.env import MultiAgentEnv
 
 from ray.rllib.examples.simulators.sumo.utils import SUMOUtils, sumo_default_config
@@ -273,7 +273,7 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
     ###########################################################################
     # REST & LEARNING STEP
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         """Resets the env and returns observations from ready agents."""
         self.resetted = True
         self.episodes += 1
@@ -304,7 +304,7 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
         # Observations
         initial_obs = self.compute_observations(self.agents.keys())
 
-        return initial_obs
+        return initial_obs, {}
 
     def step(self, action_dict):
         """
@@ -381,7 +381,7 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
         logger.debug("Dones: %s", pformat(dones))
         logger.debug("Info: %s", pformat(infos))
         logger.debug("========================================================")
-        return obs, rewards, dones, infos
+        return obs, rewards, dones, dones, infos
 
     ###########################################################################
     # ACTIONS & OBSERATIONS SPACE

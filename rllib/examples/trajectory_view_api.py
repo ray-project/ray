@@ -114,9 +114,9 @@ if __name__ == "__main__":
         episode_reward = 0.0
         reward = 0.0
         action = 0
-        done = False
-        obs = env.reset()
-        while not done:
+        terminated = truncated = False
+        obs, info = env.reset()
+        while not terminated and not truncated:
             # Create a dummy action using the same observation n times,
             # as well as dummy prev-n-actions and prev-n-rewards.
             action, state, logits = algo.compute_single_action(
@@ -128,7 +128,7 @@ if __name__ == "__main__":
                 },
                 full_fetch=True,
             )
-            obs, reward, done, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward
 
         print(f"Episode reward={episode_reward}")

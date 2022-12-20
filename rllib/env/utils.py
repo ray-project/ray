@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
@@ -18,7 +18,7 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
         env_descriptor: The env descriptor, e.g. CartPole-v1,
-            MsPacmanNoFrameskip-v4, VizdoomBasic-v0, or
+            ALE/MsPacman-v5, VizdoomBasic-v0, or
             CartPoleContinuousBulletEnv-v0.
 
     Returns:
@@ -35,7 +35,7 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
         import pybullet_envs
 
         pybullet_envs.getList()
-    except (ModuleNotFoundError, ImportError):
+    except (AttributeError, ModuleNotFoundError, ImportError):
         pass
     try:
         import vizdoomgym
@@ -47,6 +47,16 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     # Try creating a gym env. If this fails we can output a
     # decent error message.
     try:
-        return gym.make(env_descriptor, **env_context)
+        # Special case: Atari not supported by gymnasium yet -> Need to use their
+        # GymV26 compatibility wrapper class.
+        # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
+        if env_descriptor.startswith("ALE/"):
+            return gym.make(
+                "GymV26Environment-v0",
+                env_id=env_descriptor,
+                make_kwargs=env_context,
+            )
+        else:
+            return gym.make(env_descriptor, **env_context)
     except gym.error.Error:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))

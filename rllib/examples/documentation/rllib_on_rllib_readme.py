@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
@@ -25,28 +25,28 @@ class ParrotEnv(gym.Env):
         self.cur_obs = None
         self.episode_len = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         """Resets the episode and returns the initial observation of the new one."""
         # Reset the episode len.
         self.episode_len = 0
         # Sample a random number from our observation space.
         self.cur_obs = self.observation_space.sample()
         # Return initial observation.
-        return self.cur_obs
+        return self.cur_obs, {}
 
     def step(self, action):
         """Takes a single step in the episode given `action`
 
         Returns: New observation, reward, done-flag, info-dict (empty).
         """
-        # Set `done` flag after 10 steps.
+        # Set `done` and `truncated` flags after 10 steps.
         self.episode_len += 1
-        done = self.episode_len >= 10
+        done = truncated = self.episode_len >= 10
         # r = -abs(obs - action)
         reward = -sum(abs(self.cur_obs - action))
         # Set a new observation (random sample).
         self.cur_obs = self.observation_space.sample()
-        return self.cur_obs, reward, done, {}
+        return self.cur_obs, reward, done, truncated, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig to learn how to
@@ -77,7 +77,7 @@ for i in range(5):
 # (hopefully) learned to "just always repeat the observation!".
 env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1,))})
 # Get the initial observation (some value between -10.0 and 10.0).
-obs = env.reset()
+obs, info = env.reset()
 done = False
 total_reward = 0.0
 # Play one episode.
@@ -86,7 +86,7 @@ while not done:
     # from the environment.
     action = algo.compute_single_action(obs)
     # Apply the computed action in the environment.
-    obs, reward, done, info = env.step(action)
+    obs, reward, done, truncated, info = env.step(action)
     # Sum up rewards for reporting purposes.
     total_reward += reward
 # Report results.

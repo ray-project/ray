@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-import gym
+import gymnasium as gym
 from typing import Mapping, Any, Union
 
 from ray.rllib.core.rl_module.torch import TorchRLModule

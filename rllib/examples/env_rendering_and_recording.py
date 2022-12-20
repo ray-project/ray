@@ -1,8 +1,8 @@
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 import ray
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -41,10 +41,10 @@ class CustomRenderedEnv(gym.Env):
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, 999.0, shape=(1,), dtype=np.float32)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.cur_pos = 0.0
         self.steps = 0
-        return [self.cur_pos]
+        return [self.cur_pos], {}
 
     def step(self, action):
         self.steps += 1
@@ -53,8 +53,9 @@ class CustomRenderedEnv(gym.Env):
             self.cur_pos -= 1.0
         elif action == 1:
             self.cur_pos += 1.0
-        done = self.cur_pos >= self.end_pos or self.steps >= self.max_steps
-        return [self.cur_pos], 10.0 if done else -0.1, done, {}
+        truncated = self.steps >= self.max_steps
+        done = self.cur_pos >= self.end_pos or truncated
+        return [self.cur_pos], 10.0 if done else -0.1, done, truncated, {}
 
     def render(self, mode="rgb"):
         """Implements rendering logic for this env (given current state).

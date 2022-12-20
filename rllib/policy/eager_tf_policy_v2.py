@@ -3,7 +3,7 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gym
+import gymnasium as gym
 import logging
 import os
 import threading

@@ -1,5 +1,5 @@
 import argparse
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.examples.models.custom_model_api import (

@@ -68,12 +68,12 @@ class RandomAgent(Algorithm):
         steps = 0
         for _ in range(self.config.rollouts_per_iteration):
             self.env.reset()
-            done = False
+            terminated = truncated = False
             reward = 0.0
-            while not done:
+            while not terminated and not truncated:
                 action = self.env.action_space.sample()
-                _, r, done, _ = self.env.step(action)
-                reward += r
+                _, rew, terminated, truncated, _ = self.env.step(action)
+                reward += rew
                 steps += 1
             rewards.append(reward)
         return {

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution

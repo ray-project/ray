@@ -1,5 +1,5 @@
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import Dict
 
 from ray.rllib.models.tf.misc import normc_initializer

@@ -3,7 +3,7 @@ TensorFlow policy class used for CQL.
 """
 from functools import partial
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Type, Union
@@ -109,7 +109,7 @@ def cql_loss(
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32)
     rewards = tf.cast(train_batch[SampleBatch.REWARDS], tf.float32)
     next_obs = train_batch[SampleBatch.NEXT_OBS]
-    terminals = train_batch[SampleBatch.DONES]
+    terminals = train_batch[SampleBatch.TERMINATEDS]
 
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
