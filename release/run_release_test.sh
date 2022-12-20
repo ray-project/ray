@@ -86,7 +86,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
   if [ "$RETRY_NUM" -gt 1 ]; then
     # Sleep for random time between 30 and 90 minutes
-    SLEEP_TIME=$((180 + RANDOM % 540))
+    SLEEP_TIME=$((10))
 
     if [ -n "${OVERRIDE_SLEEP_TIME}" ]; then
       SLEEP_TIME=${OVERRIDE_SLEEP_TIME}
