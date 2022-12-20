@@ -848,7 +848,7 @@ while True:
         check_job_stopped,
         job_manager=job_manager,
         job_id=job_id,
-        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S + 1,
+        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S + 10,
     )
 
 
