@@ -38,8 +38,8 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
         ...
 
         # Terminate ray cluster explicitly.
-        # If you don't call it, when spark application is terminated, the ray cluster will
-        # also be terminated.
+        # If you don't call it, when spark application is terminated, the ray cluster
+        # will also be terminated.
         shutdown_ray_cluster()
 
 2) Submit the spark application above to spark standalone cluster.
@@ -74,8 +74,8 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
             .getOrCreate()
 
         cluster_address = init_ray_cluster(num_worker_nodes=MAX_NUM_WORKER_NODES)
-        print("Ray cluster is initiated, you can connect to this ray cluster via address "
-              f"ray://{cluster_address}")
+        print("Ray cluster is initiated, you can connect to this ray cluster "
+              f"via address ray://{cluster_address}")
 
         # Sleep forever until the spark application being terminated,
         # at that time, the ray cluster will also be terminated.
