@@ -806,7 +806,7 @@ def _resource_based_utilization_scorer(
     resources: List[ResourceDict],
     *,
     node_availability_summary: NodeAvailabilitySummary,
-) -> Optional[Tuple[float, float]]:
+) -> Optional[Tuple[int, float, float]]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
@@ -816,7 +816,7 @@ def _resource_based_utilization_scorer(
     if AUTOSCALER_CONSERVE_GPU_NODES:
         if is_gpu_node and not any_gpu_task:
             # The lowest possible score.
-            return (-float("inf"), -float("inf"), -float("inf"))
+            return (-1, -float("inf"), -float("inf"))
 
     fittable = []
     resource_types = set()
