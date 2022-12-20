@@ -113,7 +113,9 @@ def test_autoscaler_all_gpu_node_types():
         def task():
             return True
 
-        assert ray.get(task.remote(), timeout=60), "Failed to schedule CPU task."
+        # Make sure the task can be scheduled.
+        # Since the head has 0 CPUs, this requires upscaling a GPU worker.
+        ray.get(task.remote(), timeout=60)
         ray.shutdown()
 
     finally:
