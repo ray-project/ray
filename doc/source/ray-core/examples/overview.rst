@@ -1,3 +1,5 @@
+.. _ray-core-examples-tutorial:
+
 Ray Tutorials and Examples
 ==========================
 
@@ -10,6 +12,31 @@ Machine Learning Examples
     :column: col-md-4 px-2 py-2
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
+    ---
+    :img-top: /images/timeseries.png
+
+    +++
+    .. link-button:: automl_for_time_series
+        :type: ref
+        :text: Build Simple AutoML for Time Series Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: batch_prediction
+        :type: ref
+        :text: Build Batch Prediction Using Ray
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: batch_training
+        :type: ref
+        :text: Build Batch Training Using Ray
+        :classes: btn-link btn-block stretched-link
     ---
     :img-top: images/param_actor.png
 
@@ -64,4 +91,22 @@ For Ray's production-grade reinforcement learning library, see `RLlib <http://do
     .. link-button:: plot_example-a3c
         :type: ref
         :text: Asynchronous Advantage Actor Critic (A3C)
+        :classes: btn-link btn-block stretched-link
+
+
+Basic Examples
+--------------
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: highly_parallel
+        :type: ref
+        :text: Using Ray for Highly Parallelizable Tasks
         :classes: btn-link btn-block stretched-link

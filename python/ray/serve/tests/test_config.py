@@ -1,6 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
+from ray import cloudpickle
+
 from ray.serve.config import (
     DeploymentConfig,
     DeploymentMode,
@@ -8,6 +10,7 @@ from ray.serve.config import (
     ReplicaConfig,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.serve._private.utils import DEFAULT
 
 
 def test_autoscaling_config_validation():
@@ -25,9 +28,27 @@ def test_autoscaling_config_validation():
         # max_replicas must be nonnegative
         AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
+    # max_replicas must be greater than or equal to min_replicas
     with pytest.raises(ValueError):
-        # max_replicas must be greater than or equal to min_replicas
         AutoscalingConfig(min_replicas=100, max_replicas=1)
+    AutoscalingConfig(min_replicas=1, max_replicas=100)
+    AutoscalingConfig(min_replicas=10, max_replicas=10)
+
+    # initial_replicas must be greater than or equal to min_replicas
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=10, initial_replicas=1)
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=10, initial_replicas=1, max_replicas=15)
+    AutoscalingConfig(min_replicas=5, initial_replicas=10, max_replicas=15)
+    AutoscalingConfig(min_replicas=5, initial_replicas=5, max_replicas=15)
+
+    # initial_replicas must be less than or equal to max_replicas
+    with pytest.raises(ValueError):
+        AutoscalingConfig(initial_replicas=10, max_replicas=8)
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=1, initial_replicas=10, max_replicas=8)
+    AutoscalingConfig(min_replicas=1, initial_replicas=4, max_replicas=5)
+    AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
 
     # Default values should not raise an error
     AutoscalingConfig()
@@ -64,122 +85,131 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError):
             b.num_replicas = -1
 
-    @pytest.mark.parametrize("ignore_none", [True, False])
-    def test_from_default(self, ignore_none):
+    def test_from_default(self):
         """Check from_default() method behavior."""
 
         # Valid parameters
-        dc = DeploymentConfig.from_default(
-            ignore_none=ignore_none, num_replicas=5, is_cross_language=True
-        )
+        dc = DeploymentConfig.from_default(num_replicas=5, is_cross_language=True)
         assert dc.num_replicas == 5
         assert dc.is_cross_language is True
 
         # Invalid parameters should raise TypeError
         with pytest.raises(TypeError):
-            DeploymentConfig.from_default(
-                ignore_none=ignore_none, num_replicas=5, is_xlang=True
-            )
+            DeploymentConfig.from_default(num_replicas=5, is_xlang=True)
 
         # Validation should still be performed
         with pytest.raises(ValidationError):
-            DeploymentConfig.from_default(
-                ignore_none=ignore_none, num_replicas="hello world"
-            )
+            DeploymentConfig.from_default(num_replicas="hello world")
 
-    def test_from_default_ignore_none(self):
-        """Check from_default()'s ignore_none parameter"""
+    def test_from_default_ignore_default(self):
+        """Check that from_default() ignores DEFAULT.VALUE kwargs."""
 
         default = DeploymentConfig()
 
-        # Valid parameter with None passed in should be ignored
-        dc = DeploymentConfig.from_default(ignore_none=True, num_replicas=None)
-
-        # Invalid parameter should raise TypeError no matter what
-        with pytest.raises(TypeError):
-            DeploymentConfig.from_default(ignore_none=True, fake=5)
-        with pytest.raises(TypeError):
-            DeploymentConfig.from_default(ignore_none=False, fake=5)
+        # Valid parameter with DEFAULT.VALUE passed in should be ignored
+        dc = DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
 
         # Validators should run no matter what
-        dc = DeploymentConfig.from_default(
-            ignore_none=True, max_concurrent_queries=None
-        )
-        assert dc.max_concurrent_queries == default.max_concurrent_queries
-        dc = DeploymentConfig.from_default(
-            ignore_none=False, max_concurrent_queries=None
-        )
+        dc = DeploymentConfig.from_default(max_concurrent_queries=None)
         assert dc.max_concurrent_queries is not None
         assert dc.max_concurrent_queries == default.max_concurrent_queries
 
 
-def test_replica_config_validation():
-    class Class:
-        pass
+class TestReplicaConfig:
+    def test_replica_config_validation(self):
+        class Class:
+            pass
 
-    def function(_):
-        pass
+        def function(_):
+            pass
 
-    ReplicaConfig(Class)
-    ReplicaConfig(function)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class())
+        ReplicaConfig.create(Class)
+        ReplicaConfig.create(function)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class())
 
-    # Check ray_actor_options validation.
-    ReplicaConfig(
-        Class,
-        tuple(),
-        dict(),
-        ray_actor_options={
-            "num_cpus": 1.0,
-            "num_gpus": 10,
-            "resources": {"abc": 1.0},
-            "memory": 1000000.0,
-            "object_store_memory": 1000000,
-        },
-    )
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=1.0)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=False)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": []})
-
-    disallowed_ray_actor_options = {
-        "max_concurrency",
-        "max_restarts",
-        "max_task_retries",
-        "name",
-        "namespace",
-        "lifetime",
-        "placement_group",
-        "placement_group_bundle_index",
-        "placement_group_capture_child_tasks",
-        "max_pending_calls",
-        "scheduling_strategy",
-        "get_if_exists",
-        "_metadata",
-    }
-
-    for option in disallowed_ray_actor_options:
+        # Check ray_actor_options validation.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            ray_actor_options={
+                "num_cpus": 1.0,
+                "num_gpus": 10,
+                "resources": {"abc": 1.0},
+                "memory": 1000000.0,
+                "object_store_memory": 1000000,
+            },
+        )
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options=1.0)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options=False)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig(Class, ray_actor_options={option: None})
+            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(
+                Class, ray_actor_options={"object_store_memory": "hello"}
+            )
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"resources": []})
+
+        disallowed_ray_actor_options = {
+            "max_concurrency",
+            "max_restarts",
+            "max_task_retries",
+            "name",
+            "namespace",
+            "lifetime",
+            "placement_group",
+            "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
+            "max_pending_calls",
+            "scheduling_strategy",
+            "get_if_exists",
+            "_metadata",
+        }
+
+        for option in disallowed_ray_actor_options:
+            with pytest.raises(ValueError):
+                ReplicaConfig.create(Class, ray_actor_options={option: None})
+
+    def test_replica_config_lazy_deserialization(self):
+        def f():
+            return "Check this out!"
+
+        f_serialized = cloudpickle.dumps(f)
+        config = ReplicaConfig(
+            "f", f_serialized, cloudpickle.dumps(()), cloudpickle.dumps({}), {}
+        )
+
+        assert config.serialized_deployment_def == f_serialized
+        assert config._deployment_def is None
+
+        assert config.serialized_init_args == cloudpickle.dumps(tuple())
+        assert config._init_args is None
+
+        assert config.serialized_init_kwargs == cloudpickle.dumps(dict())
+        assert config._init_kwargs is None
+
+        assert isinstance(config.ray_actor_options, dict)
+        assert isinstance(config.resource_dict, dict)
+
+        assert config.deployment_def() == "Check this out!"
+        assert config.init_args == tuple()
+        assert config.init_kwargs == dict()
 
 
 def test_http_options():

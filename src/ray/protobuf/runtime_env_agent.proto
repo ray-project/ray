@@ -48,10 +48,16 @@ message DeleteRuntimeEnvIfPossibleReply {
   string error_message = 2;
 }
 
-message GetRuntimeEnvsInfoRequest {}
+message GetRuntimeEnvsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
 
 message GetRuntimeEnvsInfoReply {
   repeated RuntimeEnvState runtime_env_states = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
 }
 
 service RuntimeEnvService {

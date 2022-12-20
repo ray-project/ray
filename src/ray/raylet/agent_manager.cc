@@ -26,22 +26,22 @@
 namespace ray {
 namespace raylet {
 
-void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+void AgentManager::HandleRegisterAgent(rpc::RegisterAgentRequest request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  agent_ip_address_ = request.agent_ip_address();
-  agent_port_ = request.agent_port();
-  agent_pid_ = request.agent_pid();
+  reported_agent_ip_address_ = request.agent_ip_address();
+  reported_agent_port_ = request.agent_port();
+  reported_agent_id_ = request.agent_id();
   // TODO(SongGuyang): We should remove this after we find better port resolution.
   // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
-  if (agent_port_ != 0) {
-    runtime_env_agent_client_ =
-        runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
-                  << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  if (reported_agent_port_ != 0) {
+    runtime_env_agent_client_ = runtime_env_agent_client_factory_(
+        reported_agent_ip_address_, reported_agent_port_);
+    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_ip_address_
+                  << ", port: " << reported_agent_port_ << ", id: " << reported_agent_id_;
   } else {
     RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
-                     << agent_ip_address_ << ", pid: " << agent_pid_
+                     << reported_agent_ip_address_ << ", id: " << reported_agent_id_
                      << ". The agent client in the raylet has been disabled.";
     disable_agent_client_ = true;
   }
@@ -56,30 +56,47 @@ void AgentManager::StartAgent() {
     return;
   }
 
+  // Create a non-zero random agent_id to pass to the child process
+  // We cannot use pid an id because os.getpid() from the python process is not
+  // reliable when using a launcher.
+  // See https://github.com/ray-project/ray/issues/24361 and Python issue
+  // https://github.com/python/cpython/issues/83086
+  int agent_id = 0;
+  while (agent_id == 0) {
+    agent_id = rand();
+  }
+  const std::string agent_id_str = std::to_string(agent_id);
+  std::vector<const char *> argv;
+  for (const std::string &arg : options_.agent_commands) {
+    argv.push_back(arg.c_str());
+  }
+  argv.push_back("--agent-id");
+  argv.push_back(agent_id_str.c_str());
+
+  // Disable metrics report if needed.
+  if (!RayConfig::instance().enable_metrics_collection()) {
+    argv.push_back("--disable-metrics-collection");
+  }
+
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting agent process with command:";
-    for (const auto &arg : options_.agent_commands) {
+    for (const auto &arg : argv) {
       stream << " " << arg;
     }
     RAY_LOG(DEBUG) << stream.str();
   }
 
-  // Launch the process to create the agent.
-  std::error_code ec;
-  std::vector<const char *> argv;
-  for (const std::string &arg : options_.agent_commands) {
-    argv.push_back(arg.c_str());
-  }
-  // Disable metrics report if needed.
-  if (!RayConfig::instance().enable_metrics_collection()) {
-    argv.push_back("--disable-metrics-collection");
-  }
+  // Do this after the debug print for argv.data()
   argv.push_back(NULL);
+
   // Set node id to agent.
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
+
+  // Launch the process to create the agent.
+  std::error_code ec;
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
@@ -87,17 +104,23 @@ void AgentManager::StartAgent() {
                    << ec.message();
   }
 
-  std::thread monitor_thread([this, child]() mutable {
+  std::thread monitor_thread([this, child, agent_id]() mutable {
     SetThreadName("agent.monitor");
-    RAY_LOG(INFO) << "Monitor agent process with pid " << child.GetId()
-                  << ", register timeout "
+    RAY_LOG(INFO) << "Monitor agent process with id " << agent_id << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
     auto timer = delay_executor_(
-        [this, child]() mutable {
-          if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered. ip " << agent_ip_address_
-                             << ", pid " << agent_pid_;
+        [this, child, agent_id]() mutable {
+          if (reported_agent_id_ != agent_id) {
+            if (reported_agent_id_ == 0) {
+              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
+                               << " timed out before registering. ip "
+                               << reported_agent_ip_address_ << ", id "
+                               << reported_agent_id_;
+            } else {
+              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
+                               << " but got id " << reported_agent_id_
+                               << ", this is a fatal error";
+            }
             child.Kill();
           }
         },
@@ -105,15 +128,21 @@ void AgentManager::StartAgent() {
 
     int exit_code = child.Wait();
     timer->cancel();
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code << ". ip "
-                     << agent_ip_address_ << ". pid " << agent_pid_;
+    RAY_LOG(INFO) << "Agent process with id " << agent_id << " exited, exit code "
+                  << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
+                  << reported_agent_id_;
+
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "
            "The raylet fate shares with the agent. This can happen because the "
            "Ray agent was unexpectedly killed or failed. See "
            "`dashboard_agent.log` for the root cause.";
-    QuickExit();
+    // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
+    RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
+                                           "sigterm to itself. The process will not "
+                                           "gracefully shutdown.";
+    // If the process is not terminated within 10 seconds, forcefully kill itself.
+    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   });
   monitor_thread.detach();
 }

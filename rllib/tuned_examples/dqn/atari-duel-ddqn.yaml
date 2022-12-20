@@ -17,8 +17,8 @@ dueling-ddqn:
         noisy: false
         replay_buffer_config:
           type: MultiAgentReplayBuffer
-          learning_starts: 20000
           capacity: 1000000
+        num_steps_sampled_before_learning_starts: 20000
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625
@@ -30,4 +30,4 @@ dueling-ddqn:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
         num_gpus: 0.2
-        min_sample_timesteps_per_reporting: 10000
+        min_sample_timesteps_per_iteration: 10000

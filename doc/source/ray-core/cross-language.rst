@@ -12,9 +12,10 @@ We need to set :ref:`code_search_path` in your driver.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-      ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/code"))
+    .. literalinclude:: ./doc_code/cross_language.py
+        :language: python
+        :start-after: __crosslang_init_start__
+        :end-before: __crosslang_init_end__
 
 .. tabbed:: Java
 
@@ -29,9 +30,10 @@ You may want to include multiple directories to load both Python and Java code f
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-      ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/jars:/path/to/pys"))
+    .. literalinclude:: ./doc_code/cross_language.py
+        :language: python
+        :start-after: __crosslang_multidir_start__
+        :end-before: __crosslang_multidir_end__
 
 .. tabbed:: Java
 
@@ -76,56 +78,20 @@ Suppose we have a Java static method and a Java class as follows:
 Then, in Python, we can call the above Java remote function, or create an actor
 from the above Java class.
 
-.. code-block:: python
-
-  import ray
-
-  ray.init(address="auto")
-
-  # Define a Java class.
-  counter_class = ray.cross_language.java_actor_class(
-        "io.ray.demo.Counter")
-
-  # Create a Java actor and call actor method.
-  counter = counter_class.remote()
-  obj_ref1 = counter.increment.remote()
-  assert ray.get(obj_ref1) == 1
-  obj_ref2 = counter.increment.remote()
-  assert ray.get(obj_ref2) == 2
-
-  # Define a Java function.
-  add_function = ray.cross_language.java_function(
-        "io.ray.demo.Math", "add")
-
-  # Call the Java remote function.
-  obj_ref3 = add_function.remote(1, 2)
-  assert ray.get(obj_ref3) == 3
-
-  ray.shutdown()
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __python_call_java_start__
+  :end-before: __python_call_java_end__
 
 Java calling Python
 -------------------
 
 Suppose we have a Python module as follows:
 
-.. code-block:: python
-
-  # ray_demo.py
-
-  import ray
-
-  @ray.remote
-  class Counter(object):
-    def __init__(self):
-        self.value = 0
-
-    def increment(self):
-        self.value += 1
-        return self.value
-
-  @ray.remote
-  def add(a, b):
-      return a + b
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __python_module_start__
+  :end-before: __python_module_end__
 
 .. note::
 
@@ -203,32 +169,24 @@ automatically if their types are the following:
 
 .. note::
 
-  * Be aware of float / double precision between Python and Java. If Java use a
+  * Be aware of float / double precision between Python and Java. If Java is using a
     float type to receive the input argument, the double precision Python data
     will be reduced to float precision in Java.
-  * BigInteger can support max value of 2^64-1, please refer to:
+  * BigInteger can support a max value of 2^64-1, please refer to:
     https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family.
-    If the value larger than 2^64-1, then transfer the BigInteger:
-
-      - From Java to Python: *raise an exception*
-      - From Java to Java: **OK**
+    If the value is larger than 2^64-1, then sending the value to Python will raise an exception.
 
 The following example shows how to pass these types as parameters and how to
-return return these types.
+return these types.
 
 You can write a Python function which returns the input data:
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __serialization_start__
+  :end-before: __serialization_end__
 
-  # ray_serialization.py
-
-  import ray
-
-  @ray.remote
-  def py_return_input(v):
-      return v
-
-Then you can transfer the object from Java to Python, then returns from Python
+Then you can transfer the object from Java to Python, and back from Python
 to Java:
 
 .. code-block:: java
@@ -293,48 +251,37 @@ Suppose we have a Java package as follows:
 
 and a Python module as follows:
 
-.. code-block:: python
-
-  # ray_exception.py
-
-  import ray
-
-  @ray.remote
-  def raise_exception():
-      1 / 0
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __raise_exception_start__
+  :end-before: __raise_exception_end__
 
 Then, run the following code:
 
-.. code-block:: python
-
-  # ray_exception_demo.py
-
-  import ray
-
-  ray.init(address="auto")
-
-  obj_ref = ray.cross_language.java_function(
-        "io.ray.demo.MyRayClass",
-        "raiseExceptionFromPython").remote()
-  ray.get(obj_ref)  # <-- raise exception from here.
-
-  ray.shutdown()
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __raise_exception_demo_start__
+  :end-before: __raise_exception_demo_end__
 
 The exception stack will be:
 
 .. code-block:: text
 
   Traceback (most recent call last):
-    File "ray_exception_demo.py", line 10, in <module>
+    File "ray_exception_demo.py", line 9, in <module>
       ray.get(obj_ref)  # <-- raise exception from here.
-    File "ray/worker.py", line 1425, in get
+    File "ray/python/ray/_private/client_mode_hook.py", line 105, in wrapper
+      return func(*args, **kwargs)
+    File "ray/python/ray/_private/worker.py", line 2247, in get
       raise value
   ray.exceptions.CrossLanguageError: An exception raised from JAVA:
-  io.ray.api.exception.RayTaskException: (pid=92253, ip=10.15.239.68) Error executing task df5a1a828c9685d3ffffffff01000000
-    at io.ray.runtime.task.TaskExecutor.execute(TaskExecutor.java:167)
+  io.ray.api.exception.RayTaskException: (pid=61894, ip=172.17.0.2) Error executing task c8ef45ccd0112571ffffffffffffffffffffffff01000000
+          at io.ray.runtime.task.TaskExecutor.execute(TaskExecutor.java:186)
+          at io.ray.runtime.RayNativeRuntime.nativeRunTaskExecutor(Native Method)
+          at io.ray.runtime.RayNativeRuntime.run(RayNativeRuntime.java:231)
+          at io.ray.runtime.runner.worker.DefaultWorker.main(DefaultWorker.java:15)
   Caused by: io.ray.api.exception.CrossLanguageException: An exception raised from PYTHON:
-  ray.exceptions.RayTaskError: ray::raise_exception() (pid=92252, ip=10.15.239.68)
-    File "python/ray/_raylet.pyx", line 482, in ray._raylet.execute_task
+  ray.exceptions.RayTaskError: ray::raise_exception() (pid=62041, ip=172.17.0.2)
     File "ray_exception.py", line 7, in raise_exception
       1 / 0
   ZeroDivisionError: division by zero

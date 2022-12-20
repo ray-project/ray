@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
 import yaml
+import os
 
 import ray
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -18,22 +19,129 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent / "scripts"
+TEST_CR_PATH = (
+    pathlib.Path(__file__).resolve().parent / "setup" / "raycluster_test.yaml"
+)
+TEST_CLUSTER_NAME = "raycluster-test"
+
+# Parent directory of Ray repository
+RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
+
+RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
+
+LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def wait_for_crd(crd_name: str, tries=60, backoff_s=5):
+def setup_logging():
+    """Set up logging for kuberay.
+
+    For kuberay's autoscaler integration, the autoscaler runs in a sidecar container
+    in the same pod as the main Ray container, which runs the rest of the Ray
+    processes.
+
+    The logging configuration here is for the sidecar container, but we need the
+    logs to go to the same place as the head node logs because the autoscaler is
+    allowed to send scaling events to Ray drivers' stdout. The implementation of
+    this feature involves the autoscaler communicating to another Ray process
+    (the log monitor) via logs in that directory.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format=LOG_FORMAT,
+    )
+
+
+def switch_to_ray_parent_dir():
+    # Switch to parent of Ray repo, because that's what the doc examples do.
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+
+def setup_kuberay_operator():
+    """Set up KubeRay operator and Ray autoscaler RBAC."""
+    switch_to_ray_parent_dir()
+    logger.info("Cloning KubeRay and setting up KubeRay configuration.")
+    # For faster run-time when triggering the test locally, don't run the init
+    # script if it has already been run.
+    subprocess.check_call(
+        [
+            "bash",
+            "-c",
+            (
+                "ls ray/python/ray/autoscaler/kuberay/config ||"
+                " ./ray/python/ray/autoscaler/kuberay/init-config.sh"
+            ),
+        ]
+    )
+    logger.info("Creating KubeRay operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "create",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+
+def teardown_kuberay_operator():
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+    logger.info("Deleting operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "delete",
+            "--ignore-not-found",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+    logger.info("Double-checking no pods left over in namespace ray-system.")
+    wait_for_pods(goal_num_pods=0, namespace="ray-system")
+
+
+def wait_for_raycluster_crd(tries=60, backoff_s=5):
     """CRD creation can take a bit of time after the client request.
     This function waits until the crd with the provided name is registered.
     """
+    switch_to_ray_parent_dir()
+    logger.info("Making sure RayCluster CRD has been registered.")
     for i in range(tries):
         get_crd_output = subprocess.check_output(["kubectl", "get", "crd"]).decode()
-        if crd_name in get_crd_output:
-            logger.info(f"Confirmed existence of CRD {crd_name}.")
-            return
+        if RAYCLUSTERS_QUALIFIED in get_crd_output:
+            logger.info("Confirmed existence of RayCluster CRD.")
+            break
         elif i < tries - 1:
-            logger.info(f"Still waiting to register CRD {crd_name}")
+            logger.info("Still waiting to register RayCluster CRD.")
             time.sleep(backoff_s)
         else:
-            raise Exception(f"Failed to register CRD {crd_name}")
+            raise Exception("Failed to register RayCluster CRD.")
+
+    # Create a test RayCluster CR to make sure that the CRD is fully registered.
+    for i in range(tries):
+        try:
+            subprocess.check_call(["kubectl", "apply", "-f", TEST_CR_PATH])
+            break
+        except subprocess.CalledProcessError as e:
+            logger.info("Can't create RayCluster CR.")
+            if i < tries - 1:
+                logger.info("Retrying.")
+                time.sleep(backoff_s)
+            else:
+                logger.info("Giving up.")
+                raise e from None
+
+    # Confirm the test RayCluster exists.
+    out = subprocess.check_output(["kubectl", "get", RAYCLUSTERS_QUALIFIED]).decode()
+    assert TEST_CLUSTER_NAME in out, out
+
+    # Delete the test RayCluster.
+    subprocess.check_call(["kubectl", "delete", "-f", TEST_CR_PATH])
+    # Make sure the associated resources are gone before proceeding.
+    wait_for_pods(goal_num_pods=0, namespace="default")
 
 
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:
@@ -51,6 +159,7 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
             logger.info(
                 f"The number of pods in namespace {namespace} is {cur_num_pods}."
                 f" Waiting until the number of pods is {goal_num_pods}."
+                f"{get_pod_names(namespace)}"
             )
             time.sleep(backoff_s)
         else:
@@ -201,6 +310,21 @@ def kubectl_exec(
     out = subprocess.check_output(kubectl_exec_command).decode().strip()
     # Print for debugging convenience.
     print(out)
+    return out
+
+
+def kubectl_logs(
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+) -> str:
+    """Wrapper for kubectl logs.
+
+    Returns the logs as a string.
+    """
+    container_option = ["-c", container] if container else []
+    kubectl_logs_command = ["kubectl", "logs", pod] + container_option
+    out = subprocess.check_output(kubectl_logs_command).decode().strip()
     return out
 
 

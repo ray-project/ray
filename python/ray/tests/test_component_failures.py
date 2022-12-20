@@ -2,12 +2,12 @@ import os
 import signal
 import sys
 import time
-import numpy as np
 
+import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking, SignalActor
+from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -18,7 +18,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
         ray.get(signal.send.remote())
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_worker_pid():
@@ -53,7 +53,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
     obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray.worker.global_worker.put_object(obj, x_id)
+    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -68,7 +68,7 @@ def test_dying_driver_get(ray_start_regular):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     x_id = sleep_forever.remote()
 
@@ -96,7 +96,7 @@ ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
     obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray.worker.global_worker.put_object(obj, x_id)
+    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -108,7 +108,7 @@ ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_pid():
@@ -134,7 +134,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
 
     # Create the object.
     obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray.worker.global_worker.put_object(obj, x_id)
+    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -149,7 +149,7 @@ def test_dying_driver_wait(ray_start_regular):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     x_id = sleep_forever.remote()
 
@@ -177,7 +177,7 @@ ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
     obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray.worker.global_worker.put_object(obj, x_id)
+    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -185,4 +185,7 @@ ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

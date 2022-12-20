@@ -21,7 +21,7 @@ import tarfile
 import numpy as np
 import re
 
-from ray import tune
+from ray import air, tune
 
 
 def tokenize(sent):
@@ -280,8 +280,9 @@ if __name__ == "__main__":
     elif args.server_address:
         ray.init(f"ray://{args.server_address}")
 
+    perturbation_interval = 2
     pbt = PopulationBasedTraining(
-        perturbation_interval=2,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
             "lr": lambda: 10 ** np.random.randint(-10, 0),
@@ -289,15 +290,24 @@ if __name__ == "__main__":
         },
     )
 
-    results = tune.run(
+    tuner = tune.Tuner(
         MemNNModel,
-        name="pbt_babi_memnn",
-        scheduler=pbt,
-        metric="mean_accuracy",
-        mode="max",
-        stop={"training_iteration": 4 if args.smoke_test else 100},
-        num_samples=2,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_babi_memnn",
+            stop={"training_iteration": 4 if args.smoke_test else 100},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=pbt,
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=2,
+        ),
+        param_space={
             "finish_fast": args.smoke_test,
             "batch_size": 32,
             "epochs": 1,
@@ -306,3 +316,4 @@ if __name__ == "__main__":
             "rho": 0.9,
         },
     )
+    tuner.fit()

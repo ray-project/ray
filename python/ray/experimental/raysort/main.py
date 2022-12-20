@@ -9,20 +9,18 @@ import tempfile
 from typing import Callable, Dict, Iterable, List
 
 import numpy as np
-import ray
 
-from ray.experimental.raysort import constants
-from ray.experimental.raysort import logging_utils
-from ray.experimental.raysort import sortlib
-from ray.experimental.raysort import tracing_utils
+import ray
+from ray.experimental.raysort import constants, logging_utils, sortlib, tracing_utils
 from ray.experimental.raysort.types import (
     BlockInfo,
     ByteCount,
-    RecordCount,
     PartId,
     PartInfo,
     Path,
+    RecordCount,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 Args = argparse.Namespace
 
@@ -131,7 +129,7 @@ def _get_mount_points():
 
 
 def _part_info(args: Args, part_id: PartId, kind="input") -> PartInfo:
-    node = ray.worker.global_worker.node_ip_address
+    node = ray._private.worker.global_worker.node_ip_address
     mnt = random.choice(args.mount_points)
     filepath = _get_part_path(mnt, part_id, kind)
     return PartInfo(part_id, node, filepath)
@@ -368,9 +366,11 @@ def sort_main(args: Args):
 
             # Submit merge tasks.
             merge_results[round, :] = [
-                merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                    args, r, round, *mapper_results[:, r].tolist()
-                )
+                merge_mapper_blocks.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pgs[r]
+                    )
+                ).remote(args, r, round, *mapper_results[:, r].tolist())
                 for r in range(args.num_reducers)
             ]
 
@@ -379,9 +379,11 @@ def sort_main(args: Args):
 
         # Submit second-stage reduce tasks.
         reducer_results = [
-            final_merge.options(placement_group=pgs[r]).remote(
-                args, r, *merge_results[:, r].tolist()
-            )
+            final_merge.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pgs[r]
+                )
+            ).remote(args, r, *merge_results[:, r].tolist())
             for r in range(args.num_reducers)
         ]
         reducer_results = ray.get(reducer_results)
@@ -391,7 +393,7 @@ def sort_main(args: Args):
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
 
-    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
+    logging.info(ray._private.internal_api.memory_summary(stats_only=True))
 
 
 # ------------------------------------------------------------
@@ -445,7 +447,6 @@ def init(args: Args):
         ray.init(resources={"worker": os.cpu_count()})
     else:
         ray.init(address=args.ray_address)
-    logging_utils.init()
     logging.info(args)
     os.makedirs(constants.WORK_DIR, exist_ok=True)
     resources = ray.cluster_resources()

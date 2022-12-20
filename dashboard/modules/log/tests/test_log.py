@@ -1,21 +1,20 @@
-import sys
+import html.parser
 import logging
-import requests
+import sys
 import time
 import traceback
-import html.parser
 import urllib.parse
-import json
-import os
 
-from ray.dashboard.tests.conftest import *  # noqa
 import pytest
+import requests
+
 import ray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
+    wait_for_condition,
 )
-from ray.dashboard.modules.log.log_agent import tail as tail_file
+from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +23,22 @@ class LogUrlParser(html.parser.HTMLParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._urls = []
+        self._texts = set()
+        self._capture_text = False
 
     def handle_starttag(self, tag, attrs):
         if tag == "a":
             self._urls.append(dict(attrs)["href"])
+        if tag == "li":
+            self._capture_text = True
+
+    def handle_endtag(self, tag):
+        if tag == "li":
+            self._capture_text = False
+
+    def handle_data(self, data: str) -> None:
+        if self._capture_text:
+            self._texts.add(data)
 
     def error(self, message):
         logger.error(message)
@@ -35,18 +46,22 @@ class LogUrlParser(html.parser.HTMLParser):
     def get_urls(self):
         return self._urls
 
+    def get_texts(self):
+        return self._texts
+
 
 def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
     @ray.remote
     def write_log(s):
         print(s)
 
+    # Make sure that this works with unicode
     test_log_text = "test_log_text"
     ray.get(write_log.remote(test_log_text))
 
     test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -83,7 +98,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
             for u in urls:
                 response = requests.get(u)
                 response.raise_for_status()
-                if test_log_text in response.text:
+                if test_log_text in response.content.decode(encoding="utf-8"):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
@@ -119,7 +134,11 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_log_proxy(ray_start_with_dashboard):
+@pytest.mark.parametrize(
+    "test_file",
+    ["test.log", "test#1234.log"],
+)
+def test_log_proxy(ray_start_with_dashboard, test_file):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -128,17 +147,17 @@ def test_log_proxy(ray_start_with_dashboard):
     start_time = time.time()
     last_ex = None
     test_log_text = "test_log_text"
-    test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     while True:
         time.sleep(1)
         try:
+            url = urllib.parse.quote(f"{webui_url}/logs/{test_file}")
             # Test range request.
             response = requests.get(
-                f"{webui_url}/log_proxy?url={webui_url}/logs/{test_file}",
+                f"{webui_url}/log_proxy?url={url}",
                 headers={"Range": "bytes=2-5"},
             )
             response.raise_for_status()
@@ -164,83 +183,55 @@ def test_log_proxy(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_logs_experimental_list(ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{"include_dashboard": True, "num_nodes": 2}], indirect=True
+)
+def test_log_index_texts(disable_aiohttp_cache, ray_start_cluster):
+    cluster = ray_start_cluster
+    webui_url = cluster.head_node.webui_url
+    assert wait_until_server_available(webui_url) is True
     webui_url = format_web_url(webui_url)
 
-    # test that list logs is comprehensive
-    response = requests.get(webui_url + "/api/experimental/logs/list")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
+    # Check nodes ready
+    def _check_two_nodes_ready():
+        try:
+            response = requests.get(webui_url + "/nodes?view=summary")
+            response.raise_for_status
+            result = response.json()
+            nodes = result["data"]["summary"]
+            assert len(nodes) == 2
+            return True
+        except Exception:
+            logger.exception("Node number check failed:")
 
-    # test worker logs
-    outs = logs[node_id]["worker_outs"]
-    errs = logs[node_id]["worker_outs"]
-    core_worker_logs = logs[node_id]["python_core_worker_logs"]
+    wait_for_condition(_check_two_nodes_ready)
 
-    assert len(outs) == len(errs) == len(core_worker_logs)
-    assert len(outs) > 0
+    def _get_node_id_ip_pairs():
+        result = requests.get(webui_url + "/nodes?view=summary").json()
+        nodes = result["data"]["summary"]
+        node_id_ip_pairs = []
+        for node in nodes:
+            node_id_ip_pairs.append(
+                (node["raylet"]["nodeId"], node["raylet"]["nodeManagerAddress"])
+            )
+        return node_id_ip_pairs
 
-    for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
-        assert file in logs[node_id]["gcs_server"]
-    for file in ["raylet.out", "raylet.err"]:
-        assert file in logs[node_id]["raylet"]
-    for file in ["dashboard_agent.log", "dashboard.log"]:
-        assert file in logs[node_id]["dashboard"]
-    return True
+    node_id_ip_pairs = _get_node_id_ip_pairs()
+    expected_texts = set()
+    for node_id, node_ip in node_id_ip_pairs:
+        expected_texts.add("Node ID: {} (IP: {})".format(node_id, node_ip))
 
-    # Test that logs/list can be filtered
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=gcs")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
-    assert "gcs_server" in logs[node_id]
-    for category in logs[node_id]:
-        if category != "gcs_server":
-            assert len(logs[node_id][category]) == 0
+    # Check log index format
+    def check_log_index_format():
+        response = requests.get(webui_url + "/log_index")
+        response.raise_for_status()
+        text = response.text
+        parser = LogUrlParser()
+        parser.feed(text)
+        texts = parser.get_texts()
+        assert expected_texts == texts
 
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=worker")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
-    worker_log_categories = [
-        "python_core_worker_logs",
-        "worker_outs",
-        "worker_errors",
-    ]
-    assert all([cat in logs[node_id] for cat in worker_log_categories])
-    for category in logs[node_id]:
-        if category not in worker_log_categories:
-            assert len(logs[node_id][category]) == 0
-
-
-def test_logs_tail():
-    """
-    Unit test for tail
-    """
-    TOTAL_LINES = 1000
-    FILE_NAME = "test_file.txt"
-    try:
-        with open(FILE_NAME, "w") as f:
-            for i in range(TOTAL_LINES):
-                f.write(f"Message {i:4}\n")
-        file = open(FILE_NAME, "rb")
-        text, byte_pos = tail_file(file, 100)
-        assert byte_pos == TOTAL_LINES * len(b"Message 1000\n")
-        lines = text.decode("utf-8").split("\n")
-        assert len(lines) == 100
-        assert lines[0] == "Message  900"
-        assert lines[99] == "Message  999"
-    except Exception as e:
-        raise e
-    finally:
-        if os.path.exists(FILE_NAME):
-            os.remove(FILE_NAME)
+    check_log_index_format()
 
 
 if __name__ == "__main__":

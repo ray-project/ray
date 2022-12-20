@@ -1,30 +1,31 @@
-import random
-import pytest
-import numpy as np
+import datetime
 import os
-from ray import cloudpickle as pickle
-from ray import ray_constants
-from ray.actor import ActorClassInheritanceException
-
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
+import random
 import sys
 import tempfile
-import datetime
 
+import numpy as np
+import pytest
+
+import ray
+from ray import cloudpickle as pickle
+from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-import ray
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle  # noqa
+
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
@@ -289,8 +290,8 @@ def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
 
-    # The cache of ActorClassMethodMetadata.
-    cache = ray.actor.ActorClassMethodMetadata._cache
+    # The cache of _ActorClassMethodMetadata.
+    cache = ray.actor._ActorClassMethodMetadata._cache
     cache.clear()
 
     # Check cache hit during ActorHandle deserialization.
@@ -300,7 +301,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     cached_data_id = [id(x) for x in list(cache.items())[0]]
     for x in range(10):
         a = pickle.loads(pickle.dumps(a))
-    assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
+    assert len(ray.actor._ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
@@ -312,7 +313,7 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-    g = ray.worker.global_worker.gcs_client
+    g = ray._private.worker.global_worker.gcs_client
     actor_keys = g.internal_kv_keys(
         b"ActorClass", ray_constants.KV_NAMESPACE_FUNCTION_TABLE
     )
@@ -1203,4 +1204,7 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

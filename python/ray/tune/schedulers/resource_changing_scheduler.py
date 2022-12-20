@@ -6,12 +6,12 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
-from ray.util.annotations import PublicAPI, Deprecated
-from ray.tune import trial_runner
+from ray.util.annotations import PublicAPI
+from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.execution.placement_groups import PlacementGroupFactory, _sum_bundles
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,7 @@ class DistributeResources:
         """Get total sums of resources in bundles"""
         if not bundles:
             return {"CPU": 0, "GPU": 0}
-        pgf = PlacementGroupFactory(bundles)
-        return pgf.required_resources
+        return _sum_bundles(bundles)
 
     def _is_bundle_empty(self, bundle: Dict[str, float]) -> bool:
         return not (bundle.get("CPU", 0) or bundle.get("GPU", 0))
@@ -452,7 +451,12 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(
+            new_bundles,
+            strategy=base_trial_resource.strategy,
+            *base_trial_resource._args,
+            **base_trial_resource._kwargs,
+        )
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 
@@ -537,7 +541,7 @@ class DistributeResourcesToTopJob(DistributeResources):
             raise ValueError(
                 "The metric parameter cannot be None. The parameter can be set in "
                 "either `DistributeResourcesToTopJob`, the base scheduler or in "
-                "`tune.run` (highest to lowest priority)."
+                "`tune.TuneConfig()` (highest to lowest priority)."
             )
 
         free_cpus = total_available_cpus - used_cpus
@@ -582,102 +586,6 @@ _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
 
-# Deprecated: Remove in Ray > 1.13
-@Deprecated
-def evenly_distribute_cpus_gpus(
-    trial_runner: "trial_runner.TrialRunner",
-    trial: Trial,
-    result: Dict[str, Any],
-    scheduler: "ResourceChangingScheduler",
-) -> Optional[PlacementGroupFactory]:
-    """This is a basic uniform resource allocating function.
-
-    This function is used by default in ``ResourceChangingScheduler``.
-
-    The function naively balances free resources (CPUs and GPUs) between
-    trials, giving them all equal priority, ensuring that all resources
-    are always being used. All of the resources will be placed in one bundle.
-
-    If for some reason a trial ends up with
-    more resources than there are free ones, it will adjust downwards.
-    It will also ensure that trial as at least as many resources as
-    it started with (``base_trial_resource``).
-
-    This function returns a new ``PlacementGroupFactory`` with updated
-    resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
-    trial has currently, the scheduler will skip the update process
-    internally (same with None).
-
-    For greater customizability, use ``DistributeResources`` to create
-    this function.
-
-    Args:
-        trial_runner: Trial runner for this Tune run.
-            Can be used to obtain information about other trials.
-        trial: The trial to allocate new resources to.
-        result: The latest results of trial.
-        scheduler: The scheduler calling
-            the function.
-    """
-
-    raise DeprecationWarning(
-        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-        "and `evenly_distribute_cpus_gpus_distributed` are "
-        "being deprecated. Use `DistributeResources()` and "
-        "`DistributeResources(add_bundles=False)` instead "
-        "for equivalent functionality."
-    )
-
-
-# Deprecated: Remove in Ray > 1.13
-@Deprecated
-def evenly_distribute_cpus_gpus_distributed(
-    trial_runner: "trial_runner.TrialRunner",
-    trial: Trial,
-    result: Dict[str, Any],
-    scheduler: "ResourceChangingScheduler",
-) -> Optional[PlacementGroupFactory]:
-    """This is a basic uniform resource allocating function.
-
-    The function naively balances free resources (CPUs and GPUs) between
-    trials, giving them all equal priority, ensuring that all resources
-    are always being used. The free resources will be placed in new bundles.
-    This function assumes that all bundles are equal (there is no "head"
-    bundle).
-
-    If for some reason a trial ends up with
-    more resources than there are free ones, it will adjust downwards.
-    It will also ensure that trial as at least as many resources as
-    it started with (``base_trial_resource``).
-
-    This function returns a new ``PlacementGroupFactory`` with updated
-    resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
-    trial has currently, the scheduler will skip the update process
-    internally (same with None).
-
-    For greater customizability, use ``DistributeResources`` to create
-    this function.
-
-    Args:
-        trial_runner: Trial runner for this Tune run.
-            Can be used to obtain information about other trials.
-        trial: The trial to allocate new resources to.
-        result: The latest results of trial.
-        scheduler: The scheduler calling
-            the function.
-    """
-
-    raise DeprecationWarning(
-        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-        "and `evenly_distribute_cpus_gpus_distributed` are "
-        "being deprecated. Use `DistributeResources()` and "
-        "`DistributeResources(add_bundles=False)` instead "
-        "for equivalent functionality."
-    )
-
-
 @PublicAPI(stability="beta")
 class ResourceChangingScheduler(TrialScheduler):
     """A utility scheduler to dynamically change resources of live trials.
@@ -704,7 +612,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the Trainable (class) API is used, you can obtain the current trial
     resources through the ``Trainable.trial_resources`` property.
 
-    Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
+    Cannot be used if ``reuse_actors`` is True in ``tune.TuneConfig()``. A ValueError
     will be raised in that case.
 
     Args:
@@ -867,7 +775,7 @@ class ResourceChangingScheduler(TrialScheduler):
             raise ValueError(
                 "ResourceChangingScheduler cannot be used with "
                 "`reuse_actors=True`. FIX THIS by setting "
-                "`reuse_actors=False` in `tune.run`."
+                "`reuse_actors=False` in `tune.TuneConfig()`."
             )
 
         any_resources_changed = False

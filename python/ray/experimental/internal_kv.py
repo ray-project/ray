@@ -1,4 +1,4 @@
-from typing import List, Union, Optional
+from typing import List, Optional, Union
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.gcs_utils import GcsClient
@@ -77,7 +77,7 @@ def _internal_kv_put(
     This only has an effect if the key does not already have a value.
 
     Returns:
-        already_exists (bool): whether the value already exists.
+        already_exists: whether the value already exists.
     """
 
     if isinstance(key, str):

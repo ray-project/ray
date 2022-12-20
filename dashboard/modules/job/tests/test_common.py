@@ -1,6 +1,8 @@
 import pytest
 
 from ray.dashboard.modules.job.common import (
+    JobInfo,
+    JobStatus,
     http_uri_components_to_uri,
     uri_to_http_components,
     validate_request_type,
@@ -19,19 +21,21 @@ class TestJobSubmitRequestValidation:
         with pytest.raises(TypeError, match="must be a string"):
             validate_request_type({"entrypoint": 123}, JobSubmitRequest)
 
-    def test_validate_job_id(self):
+    def test_validate_submission_id(self):
         r = validate_request_type({"entrypoint": "abc"}, JobSubmitRequest)
         assert r.entrypoint == "abc"
-        assert r.job_id is None
+        assert r.submission_id is None
 
         r = validate_request_type(
-            {"entrypoint": "abc", "job_id": "123"}, JobSubmitRequest
+            {"entrypoint": "abc", "submission_id": "123"}, JobSubmitRequest
         )
         assert r.entrypoint == "abc"
-        assert r.job_id == "123"
+        assert r.submission_id == "123"
 
         with pytest.raises(TypeError, match="must be a string"):
-            validate_request_type({"entrypoint": 123, "job_id": 1}, JobSubmitRequest)
+            validate_request_type(
+                {"entrypoint": 123, "submission_id": 1}, JobSubmitRequest
+            )
 
     def test_validate_runtime_env(self):
         r = validate_request_type({"entrypoint": "abc"}, JobSubmitRequest)
@@ -101,6 +105,64 @@ def test_uri_to_http_and_back():
     for original_uri in ["gcs://hello.zip", "gcs://fasdf.whl"]:
         new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
         assert new_uri == original_uri
+
+
+def test_dynamic_status_message():
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_cpus=1
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_gpus=1
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING,
+        entrypoint="echo hi",
+        entrypoint_resources={"Custom": 1},
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", runtime_env={"conda": "env"}
+    )
+    assert "may be waiting for the runtime environment" in info.message
+
+
+def test_job_info_to_json():
+    info = JobInfo(
+        status=JobStatus.PENDING,
+        entrypoint="echo hi",
+        entrypoint_num_cpus=1,
+        entrypoint_num_gpus=1,
+        entrypoint_resources={"Custom": 1},
+        runtime_env={"pip": ["pkg"]},
+    )
+    expected_items = {
+        "status": "PENDING",
+        "message": (
+            "Job has not started yet. It may be waiting for resources "
+            "(CPUs, GPUs, custom resources) to become available. "
+            "It may be waiting for the runtime environment to be set up."
+        ),
+        "entrypoint": "echo hi",
+        "entrypoint_num_cpus": 1,
+        "entrypoint_num_gpus": 1,
+        "entrypoint_resources": {"Custom": 1},
+        "runtime_env": {"pip": ["pkg"]},
+    }
+
+    # Check that the expected items are in the JSON.
+    assert expected_items.items() <= info.to_json().items()
+
+    new_job_info = JobInfo.from_json(info.to_json())
+    assert new_job_info == info
+
+    # If `status` is just a string, then operations like status.is_terminal()
+    # would fail, so we should make sure that it's a JobStatus.
+    assert isinstance(new_job_info.status, JobStatus)
 
 
 if __name__ == "__main__":

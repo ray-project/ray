@@ -6,8 +6,7 @@ from numbers import Number
 # For compatibility under py2 to consider unicode as str
 from typing import Optional
 
-from ray.util.annotations import Deprecated
-from six import string_types
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune import TuneError
@@ -136,13 +135,13 @@ class Resources(
         )
         if self.memory or self.extra_memory:
             summary += ", {} GiB heap".format(
-                round((self.memory + self.extra_memory) / (1024 ** 3), 2)
+                round((self.memory + self.extra_memory) / (1024**3), 2)
             )
         if self.object_store_memory or self.extra_object_store_memory:
             summary += ", {} GiB objects".format(
                 round(
                     (self.object_store_memory + self.extra_object_store_memory)
-                    / (1024 ** 3),
+                    / (1024**3),
                     2,
                 )
             )
@@ -227,10 +226,11 @@ class Resources(
         return resources_to_json(self)
 
 
+@DeveloperAPI
 def json_to_resources(data: Optional[str]):
     if data is None or data == "null":
         return None
-    if isinstance(data, string_types):
+    if isinstance(data, str):
         data = json.loads(data)
 
     for k in data:
@@ -259,6 +259,7 @@ def json_to_resources(data: Optional[str]):
     )
 
 
+@DeveloperAPI
 def resources_to_json(resources: Optional[Resources]):
     if resources is None:
         return None

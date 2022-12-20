@@ -12,9 +12,11 @@ from unittest.mock import patch
 
 import gym
 import numpy as np
+import pytest
 import ray
 from ray import tune
-from ray.ml.utils.remote_storage import _ensure_directory
+from ray.air import CheckpointConfig, ScalingConfig
+from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -27,9 +29,9 @@ from ray.tune import (
 )
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
-from ray.tune.ray_trial_executor import noop_logger_creator
+from ray.tune.execution.ray_trial_executor import _noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
@@ -56,16 +58,15 @@ from ray.tune.stopper import (
     TrialPlateauStopper,
     ExperimentPlateauStopper,
 )
-from ray.tune.suggest import BasicVariantGenerator, grid_search
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.sync_client import CommandBasedClient
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimiter
+from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search.ax import AxSearch
+from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.syncer import Syncer
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -315,19 +316,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()
@@ -879,8 +880,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Re-run the same trials but with added delay. This is to catch some
         # inconsistent timestep counting that was present in the multi-threaded
-        # FunctionRunner. This part of the test can be removed once the
-        # multi-threaded FunctionRunner is removed from ray/tune.
+        # FunctionTrainable. This part of the test can be removed once the
+        # multi-threaded FunctionTrainable is removed from ray/tune.
         # TODO: remove once the multi-threaded function runner is gone.
         logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 
@@ -915,7 +916,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i ** 2, done=i == 4)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
             for i in range(5)
         ]
 
@@ -939,7 +940,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoDoneReceived(self):
         # repeat same test but without explicitly reporting done=True
-        results1 = [dict(timesteps_total=(i + 1), my_score=i ** 2) for i in range(5)]
+        results1 = [dict(timesteps_total=(i + 1), my_score=i**2) for i in range(5)]
 
         logs1, trials = self.checkAndReturnConsistentLogs(results1)
 
@@ -960,7 +961,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         remote_checkpoint_dir = "memory:///unit-test/bucket"
         _ensure_directory(remote_checkpoint_dir)
 
-        log_creator = partial(noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+        log_creator = partial(
+            _noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
+        )
         test_trainable = trainable(
             logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
         )
@@ -981,7 +984,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.session.shutdown()
+            tune.trainable.session._shutdown()
             test_trainable = trainable(
                 logger_creator=log_creator,
                 remote_checkpoint_dir=remote_checkpoint_dir,
@@ -1037,24 +1040,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testDurableTrainableSyncFunction(self):
         """Check custom sync functions in durable trainables"""
 
+        class CustomSyncer(Syncer):
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync up
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync down
+
+            def delete(self, remote_dir: str) -> bool:
+                pass  # delete
+
         class TestDurable(Trainable):
-            def __init__(self, *args, **kwargs):
-                # Mock distutils.spawn.find_executable
-                # so `aws` command is found
-                import distutils.spawn
-
-                distutils.spawn.find_executable = lambda *_, **__: True
-                super(TestDurable, self).__init__(*args, **kwargs)
-
-            def check(self):
-                return (
-                    bool(self.sync_function_tpl)
-                    and isinstance(self.storage_client, CommandBasedClient)
-                    and "aws" not in self.storage_client.sync_up_template
-                )
-
-        class TestTplDurable(TestDurable):
-            _sync_function_tpl = "echo static sync {source} {target}"
+            def has_custom_syncer(self):
+                return bool(self.custom_syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1074,21 +1076,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_function_tpl=trial.sync_function_tpl,
+                custom_syncer=trial.custom_syncer,
             )
             return actor
 
         # This actor should create a default aws syncer, so check should fail
         actor1 = _create_remote_actor(TestDurable, None)
-        self.assertFalse(ray.get(actor1.check.remote()))
+        self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
-        actor2 = _create_remote_actor(TestDurable, "echo test sync {source} {target}")
-        self.assertTrue(ray.get(actor2.check.remote()))
-
-        # This actor should create a custom syncer, so check should pass
-        actor3 = _create_remote_actor(TestTplDurable, None)
-        self.assertTrue(ray.get(actor3.check.remote()))
+        actor2 = _create_remote_actor(TestDurable, CustomSyncer())
+        self.assertTrue(ray.get(actor2.has_custom_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -1110,7 +1108,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(result)
         self.assertEqual(test_trainable.state["hi"], 1)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1140,7 +1145,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(checkpoint_1)
         self.assertEqual(test_trainable.state["iter"], 0)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1415,6 +1427,152 @@ class TrainableFunctionApiTest(unittest.TestCase):
         assert sys.getsizeof(dumped) < 100 * 1024
 
 
+@pytest.fixture
+def ray_start_2_cpus_2_gpus():
+    address_info = ray.init(num_cpus=2, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_dict(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(train_fn, resources={"gpu": num_gpus})
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
+        )
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_scaling_config(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn,
+            resources=ScalingConfig(trainer_resources={"GPU": num_gpus}, num_workers=0),
+        )
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    class MyTrainable(tune.Trainable):
+        def step(self):
+            return {"_metric": len(ray.get_gpu_ids()), "done": True}
+
+        def save_checkpoint(self, checkpoint_dir: str):
+            pass
+
+        def load_checkpoint(self, checkpoint):
+            pass
+
+        @classmethod
+        def default_resource_request(cls, config):
+            # This will be overwritten by tune.with_trainables()
+            return PlacementGroupFactory([{"CPU": 2, "GPU": 0}])
+
+    [trial] = tune.run(
+        tune.with_resources(
+            MyTrainable,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
+    class Worker:
+        def train_fn(self, config):
+            return len(ray.get_gpu_ids())
+
+    worker = Worker()
+
+    [trial] = tune.run(
+        tune.with_resources(
+            worker.train_fn,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config, extra_param=None):
+        assert extra_param is not None, "Missing extra parameter."
+        print(ray.get_runtime_context().get_assigned_resources())
+        return {"num_gpus": len(ray.get_gpu_ids())}
+
+    # Nesting `tune.with_parameters` and `tune.with_resources` should respect
+    # the resource specifications.
+    trainable = tune.with_resources(
+        tune.with_parameters(train_fn, extra_param="extra"),
+        {"gpu": num_gpus},
+    )
+
+    tuner = tune.Tuner(trainable)
+    results = tuner.fit()
+    print(results[0].metrics)
+    assert results[0].metrics["num_gpus"] == num_gpus
+
+    # The other order of nesting should work the same.
+    trainable = tune.with_parameters(
+        tune.with_resources(train_fn, {"gpu": num_gpus}), extra_param="extra"
+    )
+    tuner = tune.Tuner(trainable)
+    results = tuner.fit()
+    assert results[0].metrics["num_gpus"] == num_gpus
+
+
 class SerializabilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1669,6 +1827,7 @@ class ApiTestFast(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 # should be converted from strings at this case
@@ -1689,6 +1848,7 @@ class ApiTestFast(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=True,
                 )
 
@@ -1744,6 +1904,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 capture["search_alg"] = search_alg
@@ -1762,6 +1923,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
                 )
 
@@ -1827,6 +1989,4 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

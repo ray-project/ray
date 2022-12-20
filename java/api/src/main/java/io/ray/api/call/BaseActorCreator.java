@@ -25,6 +25,19 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
+  /**
+   * Set the actor name along with a different namespace.
+   *
+   * @param name The name of the named actor.
+   * @param namespace The namespace that this actor will live in.
+   * @return self
+   */
+  public T setName(String name, String namespace) {
+    builder.setName(name);
+    builder.setNamespace(namespace);
+    return self();
+  }
+
   public T setLifetime(ActorLifetime lifetime) {
     builder.setLifetime(lifetime);
     return self();
@@ -70,6 +83,20 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    */
   public T setMaxRestarts(int maxRestarts) {
     builder.setMaxRestarts(maxRestarts);
+    return self();
+  }
+
+  /**
+   * This specifies the maximum number of times that an actor task can be retried. The minimum valid
+   * value is 0 (default), which indicates that the actor task can't be retried. A value of -1
+   * indicates that an actor task can be retried indefinitely.
+   *
+   * @param maxTaskRetries max number of actor task retries
+   * @return self
+   * @see ActorCreationOptions.Builder#setMaxTaskRetries(int)
+   */
+  public T setMaxTaskRetries(int maxTaskRetries) {
+    builder.setMaxTaskRetries(maxTaskRetries);
     return self();
   }
 

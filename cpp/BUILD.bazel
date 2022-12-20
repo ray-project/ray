@@ -6,11 +6,24 @@ load("//bazel:ray.bzl", "COPTS")
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            #TODO(larry): Hide the symbols when we make it work on mac.
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            #TODO(larry): Hide the symbols when we make it work on Windows.
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location :symbols/ray_api_exported_symbols_linux.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":ray_api",
+        ":symbols/ray_api_exported_symbols_linux.lds",
+        ":symbols/ray_api_exported_symbols_mac.lds",
     ],
 )
 
@@ -53,8 +66,23 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@msgpack",
+        "@nlohmann_json",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "ray_cpp_lib",
+    srcs = [
+        "libray_api.so",
+    ],
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(
@@ -64,9 +92,20 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
-    deps = [
-        "ray_api",
-    ],
+    deps = select({
+        "@bazel_tools//src/conditions:windows": [
+            # TODO(SongGuyang): Change to use dynamic library
+            # "ray_cpp_lib" when we make it work on Windows.
+            "ray_api",
+        ],
+        "//conditions:default": [
+            "ray_cpp_lib",
+            "@boost//:callable_traits",
+            "@boost//:optional",
+            "@msgpack",
+            "@nlohmann_json",
+        ],
+    }),
 )
 
 genrule(
@@ -86,6 +125,7 @@ genrule(
         mkdir -p "$$PY_CPP_DIR/lib/" &&
         cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
+        cp -f -r $$WORK_DIR/external/nlohmann_json/single_include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
@@ -137,17 +177,21 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api",
-        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
     name = "cluster_mode_test",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-        "src/ray/test/cluster/*.h",
-    ]),
+    srcs = glob(
+        [
+            "src/ray/test/cluster/*.cc",
+            "src/ray/test/cluster/*.h",
+        ],
+        exclude = [
+            "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+        ],
+    ),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so):cpp/src/ray/test/cluster",
         "--ray_head_args '--include-dashboard false'",
@@ -167,6 +211,29 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "cluster_mode_xlang_test",
+    srcs = glob([
+        "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+        "src/ray/test/cluster/*.h",
+    ]),
+    args = [
+        "--ray_code_search_path=$(location //java:libio_ray_ray_test.jar)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
+    data = [
+        "ray_cpp_pkg",
+        "//java:libio_ray_ray_test.jar",
+    ],
+    linkstatic = True,
+    tags = ["team:core"],
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "plus.so",
     testonly = True,
@@ -177,8 +244,15 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -192,18 +266,64 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
 cc_test(
     name = "simple_kv_store",
     srcs = glob([
-        "src/ray/test/examples/*.cc",
+        "src/ray/test/examples/simple_kv_store.cc",
     ]),
+    args = [
+        "--ray_code_search_path=$(location simple_kv_store.so)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
     data = [
         "simple_kv_store.so",
+    ],
+    linkstatic = True,
+    tags = ["team:core"],
+    deps = [
+        "ray_api",
+    ],
+)
+
+cc_binary(
+    name = "simple_kv_store.so",
+    testonly = True,
+    srcs = glob([
+        "src/ray/test/examples/simple_kv_store.cc",
+    ]),
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
+    ],
+)
+
+cc_binary(
+    name = "simple_job",
+    srcs = [
+        "src/ray/test/examples/simple_job.cc",
+    ],
+    copts = COPTS,
+    data = [
+        "simple_job.so",
     ],
     linkstatic = True,
     tags = ["team:core"],
@@ -213,32 +333,49 @@ cc_test(
 )
 
 cc_binary(
-    name = "simple_kv_store.so",
-    testonly = True,
-    srcs = glob([
-        "src/ray/test/examples/*.cc",
-    ]),
+    name = "simple_job.so",
+    srcs = [
+        "src/ray/test/examples/simple_job.cc",
+    ],
+    copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        ":ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",
     ],
     tags = [
         "exclusive",
-        "small_size_python_tests",
+        "medium_size_python_tests",
         "team:core",
     ],
-    deps = [
-        ":ray_api",
+    deps = [],
+)
+
+py_test(
+    name = "test_submit_cpp_job",
+    size = "medium",
+    srcs = ["test_submit_cpp_job.py"],
+    data = [
+        "simple_job",
+        "simple_job.so",
     ],
+    env = {
+        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
+        "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
+    },
+    tags = ["team:core"],
 )

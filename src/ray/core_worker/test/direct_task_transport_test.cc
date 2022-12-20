@@ -46,6 +46,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             TaskID::Nil(),
                             empty_address,
                             1,
+                            false,
                             resources,
                             resources,
                             serialized_runtime_env,
@@ -64,7 +65,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   bool ReplyPushTask(Status status = Status::OK(),
                      bool exit = false,
-                     bool is_application_level_error = false) {
+                     bool is_retryable_error = false,
+                     bool was_cancelled_before_running = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -73,8 +75,11 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (exit) {
       reply.set_worker_exiting(true);
     }
-    if (is_application_level_error) {
-      reply.set_is_application_level_error(true);
+    if (is_retryable_error) {
+      reply.set_is_retryable_error(true);
+    }
+    if (was_cancelled_before_running) {
+      reply.set_was_cancelled_before_running(true);
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -96,11 +101,12 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void CompletePendingTask(const TaskID &,
                            const rpc::PushTaskReply &,
-                           const rpc::Address &actor_addr) override {
+                           const rpc::Address &actor_addr,
+                           bool is_application_error) override {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override {
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -108,8 +114,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override {
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
   }
 
@@ -128,11 +133,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
-
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
@@ -142,7 +142,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
-  void MarkTaskWaitingForExecution(const TaskID &task_id) override {}
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -167,6 +168,15 @@ class MockRayletClient : public WorkerLeaseInterface {
       }
     }
     return Status::OK();
+  }
+
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override {
+    ray::rpc::GetTaskFailureCauseReply reply;
+    callback(Status::OK(), reply);
+    num_get_task_failure_causes += 1;
   }
 
   void ReportWorkerBacklog(
@@ -283,10 +293,13 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_workers_returned_exiting = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
+  int num_get_task_failure_causes = 0;
   int reported_backlog_size = 0;
   std::map<SchedulingClass, int64_t> reported_backlogs;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+  std::list<rpc::ClientCallback<rpc::GetTaskFailureCauseReply>>
+      get_task_failure_cause_callbacks = {};
 };
 
 class MockActorCreator : public ActorCreatorInterface {
@@ -343,196 +356,6 @@ class MockLeasePolicy : public LeasePolicyInterface {
 
   bool is_locality_aware = false;
 };
-
-TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  TaskSpecification task;
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
-  ASSERT_TRUE(ok);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-}
-
-TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
-  // Actor dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  TaskSpecification task;
-  ObjectID obj = ObjectID::FromRandom();
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
-
-  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  task.GetMutableMessage().add_args()->add_nested_inlined_refs()->set_object_id(
-      actor_handle_id.Binary());
-
-  int num_resolved = 0;
-  actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
-  ASSERT_EQ(num_resolved, 0);
-  ASSERT_EQ(resolver.NumPendingTasks(), 1);
-
-  for (const auto &cb : actor_creator.callbacks) {
-    cb(Status());
-  }
-  ASSERT_EQ(num_resolved, 0);
-
-  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(data, obj));
-  ASSERT_EQ(num_resolved, 1);
-
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-}
-
-TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
-  // Object dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  TaskSpecification task;
-  ObjectID obj = ObjectID::FromRandom();
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
-
-  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  task.GetMutableMessage().add_args()->add_nested_inlined_refs()->set_object_id(
-      actor_handle_id.Binary());
-
-  int num_resolved = 0;
-  actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
-  ASSERT_EQ(num_resolved, 0);
-  ASSERT_EQ(resolver.NumPendingTasks(), 1);
-
-  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_EQ(num_resolved, 0);
-  ASSERT_TRUE(store->Put(data, obj));
-
-  for (const auto &cb : actor_creator.callbacks) {
-    cb(Status());
-  }
-  ASSERT_EQ(num_resolved, 1);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-}
-
-TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  ObjectID obj1 = ObjectID::FromRandom();
-  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  ASSERT_TRUE(store->Put(data, obj1));
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
-  ASSERT_TRUE(ok);
-  ASSERT_TRUE(task.ArgByRef(0));
-  // Checks that the object id is still a direct call id.
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-}
-
-TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  ObjectID obj1 = ObjectID::FromRandom();
-  ObjectID obj2 = ObjectID::FromRandom();
-  auto data = GenerateRandomObject();
-  // Ensure the data is already present in the local store.
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
-  // Tests that the task proto was rewritten to have inline argument values.
-  ASSERT_TRUE(ok);
-  ASSERT_FALSE(task.ArgByRef(0));
-  ASSERT_FALSE(task.ArgByRef(1));
-  ASSERT_NE(task.ArgData(0), nullptr);
-  ASSERT_NE(task.ArgData(1), nullptr);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
-}
-
-TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  ObjectID obj1 = ObjectID::FromRandom();
-  ObjectID obj2 = ObjectID::FromRandom();
-  auto data = GenerateRandomObject();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
-  ASSERT_EQ(resolver.NumPendingTasks(), 1);
-  ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
-  // Tests that the task proto was rewritten to have inline argument values after
-  // resolution completes.
-  ASSERT_TRUE(ok);
-  ASSERT_FALSE(task.ArgByRef(0));
-  ASSERT_FALSE(task.ArgByRef(1));
-  ASSERT_NE(task.ArgData(0), nullptr);
-  ASSERT_NE(task.ArgData(1), nullptr);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
-  ASSERT_EQ(task_finisher->num_contained_ids, 0);
-}
-
-TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
-  ObjectID obj1 = ObjectID::FromRandom();
-  ObjectID obj2 = ObjectID::FromRandom();
-  ObjectID obj3 = ObjectID::FromRandom();
-  auto data = GenerateRandomObject({obj3});
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
-  ASSERT_EQ(resolver.NumPendingTasks(), 1);
-  ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1));
-  ASSERT_TRUE(store->Put(*data, obj2));
-  // Tests that the task proto was rewritten to have inline argument values after
-  // resolution completes.
-  ASSERT_TRUE(ok);
-  ASSERT_FALSE(task.ArgByRef(0));
-  ASSERT_FALSE(task.ArgByRef(1));
-  ASSERT_NE(task.ArgData(0), nullptr);
-  ASSERT_NE(task.ArgData(1), nullptr);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
-  ASSERT_EQ(task_finisher->num_contained_ids, 2);
-}
 
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;
@@ -733,6 +556,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_get_task_failure_causes, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
@@ -1928,15 +1752,15 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
 
   // Try non-force kill, worker returns normally
   ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
-  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
             task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
-  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1968,14 +1792,35 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
+
+  // Try force kill
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+
+  // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil(), true));
+
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+
+  // Try non-force kill
+  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
+  ASSERT_EQ(worker_client->kill_requests.size(), 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 2);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 2);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Trigger reply to RequestWorkerLease to remove the canceled pending lease request

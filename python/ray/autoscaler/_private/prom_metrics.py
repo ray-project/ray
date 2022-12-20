@@ -1,16 +1,30 @@
+from typing import Optional
+
+
+class NullMetric:
+    """Mock metric class to be used in case of prometheus_client import error."""
+
+    def set(self, *args, **kwargs):
+        pass
+
+    def observe(self, *args, **kwargs):
+        pass
+
+    def inc(self, *args, **kwargs):
+        pass
+
+    def labels(self, *args, **kwargs):
+        return self
+
+
 try:
 
-    from prometheus_client import (
-        CollectorRegistry,
-        Counter,
-        Gauge,
-        Histogram,
-    )
+    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
     class AutoscalerPrometheusMetrics:
-        def __init__(self, registry: CollectorRegistry = None):
+        def __init__(self, registry: Optional[CollectorRegistry] = None):
             self.registry: CollectorRegistry = registry or CollectorRegistry(
                 auto_describe=True
             )
@@ -191,18 +205,29 @@ try:
                 namespace="autoscaler",
                 registry=self.registry,
             )
+            # This represents the autoscaler's view of essentially
+            # `ray.cluster_resources()`, it may be slightly different from the
+            # core metric from an eventual consistency perspective.
+            self.cluster_resources: Gauge = Gauge(
+                "cluster_resources",
+                "Total logical resources in the cluster.",
+                unit="resources",
+                namespace="autoscaler",
+                registry=self.registry,
+                labelnames=["resource"],
+            )
+            # This represents the pending launches + nodes being set up for the
+            # autoscaler.
+            self.pending_resources: Gauge = Gauge(
+                "pending_resources",
+                "Pending logical resources in the cluster.",
+                unit="resources",
+                namespace="autoscaler",
+                registry=self.registry,
+                labelnames=["resource"],
+            )
 
 except ImportError:
-
-    class NullMetric:
-        def set(self, value):
-            pass
-
-        def observe(self, value):
-            pass
-
-        def inc(self):
-            pass
 
     class AutoscalerPrometheusMetrics(object):
         def __getattr__(self, attr):

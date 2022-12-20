@@ -1,8 +1,8 @@
 import inspect
-from inspect import Parameter
 import logging
+from inspect import Parameter
 
-from ray.util.inspect import is_cython
+from ray._private.inspect_util import is_cython
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -78,7 +78,7 @@ def extract_signature(func, ignore_first=False):
     return signature_parameters
 
 
-def flatten_args(signature_parameters, args, kwargs):
+def flatten_args(signature_parameters: list, args, kwargs):
     """Validates the arguments against the signature and flattens them.
 
     The flat list representation is a serializable format for arguments.
@@ -89,7 +89,7 @@ def flatten_args(signature_parameters, args, kwargs):
     See `recover_args` for logic restoring the flat list back to args/kwargs.
 
     Args:
-        signature_parameters (list): The list of Parameter objects
+        signature_parameters: The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
         args: The non-keyword arguments passed into the function.

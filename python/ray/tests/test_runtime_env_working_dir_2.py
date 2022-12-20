@@ -1,18 +1,21 @@
 import os
 from pathlib import Path
 import sys
-import time
 import tempfile
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
 from ray._private.test_utils import run_string_as_driver
 
 import ray
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
+from ray._private.test_utils import chdir
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import RuntimeEnvSetupError
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -23,7 +26,6 @@ from ray.exceptions import GetTimeoutError
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_inheritance(start_cluster, option: str):
     """Tests that child tasks/actors inherit URIs properly."""
@@ -73,11 +75,13 @@ def test_inheritance(start_cluster, option: str):
             EnvGetter.options(runtime_env=env).remote()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_boundary(shutdown_only, option: str):
+def test_large_file_boundary(shutdown_only, tmp_path, option: str):
     """Check that packages just under the max size work as expected."""
-    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+    # To support Windows we do not use 'with tempfile' as that results in a recursion
+    # error (See: https://bugs.python.org/issue42796). Instead we use the tmp_path
+    # fixture that will clean up the files at a later time.
+    with chdir(tmp_path):
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
@@ -97,10 +101,9 @@ def test_large_file_boundary(shutdown_only, option: str):
         assert ray.get(t.get_size.remote()) == size
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_error(shutdown_only, option: str):
-    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+def test_large_file_error(shutdown_only, tmp_path, option: str):
+    with chdir(tmp_path):
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
         size = GCS_STORAGE_MAX_SIZE // 2 + 1
@@ -110,19 +113,23 @@ def test_large_file_error(shutdown_only, option: str):
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(size))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeEnvSetupError):
             if option == "working_dir":
                 ray.init(runtime_env={"working_dir": "."})
             else:
                 ray.init(runtime_env={"py_modules": ["."]})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_large_dir_upload_message(start_cluster, option):
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath = os.path.join(tmp_dir, "test_file.txt")
+
+        # Ensure forward slashes to prevent escapes in the text passed
+        # to stdin (for Windows tests this matters)
+        tmp_dir = str(Path(tmp_dir).as_posix())
+
         if option == "working_dir":
             driver_script = f"""
 import ray
@@ -143,6 +150,8 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         assert "warning" not in output.lower()
 
 
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform != "darwin", reason="Package exceeds max size.")
 def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
@@ -234,187 +243,43 @@ def test_ray_worker_dev_flow(start_cluster):
     assert ray.get(test_tune.remote()) != serve.__path__[0]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_default_large_cache(start_cluster, option: str, source: str):
-    """Check small files aren't GC'ed when using the default large cache."""
-    NUM_NODES = 3
-    cluster, address = start_cluster
-    for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+def test_concurrent_downloads(shutdown_only):
+    # https://github.com/ray-project/ray/issues/30369
+    def upload_dir(tmpdir):
+        # Create an arbitrary nonempty directory to upload.
+        path = Path(tmpdir)
+        dir_to_upload = path / "dir_to_upload"
+        dir_to_upload.mkdir(parents=True)
+        filepath = dir_to_upload / "file"
+        with filepath.open("w") as file:
+            file.write("F" * 100)
 
-    if option == "working_dir":
-        ray.init(address, runtime_env={"working_dir": source})
-    elif option == "py_modules":
-        if source != S3_PACKAGE_URI:
-            source = str(Path(source) / "test_module")
-        ray.init(address, runtime_env={"py_modules": [source]})
+        uri = get_uri_for_directory(dir_to_upload)
+        assert get_directory_size_bytes(dir_to_upload) > 0
 
-    @ray.remote
+        uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+        assert uploaded
+        return uri
+
+    ray.init()
+
+    tmpdir = tempfile.mkdtemp()
+    uri = upload_dir(tmpdir)
+
+    @ray.remote(runtime_env={"working_dir": uri, "env_vars": {"A": "B"}})
     def f():
-        pass
+        print("f")
 
-    # Wait for runtime env to be set up. This can be accomplished by getting
-    # the result of a task.
-    ray.get(f.remote())
-    ray.shutdown()
+    @ray.remote(runtime_env={"working_dir": uri})
+    def g():
+        print("g")
 
-    # If we immediately check that the files weren't GCed, it may spuriously
-    # pass, so sleep first to give time for any deletions to happen.
-    time.sleep(5)
-    assert not check_local_files_gced(cluster)
-
-    ray.init(address)
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def check(self):
-            import test_module
-
-            test_module.one()
-
-    if option == "working_dir":
-        A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
-    else:
-        A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
-
-    _ = A.remote()
-    ray.shutdown()
-    time.sleep(5)
-    assert not check_local_files_gced(cluster)
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-)
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 0,
-            },
-        },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 5,
-            },
-        },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 0,
-                # this delay will make worker start slow and time out
-                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
-                ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
-            },
-        },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 5,
-                # this delay will make worker start slow and time out
-                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
-                ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
-            },
-        },
-    ],
-    indirect=True,
-)
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
-    """Tests that task-level working_dir is GC'd when the worker exits."""
-
-    cluster = ray_start_cluster
-
-    soft_limit_zero = False
-    worker_register_timeout = False
-    system_config = cluster.list_all_nodes()[0]._ray_params._system_config
-    if (
-        "num_workers_soft_limit" in system_config
-        and system_config["num_workers_soft_limit"] == 0
-    ):
-        soft_limit_zero = True
-    if (
-        "worker_register_timeout_seconds" in system_config
-        and system_config["worker_register_timeout_seconds"] != 0
-    ):
-        worker_register_timeout = True
-
-    @ray.remote
-    def f():
-        import test_module
-
-        test_module.one()
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def check(self):
-            import test_module
-
-            test_module.one()
-
-    if option == "working_dir":
-        runtime_env = {"working_dir": S3_PACKAGE_URI}
-    else:
-        runtime_env = {"py_modules": [S3_PACKAGE_URI]}
-
-    # Note: We should set a bigger timeout if downloads the s3 package slowly.
-    get_timeout = 10
-
-    # Start a task with runtime env
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
-    else:
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
-
-    # Start a actor with runtime env
-    actor = A.options(runtime_env=runtime_env).remote()
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(actor.check.remote(), timeout=get_timeout)
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        ray.get(actor.check.remote())
-        assert not check_local_files_gced(cluster)
-
-    # Kill actor
-    ray.kill(actor)
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
-
-    # Start a task with runtime env
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
-    else:
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
+    refs = [f.remote(), g.remote()]
+    ray.get(refs)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

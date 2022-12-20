@@ -5,7 +5,6 @@ import os
 import random
 import shutil
 import tempfile
-import time
 import unittest
 
 import ray
@@ -15,7 +14,8 @@ from ray.tune.registry import (
     registry_get_input,
     registry_contains_input,
 )
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
@@ -25,8 +25,9 @@ from ray.rllib.offline import (
     ShuffledInput,
     DatasetWriter,
 )
-from ray.rllib.offline.json_writer import _to_json
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.offline.json_writer import _to_json_dict, _to_json
+from ray.rllib.policy.sample_batch import SampleBatch, convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SAMPLES = SampleBatch(
@@ -52,17 +53,19 @@ class AgentIOTest(unittest.TestCase):
         ray.shutdown()
 
     def write_outputs(self, output, fw, output_config=None):
-        agent = PGTrainer(
-            env="CartPole-v0",
-            config={
-                "output": output + (fw if output != "logdir" else ""),
-                "rollout_fragment_length": 250,
-                "framework": fw,
-                "output_config": output_config or {},
-            },
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .framework(fw)
+            .training(train_batch_size=250)
+            .offline_data(
+                output=output + (fw if output != "logdir" else ""),
+                output_config=output_config or {},
+            )
         )
-        agent.train()
-        return agent
+        algo = config.build()
+        algo.train()
+        return algo
 
     def test_agent_output_ok(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -88,21 +91,24 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
             reader = JsonReader(self.test_dir + fw + "/*.json")
             data = reader.next()
+            data = convert_ma_batch_to_sample_batch(data)
             assert "infos" in data
 
     def test_agent_input_dir(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .evaluation(off_policy_estimation_methods={})
+        )
+
+        for fw in framework_iterator(config, frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
-            print("WROTE TO: ", self.test_dir)
-            agent = PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "input": self.test_dir + fw,
-                    "input_evaluation": [],
-                    "framework": fw,
-                },
+            config.offline_data(
+                input_=self.test_dir + fw,
             )
-            result = agent.train()
+            print("WROTE TO: ", self.test_dir)
+            algo = config.build()
+            result = algo.train()
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
@@ -114,8 +120,18 @@ class AgentIOTest(unittest.TestCase):
         self.assertEqual(splits[2].count, 1)
 
     def test_agent_input_postprocessing_enabled(self):
-        for fw in framework_iterator(frameworks=("tf", "torch")):
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .offline_data(
+                postprocess_inputs=True,  # adds back 'advantages'
+            )
+            .evaluation(off_policy_estimation_methods={})
+        )
+
+        for fw in framework_iterator(config, frameworks=("tf", "torch")):
             self.write_outputs(self.test_dir, fw)
+            config.offline_data(input_=self.test_dir + fw)
 
             # Rewrite the files to drop advantages and value_targets for
             # testing
@@ -123,7 +139,9 @@ class AgentIOTest(unittest.TestCase):
                 out = []
                 with open(path) as f:
                     for line in f.readlines():
-                        data = json.loads(line)
+                        data_string = json.loads(line)
+                        data = from_json_data(data_string, None)
+                        data = convert_ma_batch_to_sample_batch(data)
                         # Data won't contain rewards as these are not included
                         # in the write_outputs run (not needed in the
                         # SampleBatch). Flip out "rewards" for "advantages"
@@ -132,127 +150,117 @@ class AgentIOTest(unittest.TestCase):
                         del data["advantages"]
                         if "value_targets" in data:
                             del data["value_targets"]
-                        out.append(data)
+                        out.append(_to_json_dict(data, []))
                 with open(path, "w") as f:
                     for data in out:
                         f.write(json.dumps(data))
 
-            agent = PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "input": self.test_dir + fw,
-                    "input_evaluation": [],
-                    "postprocess_inputs": True,  # adds back 'advantages'
-                    "framework": fw,
-                },
-            )
-
-            result = agent.train()
+            algo = config.build()
+            result = algo.train()
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
+            algo.stop()
 
-    def test_agent_input_eval_sim(self):
-        for fw in framework_iterator():
-            self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "input": self.test_dir + fw,
-                    "input_evaluation": ["simulation"],
-                    "framework": fw,
-                },
+    def test_agent_input_eval_sampler(self):
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .offline_data(
+                postprocess_inputs=True,  # adds back 'advantages'
             )
-            for _ in range(50):
-                result = agent.train()
-                if not np.isnan(result["episode_reward_mean"]):
-                    return  # simulation ok
-                time.sleep(0.1)
-            assert False, "did not see any simulation results"
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_config=PGConfig.overrides(input_="sampler"),
+            )
+        )
+
+        for fw in framework_iterator(config, frameworks=["tf", "torch"]):
+            self.write_outputs(self.test_dir, fw)
+            config.offline_data(input_=self.test_dir + fw)
+            algo = config.build()
+            result = algo.train()
+            assert np.isnan(
+                result["episode_reward_mean"]
+            ), "episode reward should not be computed for offline data"
+            assert not np.isnan(
+                result["evaluation"]["episode_reward_mean"]
+            ), "Did not see simulation results during evaluation"
+            algo.stop()
 
     def test_agent_input_list(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .training(train_batch_size=99)
+            .evaluation(off_policy_estimation_methods={})
+        )
+
+        for fw in framework_iterator(config, frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "input": glob.glob(self.test_dir + fw + "/*.json"),
-                    "input_evaluation": [],
-                    "rollout_fragment_length": 99,
-                    "framework": fw,
-                },
-            )
-            result = agent.train()
+            config.offline_data(input_=glob.glob(self.test_dir + fw + "/*.json"))
+            algo = config.build()
+            result = algo.train()
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
+            algo.stop()
 
     def test_agent_input_dict(self):
-        for fw in framework_iterator():
+        config = PGConfig().environment("CartPole-v1").training(train_batch_size=2000)
+        for fw in framework_iterator(config):
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "input": {
-                        self.test_dir + fw: 0.1,
-                        "sampler": 0.9,
-                    },
-                    "train_batch_size": 2000,
-                    "input_evaluation": [],
-                    "framework": fw,
-                },
+            config.offline_data(
+                input_={
+                    self.test_dir + fw: 0.1,
+                    "sampler": 0.9,
+                }
             )
-            result = agent.train()
+            algo = config.build()
+            result = algo.train()
             self.assertTrue(not np.isnan(result["episode_reward_mean"]))
+            algo.stop()
 
     def test_multi_agent(self):
         register_env(
             "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 10})
         )
 
-        for fw in framework_iterator():
-            pg = PGTrainer(
-                env="multi_agent_cartpole",
-                config={
-                    "num_workers": 0,
-                    "output": self.test_dir,
-                    "multiagent": {
-                        "policies": {"policy_1", "policy_2"},
-                        "policy_mapping_fn": (
-                            lambda aid, **kwargs: random.choice(
-                                ["policy_1", "policy_2"]
-                            )
-                        ),
-                    },
-                    "framework": fw,
-                },
+        config = (
+            PGConfig()
+            .environment("multi_agent_cartpole")
+            .rollouts(num_rollout_workers=0)
+            .multi_agent(
+                policies={"policy_1", "policy_2"},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    random.choice(["policy_1", "policy_2"])
+                ),
             )
-            pg.train()
-            self.assertEqual(len(os.listdir(self.test_dir)), 1)
+        )
 
+        for fw in framework_iterator(config):
+            config.offline_data(output=self.test_dir + fw)
+            pg = config.build()
+            pg.train()
+            self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
             pg.stop()
-            pg = PGTrainer(
-                env="multi_agent_cartpole",
-                config={
-                    "num_workers": 0,
-                    "input": self.test_dir,
-                    "input_evaluation": ["simulation"],
-                    "train_batch_size": 2000,
-                    "multiagent": {
-                        "policies": {"policy_1", "policy_2"},
-                        "policy_mapping_fn": (
-                            lambda aid, **kwargs: random.choice(
-                                ["policy_1", "policy_2"]
-                            )
-                        ),
-                    },
-                    "framework": fw,
-                },
+
+            config2 = config.copy()
+            config2.output = None
+            config2.evaluation(
+                evaluation_interval=1,
+                evaluation_config=PGConfig.overrides(input_="sampler"),
             )
-            for _ in range(50):
-                result = pg.train()
-                if not np.isnan(result["episode_reward_mean"]):
-                    return  # simulation ok
-                time.sleep(0.1)
-            assert False, "did not see any simulation results"
+            config2.training(train_batch_size=2000)
+            config2.offline_data(input_=self.test_dir + fw)
+
+            pg2 = config2.build()
+            result = pg2.train()
+            assert np.isnan(
+                result["episode_reward_mean"]
+            ), "episode reward should not be computed for offline data"
+            assert not np.isnan(
+                result["evaluation"]["episode_reward_mean"]
+            ), "Did not see simulation results during evaluation"
+            pg2.stop()
 
     def test_custom_input_procedure(self):
         class CustomJsonReader(JsonReader):
@@ -268,21 +276,45 @@ class AgentIOTest(unittest.TestCase):
             input_creator,
             "ray.rllib.examples.custom_input_api.CustomJsonReader",
         ]
+
         for input_procedure in test_input_procedure:
-            for fw in framework_iterator(frameworks=("torch", "tf")):
+
+            config = (
+                PGConfig()
+                .environment("CartPole-v1")
+                .offline_data(input_=input_procedure)
+                .evaluation(off_policy_estimation_methods={})
+            )
+
+            for fw in framework_iterator(config, frameworks=("torch", "tf")):
                 self.write_outputs(self.test_dir, fw)
-                agent = PGTrainer(
-                    env="CartPole-v0",
-                    config={
-                        "input": input_procedure,
-                        "input_config": {"input_files": self.test_dir + fw},
-                        "input_evaluation": [],
-                        "framework": fw,
-                    },
-                )
-                result = agent.train()
+                config.offline_data(input_config={"input_files": self.test_dir + fw})
+                algo = config.build()
+                result = algo.train()
                 self.assertEqual(result["timesteps_total"], 250)
                 self.assertTrue(np.isnan(result["episode_reward_mean"]))
+                algo.stop()
+
+    def test_multiple_output_workers(self):
+        ray.shutdown()
+        ray.init(num_cpus=4, ignore_reinit_error=True)
+
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=2)
+            .training(train_batch_size=500)
+            .evaluation(off_policy_estimation_methods={})
+        )
+
+        for fw in framework_iterator(config, frameworks=["tf", "torch"]):
+            config.offline_data(output=self.test_dir + fw)
+            algo = config.build()
+            algo.train()
+            self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
+            reader = JsonReader(self.test_dir + fw + "/*.json")
+            reader.next()
+            algo.stop()
 
 
 class JsonIOTest(unittest.TestCase):
@@ -297,14 +329,14 @@ class JsonIOTest(unittest.TestCase):
     def test_write_dataset(self):
         ioctx = IOContext(
             self.test_dir,
-            {
-                "output": "dataset",
-                "output_config": {
+            AlgorithmConfig().offline_data(
+                output="dataset",
+                output_config={
                     "format": "json",
                     "path": self.test_dir,
                     "max_num_samples_per_file": 2,
                 },
-            },
+            ),
             0,
             None,
         )
@@ -325,7 +357,7 @@ class JsonIOTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
     def test_write_file_uri(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
+        ioctx = IOContext(self.test_dir, None, 0, None)
         writer = JsonWriter(
             "file://" + self.test_dir,
             ioctx,
@@ -338,7 +370,7 @@ class JsonIOTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
     def test_write_paginate(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
+        ioctx = IOContext(self.test_dir, AlgorithmConfig(), 0, None)
         writer = JsonWriter(
             self.test_dir, ioctx, max_file_size=5000, compress_columns=["obs"]
         )
@@ -357,7 +389,7 @@ class JsonIOTest(unittest.TestCase):
         )
 
     def test_read_write(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
+        ioctx = IOContext(self.test_dir, None, 0, None)
         writer = JsonWriter(
             self.test_dir, ioctx, max_file_size=5000, compress_columns=["obs"]
         )
@@ -442,7 +474,7 @@ class JsonIOTest(unittest.TestCase):
         self.assertRaises(ValueError, lambda: reader.next())
 
     def test_custom_input_registry(self):
-        config = {"input_config": {}}
+        config = AlgorithmConfig().offline_data(input_config={})
         ioctx = IOContext(self.test_dir, config, 0, None)
 
         class CustomInputReader(InputReader):

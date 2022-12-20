@@ -1,18 +1,17 @@
 import os
-import sys
 import signal
-
-import ray
+import sys
 
 import pytest
 
+import ray
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.experimental.state.api import list_workers
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
-def get_worker_by_pid(pid):
-    for w in list_workers().values():
+def get_worker_by_pid(pid, detail=True):
+    for w in list_workers(detail=detail):
         if w["pid"] == pid:
             return w
     assert False
@@ -112,13 +111,14 @@ ray.shutdown()
         address=cluster.address
     )
     a = run_string_as_driver(driver)
-    driver_pid = int(a.strip("\n"))
+    driver_pid = int(a.strip().split("\n")[-1].strip())
 
     def verify_worker_exit_by_shutdown():
         worker = get_worker_by_pid(driver_pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        assert type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_by_shutdown)
 
@@ -133,6 +133,12 @@ ray.shutdown()
         def exit_with_exit_code(self):
             sys.exit(0)
 
+        def sleep_forever(self):
+            import time
+
+            # RIP
+            time.sleep(999999)
+
     a = A.remote()
     pid = ray.get(a.pid.remote())
     with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
@@ -142,7 +148,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_actor)
 
@@ -155,7 +162,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        return True
 
     wait_for_condition(verify_exit_code_0)
 
@@ -163,13 +171,14 @@ ray.shutdown()
     pid = ray.get(a.pid.remote())
     ray.kill(a)
     with pytest.raises(ray.exceptions.RayActorError, match="ray.kill"):
-        ray.get(a.exit_with_exit_code.remote())
+        ray.get(a.sleep_forever.remote())
 
     def verify_exit_by_ray_kill():
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        assert type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        return True
 
     wait_for_condition(verify_exit_by_ray_kill)
 
@@ -308,4 +317,7 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

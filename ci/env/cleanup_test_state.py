@@ -9,18 +9,23 @@ import sys
 def clear_wandb_project():
     import wandb
 
-    # This is hardcoded in the `ray/ml/examples/upload_to_wandb.py` example
-    wandb_project = "ray_air_example"
+    # This is hardcoded in the `ray/air/examples/upload_to_wandb.py` example
+    wandb_projects = [
+        "ray_air_example",
+        "ray_air_example_xgboost",
+        "ray_air_example_torch",
+    ]
 
-    api = wandb.Api()
-    for run in api.runs(wandb_project):
-        run.delete()
+    for wandb_project in wandb_projects:
+        api = wandb.Api()
+        for run in api.runs(wandb_project):
+            run.delete()
 
 
 def clear_comet_ml_project():
     import comet_ml
 
-    # This is hardcoded in the `ray/ml/examples/upload_to_comet_ml.py` example
+    # This is hardcoded in the `ray/air/examples/upload_to_comet_ml.py` example
     comet_ml_project = "ray-air-example"
 
     api = comet_ml.API()
@@ -48,4 +53,7 @@ if __name__ == "__main__":
         )
 
     for service in services:
-        SERVICES[service]()
+        try:
+            SERVICES[service]()
+        except Exception as e:
+            print(f"Could not cleanup service test state for {service}: {e}")

@@ -1,13 +1,13 @@
 import copy
-from six.moves import queue
+import queue
 import threading
 from typing import Dict, Optional
 
+from ray.util.timer import _Timer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
 
@@ -34,14 +34,14 @@ class LearnerThread(threading.Thread):
         """Initialize the learner thread.
 
         Args:
-            local_worker (RolloutWorker): process local rollout worker holding
+            local_worker: process local rollout worker holding
                 policies this thread will call learn_on_batch() on
-            minibatch_buffer_size (int): max number of train batches to store
+            minibatch_buffer_size: max number of train batches to store
                 in the minibatching buffer
-            num_sgd_iter (int): number of passes to learn on per train batch
-            learner_queue_size (int): max size of queue of inbound
+            num_sgd_iter: number of passes to learn on per train batch
+            learner_queue_size: max size of queue of inbound
                 train batches to this thread
-            learner_queue_timeout (int): raise an exception if the queue has
+            learner_queue_timeout: raise an exception if the queue has
                 been empty for this long in seconds
         """
         threading.Thread.__init__(self)
@@ -56,19 +56,19 @@ class LearnerThread(threading.Thread):
             num_passes=num_sgd_iter,
             init_num_passes=num_sgd_iter,
         )
-        self.queue_timer = TimerStat()
-        self.grad_timer = TimerStat()
-        self.load_timer = TimerStat()
-        self.load_wait_timer = TimerStat()
+        self.queue_timer = _Timer()
+        self.grad_timer = _Timer()
+        self.load_timer = _Timer()
+        self.load_wait_timer = _Timer()
         self.daemon = True
-        self.weights_updated = False
+        self.policy_ids_updated = []
         self.learner_info = {}
         self.stopped = False
         self.num_steps = 0
 
     def run(self) -> None:
         # Switch on eager mode if configured.
-        if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
+        if self.local_worker.policy_config.get("framework") == "tf2":
             tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
@@ -86,11 +86,15 @@ class LearnerThread(threading.Thread):
             # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
             # tf vs torch).
             learner_info_builder = LearnerInfoBuilder(num_devices=1)
+            if self.local_worker.config.policy_states_are_swappable:
+                self.local_worker.lock()
             multi_agent_results = self.local_worker.learn_on_batch(batch)
+            if self.local_worker.config.policy_states_are_swappable:
+                self.local_worker.unlock()
+            self.policy_ids_updated.extend(list(multi_agent_results.keys()))
             for pid, results in multi_agent_results.items():
                 learner_info_builder.add_learn_on_batch_results(results, pid)
             self.learner_info = learner_info_builder.finalize()
-            self.weights_updated = True
 
         self.num_steps += 1
         # Put tuple: env-steps, agent-steps, and learner info into the queue.
@@ -98,7 +102,7 @@ class LearnerThread(threading.Thread):
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
-        """Add internal metrics to a trainer result dict."""
+        """Add internal metrics to a result dict."""
 
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)

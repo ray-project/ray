@@ -9,8 +9,6 @@ provider:
 auth:
     ssh_user: YOUR_USERNAME
     ssh_private_key: ~/.ssh/id_rsa
-head_node: {}
-worker_nodes: {}
 file_mounts:
      "/tmp/ray_sha": "/YOUR/LOCAL/RAY/REPO/.git/refs/heads/YOUR_BRANCH"
 setup_commands: []

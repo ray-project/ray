@@ -16,8 +16,8 @@ def test_basic_get(serve_instance):
     with pytest.raises(KeyError):
         serve.get_deployment(name=name)
 
-    d.deploy()
-    val1, pid1 = ray.get(d.get_handle().remote())
+    handle = serve.run(d.bind())
+    val1, pid1 = ray.get(handle.remote())
     assert val1 == "1"
 
     del d

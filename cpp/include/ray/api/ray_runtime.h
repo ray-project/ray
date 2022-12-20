@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <ray/api/function_manager.h>
+#include <ray/api/common_types.h>
 #include <ray/api/task_options.h>
 #include <ray/api/xlang_function.h>
 
@@ -38,9 +38,7 @@ struct RemoteFunctionHolder {
     this->class_name = class_name;
     this->lang_type = lang_type;
   }
-  template <typename F>
-  RemoteFunctionHolder(F func) {
-    auto func_name = FunctionManager::Instance().GetFunctionName(func);
+  RemoteFunctionHolder(std::string func_name) {
     if (func_name.empty()) {
       throw RayException(
           "Function not found. Please use RAY_REMOTE to register this function.");
@@ -78,19 +76,24 @@ class RayRuntime {
                                 const CallOptions &call_options) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
-  virtual std::string GetActorId(const std::string &actor_name) = 0;
+  virtual std::string GetActorId(const std::string &actor_name,
+                                 const std::string &ray_namespace) = 0;
   virtual void KillActor(const std::string &str_actor_id, bool no_restart) = 0;
   virtual void ExitActor() = 0;
   virtual ray::PlacementGroup CreatePlacementGroup(
       const ray::PlacementGroupCreationOptions &create_options) = 0;
   virtual void RemovePlacementGroup(const std::string &group_id) = 0;
   virtual bool WaitPlacementGroupReady(const std::string &group_id,
-                                       int timeout_seconds) = 0;
+                                       int64_t timeout_seconds) = 0;
   virtual bool WasCurrentActorRestarted() = 0;
   virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
   virtual PlacementGroup GetPlacementGroup(const std::string &name) = 0;
   virtual bool IsLocalMode() { return false; }
+  virtual std::string GetNamespace() = 0;
+  virtual std::string SerializeActorHandle(const std::string &actor_id) = 0;
+  virtual std::string DeserializeAndRegisterActorHandle(
+      const std::string &serialized_actor_handle) = 0;
 };
 }  // namespace internal
 }  // namespace ray

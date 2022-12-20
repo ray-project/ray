@@ -2,7 +2,6 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
-from aiohttp.web import Response
 import asyncio
 import collections
 import functools
@@ -15,24 +14,27 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
+from aiohttp.web import Response
+
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
+from ray._private.ray_constants import RAY_INTERNAL_NAMESPACE_PREFIX, env_bool
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
+from ray.dashboard.utils import CustomEncoder, to_google_style
 
 try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
 
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
-from ray.dashboard.utils import to_google_style, CustomEncoder
 
 logger = logging.getLogger(__name__)
 
-RAY_INTERNAL_DASHBOARD_NAMESPACE = "_ray_internal_dashboard"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 class ClassMethodRouteTable:
@@ -166,6 +168,7 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
+        status=200 if success else 500,
     )
 
 
@@ -248,7 +251,7 @@ def aiohttp_cache(
         return _wrapper
 
 
-def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
+def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
     def decorator_factory(f: Callable) -> Callable:
@@ -257,21 +260,23 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self._dashboard_head.gcs_address
+                        address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Set the gcs rpc timeout to shorter
+                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                        )
+                        # Init ray without logging to driver
+                        # to avoid infinite logging issue.
                         ray.init(
                             address=address,
+                            log_to_driver=False,
+                            configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
-                if connect_to_serve:
-                    from ray import serve
-
-                    serve.start(detached=True, _override_controller_namespace="serve")
-
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

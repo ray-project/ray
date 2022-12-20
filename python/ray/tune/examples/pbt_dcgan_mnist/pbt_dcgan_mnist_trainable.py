@@ -4,8 +4,7 @@ Example of training DCGAN on MNIST using PBT with Tune's Trainable Class
 API.
 """
 import ray
-from ray import tune
-from ray.tune.trial import ExportFormat
+from ray import air, tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 import argparse
@@ -59,7 +58,7 @@ class PytorchTrainable(tune.Trainable):
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
     def save_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
+        path = os.path.join(checkpoint_dir, "checkpoint.pt")
         torch.save(
             {
                 "netDmodel": self.netD.state_dict(),
@@ -73,7 +72,7 @@ class PytorchTrainable(tune.Trainable):
         return checkpoint_dir
 
     def load_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
+        path = os.path.join(checkpoint_dir, "checkpoint.pt")
         checkpoint = torch.load(path)
         self.netD.load_state_dict(checkpoint["netDmodel"])
         self.netG.load_state_dict(checkpoint["netGmodel"])
@@ -90,20 +89,6 @@ class PytorchTrainable(tune.Trainable):
 
         self.config = new_config
         return True
-
-    def _export_model(self, export_formats, export_dir):
-        if export_formats == [ExportFormat.MODEL]:
-            path = os.path.join(export_dir, "exported_models")
-            torch.save(
-                {
-                    "netDmodel": self.netD.state_dict(),
-                    "netGmodel": self.netG.state_dict(),
-                },
-                path,
-            )
-            return {ExportFormat.MODEL: path}
-        else:
-            raise ValueError("unexpected formats: " + str(export_formats))
 
 
 # __Trainable_end__
@@ -153,22 +138,23 @@ if __name__ == "__main__":
         },
     )
 
-    tune_iter = 5 if args.smoke_test else 300
-    analysis = tune.run(
+    tune_iter = 10 if args.smoke_test else 300
+    tuner = tune.Tuner(
         PytorchTrainable,
-        name="pbt_dcgan_mnist",
-        scheduler=scheduler,
-        reuse_actors=True,
-        verbose=1,
-        metric="is_score",
-        mode="max",
-        checkpoint_at_end=True,
-        stop={
-            "training_iteration": tune_iter,
-        },
-        num_samples=8,
-        export_formats=[ExportFormat.MODEL],
-        config={
+        run_config=air.RunConfig(
+            name="pbt_dcgan_mnist",
+            stop={"training_iteration": tune_iter},
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+        ),
+        tune_config=tune.TuneConfig(
+            metric="is_score",
+            mode="max",
+            num_samples=8,
+            scheduler=scheduler,
+            reuse_actors=True,
+        ),
+        param_space={
             "netG_lr": tune.sample_from(
                 lambda spec: random.choice([0.0001, 0.0002, 0.0005])
             ),
@@ -179,10 +165,12 @@ if __name__ == "__main__":
             "data_dir": args.data_dir,
         },
     )
+    results = tuner.fit()
+
+    # export_formats=[ExportFormat.MODEL]
     # __tune_end__
 
     # demo of the trained Generators
     if not args.smoke_test:
-        logdirs = analysis.results_df["logdir"].tolist()
-        model_paths = [os.path.join(d, "exported_models") for d in logdirs]
-        demo_gan(analysis, model_paths)
+        checkpoint_paths = [result.checkpoint.to_directory() for result in results]
+        demo_gan(checkpoint_paths)

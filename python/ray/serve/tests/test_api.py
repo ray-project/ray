@@ -1,5 +1,6 @@
 import asyncio
 import os
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 import requests
 import pytest
@@ -48,7 +49,7 @@ def test_e2e(serve_instance):
     def function(starlette_request):
         return {"method": starlette_request.method}
 
-    function.deploy()
+    serve.run(function.bind())
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
@@ -125,13 +126,13 @@ def test_deploy_function_no_params(serve_instance, use_async):
     else:
         expected_output = "sync!"
         deployment_cls = sync_d
-    deployment_cls.deploy()
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
         == expected_output
     )
-    assert ray.get(deployment_cls.get_handle().remote()) == expected_output
+    assert ray.get(handle.remote()) == expected_output
 
 
 @pytest.mark.parametrize("use_async", [False, True])
@@ -144,7 +145,7 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
     else:
         expected_output = "sync!"
         deployment_cls = sync_d
-    deployment_cls.deploy()
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
@@ -153,10 +154,10 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
     with pytest.raises(
         TypeError, match=r"\(\) takes 0 positional arguments but 1 was given"
     ):
-        assert ray.get(deployment_cls.get_handle().remote(1)) == expected_output
+        assert ray.get(handle.remote(1)) == expected_output
 
     with pytest.raises(TypeError, match=r"\(\) got an unexpected keyword argument"):
-        assert ray.get(deployment_cls.get_handle().remote(key=1)) == expected_output
+        assert ray.get(handle.remote(key=1)) == expected_output
 
 
 @pytest.mark.parametrize("use_async", [False, True])
@@ -166,7 +167,7 @@ def test_deploy_class_no_params(serve_instance, use_async):
         deployment_cls = AsyncCounter
     else:
         deployment_cls = Counter
-    deployment_cls.deploy()
+    handle = serve.run(deployment_cls.bind())
 
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
         "count": 1
@@ -174,7 +175,7 @@ def test_deploy_class_no_params(serve_instance, use_async):
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
         "count": 2
     }
-    assert ray.get(deployment_cls.get_handle().remote()) == {"count": 3}
+    assert ray.get(handle.remote()) == {"count": 3}
 
 
 def test_user_config(serve_instance):
@@ -189,8 +190,7 @@ def test_user_config(serve_instance):
         def reconfigure(self, config):
             self.count = config["count"]
 
-    Counter.deploy()
-    handle = Counter.get_handle()
+    handle = serve.run(Counter.bind())
 
     def check(val, num_replicas):
         pids_seen = set()
@@ -204,22 +204,28 @@ def test_user_config(serve_instance):
     wait_for_condition(lambda: check("123", 2))
 
     Counter = Counter.options(num_replicas=3)
-    Counter.deploy()
+    serve.run(Counter.bind())
     wait_for_condition(lambda: check("123", 3))
 
     Counter = Counter.options(user_config={"count": 456})
-    Counter.deploy()
+    serve.run(Counter.bind())
     wait_for_condition(lambda: check("456", 3))
 
 
-def test_reject_duplicate_route(serve_instance):
-    @serve.deployment(name="A", route_prefix="/api")
-    class A:
-        pass
+def test_user_config_empty(serve_instance):
+    @serve.deployment(user_config={})
+    class Counter:
+        def __init__(self):
+            self.count = 0
 
-    A.deploy()
-    with pytest.raises(ValueError):
-        A.options(name="B").deploy()
+        def __call__(self, *args):
+            return self.count
+
+        def reconfigure(self, config):
+            self.count += 1
+
+    handle = serve.run(Counter.bind())
+    assert ray.get(handle.remote()) == 1
 
 
 def test_scaling_replicas(serve_instance):
@@ -232,7 +238,7 @@ def test_scaling_replicas(serve_instance):
             self.count += 1
             return self.count
 
-    Counter.deploy()
+    serve.run(Counter.bind())
 
     counter_result = []
     for _ in range(10):
@@ -242,7 +248,7 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    Counter.options(num_replicas=1).deploy()
+    serve.run(Counter.options(num_replicas=1).bind())
 
     counter_result = []
     for _ in range(10):
@@ -311,6 +317,11 @@ def test_delete_deployment_group(serve_instance, blocking):
                 timeout=5,
             )
 
+            wait_for_condition(
+                lambda: len(serve_instance.list_deployments()) == 0,
+                timeout=5,
+            )
+
 
 def test_starlette_request(serve_instance):
     @serve.deployment(name="api")
@@ -318,7 +329,7 @@ def test_starlette_request(serve_instance):
         data = await starlette_request.body()
         return data
 
-    echo_body.deploy()
+    serve.run(echo_body.bind())
 
     # Long string to test serialization of multiple messages.
     UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
@@ -392,11 +403,11 @@ def test_run_get_ingress_node(serve_instance):
 
     @serve.deployment
     class Driver:
-        def __init__(self, dag):
+        def __init__(self, dag: RayServeDAGHandle):
             self.dag = dag
 
         async def __call__(self, *args):
-            return await self.dag.remote()
+            return await (await self.dag.remote())
 
     @serve.deployment
     class f:
@@ -435,23 +446,20 @@ class TestSetOptions:
         @serve.deployment(
             num_replicas=4,
             max_concurrent_queries=3,
-            prev_version="abcd",
             ray_actor_options={"num_cpus": 2},
-            _health_check_timeout_s=17,
+            health_check_timeout_s=17,
         )
         def f():
             pass
 
         f.set_options(
             num_replicas=9,
-            prev_version="abcd",
             version="efgh",
             ray_actor_options={"num_gpus": 3},
         )
 
         assert f.num_replicas == 9
         assert f.max_concurrent_queries == 3
-        assert f.prev_version == "abcd"
         assert f.version == "efgh"
         assert f.ray_actor_options == {"num_gpus": 3}
         assert f._config.health_check_timeout_s == 17

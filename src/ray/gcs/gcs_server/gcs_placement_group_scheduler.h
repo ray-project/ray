@@ -16,9 +16,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -31,6 +31,7 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
+
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -259,65 +260,6 @@ class LeaseStatusTracker {
   std::shared_ptr<BundleLocations> bundle_locations_;
 };
 
-/// A data structure that helps fast bundle location lookup.
-class BundleLocationIndex {
- public:
-  BundleLocationIndex() {}
-  ~BundleLocationIndex() = default;
-
-  /// Add bundle locations to index.
-  ///
-  /// \param placement_group_id
-  /// \param bundle_locations Bundle locations that will be associated with the placement
-  /// group id.
-  void AddBundleLocations(const PlacementGroupID &placement_group_id,
-                          std::shared_ptr<BundleLocations> bundle_locations);
-
-  /// Erase bundle locations associated with a given node id.
-  ///
-  /// \param node_id The id of node.
-  /// \return True if succeed. False otherwise.
-  bool Erase(const NodeID &node_id);
-
-  /// Erase bundle locations associated with a given placement group id.
-  ///
-  /// \param placement_group_id Placement group id
-  /// \return True if succeed. False otherwise.
-  bool Erase(const PlacementGroupID &placement_group_id);
-
-  /// Get BundleLocation of placement group id.
-  ///
-  /// \param placement_group_id Placement group id of this bundle locations.
-  /// \return Bundle locations that are associated with a given placement group id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
-      const PlacementGroupID &placement_group_id);
-
-  /// Get BundleLocation of node id.
-  ///
-  /// \param node_id Node id of this bundle locations.
-  /// \return Bundle locations that are associated with a given node id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
-      const NodeID &node_id);
-
-  /// Update the index to contain new node information. Should be used only when new node
-  /// is added to the cluster.
-  ///
-  /// \param alive_nodes map of alive nodes.
-  void AddNodes(
-      const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes);
-
- private:
-  /// Map from node ID to the set of bundles. This is used to lookup bundles at each node
-  /// when a node is dead.
-  absl::flat_hash_map<NodeID, std::shared_ptr<BundleLocations>> node_to_leased_bundles_;
-
-  /// A map from placement group id to bundle locations.
-  /// It is used to destroy bundles for the placement group.
-  /// NOTE: It is a reverse index of `node_to_leased_bundles`.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
-      placement_group_to_bundle_locations_;
-};
-
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
 /// to GcsPlacementGroupManager. This class is not thread-safe.
 class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
@@ -327,7 +269,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param gcs_resource_manager The resource manager which is used when scheduling.
   /// \param cluster_resource_scheduler The resource scheduler which is used when
   /// scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
@@ -335,7 +276,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
-      GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       gcs_syncer::RaySyncer *ray_syncer);
@@ -392,6 +332,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) override;
+
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(std::function<void()> listener);
+
+  void HandleWaitingRemovedBundles();
 
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
@@ -474,7 +419,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Acquire the bundle resources from the cluster resources.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
+  /// Commit the bundle resources to the cluster resources.
+  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
   /// Return the bundle resources to the cluster resources.
+  /// It will remove bundle resources AND also add original resources back.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
@@ -483,7 +432,21 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
-                                            rpc::PlacementStrategy strategy);
+                                            rpc::PlacementStrategy strategy,
+                                            double max_cpu_fraction_per_node);
+
+  /// Try to release bundle resource to cluster resource manager.
+  ///
+  /// \param bundle The node to which the bundle is scheduled and the bundle's
+  /// specification.
+  /// \return True if the bundle is succesfully released. False otherwise.
+  bool TryReleasingBundleResources(
+      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
+
+  /// Help function to check if the resource_name has the pattern
+  /// {original_resource_name}_group_{placement_group_id}, which means
+  /// wildcard resource.
+  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
@@ -493,9 +456,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
-
-  /// Reference of GcsResourceManager.
-  GcsResourceManager &gcs_resource_manager_;
 
   /// Reference of ClusterResourceScheduler.
   ClusterResourceScheduler &cluster_resource_scheduler_;
@@ -516,6 +476,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
   gcs_syncer::RaySyncer *ray_syncer_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
+
+  /// The bundles that waiting to be destroyed and release resources.
+  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
+      waiting_removed_bundles_;
 };
 
 }  // namespace gcs

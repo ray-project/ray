@@ -22,37 +22,55 @@
 namespace ray {
 namespace gcs {
 namespace {
+
 constexpr std::string_view kNamespacePrefix = "@namespace_";
 constexpr std::string_view kNamespaceSep = ":";
+constexpr std::string_view kClusterSeparator = "@";
 
-std::string MakeKey(const std::string &ns, const std::string &key) {
+}  // namespace
+std::string RedisInternalKV::MakeKey(const std::string &ns,
+                                     const std::string &key) const {
   if (ns.empty()) {
-    return key;
+    return absl::StrCat(external_storage_namespace_, kClusterSeparator, key);
   }
-  return absl::StrCat(kNamespacePrefix, ns, ":", key);
+  return absl::StrCat(external_storage_namespace_,
+                      kClusterSeparator,
+                      kNamespacePrefix,
+                      ns,
+                      kNamespaceSep,
+                      key);
 }
 
-Status ValidateKey(const std::string &key) {
+Status RedisInternalKV::ValidateKey(const std::string &key) const {
   if (absl::StartsWith(key, kNamespacePrefix)) {
     return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
   }
   return Status::OK();
 }
 
-std::string ExtractKey(const std::string &key) {
-  if (absl::StartsWith(key, kNamespacePrefix)) {
+std::string RedisInternalKV::ExtractKey(const std::string &key) const {
+  auto view = std::string_view(key);
+  RAY_CHECK(absl::StartsWith(view, external_storage_namespace_))
+      << "Invalid key: " << view << ". It should start with "
+      << external_storage_namespace_;
+  view = view.substr(external_storage_namespace_.size() + kClusterSeparator.size());
+  if (absl::StartsWith(view, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
     RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
 
     return parts[1];
   }
-  return key;
+  return std::string(view.begin(), view.end());
 }
-}  // namespace
 
 RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
-    : redis_options_(redis_options), work_(io_service_) {
+    : redis_options_(redis_options),
+      external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
+      work_(io_service_) {
+  RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
+      << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
+      << kClusterSeparator << ".";
   io_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("InternalKV");
     io_service_.run();
@@ -156,7 +174,7 @@ void RedisInternalKV::Keys(const std::string &ns,
   auto true_prefix = MakeKey(ns, prefix);
   std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [callback = std::move(callback)](auto redis_reply) {
+      cmd, [this, callback = std::move(callback)](auto redis_reply) {
         if (callback) {
           const auto &reply = redis_reply->ReadAsStringArray();
           std::vector<std::string> results;
@@ -170,7 +188,7 @@ void RedisInternalKV::Keys(const std::string &ns,
 }
 
 void GcsInternalKVManager::HandleInternalKVGet(
-    const rpc::InternalKVGetRequest &request,
+    rpc::InternalKVGetRequest request,
     rpc::InternalKVGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto status = ValidateKey(request.key());
@@ -191,7 +209,7 @@ void GcsInternalKVManager::HandleInternalKVGet(
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
-    const rpc::InternalKVPutRequest &request,
+    rpc::InternalKVPutRequest request,
     rpc::InternalKVPutReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto status = ValidateKey(request.key());
@@ -211,7 +229,7 @@ void GcsInternalKVManager::HandleInternalKVPut(
 }
 
 void GcsInternalKVManager::HandleInternalKVDel(
-    const rpc::InternalKVDelRequest &request,
+    rpc::InternalKVDelRequest request,
     rpc::InternalKVDelReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto status = ValidateKey(request.key());
@@ -230,7 +248,7 @@ void GcsInternalKVManager::HandleInternalKVDel(
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(
-    const rpc::InternalKVExistsRequest &request,
+    rpc::InternalKVExistsRequest request,
     rpc::InternalKVExistsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto status = ValidateKey(request.key());
@@ -247,7 +265,7 @@ void GcsInternalKVManager::HandleInternalKVExists(
 }
 
 void GcsInternalKVManager::HandleInternalKVKeys(
-    const rpc::InternalKVKeysRequest &request,
+    rpc::InternalKVKeysRequest request,
     rpc::InternalKVKeysReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto status = ValidateKey(request.prefix());
@@ -262,6 +280,13 @@ void GcsInternalKVManager::HandleInternalKVKeys(
     };
     kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
   }
+}
+
+Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
+  }
+  return Status::OK();
 }
 
 }  // namespace gcs

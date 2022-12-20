@@ -1,24 +1,15 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+
+import gym
+import numpy as np
 import tree  # pip install dm_tree
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    TYPE_CHECKING,
-)
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,31 +17,38 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
+from ray.rllib.utils import NullContextManager, force_list
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    override,
     is_overridden,
+    override,
 )
+from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
+    PolicyState,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:
@@ -70,7 +68,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         max_seq_len: int = 20,
     ):
@@ -84,10 +82,15 @@ class TorchPolicyV2(Policy):
         """
         self.framework = config["framework"] = "torch"
 
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        model, dist_class = self._init_model_and_dist_class()
+        if self.config.get("_enable_rl_module_api", False):
+            model = self.make_rl_module()
+            dist_class = None
+        else:
+            model, dist_class = self._init_model_and_dist_class()
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
@@ -102,26 +105,15 @@ class TorchPolicyV2(Policy):
         #   parallelization will be done.
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -139,14 +131,9 @@ class TorchPolicyV2(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -220,6 +207,16 @@ class TorchPolicyV2(Policy):
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
+
+        # If model is an RLModule it won't have tower_stats instead there will be a
+        # self.tower_state[model] -> dict for each tower.
+        self.tower_stats = {}
+        if not hasattr(self.model, "tower_stats"):
+            for model in self.model_gpu_towers:
+                self.tower_stats[model] = {}
+
+    def loss_initialized(self):
+        return self._loss_initialized
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -416,7 +413,7 @@ class TorchPolicyV2(Policy):
         New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            sample_batch: The SampleBatch to postprocess.
             other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
@@ -475,6 +472,7 @@ class TorchPolicyV2(Policy):
                 model_config=self.config["model"],
                 framework=self.framework,
             )
+
         return model, dist_class
 
     @override(Policy)
@@ -588,14 +586,14 @@ class TorchPolicyV2(Policy):
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=False,
                     is_training=False,
                 )
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -633,12 +631,23 @@ class TorchPolicyV2(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        if self.model:
+        self.num_grad_updates += 1
+        if self.model and hasattr(self.model, "metrics"):
             fetches["model"] = self.model.metrics()
+        else:
+            fetches["model"] = {}
+
         fetches.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
 
@@ -700,7 +709,7 @@ class TorchPolicyV2(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI
@@ -730,6 +739,7 @@ class TorchPolicyV2(Policy):
                 batch = self._loaded_batches[0][0]
             else:
                 batch = self._loaded_batches[0][0][offset : offset + device_batch_size]
+
             return self.learn_on_batch(batch)
 
         if len(self.devices) > 1:
@@ -778,14 +788,23 @@ class TorchPolicyV2(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
-                    "model": model.metrics(),
+                    "model": {}
+                    if self.config["_enable_rl_module_api"]
+                    else model.metrics(),
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates - 1 - (batch.num_grad_updates or 0)
+                    ),
                 }
             )
-
         batch_fetches.update(self.extra_compute_grad_fetches())
 
         return batch_fetches
@@ -857,13 +876,19 @@ class TorchPolicyV2(Policy):
             of the tower's `tower_stats` dicts.
         """
         data = []
-        for tower in self.model_gpu_towers:
-            if stats_name in tower.tower_stats:
+        for model in self.model_gpu_towers:
+            if self.tower_stats:
+                tower_stats = self.tower_stats[model]
+            else:
+                tower_stats = model.tower_stats
+
+            if stats_name in tower_stats:
                 data.append(
                     tree.map_structure(
-                        lambda s: s.to(self.device), tower.tower_stats[stats_name]
+                        lambda s: s.to(self.device), tower_stats[stats_name]
                     )
                 )
+
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
             f"{len(self.model_gpu_towers)} towers in total)! Make "
@@ -895,12 +920,21 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
+        if self.config.get("_enable_rl_module_api", False):
+            # convert the tree of tensors to a tree to numpy arrays
+            return tree.map_structure(
+                lambda s: convert_to_numpy(s), self.model.get_initial_state()
+            )
+
         return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
+
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_numpy(o.state_dict())
@@ -911,7 +945,8 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
@@ -922,7 +957,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
@@ -937,30 +976,30 @@ class TorchPolicyV2(Policy):
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
         """
-        self._lazy_tensor_dict(self._dummy_batch)
-        # Provide dummy state inputs if not an RNN (torch cannot jit with
-        # returned empty internal states list).
-        if "state_in_0" not in self._dummy_batch:
-            self._dummy_batch["state_in_0"] = self._dummy_batch[
-                SampleBatch.SEQ_LENS
-            ] = np.array([1.0])
 
-        state_ins = []
-        i = 0
-        while "state_in_{}".format(i) in self._dummy_batch:
-            state_ins.append(self._dummy_batch["state_in_{}".format(i)])
-            i += 1
-        dummy_inputs = {
-            k: self._dummy_batch[k]
-            for k in self._dummy_batch.keys()
-            if k != "is_training"
-        }
+        os.makedirs(export_dir, exist_ok=True)
 
-        if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
-
-        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
+            self._lazy_tensor_dict(self._dummy_batch)
+            # Provide dummy state inputs if not an RNN (torch cannot jit with
+            # returned empty internal states list).
+            if "state_in_0" not in self._dummy_batch:
+                self._dummy_batch["state_in_0"] = self._dummy_batch[
+                    SampleBatch.SEQ_LENS
+                ] = np.array([1.0])
+            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
+
+            state_ins = []
+            i = 0
+            while "state_in_{}".format(i) in self._dummy_batch:
+                state_ins.append(self._dummy_batch["state_in_{}".format(i)])
+                i += 1
+            dummy_inputs = {
+                k: self._dummy_batch[k]
+                for k in self._dummy_batch.keys()
+                if k != "is_training"
+            }
+
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
                 self.model,
@@ -978,14 +1017,16 @@ class TorchPolicyV2(Policy):
                     + ["state_ins", SampleBatch.SEQ_LENS]
                 },
             )
+        # Save the torch.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
         else:
-            traced = torch.jit.trace(self.model, (dummy_inputs, state_ins, seq_lens))
-            file_name = os.path.join(export_dir, "model.pt")
-            traced.save(file_name)
-
-    @override(Policy)
-    def export_checkpoint(self, export_dir: str) -> None:
-        raise NotImplementedError
+            filename = os.path.join(export_dir, "model.pt")
+            try:
+                torch.save(self.model, f=filename)
+            except Exception:
+                if os.path.exists(filename):
+                    os.remove(filename)
+                logger.warning(ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL)
 
     @override(Policy)
     @DeveloperAPI
@@ -1001,6 +1042,8 @@ class TorchPolicyV2(Policy):
 
         Returns:
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.
+            The input_dict is modified in-place to include a numpy copy of the computed
+            actions under `SampleBatch.ACTIONS`.
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -1010,10 +1053,26 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        if is_overridden(self.action_sampler_fn):
+        extra_fetches = {}
+        if isinstance(self.model, RLModule):
+            if explore:
+                fwd_out = self.model.forward_exploration(input_dict)
+            else:
+                fwd_out = self.model.forward_inference(input_dict)
+            # anything but action_dist and state_out is an extra fetch
+            action_dist = fwd_out.pop("action_dist")
+
+            if explore:
+                actions, logp = action_dist.sample(return_logp=True)
+            else:
+                actions = action_dist.sample()
+                logp = None
+            state_out = fwd_out.pop("state_out", {})
+            extra_fetches = fwd_out
+            dist_inputs = None
+        elif is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
-                self,
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
@@ -1025,9 +1084,8 @@ class TorchPolicyV2(Policy):
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=explore,
@@ -1055,12 +1113,11 @@ class TorchPolicyV2(Policy):
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
 
-        input_dict[SampleBatch.ACTIONS] = actions
-
         # Add default and custom fetches.
-        extra_fetches = self.extra_action_out(
-            input_dict, state_batches, self.model, action_dist
-        )
+        if not extra_fetches:
+            extra_fetches = self.extra_action_out(
+                input_dict, state_batches, self.model, action_dist
+            )
 
         # Action-dist inputs.
         if dist_inputs is not None:
@@ -1073,7 +1130,6 @@ class TorchPolicyV2(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
-
         return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
@@ -1120,7 +1176,8 @@ class TorchPolicyV2(Policy):
 
                     # Call Model's custom-loss with Policy loss outputs and
                     # train_batch.
-                    loss_out = model.custom_loss(loss_out, sample_batch)
+                    if hasattr(model, "custom_loss"):
+                        loss_out = model.custom_loss(loss_out, sample_batch)
 
                     assert len(loss_out) == len(self._optimizers)
 

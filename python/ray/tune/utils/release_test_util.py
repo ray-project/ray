@@ -7,9 +7,10 @@ import numpy as np
 import pickle
 
 from ray import tune
+from ray.tune.callback import Callback
 
 
-class ProgressCallback(tune.callback.Callback):
+class ProgressCallback(Callback):
     def __init__(self):
         self.last_update = 0
         self.update_interval = 60

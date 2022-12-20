@@ -9,40 +9,46 @@ config["exploration_config"] = {"type": "RE3"}
 """
 from functools import partial
 import ray
-from ray.rllib.agents import sac
-from ray.rllib.agents.callbacks import MultiCallbacks, RE3UpdateCallbacks
+from ray.rllib.algorithms import sac
+from ray.rllib.algorithms.callbacks import MultiCallbacks, RE3UpdateCallbacks
 
 if __name__ == "__main__":
     ray.init()
 
-    config = sac.DEFAULT_CONFIG.copy()
+    config = (
+        sac.SACConfig()
+        .environment("LunarLanderContinuous-v2")
+        # Add type as RE3 in the exploration_config parameter
+        .exploration(
+            exploration_config={
+                "type": "RE3",
+                "sub_exploration": {
+                    "type": "StochasticSampling",
+                },
+            }
+        )
+        .debugging(seed=12345)
+    )
 
     # Add a new RE3UpdateCallbacks
-    config["callbacks"] = MultiCallbacks(
-        [
-            config["callbacks"],
-            partial(
-                RE3UpdateCallbacks,
-                embeds_dim=128,
-                beta_schedule="linear_decay",
-                k_nn=50,
-            ),
-        ]
+    config.callbacks(
+        MultiCallbacks(
+            [
+                config.callbacks_class,
+                partial(
+                    RE3UpdateCallbacks,
+                    embeds_dim=128,
+                    beta_schedule="linear_decay",
+                    k_nn=50,
+                ),
+            ]
+        )
     )
-    config["env"] = "LunarLanderContinuous-v2"
-    config["seed"] = 12345
-    # Add type as RE3 in the exploration_config parameter
-    config["exploration_config"] = {
-        "type": "RE3",
-        "sub_exploration": {
-            "type": "StochasticSampling",
-        },
-    }
 
     num_iterations = 2000
-    trainer = sac.SACTrainer(config=config)
+    algo = config.build()
     for i in range(num_iterations):
-        result = trainer.train()
+        result = algo.train()
         print(result)
-    trainer.stop()
+    algo.stop()
     ray.shutdown()

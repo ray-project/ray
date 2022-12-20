@@ -1,21 +1,23 @@
 common: &common
-  artifact_paths:
-    - "/tmp/bazel_event_logs/*"
   env:
     BUILDKITE: "true"
     CI: "true"
-    PYTHON: "3.6"
+    PYTHON: "3.7"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
     LANG: en_US.UTF-8
+    BUILD: "1"
+    DL: "1"
 
 prelude_commands: &prelude_commands |-
-  ./ci/build/upload_build_info.sh
+  rm -rf /tmp/bazel_event_logs
+  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshrc
-  . ./ci/ci.sh build
+  . ./ci/ci.sh init && source ~/.zshenv
+  ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
+  ./ci/env/env_info.sh
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
@@ -29,7 +31,8 @@ steps:
   conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
   commands:
     # Cleanup environments
-    - ./ci/build/upload_build_info.sh
+    - rm -rf /tmp/bazel_event_logs
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - (which bazel && bazel clean) || true
     # TODO(simon): make sure to change both PR and wheel builds
     # Special setup for jar builds (will be installed to the machine instead)
@@ -43,10 +46,10 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/ci.sh init && source ~/.zshrc
-    - . ./ci/ci.sh build
+    - . ./ci/ci.sh init && source ~/.zshenv
+    - ./ci/ci.sh build
     # Test wheels
-    - . ./ci/ci.sh test_wheels
+    - ./ci/ci.sh test_wheels
     # Build jars
     - bash ./java/build-jar-multiplatform.sh darwin
     # Upload the wheels and jars
@@ -61,17 +64,25 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-- label: ":mac: :apple: Ray C++, Java and Libraries"
+- label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
-  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
-    - export RAY_INSTALL_JAVA=1
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
-      //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+      //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
+    - *epilogue_commands
+
+
+- label: ":mac: :apple: Ray C++ and Java"
+  <<: *common
+  conditions: ["RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED"]
+  commands:
+    - export RAY_INSTALL_JAVA=1
+    - *prelude_commands
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
     - ./java/test.sh
@@ -97,7 +108,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - . ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"

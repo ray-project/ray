@@ -38,7 +38,7 @@ Environments and Adapters
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
 - `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/unity3d_env_local.py>`__:
-   Example of how to setup an RLlib Trainer against a locally running Unity3D editor instance to
+   Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
@@ -50,12 +50,12 @@ Environments and Adapters
 - `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
    Example for how to use a DMLab environment (Watermaze).
 - `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
-   Script showing how to train a SlateQTrainer on a RecSym environment.
+   Script showing how to train SlateQ on a RecSym environment.
 - `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
    Example demonstrating how to use the SUMO simulator in connection with RLlib.
 - `VizDoom example script using RLlib's auto-attention wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py>`__:
    Script showing how to run PPO with an attention net against a VizDoom gym environment.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/tests/test_env_with_subprocess.py>`__:
+- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 
 
@@ -107,7 +107,7 @@ Training Workflows
 - `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 - `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
-   Example of how to use the exec. plan of a Trainer to trin two different policies in parallel (also using multi-agent API).
+   Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
 - `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
    How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
 
@@ -140,7 +140,7 @@ Serving and Offline
 - `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__:
    Example of how to externally generate experience batches in RLlib-compatible format.
 - `Finding a checkpoint using custom criteria <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoint_by_custom_criteria.py>`__:
-   Example of how to find a checkpoint after a `tune.run` via some custom defined criteria.
+   Example of how to find a :ref:`checkpoint <rllib-saving-and-loading-algos-and-policies-docs>` after a `Tuner.fit()` via some custom defined criteria.
 
 
 Multi-Agent and Hierarchical
@@ -154,7 +154,7 @@ Multi-Agent and Hierarchical
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
-- `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__:
+- `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.
@@ -164,8 +164,8 @@ Multi-Agent and Hierarchical
    Example of running a custom hand-coded policy alongside trainable policies.
 - `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-- `Multiple trainers <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
-   Example of alternating training between two DQN and PPO trainers.
+- `Multiple algorithms <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
+   Example of alternating training between DQN and PPO.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 - `Iterated Prisoner's Dilemma environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py>`__:
@@ -199,10 +199,10 @@ Community Examples
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
-   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
+   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.   
 - `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
-   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication).
+   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).
 - `Flatland <https://flatland.aicrowd.com/intro.html>`__:
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
@@ -219,9 +219,12 @@ Community Examples
    Example of training robotic control policies in SageMaker with RLlib.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
+- `Simple custom environment for single RL with Ray 2.0, Tune and Air <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
+   Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+   
 
 .. include:: /_includes/rllib/announcement_bottom.rst

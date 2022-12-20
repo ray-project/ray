@@ -8,7 +8,8 @@ import pandas as pd
 import time
 
 import ray
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.bandit import BanditLinUCBConfig
 from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
@@ -43,46 +44,58 @@ if __name__ == "__main__":
 
     ray.init()
 
-    config = {
-        "framework": args.framework,
-        "eager_tracing": (args.framework == "tf2"),
-        "env": "ParametricRecSysEnv",
-        "env_config": {
-            "embedding_size": 20,
-            "num_docs_to_select_from": 10,
-            "slate_size": 1,
-            "num_docs_in_db": 100,
-            "num_users_in_db": 1,
-            "user_time_budget": 1.0,
-        },
-        "num_envs_per_worker": 2,  # Test with batched inference.
-        "evaluation_interval": 20,
-        "evaluation_duration": 100,
-        "evaluation_duration_unit": "episodes",
-        "simple_optimizer": True,
-    }
+    config = (
+        BanditLinUCBConfig()
+        .environment(
+            "ParametricRecSysEnv",
+            env_config={
+                "embedding_size": 20,
+                "num_docs_to_select_from": 10,
+                "slate_size": 1,
+                "num_docs_in_db": 100,
+                "num_users_in_db": 1,
+                "user_time_budget": 1.0,
+            },
+        )
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        # Test with batched inference.
+        .rollouts(num_envs_per_worker=2)
+        .evaluation(
+            evaluation_interval=20,
+            evaluation_duration=100,
+            evaluation_duration_unit="episodes",
+        )
+    )
+    config.simple_optimizer = True
 
     # Actual env timesteps per `train()` call will be
-    # 10 * min_sample_timesteps_per_reporting (100 by default) = 1,000.
+    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000.
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
     start_time = time.time()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         "BanditLinUCB",
-        config=config,
-        stop={"training_iteration": training_iterations},
-        num_samples=2,
-        checkpoint_at_end=False,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(
+            stop={"training_iteration": training_iterations},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=False,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=2,
+        ),
     )
+    results = tuner.fit()
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
-    for key, df in analysis.trial_dataframes.items():
-        frame = frame.append(df, ignore_index=True)
+    for result in results:
+        frame = frame.append(result.metrics_dataframe, ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

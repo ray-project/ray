@@ -53,5 +53,10 @@ class RayFunctionNotFound : public RayException {
  public:
   RayFunctionNotFound(const std::string &msg) : RayException(msg){};
 };
+
+class RayRuntimeEnvException : public RayException {
+ public:
+  RayRuntimeEnvException(const std::string &msg) : RayException(msg){};
+};
 }  // namespace internal
 }  // namespace ray

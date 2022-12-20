@@ -187,12 +187,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get gcs server address.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetGcsServerAddress,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get all the task information from the node.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetTasksInfo,
@@ -202,6 +196,11 @@ class NodeManagerWorkerClient
   /// Get all the object information from the node.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetObjectsInfo,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         GetTaskFailureCause,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

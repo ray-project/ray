@@ -1,18 +1,21 @@
 import os
-import pytest
 import subprocess
 import sys
 import warnings
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
+
+import pytest
 
 import ray
-import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
+import ray.util.client.server.server as ray_client_server
+from ray.experimental.state.api import list_workers
 from ray._private.test_utils import (
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    run_string_as_driver,
 )
+import time
 
 
 @pytest.mark.parametrize(
@@ -104,7 +107,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
-        assert client_context.dashboard_url == ray.worker.get_dashboard_url()
+        assert client_context.dashboard_url == ray._private.worker.get_dashboard_url()
         python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__
@@ -164,7 +167,7 @@ while True:
     p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
 
     wait_for_condition(
-        lambda: len(ray._private.services.find_bootstrap_address()) == 4,
+        lambda: len(ray._private.services.find_gcs_addresses()) == 4,
         retry_interval_ms=1000,
     )
 
@@ -184,14 +187,14 @@ while True:
         """
 import ray
 ray.client().connect()
-assert len(ray._private.services.find_bootstrap_address()) == 1
+assert len(ray._private.services.find_gcs_addresses()) == 1
     """
     )
     # ray.client("local").connect() should always create a new cluster even if
     # there's one running.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
     wait_for_condition(
-        lambda: len(ray._private.services.find_bootstrap_address()) == 2,
+        lambda: len(ray._private.services.find_gcs_addresses()) == 2,
         retry_interval_ms=1000,
     )
     p1.kill()
@@ -284,14 +287,18 @@ def test_address_resolution(call_ray_stop_only):
             # client(...) takes precedence of RAY_ADDRESS=local
             assert ray.util.client.ray.is_connected()
 
-        with pytest.raises(Exception):
-            # This tries to call `ray.init(address="local") which
-            # breaks.`
-            ray.client(None).connect()
+        # This tries to call `ray.init(address="local") which creates a new Ray
+        # instance.
+        with ray.client(None).connect():
+            wait_for_condition(
+                lambda: len(ray._private.services.find_gcs_addresses()) == 2,
+                retry_interval_ms=1000,
+            )
 
     finally:
         if os.environ.get("RAY_ADDRESS"):
             del os.environ["RAY_ADDRESS"]
+        ray.shutdown()
 
 
 def mock_connect(*args, **kwargs):
@@ -414,5 +421,44 @@ def test_client_deprecation_warn():
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=2 --min-worker-port=0 --max-worker-port=0 "
+        "--port 0 --ray-client-server-port=50056"
+    ],
+    indirect=True,
+)
+def test_worker_processes(call_ray_start):
+    """
+    Test that no workers are spawned until a remote function is called.
+    """
+    ray.init("ray://localhost:50056")
+
+    # Check for 10 seconds that no workers spawned after connecting
+    for _ in range(10):
+        workers = list_workers()
+        non_driver_workers = [w for w in workers if w.get("worker_type") != "DRIVER"]
+        assert len(non_driver_workers) == 0, workers
+        time.sleep(1)
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return 42
+
+    assert ray.get(f.remote()) == 42
+    time.sleep(3)
+
+    # 2 worker processes should have spawned to accommodate the remote func
+    for _ in range(10):
+        workers = list_workers()
+        non_driver_workers = [w for w in workers if w.get("worker_type") != "DRIVER"]
+        assert len(non_driver_workers) == 2, workers
+        time.sleep(1)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

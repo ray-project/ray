@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 import json
+import logging
 import os
 import platform
 import shutil
@@ -14,27 +15,104 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
-
+import psutil
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
-from ray._private.services import (
-    REDIS_EXECUTABLE,
-    _start_redis_instance,
-    wait_for_redis_to_start,
-)
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
+
 from ray._private.test_utils import (
+    get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    get_and_run_node_killer,
-    test_external_redis,
+    enable_external_redis,
+    start_redis_instance,
 )
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+
+logger = logging.getLogger(__name__)
+
+START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
+
+
+def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+    """Wait for a Redis server to be available.
+
+    This is accomplished by creating a Redis client and sending a random
+    command to the server until the command gets through.
+
+    Args:
+        redis_ip_address: The IP address of the redis server.
+        redis_port: The port of the redis server.
+        password: The password of the redis server.
+
+    Raises:
+        Exception: An exception is raised if we could not connect with Redis.
+    """
+    import redis
+
+    redis_client = redis.StrictRedis(
+        host=redis_ip_address, port=redis_port, password=password
+    )
+    # Wait for the Redis server to start.
+    num_retries = START_REDIS_WAIT_RETRIES
+
+    delay = 0.001
+    for i in range(num_retries):
+        try:
+            # Run some random command and see if it worked.
+            logger.debug(
+                "Waiting for redis server at {}:{} to respond...".format(
+                    redis_ip_address, redis_port
+                )
+            )
+            redis_client.client_list()
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError(
+                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
+            ) from authEx
+        except redis.ConnectionError as connEx:
+            if i >= num_retries - 1:
+                raise RuntimeError(
+                    f"Unable to connect to Redis at {redis_ip_address}:"
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    "machine. If it is not, your firewall may be blocking "
+                    "this port. If the problem is a flaky connection, try "
+                    "setting the environment variable "
+                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
+                    " attempts to ping the Redis server."
+                ) from connEx
+            # Wait a little bit.
+            time.sleep(delay)
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
+            delay = min(1, delay * 2)
+        else:
+            break
+    else:
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server."
+        )
 
 
 def get_default_fixure_system_config():
@@ -72,18 +150,20 @@ def _setup_redis(request):
     else:
         del param["external_redis_ports"]
     processes = []
+    enable_tls = "RAY_REDIS_CA_CERT" in os.environ
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        port, proc = _start_redis_instance(
-            REDIS_EXECUTABLE,
+        port, proc = start_redis_instance(
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
+            enable_tls=enable_tls,
         )
         processes.append(proc)
-        wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
-    address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    import os
+    scheme = "rediss://" if enable_tls else ""
+    address_str = ",".join(
+        map(lambda x: f"{scheme}127.0.0.1:{x}", external_redis_ports)
+    )
 
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
@@ -98,7 +178,7 @@ def _setup_redis(request):
 
 @pytest.fixture
 def maybe_external_redis(request):
-    if test_external_redis():
+    if enable_external_redis():
         with _setup_redis(request):
             yield
     else:
@@ -116,6 +196,17 @@ def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
+
+
+# Provide a shared Ray instance for a test class
+@pytest.fixture(scope="class")
+def class_ray_instance():
+    yield ray.init()
+    ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @contextmanager
@@ -123,11 +214,13 @@ def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
-    address_info = ray.init(**init_kwargs)
+    address_info = ray.init("local", **init_kwargs)
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -137,6 +230,27 @@ def ray_start_with_dashboard(request, maybe_external_redis):
         param["num_cpus"] = 1
     with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
+
+
+@pytest.fixture
+def make_sure_dashboard_http_port_unused():
+    """Make sure the dashboard agent http port is unused."""
+    for process in psutil.process_iter():
+        should_kill = False
+        try:
+            for conn in process.connections():
+                if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
+                    should_kill = True
+                    break
+        except Exception:
+            continue
+        if should_kill:
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
+    yield
 
 
 # The following fixture will start ray with 0 cpu.
@@ -269,6 +383,16 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
+def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+    param = getattr(request, "param", {})
+    env_vars = param.pop("env_vars", {})
+    for k, v in env_vars.items():
+        monkeypatch.setenv(k, v)
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_2_nodes(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
@@ -285,7 +409,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
         "_system_config": system_config,
         "object_store_memory": store_size,
     }
-    ray.init(**init_kwargs)
+    ray.init("local", **init_kwargs)
     yield store_size
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -293,16 +417,30 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(
-        request,
-        "param",
+    with call_ray_start_context(request) as address:
+        yield address
+
+
+@contextmanager
+def call_ray_start_context(request):
+    default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     )
+    parameter = getattr(request, "param", default_cmd)
+    env = None
+
+    if isinstance(parameter, dict):
+        if "env" in parameter:
+            env = {**parameter.get("env"), **os.environ}
+
+        parameter = parameter.get("cmd", default_cmd)
+
     command_args = parameter.split(" ")
+
     try:
         out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+            subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
         print(type(e), e)
@@ -318,7 +456,9 @@ def call_ray_start(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"], env=env)
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -327,7 +467,7 @@ def call_ray_start_with_external_redis(request):
     port_list = ports.split(",")
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
+        start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
@@ -338,6 +478,8 @@ def call_ray_start_with_external_redis(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -352,6 +494,8 @@ def init_and_serve():
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 # Used to test both Ray Client and non-Ray Client codepaths.
@@ -748,6 +892,10 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
+    if os.name == "nt":
+        # ":" is not legal in filenames in windows
+        test_name.replace(":", "$")
+
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
@@ -919,3 +1067,35 @@ def start_http_proxy(request):
         if proxy:
             proxy.terminate()
             proxy.wait()
+
+
+@pytest.fixture
+def set_runtime_env_plugins(request):
+    runtime_env_plugins = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS"] = runtime_env_plugins
+        yield runtime_env_plugins
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
+@pytest.fixture(params=[True, False])
+def enable_syncer_test(request, monkeypatch):
+    with_syncer = request.param
+    monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
+    ray._raylet.Config.initialize("")
+    yield
+    monkeypatch.delenv("RAY_use_ray_syncer")
+    ray._raylet.Config.initialize("")

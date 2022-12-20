@@ -1,19 +1,22 @@
 import os
-from typing import Optional
-
-from anyscale.controllers.session_controller import SessionController
+from typing import TYPE_CHECKING, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
+
+if TYPE_CHECKING:
+    from anyscale.controllers.session_controller import SessionController
 
 
 class SessionControllerFileManager(FileManager):
     def __init__(
         self,
         cluster_manager: ClusterManager,
-        session_controller: Optional[SessionController] = None,
+        session_controller: Optional["SessionController"] = None,
     ):
+        from anyscale.controllers.session_controller import SessionController
+
         super(SessionControllerFileManager, self).__init__(cluster_manager)
         self.session_controller = session_controller or SessionController()
 
@@ -38,7 +41,6 @@ class SessionControllerFileManager(FileManager):
             target=target,
             config=None,
             all_nodes=False,
-            no_warning=True,
         )
 
     def download(self, source: str, target: str):

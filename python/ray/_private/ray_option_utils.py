@@ -1,10 +1,14 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
-from typing import Dict, Any, Callable, Tuple, Union, Optional
+import warnings
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
 
 
@@ -100,20 +104,46 @@ _common_options = {
 }
 
 
+def issubclass_safe(obj: Any, cls_: type) -> bool:
+    try:
+        return issubclass(obj, cls_)
+    except TypeError:
+        return False
+
+
 _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
     # TODO(swang): Allow this to be set globally for an application.
-    "max_retries": _counting_option("max_retries", default_value=3),
+    "max_retries": _counting_option(
+        "max_retries", default_value=ray_constants.DEFAULT_TASK_MAX_RETRIES
+    ),
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
-    "num_returns": _counting_option("num_returns", False, default_value=1),
+    "num_returns": Option(
+        (int, str, type(None)),
+        lambda x: x is None or x == "dynamic" or x >= 0,
+        "The keyword 'num_returns' only accepts None, a non-negative integer, or "
+        '"dynamic" (for generators)',
+        default_value=1,
+    ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
         lambda x: x is None,
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
-    "retry_exceptions": Option(bool, default_value=False),
+    "retry_exceptions": Option(
+        (bool, list, tuple),
+        lambda x: (
+            isinstance(x, bool)
+            or (
+                isinstance(x, (list, tuple))
+                and all(issubclass_safe(x_, Exception) for x_ in x)
+            )
+        ),
+        "retry_exceptions must be either a boolean or a list of exceptions",
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {
@@ -160,7 +190,7 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
     placement_group = options.get("placement_group", "default")
     scheduling_strategy = options.get("scheduling_strategy")
     # TODO(suquark): @ray.remote(placement_group=None) is used in
-    # "python/ray/data/impl/remote_fn.py" and many other places,
+    # "python/ray.data._internal/remote_fn.py" and many other places,
     # while "ray.data.read_api.read_datasource" set "scheduling_strategy=SPREAD".
     # This might be a bug, but it is also ok to allow them co-exist.
     if (placement_group not in ("default", None)) and (scheduling_strategy is not None):
@@ -168,6 +198,41 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
             "Placement groups should be specified via the "
             "scheduling_strategy option. "
             "The placement_group option is deprecated."
+        )
+
+
+def _warn_if_using_deprecated_placement_group(
+    options: Dict[str, Any], caller_stacklevel: int
+):
+    placement_group = options["placement_group"]
+    placement_group_bundle_index = options["placement_group_bundle_index"]
+    placement_group_capture_child_tasks = options["placement_group_capture_child_tasks"]
+    if placement_group != "default":
+        warnings.warn(
+            "placement_group parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_bundle_index != -1:
+        warnings.warn(
+            "placement_group_bundle_index parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_capture_child_tasks:
+        warnings.warn(
+            "placement_group_capture_child_tasks parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
         )
 
 
@@ -220,6 +285,18 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
+
+    if "object_store_memory" in options:
+        warnings.warn(
+            "Setting 'object_store_memory'"
+            " for actors is deprecated since it doesn't actually"
+            " reserve the required object store memory."
+            f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+            "instead to bypass the object store memory size limitation.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
+
     _check_deprecate_placement_group(options)
 
 

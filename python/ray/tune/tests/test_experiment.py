@@ -3,10 +3,19 @@ import threading
 
 import ray
 from ray.rllib import _register_all
-from ray.tune import register_trainable
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune import register_trainable, SyncConfig
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.error import TuneError
 from ray.tune.utils import diagnose_serialization
+
+
+def test_remote_checkpoint_dir_with_query_string():
+    experiment = Experiment(
+        name="spam",
+        run=lambda config: config,
+        sync_config=SyncConfig(syncer="auto", upload_dir="s3://bucket?scheme=http"),
+    )
+    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
 
 
 class ExperimentTest(unittest.TestCase):
@@ -25,12 +34,12 @@ class ExperimentTest(unittest.TestCase):
         exp1 = Experiment(
             **{"name": "foo", "run": "f1", "config": {"script_min_iter_time_s": 0}}
         )
-        result = convert_to_experiment_list(exp1)
+        result = _convert_to_experiment_list(exp1)
         self.assertEqual(len(result), 1)
         self.assertEqual(type(result), list)
 
     def testConvertExperimentNone(self):
-        result = convert_to_experiment_list(None)
+        result = _convert_to_experiment_list(None)
         self.assertEqual(len(result), 0)
         self.assertEqual(type(result), list)
 
@@ -38,7 +47,7 @@ class ExperimentTest(unittest.TestCase):
         exp1 = Experiment(
             **{"name": "foo", "run": "f1", "config": {"script_min_iter_time_s": 0}}
         )
-        result = convert_to_experiment_list([exp1, exp1])
+        result = _convert_to_experiment_list([exp1, exp1])
         self.assertEqual(len(result), 2)
         self.assertEqual(type(result), list)
 
@@ -47,12 +56,12 @@ class ExperimentTest(unittest.TestCase):
             "name": {"run": "f1", "config": {"script_min_iter_time_s": 0}},
             "named": {"run": "f1", "config": {"script_min_iter_time_s": 0}},
         }
-        result = convert_to_experiment_list(experiment)
+        result = _convert_to_experiment_list(experiment)
         self.assertEqual(len(result), 2)
         self.assertEqual(type(result), list)
 
     def testConvertExperimentIncorrect(self):
-        self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
+        self.assertRaises(TuneError, lambda: _convert_to_experiment_list("hi"))
 
 
 class ValidateUtilTest(unittest.TestCase):

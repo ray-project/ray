@@ -1,24 +1,27 @@
-from enum import Enum
-from tempfile import TemporaryDirectory
-from filelock import FileLock
+import asyncio
 import hashlib
 import logging
 import os
-from pathlib import Path
 import shutil
+from enum import Enum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_get,
-    _internal_kv_exists,
-    _pin_runtime_env_uri,
-)
-from ray._private.thirdparty.pathspec import PathSpec
-from ray.ray_constants import (
+
+from filelock import FileLock
+
+from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
+from ray._private.gcs_utils import GcsAioClient
+from ray._private.thirdparty.pathspec import PathSpec
+from ray.experimental.internal_kv import (
+    _internal_kv_exists,
+    _internal_kv_put,
+    _pin_runtime_env_uri,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -28,14 +31,43 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
+RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING"
+)
+RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING"
+)
+
+# The name of the hidden top-level directory that appears when files are
+# zipped on MacOS.
+MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
+
 
 def _mib_string(num_bytes: float) -> str:
-    size_mib = float(num_bytes / 1024 ** 2)
+    size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
+
+
+class _AsyncFileLock:
+    """Asyncio version used to prevent blocking event loop."""
+
+    def __init__(self, lock_file: str):
+        self.file = FileLock(lock_file)
+
+    async def __aenter__(self):
+        while True:
+            try:
+                self.file.acquire(timeout=0)
+                return
+            except TimeoutError:
+                await asyncio.sleep(0.1)
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.file.release()
 
 
 class Protocol(Enum):
@@ -118,11 +150,22 @@ def _hash_directory(
         md5 = hashlib.md5()
         md5.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
-            with path.open("rb") as f:
-                data = f.read(BUF_SIZE)
-                while len(data) != 0:
-                    md5.update(data)
+            try:
+                f = path.open("rb")
+            except Exception as e:
+                logger.debug(
+                    f"Skipping contents of file {path} when calculating package hash "
+                    f"because the file could not be opened: {e}"
+                )
+            else:
+                try:
                     data = f.read(BUF_SIZE)
+                    while len(data) != 0:
+                        md5.update(data)
+                        data = f.read(BUF_SIZE)
+                finally:
+                    f.close()
+
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
@@ -133,74 +176,35 @@ def _hash_directory(
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
-    Parse resource uri into protocol and package name based on its format.
+    Parse package uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
-    For GCS URIs, netloc is the package name.
-        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-            -> ParseResult(
-                scheme='gcs',
-                netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
-            )
-            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.' replaced with '_', and
-    the path will have '/' replaced with '_'. The package name will be the
-    adjusted path with 'https_' prepended.
-        urlparse(
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-        )
-            -> ParseResult(
-                scheme='https',
-                netloc='github.com',
-                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
-            )
-            -> ("https",
-            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
-    package name will be the adjusted path with 's3_' prepended.
-        urlparse("s3://bucket/dir/file.zip")
-            -> ParseResult(
-                scheme='s3',
-                netloc='bucket',
-                path='/dir/file.zip'
-            )
-            -> ("s3", "bucket_dir_file.zip")
-    For GS URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'gs_' prepended.
-        urlparse("gs://public-runtime-env-test/test_module.zip")
-            -> ParseResult(
-                scheme='gs',
-                netloc='public-runtime-env-test',
-                path='/test_module.zip'
-            )
-            -> ("gs",
-            "gs_public-runtime-env-test_test_module.zip")
-    For FILE URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'file_' prepended.
-        urlparse("file:///path/to/test_module.zip")
-            -> ParseResult(
-                scheme='file',
-                netloc='path',
-                path='/path/to/test_module.zip'
-            )
-            -> ("file", "file__path_to_test_module.zip")
+
+    >>> parse_uri("https://test.com/file.zip")
+    (Protocol.HTTPS, "https_test_com_file.zip")
     """
     uri = urlparse(pkg_uri)
-    protocol = Protocol(uri.scheme)
-    if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
-    elif protocol == Protocol.HTTPS:
-        return (
-            protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
-    elif protocol == Protocol.FILE:
-        return (
-            protocol,
-            f"file_{uri.path.replace('/', '_')}",
-        )
+
+    if protocol in Protocol.remote_protocols():
+        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+
+        disallowed_chars = ["/", ":", "@", "+"]
+        for disallowed_char in disallowed_chars:
+            package_name = package_name.replace(disallowed_char, "_")
+
+        # Remove all periods except the last, which is part of the file extension
+        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
-        return (protocol, uri.netloc)
+        package_name = uri.netloc
+
+    return (protocol, package_name)
 
 
 def is_zip_uri(uri: str) -> bool:
@@ -299,8 +303,8 @@ def _store_package_in_gcs(
     """Stores package data in the Global Control Store (GCS).
 
     Args:
-        pkg_uri (str): The GCS key to store the data in.
-        data (bytes): The serialized package's bytes to store in the GCS.
+        pkg_uri: The GCS key to store the data in.
+        data: The serialized package's bytes to store in the GCS.
         logger (Optional[logging.Logger]): The logger used by this function.
 
     Return:
@@ -322,6 +326,10 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
+        if os.environ.get(RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR):
+            raise RuntimeError(
+                "Simulating failure to upload package for testing purposes."
+            )
         _internal_kv_put(pkg_uri, data)
     except Exception as e:
         raise RuntimeError(
@@ -347,9 +355,9 @@ def _zip_directory(
 ) -> None:
     """Zip the target directory and write it to the output_path.
 
-    directory (str): The directory to zip.
+    directory: The directory to zip.
     excludes (List(str)): The directories or file to be excluded.
-    output_path (str): The output path for the zip file.
+    output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
         directory inside the zip file.
     """
@@ -383,7 +391,7 @@ def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
-        pkg_uri (str): The uri of the package
+        pkg_uri: The uri of the package
 
     Return:
         True for package existing and False for not.
@@ -427,7 +435,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         .... _ray_pkg_af2734982a741.zip
 
     Args:
-        directory (str): The directory.
+        directory: The directory.
         excludes (list[str]): The dir or files that should be excluded.
 
     Returns:
@@ -450,13 +458,26 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     )
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
+    """Upload a local package to GCS.
+
+    Args:
+        pkg_uri: The URI of the package, e.g. gcs://my_package.zip
+        pkg_bytes: The data to be uploaded.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
+
+    """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError(
-            "upload_package_to_gcs should not be called with remote path."
+        raise ValueError(
+            "upload_package_to_gcs should not be called with a remote path."
         )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -508,6 +529,12 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
     """
     if excludes is None:
         excludes = []
@@ -543,18 +570,38 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
-def download_and_unpack_package(
+async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
+    gcs_aio_client: GcsAioClient,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
+
+    Args:
+        pkg_uri: URI of the package to download.
+        base_directory: Directory to use as the parent directory of the target
+            directory for the unpacked files.
+        gcs_aio_client: Client to use for downloading from the GCS.
+        logger: The logger to use.
+
+    Returns:
+        Path to the local directory containing the unpacked package files.
+
+    Raises:
+        IOError: If the download fails.
+        ImportError: If smart_open is not installed and a remote URI is used.
+        NotImplementedError: If the protocol of the URI is not supported.
+
     """
+    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+        raise IOError("Failed to download package. (Simulated failure for testing)")
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(pkg_file) + ".lock"):
+    async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
 
@@ -568,9 +615,21 @@ def download_and_unpack_package(
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                code = _internal_kv_get(pkg_uri)
+                code = await gcs_aio_client.internal_kv_get(
+                    pkg_uri.encode(), namespace=None, timeout=None
+                )
                 if code is None:
-                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
+                    raise IOError(
+                        f"Failed to download runtime_env file package {pkg_uri} "
+                        "from the GCS to the Ray worker node. The package may "
+                        "have prematurely been deleted from the GCS due to a "
+                        "long upload time or a problem with Ray. Try setting the "
+                        "environment variable "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
+                        " to a value larger than the upload time in seconds "
+                        "(the default is 30). If this fails, try re-running "
+                        "after making any change to a file in the file package."
+                    )
                 code = code or b""
                 pkg_file.write_bytes(code)
 
@@ -590,8 +649,8 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open as open_file
                         import boto3
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -601,8 +660,8 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -646,23 +705,38 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     If compressed package at package_path contains a single top-level
     directory, returns the name of the top-level directory. Otherwise,
     returns None.
+
+    Ignores a second top-level directory if it is named __MACOSX.
     """
 
     package_zip = ZipFile(package_path, "r")
     top_level_directory = None
 
+    def is_top_level_file(file_name):
+        return "/" not in file_name
+
+    def base_dir_name(file_name):
+        return file_name.split("/")[0]
+
     for file_name in package_zip.namelist():
         if top_level_directory is None:
             # Cache the top_level_directory name when checking
             # the first file in the zipped package
-            if "/" in file_name:
-                top_level_directory = file_name.split("/")[0]
-            else:
+            if is_top_level_file(file_name):
                 return None
+            else:
+                # Top-level directory, or non-top-level file or directory
+                dir_name = base_dir_name(file_name)
+                if dir_name == MAC_OS_ZIP_HIDDEN_DIR_NAME:
+                    continue
+                top_level_directory = dir_name
         else:
             # Confirm that all other files
             # belong to the same top_level_directory
-            if "/" not in file_name or file_name.split("/")[0] != top_level_directory:
+            if is_top_level_file(file_name) or base_dir_name(file_name) not in [
+                top_level_directory,
+                MAC_OS_ZIP_HIDDEN_DIR_NAME,
+            ]:
                 return None
 
     return top_level_directory
@@ -702,13 +776,28 @@ def unzip_package(
     remove_top_level_directory: bool,
     unlink_zip: bool,
     logger: Optional[logging.Logger] = default_logger,
-):
+) -> None:
     """
-    Unzip the compressed package contained at package_path and store the
-    contents in target_dir. If remove_top_level_directory is True, the function
-    will automatically remove the top_level_directory and store the contents
-    directly in target_dir. If unlink_zip is True, the function will unlink the
-    zip file stored at package_path.
+    Unzip the compressed package contained at package_path to target_dir.
+
+    If remove_top_level_directory is True and the top level consists of a
+    a single directory (or possibly also a second hidden directory named
+    __MACOSX at the top level arising from macOS's zip command), the function
+    will automatically remove the top-level directory and store the contents
+    directly in target_dir.
+
+    Otherwise, if remove_top_level_directory is False or if the top level
+    consists of multiple files or directories (not counting __MACOS),
+    the zip contents will be stored in target_dir.
+
+    Args:
+        package_path: String path of the compressed package to unzip.
+        target_dir: String path of the directory to store the unzipped contents.
+        remove_top_level_directory: Whether to remove the top-level directory
+            from the zip contents.
+        unlink_zip: Whether to unlink the zip file stored at package_path.
+        logger: Optional logger to use for logging.
+
     """
     try:
         os.mkdir(target_dir)
@@ -721,15 +810,13 @@ def unzip_package(
         zip_ref.extractall(target_dir)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
-        if top_level_directory is None:
-            raise ValueError(
-                "The package at package_path must contain "
-                "a single top level directory. Make sure there "
-                "are no hidden files at the same level as the "
-                "top level directory."
-            )
+        if top_level_directory is not None:
+            # Remove __MACOSX directory if it exists
+            macos_dir = os.path.join(target_dir, MAC_OS_ZIP_HIDDEN_DIR_NAME)
+            if os.path.isdir(macos_dir):
+                shutil.rmtree(macos_dir)
 
-        remove_dir_from_filepaths(target_dir, top_level_directory)
+            remove_dir_from_filepaths(target_dir, top_level_directory)
 
     if unlink_zip:
         Path(package_path).unlink()
@@ -739,7 +826,7 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """Deletes a specific URI from the local filesystem.
 
     Args:
-        pkg_uri (str): URI to delete.
+        pkg_uri: URI to delete.
 
     Returns:
         bool: True if the URI was successfully deleted, else False.

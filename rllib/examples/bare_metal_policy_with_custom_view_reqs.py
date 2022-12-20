@@ -2,11 +2,12 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
-from ray import tune
+from ray import air, tune
 
 
 def get_cli_args():
@@ -49,27 +50,30 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    # Create q custom Trainer class using our custom Policy.
-    class BareMetalPolicyTrainer(Trainer):
-        def get_default_policy_class(self, config):
+    # Create q custom Algorithm class using our custom Policy.
+    class BareMetalPolicyAlgorithm(Algorithm):
+        @classmethod
+        def get_default_policy_class(cls, config):
             return BareMetalPolicyWithCustomViewReqs
 
-    config = {
-        "env": "CartPole-v0",
+    config = (
+        AlgorithmConfig()
+        .environment("CartPole-v1")
+        .rollouts(num_rollout_workers=1, create_env_on_local_worker=True)
+        .training(
+            model={
+                # Necessary to get the whole trajectory of 'state_in_0' in the
+                # sample batch.
+                "max_seq_len": 1,
+            }
+        )
+        .debugging(log_level="DEBUG")
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            # Necessary to get the whole trajectory of 'state_in_0' in the
-            # sample batch.
-            "max_seq_len": 1,
-        },
-        "num_workers": 1,
-        # NOTE: Does this have consequences?
-        # I use it for not loading tensorflow/pytorch.
-        "framework": None,
-        "log_level": "DEBUG",
-        "create_env_on_driver": True,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+    # NOTE: Does this have consequences?
+    # I use it for not loading tensorflow/pytorch.
+    config.framework_str = None
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -77,6 +81,10 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # Train the Trainer with our policy.
-    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
-    print(results)
+    # Train the Algorithm with our policy.
+    results = tune.Tuner(
+        BareMetalPolicyAlgorithm,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop),
+    ).fit()
+    print(results.get_best_result())

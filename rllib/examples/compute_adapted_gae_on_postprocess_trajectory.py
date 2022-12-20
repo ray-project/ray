@@ -1,7 +1,7 @@
 """
 Adapted (time-dependent) GAE for PPO algorithm can be activated by setting
 use_adapted_gae=True in the policy config. Additionally, it is required that
-"callbacks" include the custom callback class in the Trainer's config.
+"callbacks" include the custom callback class in the Algorithm's config.
 Furthermore, the env must return in its info dictionary a key-value pair of
 the form "d_ts": ... where the value is the length (time) of recent agent step.
 
@@ -10,7 +10,7 @@ where agent's actions take various times and thus time steps are not
 equidistant (https://docdro.id/400TvlR)
 """
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
@@ -83,7 +83,7 @@ class MyCallbacks(DefaultCallbacks):
             )
             delta_t = (
                 postprocessed_batch[SampleBatch.REWARDS]
-                + gamma ** d_ts * vpred_t[1:]
+                + gamma**d_ts * vpred_t[1:]
                 - vpred_t[:-1]
             )
             # This formula for the advantage is an adaption of
@@ -121,7 +121,7 @@ def generalized_discount_cumsum(
         x (np.ndarray): A sequence of rewards or one-step TD residuals.
         deltas (np.ndarray): A sequence of time step deltas (length of time
             steps).
-        gamma (float): The discount factor gamma.
+        gamma: The discount factor gamma.
 
     Returns:
         np.ndarray: The sequence containing the 'time-dependent' discounted

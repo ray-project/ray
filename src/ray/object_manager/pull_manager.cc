@@ -25,7 +25,7 @@ PullManager::PullManager(
     const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const std::function<void(const ObjectID &)> cancel_pull_request,
-    const std::function<void(const ObjectID &)> fail_pull_request,
+    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time_seconds,
     int pull_timeout_ms,
@@ -47,6 +47,7 @@ PullManager::PullManager(
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            BundlePriority prio,
+                           const TaskMetricsKey &task_key,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
   // To avoid edge cases dealing with duplicated object ids in the bundle,
   // canonicalize the set up-front by dropping all duplicates.
@@ -60,7 +61,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     }
   }
 
-  BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated));
+  BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated), task_key);
   const uint64_t req_id = next_req_id_++;
   RAY_LOG(DEBUG) << "Start pull request " << req_id
                  << ". Bundle size: " << bundle_pull_request.objects.size();
@@ -495,7 +496,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
         RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
   } else if (get_time_seconds_() > request.expiration_time_seconds) {
     // Object has no locations and is not being reconstructed by its owner.
-    fail_pull_request_(object_id);
+    fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_TIMED_OUT);
     request.expiration_time_seconds = 0;
   }
 }
@@ -780,6 +781,18 @@ std::string PullManager::DebugString() const {
     }
   }
   return result.str();
+}
+
+void PullManager::SetOutOfDisk(const ObjectID &object_id) {
+  bool is_actively_pulled = false;
+  {
+    absl::MutexLock lock(&active_objects_mu_);
+    is_actively_pulled = active_object_pull_requests_.count(object_id) > 0;
+  }
+  if (is_actively_pulled) {
+    RAY_LOG(DEBUG) << "Pull of object failed due to out of disk: " << object_id;
+    fail_pull_request_(object_id, rpc::ErrorType::OUT_OF_DISK_ERROR);
+  }
 }
 
 }  // namespace ray

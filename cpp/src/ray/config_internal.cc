@@ -16,10 +16,12 @@
 
 #include <boost/dll/runtime_symbol_info.hpp>
 #include <charconv>
+#include <filesystem>
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -70,8 +72,38 @@ ABSL_FLAG(int64_t,
           -1,
           "The startup token assigned to this worker process by the raylet.");
 
+ABSL_FLAG(std::string,
+          ray_default_actor_lifetime,
+          "",
+          "The default actor lifetime type, `detached` or `non_detached`.");
+
+ABSL_FLAG(std::string, ray_runtime_env, "", "The serialized runtime env.");
+
+ABSL_FLAG(int,
+          ray_runtime_env_hash,
+          -1,
+          "The computed hash of the runtime env for this worker.");
+
+using json = nlohmann::json;
+
 namespace ray {
 namespace internal {
+
+rpc::JobConfig_ActorLifetime ParseDefaultActorLifetimeType(
+    const std::string &default_actor_lifetime_origin) {
+  std::string default_actor_lifetime;
+  default_actor_lifetime.resize(default_actor_lifetime_origin.size());
+  transform(default_actor_lifetime_origin.begin(),
+            default_actor_lifetime_origin.end(),
+            default_actor_lifetime.begin(),
+            ::tolower);
+  RAY_CHECK(default_actor_lifetime == "non_detached" ||
+            default_actor_lifetime == "detached")
+      << "The default_actor_lifetime_string config must be `detached` or `non_detached`.";
+  return default_actor_lifetime == "non_detached"
+             ? rpc::JobConfig_ActorLifetime_NON_DETACHED
+             : rpc::JobConfig_ActorLifetime_DETACHED;
+}
 
 void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
@@ -87,6 +119,13 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.head_args.empty()) {
     head_args = config.head_args;
   }
+  if (config.default_actor_lifetime == ActorLifetime::DETACHED) {
+    default_actor_lifetime = rpc::JobConfig_ActorLifetime_DETACHED;
+  }
+  if (config.runtime_env) {
+    runtime_env = config.runtime_env;
+  }
+
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
     absl::ParseCommandLine(argc, argv);
@@ -129,7 +168,16 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
     startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    if (!FLAGS_ray_default_actor_lifetime.CurrentValue().empty()) {
+      default_actor_lifetime =
+          ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
+    }
+    if (!FLAGS_ray_runtime_env.CurrentValue().empty()) {
+      runtime_env = RuntimeEnv::Deserialize(FLAGS_ray_runtime_env.CurrentValue());
+    }
+    runtime_env_hash = absl::GetFlag<int>(FLAGS_ray_runtime_env_hash);
   }
+  worker_type = config.is_worker_ ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
@@ -151,10 +199,23 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       // driver.
       std::vector<std::string> absolute_path;
       for (const auto &path : code_search_path) {
-        absolute_path.emplace_back(boost::filesystem::absolute(path).string());
+        absolute_path.emplace_back(std::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;
     }
+  }
+  if (worker_type == WorkerType::DRIVER) {
+    ray_namespace =
+        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
+  }
+
+  auto job_config_json_string = std::getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+  if (job_config_json_string) {
+    json job_config_json = json::parse(job_config_json_string);
+    runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());
+    job_config_metadata = job_config_json.at("metadata")
+                              .get<std::unordered_map<std::string, std::string>>();
+    RAY_CHECK(job_config_json.size() == 2);
   }
 };
 
@@ -165,6 +226,15 @@ void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto ret = std::from_chars(
       address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
+}
+
+void ConfigInternal::UpdateSessionDir(const std::string dir) {
+  if (session_dir.empty()) {
+    session_dir = dir;
+  }
+  if (logs_dir.empty()) {
+    logs_dir = session_dir + "/logs";
+  }
 }
 }  // namespace internal
 }  // namespace ray

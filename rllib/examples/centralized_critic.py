@@ -19,13 +19,13 @@ from gym.spaces import Discrete
 import os
 
 import ray
-from ray import tune
-from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_tf_policy import (
-    PPOStaticGraphTFPolicy,
-    PPOEagerTFPolicy,
+from ray import air, tune
+from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo.ppo_tf_policy import (
+    PPOTF1Policy,
+    PPOTF2Policy,
 )
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.examples.models.centralized_critic_models import (
@@ -50,7 +50,7 @@ OPPONENT_ACTION = "opponent_action"
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -93,7 +93,10 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        [(_, opponent_batch)] = list(other_agent_batches.values())
+        if policy.config["enable_connectors"]:
+            [(_, _, opponent_batch)] = list(other_agent_batches.values())
+        else:
+            [(_, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]
@@ -209,8 +212,8 @@ def get_ccppo_policy(base):
     return CCPPOTFPolicy
 
 
-CCPPOStaticGraphTFPolicy = get_ccppo_policy(PPOStaticGraphTFPolicy)
-CCPPOEagerTFPolicy = get_ccppo_policy(PPOEagerTFPolicy)
+CCPPOStaticGraphTFPolicy = get_ccppo_policy(PPOTF1Policy)
+CCPPOEagerTFPolicy = get_ccppo_policy(PPOTF2Policy)
 
 
 class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
@@ -231,9 +234,10 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
         )
 
 
-class CCTrainer(PPOTrainer):
-    @override(PPOTrainer)
-    def get_default_policy_class(self, config):
+class CentralizedCritic(PPO):
+    @classmethod
+    @override(PPO)
+    def get_default_policy_class(cls, config):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
         elif config["framework"] == "tf":
@@ -243,7 +247,7 @@ class CCTrainer(PPOTrainer):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -253,38 +257,36 @@ if __name__ == "__main__":
         else CentralizedCriticModel,
     )
 
-    config = {
-        "env": TwoStepGame,
-        "batch_mode": "complete_episodes",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "multiagent": {
-            "policies": {
+    config = (
+        PPOConfig()
+        .environment(TwoStepGame)
+        .framework(args.framework)
+        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .training(model={"custom_model": "cc_model"})
+        .multi_agent(
+            policies={
                 "pol1": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
                 "pol2": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            "policy_mapping_fn": (lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
-        },
-        "model": {
-            "custom_model": "cc_model",
-        },
-        "framework": args.framework,
-    }
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -292,7 +294,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        CentralizedCritic,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

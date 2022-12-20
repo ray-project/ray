@@ -7,9 +7,10 @@ Requires the Ax library to be installed (`pip install ax-platform sqlalchemy`).
 import numpy as np
 import time
 
-from ray import tune
+from ray import air, tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.ax import AxSearch
+from ray.tune.search.ax import AxSearch
 
 
 def hartmann6(x):
@@ -42,8 +43,12 @@ def hartmann6(x):
 def easy_objective(config):
     for i in range(config["iterations"]):
         x = np.array([config.get("x{}".format(i + 1)) for i in range(6)])
-        tune.report(
-            timesteps_total=i, hartmann6=hartmann6(x), l2norm=np.sqrt((x ** 2).sum())
+        session.report(
+            {
+                "timesteps_total": i,
+                "hartmann6": hartmann6(x),
+                "l2norm": np.sqrt((x**2).sum()),
+            }
         )
         time.sleep(0.02)
 
@@ -74,17 +79,22 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
     # Limit to 4 concurrent trials
-    algo = tune.suggest.ConcurrencyLimiter(algo, max_concurrent=4)
+    algo = tune.search.ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="ax",
-        metric="hartmann6",  # provided in the 'easy_objective' function
-        mode="min",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 50,
-        config={
+        run_config=air.RunConfig(
+            name="ax",
+            stop={"timesteps_total": 100},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="hartmann6",  # provided in the 'easy_objective' function
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=10 if args.smoke_test else 50,
+        ),
+        param_space={
             "iterations": 100,
             "x1": tune.uniform(0.0, 1.0),
             "x2": tune.uniform(0.0, 1.0),
@@ -93,7 +103,6 @@ if __name__ == "__main__":
             "x5": tune.uniform(0.0, 1.0),
             "x6": tune.uniform(0.0, 1.0),
         },
-        stop={"timesteps_total": 100},
     )
-
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

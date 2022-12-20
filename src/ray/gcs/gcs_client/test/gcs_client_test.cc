@@ -105,6 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
+    rpc::DrainAndResetServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
@@ -138,8 +139,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
@@ -226,6 +226,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
     // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
@@ -458,6 +459,43 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
+
+TEST_P(GcsClientTest, TestCheckAlive) {
+  auto node_info1 = Mocker::GenNodeInfo();
+  node_info1->set_node_manager_address("172.1.2.3");
+  node_info1->set_node_manager_port(31292);
+
+  auto node_info2 = Mocker::GenNodeInfo();
+  node_info2->set_node_manager_address("172.1.2.4");
+  node_info2->set_node_manager_port(31293);
+
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
+  rpc::CheckAliveRequest request;
+  *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
+  *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
+  {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 1s);
+    rpc::CheckAliveReply reply;
+    ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
+    ASSERT_EQ(2, reply.raylet_alive_size());
+    ASSERT_FALSE(reply.raylet_alive().at(0));
+    ASSERT_FALSE(reply.raylet_alive().at(1));
+  }
+
+  ASSERT_TRUE(RegisterNode(*node_info1));
+  {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 1s);
+    rpc::CheckAliveReply reply;
+    ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
+    ASSERT_EQ(2, reply.raylet_alive_size());
+    ASSERT_TRUE(reply.raylet_alive().at(0));
+    ASSERT_FALSE(reply.raylet_alive().at(1));
+  }
+}
 
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.

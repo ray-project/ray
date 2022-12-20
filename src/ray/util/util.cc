@@ -397,4 +397,10 @@ void QuickExit() {
   _Exit(1);
 }
 
+std::string FormatFloat(float value, int32_t precision) {
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(precision) << value;
+  return ss.str();
+}
+
 }  // namespace ray

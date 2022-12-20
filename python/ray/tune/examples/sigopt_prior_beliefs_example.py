@@ -6,9 +6,10 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 
 import numpy as np
-from ray import tune
+from ray import air, tune
+from ray.air import session
 
-from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch
 
 np.random.seed(0)
 vector1 = np.random.normal(0.0, 0.1, 100)
@@ -34,7 +35,7 @@ def easy_objective(config):
         w3 = 1 - total
 
     average, std = evaluate(w1, w2, w3)
-    tune.report(average=average, std=std)
+    session.report({"average": average, "std": std})
 
 
 if __name__ == "__main__":
@@ -93,10 +94,17 @@ if __name__ == "__main__":
         mode=["obs", "min"],
     )
 
-    analysis = tune.run(
-        easy_objective, name="my_exp", search_alg=algo, num_samples=samples, config={}
+    tuner = tune.Tuner(
+        easy_objective,
+        run_config=air.RunConfig(
+            name="my_exp",
+        ),
+        tune_config=tune.TuneConfig(search_alg=algo, num_samples=samples),
+        param_space={},
     )
+    results = tuner.fit()
 
     print(
-        "Best hyperparameters found were: ", analysis.get_best_config("average", "min")
+        "Best hyperparameters found were: ",
+        results.get_best_result("average", "min").config,
     )

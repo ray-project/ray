@@ -29,14 +29,14 @@ def same_padding(
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
     Args:
-        in_size (tuple): Rows (Height), Column (Width) for input
+        in_size: Rows (Height), Column (Width) for input
         stride_size (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
             for stride. If int, height == width.
-        filter_size (tuple): Rows (Height), column (Width) for filter
+        filter_size: Rows (Height), column (Width) for filter
 
     Returns:
-        padding (tuple): For input into torch.nn.ZeroPad2d.
-        output (tuple): Output shape after padding and convolution.
+        padding: For input into torch.nn.ZeroPad2d.
+        output: Output shape after padding and convolution.
     """
     in_height, in_width = in_size
     if isinstance(filter_size, int):
@@ -83,18 +83,18 @@ class SlimConv2d(nn.Module):
         """Creates a standard Conv2d layer, similar to torch.nn.Conv2d
 
         Args:
-            in_channels(int): Number of input channels
-            out_channels (int): Number of output channels
-            kernel (Union[int, Tuple[int, int]]): If int, the kernel is
+            in_channels: Number of input channels
+            out_channels: Number of output channels
+            kernel: If int, the kernel is
                 a tuple(x,x). Elsewise, the tuple can be specified
-            stride (Union[int, Tuple[int, int]]): Controls the stride
+            stride: Controls the stride
                 for the cross-correlation. If int, the stride is a
                 tuple(x,x). Elsewise, the tuple can be specified
-            padding (Union[int, Tuple[int, int]]): Controls the amount
+            padding: Controls the amount
                 of implicit zero-paddings during the conv operation
-            initializer (Any): Initializer function for kernel weights
-            activation_fn (Any): Activation function at the end of layer
-            bias_init (float): Initalize bias weights to bias_init const
+            initializer: Initializer function for kernel weights
+            activation_fn: Activation function at the end of layer
+            bias_init: Initalize bias weights to bias_init const
         """
         super(SlimConv2d, self).__init__()
         layers = []
@@ -140,12 +140,12 @@ class SlimFC(nn.Module):
         """Creates a standard FC layer, similar to torch.nn.Linear
 
         Args:
-            in_size(int): Input size for FC Layer
-            out_size (int): Output size for FC Layer
-            initializer (Any): Initializer function for FC layer weights
-            activation_fn (Any): Activation function at the end of layer
-            use_bias (bool): Whether to add bias weights or not
-            bias_init (float): Initalize bias weights to bias_init const
+            in_size: Input size for FC Layer
+            out_size: Output size for FC Layer
+            initializer: Initializer function for FC layer weights
+            activation_fn: Activation function at the end of layer
+            use_bias: Whether to add bias weights or not
+            bias_init: Initalize bias weights to bias_init const
         """
         super(SlimFC, self).__init__()
         layers = []

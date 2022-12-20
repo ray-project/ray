@@ -1,26 +1,26 @@
-from importlib import import_module
 import os
-from pathlib import Path
+import shutil
 import sys
 import tempfile
-import shutil
+import time
+from importlib import import_module
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
 import ray
-import time
+from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.working_dir import (
-    WorkingDirManager,
-    set_pythonpath_in_context,
-)
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
-from unittest import mock
-
+from ray._private.runtime_env.working_dir import (
+    WorkingDirPlugin,
+    set_pythonpath_in_context,
+)
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -45,11 +45,12 @@ def insert_test_dir_in_pythonpath():
         yield
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-
+    gcs_aio_client = gcs_utils.GcsAioClient(
+        address=ray.worker.global_worker.gcs_client.address
+    )
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
@@ -64,7 +65,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirManager(tmpdir)
+    manager = WorkingDirPlugin(tmpdir, gcs_aio_client)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
@@ -94,7 +95,6 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
         "working_dir_and_py_modules",
     ],
 )
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(
     insert_test_dir_in_pythonpath, start_cluster, tmp_working_dir, option: str
 ):
@@ -225,7 +225,6 @@ def test_lazy_reads(
 
 
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_captured_import(start_cluster, tmp_working_dir, option: str):
     """Tests importing a module in the driver and capturing it in a task/actor.
 
@@ -290,7 +289,6 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
         assert ray.get(a.test_import.remote()) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_empty_working_dir(start_cluster):
     """Tests the case where we pass an empty directory as the working_dir."""
     cluster, address = start_cluster
@@ -318,7 +316,6 @@ def test_empty_working_dir(start_cluster):
 
 
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""
     cluster, address = start_cluster
@@ -363,7 +360,6 @@ def test_input_validation(start_cluster, option: str):
 
 
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_exclusion(start_cluster, tmp_working_dir, option):
     """Tests various forms of the 'excludes' parameter."""
     cluster, address = start_cluster
@@ -449,11 +445,11 @@ def test_exclusion(start_cluster, tmp_working_dir, option):
         # exclude by relative path
         "test2",
         # exclude by dir
-        str(Path("tmp_dir") / "sub_dir"),
+        str((Path("tmp_dir") / "sub_dir").as_posix()),
         # exclude part of the dir
-        str(Path("tmp_dir") / "test_1"),
+        str((Path("tmp_dir") / "test_1").as_posix()),
         # exclude part of the dir
-        str(Path("tmp_dir") / "test_2"),
+        str((Path("tmp_dir") / "test_2").as_posix()),
     ]
 
     if option == "working_dir":
@@ -574,4 +570,7 @@ def test_override_failure(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

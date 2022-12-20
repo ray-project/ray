@@ -22,7 +22,7 @@ class StreamPool:
 
 
     Args:
-        device_idx (int): the absolute index of the device for this pool.
+        device_idx: the absolute index of the device for this pool.
     """
 
     def __init__(self, device_idx):

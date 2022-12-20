@@ -33,17 +33,20 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
+      const rpc::Address &caller_address,
       TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results,
+      const std::string &serialized_retry_exception_allowlist,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error,
+      bool *is_retryable_error,
+      bool *is_application_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.
@@ -51,7 +54,8 @@ struct CoreWorkerOptions {
       // Defined concurrency groups of this actor. Note this is only
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute)>;
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -80,7 +84,9 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        session_name(""),
+        entrypoint("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -143,8 +149,9 @@ struct CoreWorkerOptions {
   std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
-  // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main;
+  // Function that tries to interrupt the currently running Python thread if its
+  // task ID matches the one given.
+  std::function<bool(const TaskID &task_id)> kill_main;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -173,6 +180,9 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
+  /// Session name (Cluster ID) of the cluster.
+  std::string session_name;
+  std::string entrypoint;
 };
 }  // namespace core
 }  // namespace ray

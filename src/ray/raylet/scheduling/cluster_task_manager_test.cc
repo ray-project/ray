@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers) const {
+      bool filter_dead_workers, bool filter_io_workers) const {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
@@ -162,6 +162,7 @@ RayTask CreateTask(
                                  TaskID::Nil(),
                                  address,
                                  0,
+                                 /*returns_dynamic=*/false,
                                  required_resources,
                                  {},
                                  "",
@@ -179,7 +180,7 @@ RayTask CreateTask(
     }
   }
 
-  spec_builder.SetNormalTaskSpec(0, false, scheduling_strategy);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy);
 
   return RayTask(spec_builder.Build());
 }
@@ -189,8 +190,9 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
       : missing_objects_(missing_objects) {}
 
-  bool RequestTaskDependencies(
-      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+  bool RequestTaskDependencies(const TaskID &task_id,
+                               const std::vector<rpc::ObjectReference> &required_objects,
+                               const TaskMetricsKey &task_key) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
       if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
@@ -946,7 +948,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
-  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::TooManyStartingWorkerProcesses);
+  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::WorkerPendingRegistration);
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 1);
@@ -2099,6 +2101,41 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
     local_task_manager_->TaskFinished(worker, &buf);
   }
   AssertNoLeaks();
+}
+
+/// Test that we are able to spillback tasks
+/// while hitting the scheduling class cap.
+TEST_F(ClusterTaskManagerTest, SchedulingClassCapSpillback) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  std::vector<RayTask> tasks;
+  std::vector<std::unique_ptr<rpc::RequestWorkerLeaseReply>> replies;
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  // The first task will be dispatched right away,
+  // and the second task will hit the scheduling class cap.
+  for (int i = 0; i < 2; ++i) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
+    tasks.push_back(task);
+    replies.push_back(std::make_unique<rpc::RequestWorkerLeaseReply>());
+    task_manager_.QueueAndScheduleTask(task, false, false, replies[i].get(), callback);
+    pool_.TriggerCallbacks();
+  }
+
+  ASSERT_EQ(replies[0]->worker_address().port(), 1234);
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 1);
+
+  // A new node is added so we should be able to spillback to it.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 8);
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
 }
 
 /// Test that we exponentially increase the amount of time it takes to increase

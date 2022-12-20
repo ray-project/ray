@@ -3,43 +3,75 @@
 A Guide To Parallelism and Resources
 ------------------------------------
 
-Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial)
+Parallelism is determined by per trial resources (defaulting to 1 CPU, 0 GPU per trial)
 and the resources available to Tune (``ray.cluster_resources()``).
 
-By default, Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine.
+By default, Tune automatically runs `N` concurrent trials, where `N` is the number
+of CPUs (cores) on your machine.
 
 .. code-block:: python
 
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
-    tune.run(trainable, num_samples=10)
+    tuner = tune.Tuner(
+        trainable,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
-You can override this parallelism with ``resources_per_trial``. Here you can
+You can override this per trial resources with ``tune.with_resources``. Here you can
 specify your resource requests using either a dictionary or a
-:class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+:class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
 
     # If you have 4 CPUs on your machine, this will run 2 concurrent trials at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2})
+    trainable_with_resources = tune.with_resources(trainable, {"cpu": 2})
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
+    trainable_with_resources = tune.with_resources(trainable, {"cpu": 4})
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
     # Fractional values are also supported, (i.e., {"cpu": 0.5}).
-    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
+    # If you have 4 CPUs on your machine, this will run 8 concurrent trials at a time.
+    trainable_with_resources = tune.with_resources(trainable, {"cpu": 0.5})
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
+
+    # Custom resource allocation via lambda functions are also supported.
+    # If you want to allocate gpu resources to trials based on a setting in your config
+    trainable_with_resources = tune.with_resources(trainable,
+        resources=lambda spec: {"gpu": 1} if spec.config.use_gpu else {"gpu": 0})
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
 
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
-Even if the trial cannot be scheduled right now, Ray Tune will still try to start
-the respective placement group. If not enough resources are available, this will trigger
-:ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
+Tune will allocate the specified GPU and CPU as specified by ``tune.with_resources`` to each individual trial.
+Similarly, you can also use the ``ScalingConfig`` to specify trial resources.
+See :ref:`ScalingConfig <train-config>` for more information.
+Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger
+:ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
 If your trainable function starts more remote workers, you will need to pass so-called placement group
 factory objects to request these resources.
-See the :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+See the :class:`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 for further information.
 This also applies if you are using other libraries making use of Ray, such as Modin.
 Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
@@ -53,16 +85,26 @@ Failure to set resources correctly may result in a deadlock, "hanging" the clust
 How to leverage GPUs?
 ~~~~~~~~~~~~~~~~~~~~~
 
-To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``.
+To leverage GPUs, you must set ``gpu`` in ``tune.with_resources(trainable, resources_per_trial)``.
 This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
     # If you have 8 GPUs, this will run 8 trials at once.
-    tune.run(trainable, num_samples=10, resources_per_trial={"gpu": 1})
+    trainable_with_gpu = tune.with_resources(trainable, {"gpu": 1})
+    tuner = tune.Tuner(
+        trainable_with_gpu,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
-    # If you have 4 CPUs on your machine and 1 GPU, this will run 1 trial at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2, "gpu": 1})
+    # If you have 4 CPUs and 1 GPU on your machine, this will run 1 trial at a time.
+    trainable_with_cpu_gpu = tune.with_resources(trainable, {"cpu": 2, "gpu": 1})
+    tuner = tune.Tuner(
+        trainable_with_cpu_gpu,
+        tune_config=tune.TuneConfig(num_samples=10)
+    )
+    results = tuner.fit()
 
 You can find an example of this in the :doc:`Keras MNIST example </tune/examples/tune_mnist_keras>`.
 
@@ -75,14 +117,20 @@ you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
 How to run distributed tuning on a cluster?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To attach to an existing Ray cluster, simply run ``ray.init`` before ``tune.run``.
+To attach to an existing Ray cluster, simply run ``ray.init`` before ``Tuner.fit()``.
 See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
 
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
-    tune.run(trainable, num_samples=100, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}]))
+    # We choose to use a `PlacementGroupFactory` here to specify trial resources
+    resource_group = tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}])
+    trainable_with_resources = tune.with_resources(trainable, resource_group)
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        tune_config=tune.TuneConfig(num_samples=100)
+    )
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed-ref>`.
 
@@ -101,7 +149,7 @@ How to limit concurrency?
 If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
 For example, you may want to serialize the evaluation of trials to do sequential optimization.
 
-In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+In this case, ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency:
 
 .. code-block:: python
 
@@ -115,7 +163,7 @@ In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of con
 
 .. note::
 
-    It is also possible to directly use ``tune.run(max_concurrent_trials=4, ...)``, which automatically wraps
+    It is also possible to directly use ``tune.TuneConfig(max_concurrent_trials=4, ...)``, which is taken in by ``Tuner``. This automatically wraps
     the underlying search algorithm in a ``ConcurrencyLimiter`` for you.
 
 To understand concurrency limiting in depth, please see :ref:`limiter` for more details.

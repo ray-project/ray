@@ -1,21 +1,18 @@
-from pathlib import Path
 import os
 import sys
-import time
 import tempfile
+import time
+from pathlib import Path
+from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from unittest import mock
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.ray_constants import (
-    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
-)
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
+from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
+from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
 from ray._private.utils import get_directory_size_bytes
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -24,6 +21,10 @@ from ray._private.utils import get_directory_size_bytes
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
+
+# Time to set for temporary URI before deletion.
+# Set to 40s on windows and 20s on other platforms to avoid flakiness.
+TEMP_URI_EXPIRATION_S = 40 if sys.platform == "win32" else 20
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope
@@ -72,8 +73,22 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
+def get_local_file_whitelist(cluster, option):
+    # On Windows the runtime directory itself is sometimes not deleted due
+    # to it being in use therefore whitelist it for the tests.
+    if sys.platform == "win32" and option != "py_modules":
+        runtime_dir = (
+            Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
+            / "working_dir_files"
+        )
+        pkg_dirs = list(Path(runtime_dir).iterdir())
+        if pkg_dirs:
+            return {pkg_dirs[0].name}
+    return {}
+
+
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -165,10 +180,10 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self,
@@ -226,10 +241,10 @@ class TestGC:
             ray.kill(actors[i])
             print(f"Issued ray.kill for actor {i}.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -324,10 +339,10 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
@@ -374,9 +389,7 @@ class TestGC:
 
             # Without the cache size limit, we would expect the local dir to be
             # 12 MB.  Since we do have a size limit, the first package must be
-            # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
-            time.sleep(5)
-            print("Slept for 5 seconds.")
+            # GC'ed, leaving us with 4 MB.
 
             for idx, node in enumerate(cluster.list_all_nodes()):
                 local_dir = os.path.join(
@@ -384,7 +397,11 @@ class TestGC:
                 )
                 print("Created local_dir path.")
 
-                assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                def local_dir_size_near_4mb():
+                    return 3 < get_directory_size_bytes(local_dir) / (1024**2) < 5
+
+                wait_for_condition(local_dir_size_near_4mb)
+
                 print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
@@ -432,7 +449,7 @@ class TestSkipLocalGC:
         assert not check_local_files_gced(cluster)
 
 
-@pytest.mark.parametrize("expiration_s", [0, 20])
+@pytest.mark.parametrize("expiration_s", [0, TEMP_URI_EXPIRATION_S])
 @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
 def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
@@ -455,16 +472,24 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     # Need to re-connect to use internal_kv.
     ray.init(address=address)
 
-    print("Starting Internal KV checks at time ", time.time() - start)
+    time_until_first_check = time.time() - start
+    print("Starting Internal KV checks at time ", time_until_first_check)
+    assert (
+        time_until_first_check < TEMP_URI_EXPIRATION_S
+    ), "URI expired before we could check it. Try bumping the expiration time."
     if expiration_s > 0:
         assert not check_internal_kv_gced()
-        wait_for_condition(check_internal_kv_gced, timeout=2 * expiration_s)
-        assert expiration_s < time.time() - start < 2 * expiration_s
-        print("Internal KV was GC'ed at time ", time.time() - start)
+        wait_for_condition(check_internal_kv_gced, timeout=4 * expiration_s)
+        time_until_gc = time.time() - start
+        assert expiration_s < time_until_gc < 4 * expiration_s
+        print("Internal KV was GC'ed at time ", time_until_gc)
     else:
         wait_for_condition(check_internal_kv_gced)
         print("Internal KV was GC'ed at time ", time.time() - start)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

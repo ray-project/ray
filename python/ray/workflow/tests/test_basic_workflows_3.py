@@ -7,7 +7,7 @@ from ray import workflow
 from ray.tests.conftest import *  # noqa
 
 
-def test_wf_run(workflow_start_regular, tmp_path):
+def test_wf_run(workflow_start_regular_shared, tmp_path):
     counter = tmp_path / "counter"
     counter.write_text("0")
 
@@ -16,32 +16,14 @@ def test_wf_run(workflow_start_regular, tmp_path):
         v = int(counter.read_text()) + 1
         counter.write_text(str(v))
 
-    workflow.create(f.bind()).run("abc")
+    workflow.run(f.bind(), workflow_id="abc")
     assert counter.read_text() == "1"
     # This will not rerun the job from beginning
-    workflow.create(f.bind()).run("abc")
+    workflow.run(f.bind(), workflow_id="abc")
     assert counter.read_text() == "1"
 
 
-def test_wf_no_run():
-    # workflow should be able to run without explicit init
-    ray.shutdown()
-
-    @ray.remote
-    def f1():
-        pass
-
-    f1.bind()
-
-    @ray.remote
-    def f2(*w):
-        pass
-
-    f = workflow.create(f2.bind(*[f1.bind() for _ in range(10)]))
-    f.run()
-
-
-def test_dedupe_indirect(workflow_start_regular, tmp_path):
+def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     counter = Path(tmp_path) / "counter.txt"
     lock = Path(tmp_path) / "lock.txt"
     counter.write_text("0")
@@ -61,19 +43,19 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
     def join(*a):
         return counter.read_text()
 
-    # Here a is passed to two steps and we need to ensure
+    # Here a is passed to two tasks and we need to ensure
     # it's only executed once
     a = incr.bind()
     i1 = identity.bind(a)
     i2 = identity.bind(a)
-    assert "1" == workflow.create(join.bind(i1, i2)).run()
-    assert "2" == workflow.create(join.bind(i1, i2)).run()
+    assert "1" == workflow.run(join.bind(i1, i2))
+    assert "2" == workflow.run(join.bind(i1, i2))
     # pass a multiple times
-    assert "3" == workflow.create(join.bind(a, a, a, a)).run()
-    assert "4" == workflow.create(join.bind(a, a, a, a)).run()
+    assert "3" == workflow.run(join.bind(a, a, a, a))
+    assert "4" == workflow.run(join.bind(a, a, a, a))
 
 
-def test_run_off_main_thread(workflow_start_regular):
+def test_run_off_main_thread(workflow_start_regular_shared):
     @ray.remote
     def fake_data(num: int):
         return list(range(num))
@@ -84,8 +66,7 @@ def test_run_off_main_thread(workflow_start_regular):
     def run():
         global succ
         # Setup the workflow.
-        data = workflow.create(fake_data.bind(10))
-        assert data.run(workflow_id="run") == list(range(10))
+        assert workflow.run(fake_data.bind(10), workflow_id="run") == list(range(10))
 
     import threading
 
@@ -93,6 +74,25 @@ def test_run_off_main_thread(workflow_start_regular):
     t.start()
     t.join()
     assert workflow.get_status("run") == workflow.SUCCESSFUL
+
+
+def test_task_id_generation(workflow_start_regular_shared, request):
+    @ray.remote
+    def simple(x):
+        return x + 1
+
+    x = simple.options(**workflow.options(task_id="simple")).bind(-1)
+    n = 20
+    for i in range(1, n):
+        x = simple.options(**workflow.options(task_id="simple")).bind(x)
+
+    workflow_id = "test_task_id_generation"
+    ret = workflow.run_async(x, workflow_id=workflow_id)
+    outputs = [workflow.get_output_async(workflow_id, task_id="simple")]
+    for i in range(1, n):
+        outputs.append(workflow.get_output_async(workflow_id, task_id=f"simple_{i}"))
+    assert ray.get(ret) == n - 1
+    assert ray.get(outputs) == list(range(n))
 
 
 if __name__ == "__main__":

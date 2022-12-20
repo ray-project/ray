@@ -1,0 +1,13 @@
+cartpole-simpleq-fake-gpus:
+    env: CartPole-v1
+    run: SimpleQ
+    stop:
+        episode_reward_mean: 150
+        training_iteration: 400
+    config:
+        # Works for both torch and tf.
+        framework: tf
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true

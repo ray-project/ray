@@ -4,18 +4,31 @@
 # It uses the same pattern rule for gitignore file,
 # see https://git-scm.com/docs/gitignore#_pattern_format.
 
+
+# ==== Documentation ====
+
+# Authors responsible for copy-editing of the documentation.
+# NOTE: Add @ray-project/ray-docs to all following docs subdirs.
+/doc/ @ray-project/ray-docs
+
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
+
+# Autoscaler
+/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
+
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
@@ -35,17 +48,17 @@
 #!/python/ray/rllib/ @ray-project/ray-core-python
 
 # Java worker.
-/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
 
 # C++ worker
-/cpp/include/ray @SongGuyang @raulchen @mwtian
+/cpp/include/ray @SongGuyang @raulchen @kfstorm
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
@@ -55,27 +68,45 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao
-/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @maxpumperla
+/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
+/python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
+/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
-/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla
+/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
+/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
+/doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
+
+# Cluster (docs)
+/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
+
+# Tune (docs)
+/doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
+
+# Train (docs)
+/doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
+
+# Serve (docs)
+/doc/source/serve/ @edoakes @simon-mo @jiaodong @shrekris-anyscale @sihanwang41 @architkulkarni @ray-project/ray-docs
+
+# AIR (docs)
+/doc/source/air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
-/python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
+/python/requirements/ml/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
 
 # Ray symbol export
-/src/ray/ray_version_script.lds @mwtian @iycheng @ericl @scv119
-/src/ray/ray_exported_symbols.lds @mwtian @iycheng @ericl @scv119
+/src/ray/ray_version_script.lds @iycheng @ericl @scv119
+/src/ray/ray_exported_symbols.lds @iycheng @ericl @scv119
 
 # Ray usage stats
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
 /dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
+
 
 # ==== Build and CI ====
 

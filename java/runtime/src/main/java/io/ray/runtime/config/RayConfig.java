@@ -8,6 +8,8 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
+import io.ray.api.runtimeenv.RuntimeEnvConfig;
+import io.ray.api.runtimeenv.types.RuntimeEnvName;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
@@ -215,7 +217,32 @@ public class RayConfig {
       if (config.hasPath(jarsPath)) {
         jarUrls = config.getStringList(jarsPath);
       }
-      runtimeEnvImpl = new RuntimeEnvImpl(envVars, jarUrls);
+
+      /// Runtime env config
+      RuntimeEnvConfig runtimeEnvConfig = null;
+      final String timeoutPath = "ray.job.runtime-env.config.setup-timeout-seconds";
+      if (config.hasPath(timeoutPath)) {
+        runtimeEnvConfig = new RuntimeEnvConfig();
+        runtimeEnvConfig.setSetupTimeoutSeconds(config.getInt(timeoutPath));
+      }
+      final String eagerInstallPath = "ray.job.runtime-env.config.eager-install";
+      if (config.hasPath(eagerInstallPath)) {
+        if (runtimeEnvConfig == null) {
+          runtimeEnvConfig = new RuntimeEnvConfig();
+        }
+        runtimeEnvConfig.setEagerInstall(config.getBoolean(eagerInstallPath));
+      }
+
+      runtimeEnvImpl = new RuntimeEnvImpl();
+      if (!envVars.isEmpty()) {
+        runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);
+      }
+      if (!jarUrls.isEmpty()) {
+        runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
+      }
+      if (runtimeEnvConfig != null) {
+        runtimeEnvImpl.setConfig(runtimeEnvConfig);
+      }
     }
 
     {

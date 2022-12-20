@@ -9,8 +9,6 @@ import time
 from collections import deque
 from typing import Optional, Dict, Any
 
-import ray
-
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -53,6 +51,7 @@ class ClientRunner(CommandRunner):
 
         self.last_logs = None
         self.result_output_json = tempfile.mktemp()
+        self.metrics_output_json = tempfile.mktemp()
 
     def prepare_remote_env(self):
         pass
@@ -67,6 +66,8 @@ class ClientRunner(CommandRunner):
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
+        import ray
+
         ray_address = self.cluster_manager.get_cluster_address()
         try:
             if ray.is_initialized:
@@ -77,26 +78,26 @@ class ClientRunner(CommandRunner):
             start_time = time.monotonic()
             timeout_at = start_time + timeout
             next_status = start_time + 30
-            nodes_up = len(ray.nodes())
+            nodes_up = sum(1 for node in ray.nodes() if node["Alive"])
             while nodes_up < num_nodes:
                 now = time.monotonic()
                 if now >= timeout_at:
                     raise ClusterNodesWaitTimeout(
-                        f"Only {len(ray.nodes())}/{num_nodes} are up after "
+                        f"Only {nodes_up}/{num_nodes} are up after "
                         f"{timeout} seconds."
                     )
 
                 if now >= next_status:
                     logger.info(
                         f"Waiting for nodes to come up: "
-                        f"{len(ray.nodes())}/{num_nodes} "
+                        f"{nodes_up}/{num_nodes} "
                         f"({now - start_time:.2f} seconds, "
                         f"timeout: {timeout} seconds)."
                     )
                     next_status += 30
 
                 time.sleep(1)
-                nodes_up = len(ray.nodes())
+                nodes_up = sum(1 for node in ray.nodes() if node["Alive"])
 
             ray.shutdown()
         except Exception as e:
@@ -104,17 +105,31 @@ class ClientRunner(CommandRunner):
 
         logger.info(f"All {num_nodes} nodes are up.")
 
+    def save_metrics(self, start_time: float, timeout: float = 900):
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        self.run_command(
+            f'python "{metrics_script}" {start_time} --use_ray', timeout=timeout
+        )
+
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs
 
-    def fetch_results(self) -> Dict[str, Any]:
+    def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
-            with open(self.result_output_json, "rt") as fp:
+            with open(path, "rt") as fp:
                 return json.load(fp)
         except Exception as e:
             raise ResultsError(
-                f"Could not load local results from " f"client command: {e}"
+                f"Could not load local results from client command: {e}"
             ) from e
+
+    def fetch_results(self) -> Dict[str, Any]:
+        return self._fetch_json(self.result_output_json)
+
+    def fetch_metrics(self) -> Dict[str, Any]:
+        return self._fetch_json(self.metrics_output_json)
 
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0

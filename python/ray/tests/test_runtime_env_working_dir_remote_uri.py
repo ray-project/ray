@@ -18,7 +18,6 @@ GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("remote_uri", REMOTE_URIS)
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.parametrize("per_task_actor", [True, False])
@@ -75,7 +74,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
         assert ray.get(a.test_import.remote()) == 2
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):
@@ -106,7 +105,6 @@ def test_multi_node(start_cluster, option: str, source: str):
     assert len(set(ray.get(object_refs))) == NUM_NODES
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("working_dir", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
@@ -138,4 +136,9 @@ def test_runtime_context(start_cluster, working_dir):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

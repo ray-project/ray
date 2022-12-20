@@ -7,11 +7,14 @@ python:
   pip_packages:
     - ray-lightning
     - tblib
+    - torch==1.11.0
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Upgrade the Ray Lightning version, otherwise it will be cached in the Anyscale Docker image.
   - echo {{ env["TIMESTAMP"] }}
-  - pip3 install -U ray-lightning
+  - pip3 install -U --force-reinstall ray-lightning pytorch-lightning lightning-bolts
+  - pip3 install --force-reinstall torch==1.11.0
+  - pip3 install --force-reinstall torchvision==0.12.0
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

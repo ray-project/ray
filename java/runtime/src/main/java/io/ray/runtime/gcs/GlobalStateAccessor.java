@@ -3,7 +3,6 @@ package io.ray.runtime.gcs;
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import java.util.List;
 
 /** `GlobalStateAccessor` is used for accessing information from GCS. */
@@ -69,19 +68,6 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return this.nativeGetAllNodeInfo(globalStateAccessorNativePointer);
-    }
-  }
-
-  /**
-   * Get node resource info.
-   *
-   * @param nodeId node unique id.
-   * @return A map of node resource info in protobuf schema.
-   */
-  public byte[] getNodeResourceInfo(UniqueId nodeId) {
-    synchronized (GlobalStateAccessor.class) {
-      validateGlobalStateAccessorPointer();
-      return nativeGetNodeResourceInfo(globalStateAccessorNativePointer, nodeId.getBytes());
     }
   }
 
@@ -162,8 +148,6 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetNextJobID(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
-
-  private native byte[] nativeGetNodeResourceInfo(long nativePtr, byte[] nodeId);
 
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 

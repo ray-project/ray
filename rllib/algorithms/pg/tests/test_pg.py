@@ -17,6 +17,11 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray import tune
+from ray.rllib.utils.metrics.learner_info import (
+    LEARNER_INFO,
+    LEARNER_STATS_KEY,
+    DEFAULT_POLICY_ID,
+)
 
 
 class TestPG(unittest.TestCase):
@@ -29,14 +34,14 @@ class TestPG(unittest.TestCase):
         ray.shutdown()
 
     def test_pg_compilation(self):
-        """Test whether a PGTrainer can be built with all frameworks."""
+        """Test whether PG can be built with all frameworks."""
         config = pg.PGConfig()
+
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(
             num_rollout_workers=1,
-            rollout_fragment_length=500,
             observation_filter="MeanStdFilter",
-        )
+        ).training(train_batch_size=500)
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
@@ -75,17 +80,19 @@ class TestPG(unittest.TestCase):
                 "random_dict_env",
                 "random_tuple_env",
                 "MsPacmanNoFrameskip-v4",
-                "CartPole-v0",
+                "CartPole-v1",
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
-                trainer = config.build(env=env)
+                config.environment(env)
+
+                algo = config.build()
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
 
-                check_compute_single_action(trainer, include_prev_action_reward=True)
+                check_compute_single_action(algo, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -117,8 +124,8 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = Categorical if fw != "torch" else TorchCategorical
-            trainer = config.build(env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = config.build(env="CartPole-v1")
+            policy = algo.get_policy()
             vars = policy.model.trainable_variables()
             if sess:
                 vars = policy.get_session().run(vars)
@@ -141,8 +148,9 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(train_batch_, shuffle=False),
                 )
             else:
-                results = (pg.pg_tf_loss if fw in ["tf2", "tfe"] else pg.pg_torch_loss)(
-                    policy, policy.model, dist_class=dist_cls, train_batch=train_batch_
+
+                results = policy.loss(
+                    policy.model, dist_class=dist_cls, train_batch=train_batch_
                 )
 
             # Calculate expected results.
@@ -173,6 +181,55 @@ class TestPG(unittest.TestCase):
                 expected_logp = expected_logp.numpy()
             expected_loss = -np.mean(expected_logp * adv)
             check(results, expected_loss, decimals=4)
+
+    def test_pg_lr(self):
+        """Test PG with learning rate schedule."""
+        config = pg.PGConfig()
+        config.reporting(
+            min_sample_timesteps_per_iteration=10,
+            # Make sure that results contain info on default policy
+            min_train_timesteps_per_iteration=10,
+            # 0 metrics reporting delay, this makes sure timestep,
+            # which lr depends on, is updated after each worker rollout.
+            min_time_s_per_iteration=0,
+        )
+        config.rollouts(
+            num_rollout_workers=1,
+        )
+        config.training(
+            lr=0.2,
+            lr_schedule=[[0, 0.2], [500, 0.001]],
+            train_batch_size=50,
+        )
+
+        def _step_n_times(algo, n: int):
+            """Step trainer n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = algo.train()
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
+
+        for _ in framework_iterator(config):
+            algo = config.build(env="CartPole-v1")
+
+            lr = _step_n_times(algo, 1)  # 50 timesteps
+            # Close to 0.2
+            self.assertGreaterEqual(lr, 0.15)
+
+            lr = _step_n_times(algo, 8)  # Close to 500 timesteps
+            # LR Annealed to 0.001
+            self.assertLessEqual(float(lr), 0.5)
+
+            lr = _step_n_times(algo, 2)  # > 500 timesteps
+            # LR == 0.001
+            self.assertAlmostEqual(lr, 0.001)
+
+            algo.stop()
 
 
 if __name__ == "__main__":

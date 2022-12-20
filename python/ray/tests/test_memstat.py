@@ -1,16 +1,13 @@
-import numpy as np
 import os
 import time
 
+import numpy as np
 import pytest
-import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.internal.internal_api import memory_summary
-from ray._private.test_utils import (
-    wait_for_condition,
-    Semaphore,
-)
 
+import ray
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import Semaphore, wait_for_condition
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 # RayConfig to enable recording call sites during ObjectRej creations.
 ray_config = {"record_ref_creation_sites": True}
@@ -43,10 +40,10 @@ OBJECT_SIZE = "object size"
 REFERENCE_TYPE = "reference type"
 
 # Task status.
-WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
-SCHEDULED = "SCHEDULED"
+WAITING_FOR_DEPENDENCIES = "PENDING_ARGS_AVAIL"
+SCHEDULED = "PENDING_NODE_ASSIGNMENT"
 FINISHED = "FINISHED"
-WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
+WAITING_FOR_EXECUTION = "SUBMITTED_TO_WORKER"
 
 
 def data_lines(memory_str):
@@ -105,7 +102,7 @@ def test_worker_task_refs(ray_start_regular):
 
     @ray.remote
     def f(y):
-        from ray.internal.internal_api import memory_summary
+        from ray._private.internal_api import memory_summary
 
         x_id = ray.put("HI")
         info = memory_summary(address)
@@ -152,7 +149,7 @@ def test_actor_task_refs(ray_start_regular):
             self.refs = []
 
         def f(self, x):
-            from ray.internal.internal_api import memory_summary
+            from ray._private.internal_api import memory_summary
 
             self.refs.append(x)
             return memory_summary(address)
@@ -383,4 +380,7 @@ def test_task_status(ray_start_regular):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

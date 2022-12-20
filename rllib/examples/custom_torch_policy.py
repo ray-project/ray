@@ -2,8 +2,8 @@ import argparse
 import os
 
 import ray
-from ray import tune
-from ray.rllib.agents.trainer import Trainer
+from ray import air, tune
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -25,23 +25,27 @@ MyTorchPolicy = build_policy_class(
 )
 
 
-# Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
-    def get_default_policy_class(self, config):
+# Create a new Algorithm using the Policy defined above.
+class MyAlgorithm(Algorithm):
+    @classmethod
+    def get_default_policy_class(cls, config):
         return MyTorchPolicy
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
-    tune.run(
-        MyTrainer,
-        stop={"training_iteration": args.stop_iters},
-        config={
-            "env": "CartPole-v0",
+    tuner = tune.Tuner(
+        MyAlgorithm,
+        run_config=air.RunConfig(
+            stop={"training_iteration": args.stop_iters},
+        ),
+        param_space={
+            "env": "CartPole-v1",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 2,
             "framework": "torch",
         },
     )
+    tuner.fit()

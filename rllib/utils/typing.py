@@ -1,20 +1,27 @@
-import gym
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
     Tuple,
-    Union,
+    Type,
     TypeVar,
-    TYPE_CHECKING,
+    Union,
 )
+
+import numpy as np
+import gym
+
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
+    from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_tf, try_import_torch
 
@@ -23,7 +30,7 @@ if TYPE_CHECKING:
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Any
+TensorType = Union[np.array, "tf.Tensor", "torch.Tensor"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
@@ -31,17 +38,17 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
-# Represents a fully filled out config of a Trainer class.
-# Note: Policy config dicts are usually the same as TrainerConfigDict, but
+# Represents a fully filled out config of a Algorithm class.
+# Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
-# where we have >1 Policies in the same Trainer.
-TrainerConfigDict = dict
+# where we have >1 Policies in the same Algorithm.
+AlgorithmConfigDict = TrainerConfigDict = dict
 
-# A trainer config dict that only has overrides. It needs to be combined with
-# the default trainer config to be used.
-PartialTrainerConfigDict = dict
+# An algorithm config dict that only has overrides. It needs to be combined with
+# the default algorithm config to be used.
+PartialAlgorithmConfigDict = PartialTrainerConfigDict = dict
 
-# Represents the model config sub-dict of the trainer config that is passed to
+# Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.
 ModelConfigDict = dict
 
@@ -49,7 +56,7 @@ ModelConfigDict = dict
 # need a config dict with a "type" key, a class path (str), or a type directly.
 FromConfigSpec = Union[Dict[str, Any], type, str]
 
-# Represents the env_config sub-dict of the trainer config that is passed to
+# Represents the env_config sub-dict of the algo config that is passed to
 # the env constructor.
 EnvConfigDict = dict
 
@@ -80,6 +87,9 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 # data (TensorStructType).
 PolicyState = Dict[str, TensorStructType]
 
+# Any tf Policy type (static-graph or eager Policy).
+TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
+
 # Represents an episode id.
 EpisodeID = int
 
@@ -109,7 +119,7 @@ FileType = Any
 # ViewRequirement objects.
 ViewRequirementsDict = Dict[str, "ViewRequirement"]
 
-# Represents the result dict returned by Trainer.train().
+# Represents the result dict returned by Algorithm.train().
 ResultDict = dict
 
 # A tf or torch local optimizer object.
@@ -142,6 +152,96 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.
 SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+
+# A list of batches of RNN states.
+# Each item in this list has dimension [B, S] (S=state vector size)
+StateBatches = List[List[Any]]
+
+# Format of data output from policy forward pass.
+# __sphinx_doc_begin_policy_output_type__
+PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+# __sphinx_doc_end_policy_output_type__
+
+
+# __sphinx_doc_begin_agent_connector_data_type__
+@ExperimentalAPI
+class AgentConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
+
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        data: A payload (``data``). With RLlib's default sampler, the payload
+            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+    """
+
+    def __init__(self, env_id: str, agent_id: str, data: Any):
+        self.env_id = env_id
+        self.agent_id = agent_id
+        self.data = data
+
+
+# __sphinx_doc_end_agent_connector_data_type__
+
+
+# __sphinx_doc_begin_action_connector_output__
+@ExperimentalAPI
+class ActionConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
+
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        input_dict: Input data that was passed into the policy.
+            Sometimes output must be adapted based on the input, for example
+            action masking. So the entire input data structure is provided here.
+        output: An object of PolicyOutputType. It is is composed of the
+            action output, the internal state output, and additional data fetches.
+
+    """
+
+    def __init__(
+        self,
+        env_id: str,
+        agent_id: str,
+        input_dict: TensorStructType,
+        output: PolicyOutputType,
+    ):
+        self.env_id = env_id
+        self.agent_id = agent_id
+        self.input_dict = input_dict
+        self.output = output
+
+
+# __sphinx_doc_end_action_connector_output__
+
+
+# __sphinx_doc_begin_agent_connector_output__
+@ExperimentalAPI
+class AgentConnectorsOutput:
+    """Final output data type of agent connectors.
+
+    Args are populated depending on the AgentConnector settings.
+    The branching happens in ViewRequirementAgentConnector.
+
+    Args:
+        raw_dict: The raw input dictionary that sampler can use to
+            build episodes and training batches.
+            This raw dict also gets passed into ActionConnectors in case
+            it contains data useful for action adaptation (e.g. action masks).
+        sample_batch: The SampleBatch that can be immediately used for
+            querying the policy for next action.
+    """
+
+    def __init__(
+        self, raw_dict: Dict[str, TensorStructType], sample_batch: "SampleBatch"
+    ):
+        self.raw_dict = raw_dict
+        self.sample_batch = sample_batch
+
+
+# __sphinx_doc_end_agent_connector_output__
+
 
 # Generic type var.
 T = TypeVar("T")

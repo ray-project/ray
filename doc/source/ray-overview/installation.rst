@@ -3,20 +3,24 @@
 Installing Ray
 ==============
 
-Ray currently supports Linux, MacOS and Windows.
+Ray currently officially supports x86_64 and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows.
+From Wheels
+~~~~~~~~~~~
+You can install the latest official version of Ray from PyPI on linux, windows
+and macos as follows:
 
 .. code-block:: bash
 
-  pip install -U ray  # minimal install
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default]"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U "ray[default]"`
+  # Install Ray with minimal dependencies
+  # pip install -U ray
 
 To install Ray libraries:
 
@@ -36,37 +40,47 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
-  pip install -U LINK_TO_WHEEL.whl  # minimal install
+  # Clean removal of previous install
+  pip uninstall -y ray
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
+  # Install Ray with minimal dependencies
+  # pip install -U LINK_TO_WHEEL.whl
 
 
-===================  ===================  ======================
-       Linux                MacOS         Windows (beta)
-===================  ===================  ======================
-`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
-`Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
-`Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_
-===================  ===================  ======================
+====================  ====================  =======================
+       Linux                 MacOS          Windows (beta)
+====================  ====================  =======================
+`Linux Python 3.10`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.9`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.8`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.6`_   `MacOS Python 3.6`_
+====================  ====================  =======================
 
 .. note::
 
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
+.. note::
+
+  :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
+
+.. _`Linux Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
+.. _`MacOS Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
 .. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
+.. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-win_amd64.whl
@@ -152,6 +166,24 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
+.. _ray-install-cpp:
+
+Install Ray C++
+---------------
+
+You can install and use Ray C++ API as follows.
+
+.. code-block:: bash
+
+  pip install -U ray[cpp]
+
+  # Create a Ray C++ project template to start with.
+  ray cpp --generate-bazel-project-template-to ray-template
+
+.. note::
+
+  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+
 .. _apple-silcon-supprt:
 
 M1 Mac (Apple Silicon) Support
@@ -162,20 +194,20 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
 
    * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
-   
+
    * ``bash Miniforge3-MacOSX-arm64.sh``
-   
-   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
-   
+
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
+
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
-   
+
    * ``source ~/.bash_profile``
-   
+
    * ``conda activate``
-   
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
-   
-   * ``pip uninstall grpcio; conda install grpcio``.
+
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
+
+   * ``pip uninstall grpcio; conda install grpcio=1.43.0``
 
 #. Install Ray as you normally would.
 
@@ -220,25 +252,39 @@ on the AUR page of ``python-ray`` `here`_.
 
 .. _ray_anaconda:
 
-Installing Ray with Anaconda
-----------------------------
-
-If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+Installing From conda-forge
+---------------------------
+Ray can also be installed as a conda package on linux and windows
 
 .. code-block:: bash
 
-  conda create --name ray
+  # also works with mamba
+  conda create -c conda-forge python=3.9 -n ray
   conda activate ray
-  conda install --name ray pip
-  pip install ray
 
-Use ``pip list`` to confirm that ``ray`` is installed.
+  # Install Ray with support for the dashboard + cluster launcher
+  conda install -c conda-forge "ray-default"
 
-.. _`Anaconda`: https://www.anaconda.com/
-.. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
+  # Install Ray with minimal dependencies
+  # conda install -c conda-forge ray
 
+To install Ray libraries, you can use ``pip`` as above or ``conda``/``mamba``
 
+.. code-block:: bash
 
+  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
+  conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
+
+For a complete list of available ``ray`` libraries on Conda-forge, have a look
+at https://anaconda.org/conda-forge/ray-default
+
+.. note::
+
+  Ray conda packages are maintained by the community, not the Ray team. While
+  using a conda environment, it is recommended to install Ray from PyPi using
+  `pip install ray` in the newly created environment.
 
 Building Ray from Source
 ------------------------
@@ -256,7 +302,7 @@ Docker Source Images
 Most users should pull a Docker image from the `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`__.
 
 - The ``rayproject/ray`` `images <https://hub.docker.com/r/rayproject/ray>`__ include Ray and all required dependencies. It comes with anaconda and various versions of Python.
-- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries. 
+- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries.
 - The ``rayproject/base-deps`` and ``rayproject/ray-deps`` images are for the Linux and Python dependencies respectively.
 
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
@@ -365,32 +411,3 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
-
-Troubleshooting
----------------
-
-If importing Ray (``python3 -c "import ray"``) in your development clone results
-in this error:
-
-.. code-block:: python
-
-  Traceback (most recent call last):
-    File "<string>", line 1, in <module>
-    File ".../ray/python/ray/__init__.py", line 63, in <module>
-      import ray._raylet  # noqa: E402
-    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
-      import ray.memory_monitor as memory_monitor
-    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
-      import psutil  # noqa E402
-    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
-      from . import _psosx as _psplatform
-    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
-      from . import _psutil_osx as cext
-  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
-
-Then you should run the following commands:
-
-.. code-block:: bash
-
-  rm -rf python/ray/thirdparty_files/
-  python3 -m pip install setproctitle

@@ -1,6 +1,8 @@
 # This file is used by CrossLanguageInvocationTest.java to test cross-language
 # invocation.
 
+import asyncio
+
 import ray
 
 
@@ -58,9 +60,7 @@ def py_func_call_java_function():
 @ray.remote
 def py_func_call_java_actor(value):
     assert isinstance(value, bytes)
-    c = ray.cross_language.java_actor_class(
-        "io.ray.test.CrossLanguageInvocationTest$TestActor"
-    )
+    c = ray.cross_language.java_actor_class("io.ray.test.TestActor")
     java_actor = c.remote(b"Counter")
     r = java_actor.concat.remote(value)
     return ray.get(r)
@@ -124,6 +124,35 @@ def py_func_nest_java_throw_exception():
 class Counter(object):
     def __init__(self, value):
         self.value = int(value)
+
+    def increase(self, delta):
+        self.value += int(delta)
+        return str(self.value).encode("utf-8")
+
+
+@ray.remote
+class AsyncCounter(object):
+    async def __init__(self, value):
+        self.value = int(value)
+        self.event = asyncio.Event()
+
+    async def block_task(self):
+        self.event.wait()
+
+    async def increase(self, delta):
+        self.value += int(delta)
+        self.event.set()
+        return str(self.value).encode("utf-8")
+
+
+@ray.remote
+class SyncCounter(object):
+    def __init__(self, value):
+        self.value = int(value)
+        self.event = asyncio.Event()
+
+    def block_task(self):
+        self.event.wait()
 
     def increase(self, delta):
         self.value += int(delta)

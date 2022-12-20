@@ -450,7 +450,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
         # Kill a node.
         cluster.remove_node(node)
 
@@ -458,7 +458,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():
@@ -759,7 +759,37 @@ def test_utf8_actor_exception(ray_start_regular):
         ray.get(actor.ping.remote())
 
 
+# https://github.com/ray-project/ray/issues/18908.
+def test_failure_during_dependency_resolution(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def dep(self):
+            while True:
+                time.sleep(1)
+
+        def foo(self, x):
+            return x
+
+    @ray.remote
+    def foo():
+        time.sleep(3)
+        return 1
+
+    a = Actor.remote()
+    # Check that the actor is alive.
+    ray.get(a.foo.remote(1))
+
+    ray.kill(a, no_restart=False)
+    dep = a.dep.remote()
+    ref = a.foo.remote(dep)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

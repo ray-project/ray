@@ -1,12 +1,13 @@
-import numpy as np
-import pytest
 import sys
 import time
 
+import numpy as np
+import pytest
+
 import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
@@ -14,14 +15,14 @@ from ray._private.test_utils import get_error_message
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.5 * 10 ** 9)
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10 ** 8,
+            "redis_max_memory": 10**8,
             "_system_config": {"object_timeout_milliseconds": 200},
         },
     )
@@ -278,7 +279,7 @@ def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
 
 
 @pytest.mark.skip(reason="Failing with new GCS API on Linux.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 9], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     plasma_store_memory = ray_start_object_store_memory
@@ -352,6 +353,10 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
 #     ray.shutdown()
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

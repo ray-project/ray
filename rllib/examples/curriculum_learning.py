@@ -15,12 +15,13 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -31,7 +32,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -66,11 +67,11 @@ def curriculum_fn(
     """Function returning a possibly new task to set `task_settable_env` to.
 
     Args:
-        train_results (dict): The train results returned by Trainer.train().
-        task_settable_env (TaskSettableEnv): A single TaskSettableEnv object
+        train_results: The train results returned by Algorithm.train().
+        task_settable_env: A single TaskSettableEnv object
             used inside any worker and at any vector position. Use `env_ctx`
             to get the worker_index, vector_index, and num_workers.
-        env_ctx (EnvContext): The env context object (i.e. env's config dict
+        env_ctx: The env context object (i.e. env's config dict
             plus properties worker_index, vector_index and num_workers) used
             to setup the `task_settable_env`.
 
@@ -102,18 +103,20 @@ if __name__ == "__main__":
     # register_env(
     #     "curriculum_env", lambda config: CurriculumCapableEnv(config))
 
-    config = {
-        "env": CurriculumCapableEnv,  # or "curriculum_env" if registered above
-        "env_config": {
-            "start_level": 1,
-        },
-        "num_workers": 2,  # parallelism
-        "num_envs_per_worker": 5,
-        "env_task_fn": curriculum_fn,
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        # or "curriculum_env" if registered above
+        .environment(
+            CurriculumCapableEnv,
+            env_config={"start_level": 1},
+            env_task_fn=curriculum_fn,
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=2, num_envs_per_worker=5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -121,7 +124,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    tuner = tune.Tuner(
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=2),
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

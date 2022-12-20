@@ -1,24 +1,29 @@
+import fnmatch
 import io
 import os
 import shutil
 import tarfile
-from filelock import FileLock
 
-from typing import Optional, Tuple, Dict, Generator, Union
+from typing import Optional, Tuple, Dict, Generator, Union, List
 
 import ray
+from ray.util.annotations import DeveloperAPI
+from ray.air._internal.filelock import TempFileLock
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
 _DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB
 
 
+@DeveloperAPI
 def sync_dir_between_nodes(
     source_ip: str,
     source_path: str,
     target_ip: str,
     target_path: str,
     force_all: bool = False,
+    exclude: Optional[List] = None,
     chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
     max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     return_futures: bool = False,
@@ -44,6 +49,8 @@ def sync_dir_between_nodes(
         target_path: Path to directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
             Ignored if ``source_ip==target_ip``.
+        exclude: Pattern of files to exclude, e.g.
+            ``["*/checkpoint_*]`` to exclude trial checkpoints.
         chunk_size_bytes: Chunk size for data transfer. Ignored if
             ``source_ip==target_ip``.
         max_size_bytes: If packed data exceeds this value, raise an error before
@@ -65,6 +72,7 @@ def sync_dir_between_nodes(
             target_ip=target_ip,
             target_path=target_path,
             force_all=force_all,
+            exclude=exclude,
             chunk_size_bytes=chunk_size_bytes,
             max_size_bytes=max_size_bytes,
             return_futures=return_futures,
@@ -74,6 +82,7 @@ def sync_dir_between_nodes(
             ip=source_ip,
             source_path=source_path,
             target_path=target_path,
+            exclude=exclude,
             return_futures=return_futures,
         )
         if return_futures:
@@ -85,6 +94,7 @@ def _sync_dir_on_same_node(
     ip: str,
     source_path: str,
     target_path: str,
+    exclude: Optional[List] = None,
     return_futures: bool = False,
 ) -> Optional[ray.ObjectRef]:
     """Synchronize directory to another directory on the same node.
@@ -96,16 +106,22 @@ def _sync_dir_on_same_node(
         ip: IP of the node.
         source_path: Path to source directory.
         target_path: Path to target directory.
+        exclude: Pattern of files to exclude, e.g.
+            ``["*/checkpoint_*]`` to exclude trial checkpoints.
         return_futures: If True, returns a future of the copy task.
 
     Returns:
         None, or future of the copy task.
 
     """
-    copy_on_node = _copy_dir.options(
-        num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
+    copy_on_node = _remote_copy_dir.options(
+        num_cpus=0,
+        resources={f"node:{ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
-    copy_future = copy_on_node.remote(source_dir=source_path, target_dir=target_path)
+    copy_future = copy_on_node.remote(
+        source_dir=source_path, target_dir=target_path, exclude=exclude
+    )
 
     if return_futures:
         return copy_future
@@ -119,6 +135,7 @@ def _sync_dir_between_different_nodes(
     target_ip: str,
     target_path: str,
     force_all: bool = False,
+    exclude: Optional[List] = None,
     chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
     max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     return_futures: bool = False,
@@ -135,6 +152,8 @@ def _sync_dir_between_different_nodes(
         target_ip: IP of target node.
         target_path: Path to directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
+        exclude: Pattern of files to exclude, e.g.
+            ``["*/checkpoint_*]`` to exclude trial checkpoints.
         chunk_size_bytes: Chunk size for data transfer.
         max_size_bytes: If packed data exceeds this value, raise an error before
             transfer. If ``None``, no limit is enforced.
@@ -147,17 +166,23 @@ def _sync_dir_between_different_nodes(
 
     """
     pack_actor_on_source_node = _PackActor.options(
-        num_cpus=0, resources={f"node:{source_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{source_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
     unpack_on_target_node = _unpack_from_actor.options(
-        num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{target_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
 
     if force_all:
         files_stats = None
     else:
         files_stats = _remote_get_recursive_files_and_stats.options(
-            num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
+            num_cpus=0,
+            resources={f"node:{target_ip}": 0.01},
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
         ).remote(target_path)
 
     pack_actor = pack_actor_on_source_node.remote(
@@ -165,6 +190,7 @@ def _sync_dir_between_different_nodes(
         files_stats=files_stats,
         chunk_size_bytes=chunk_size_bytes,
         max_size_bytes=max_size_bytes,
+        exclude=exclude,
     )
     unpack_future = unpack_on_target_node.remote(pack_actor, target_path)
 
@@ -174,6 +200,7 @@ def _sync_dir_between_different_nodes(
     return ray.get(unpack_future)
 
 
+@DeveloperAPI
 def delete_on_node(
     node_ip: str, path: str, return_future: bool = False
 ) -> Union[bool, ray.ObjectRef]:
@@ -191,7 +218,9 @@ def delete_on_node(
         for scheduled delete task.
     """
     delete_task = _remote_delete_path.options(
-        num_cpus=0, resources={f"node:{node_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{node_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
     future = delete_task.remote(path)
 
@@ -214,9 +243,14 @@ def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
     for root, dirs, files in os.walk(path, topdown=False):
         rel_root = os.path.relpath(root, path)
         for file in files:
-            key = os.path.join(rel_root, file)
-            stat = os.lstat(os.path.join(path, key))
-            files_stats[key] = stat.st_mtime, stat.st_size
+            try:
+                key = os.path.join(rel_root, file)
+                stat = os.lstat(os.path.join(path, key))
+                files_stats[key] = stat.st_mtime, stat.st_size
+            except FileNotFoundError:
+                # Race condition: If a file is deleted while executing this
+                # method, just continue and don't include the file in the stats
+                pass
 
     return files_stats
 
@@ -226,7 +260,9 @@ _remote_get_recursive_files_and_stats = ray.remote(_get_recursive_files_and_stat
 
 
 def _pack_dir(
-    source_dir: str, files_stats: Optional[Dict[str, Tuple[float, int]]] = None
+    source_dir: str,
+    exclude: Optional[List] = None,
+    files_stats: Optional[Dict[str, Tuple[float, int]]] = None,
 ) -> io.BytesIO:
     """Pack whole directory contents into an uncompressed tarfile.
 
@@ -240,6 +276,8 @@ def _pack_dir(
 
     Args:
         source_dir: Path to local directory to pack into tarfile.
+        exclude: Pattern of files to exclude, e.g.
+            ``["*/checkpoint_*]`` to exclude trial checkpoints.
         files_stats: Dict of relative filenames mapping to a tuple of
             (mtime, filesize). Only files that differ from these stats
             will be packed.
@@ -247,12 +285,24 @@ def _pack_dir(
     Returns:
         Tarfile as a stream object.
     """
+
+    def _should_exclude(candidate: str) -> bool:
+        if not exclude:
+            return False
+
+        for excl in exclude:
+            if fnmatch.fnmatch(candidate, excl):
+                return True
+        return False
+
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
-        if not files_stats:
+
+        if not files_stats and not exclude:
             # If no `files_stats` is passed, pack whole directory
             tar.add(source_dir, arcname="", recursive=True)
         else:
+            files_stats = files_stats or {}
             # Otherwise, only pack differing files
             tar.add(source_dir, arcname="", recursive=False)
             for root, dirs, files in os.walk(source_dir, topdown=False):
@@ -266,8 +316,16 @@ def _pack_dir(
                     key = os.path.join(rel_root, file)
                     stat = os.lstat(os.path.join(source_dir, key))
                     file_stat = stat.st_mtime, stat.st_size
-                    if key not in files_stats or file_stat != files_stats[key]:
-                        tar.add(os.path.join(source_dir, key), arcname=key)
+
+                    if _should_exclude(key):
+                        # If the file matches an exclude pattern, skip
+                        continue
+
+                    if key in files_stats and files_stats[key] == file_stat:
+                        # If the file did not change, skip
+                        continue
+
+                    tar.add(os.path.join(source_dir, key), arcname=key)
 
     return stream
 
@@ -288,6 +346,8 @@ class _PackActor:
 
     Args:
         source_dir: Path to local directory to pack into tarfile.
+        exclude: Pattern of files to exclude, e.g.
+            ``["*/checkpoint_*]`` to exclude trial checkpoints.
         files_stats: Dict of relative filenames mapping to a tuple of
             (mtime, filesize). Only files that differ from these stats
             will be packed.
@@ -299,11 +359,14 @@ class _PackActor:
     def __init__(
         self,
         source_dir: str,
+        exclude: Optional[List] = None,
         files_stats: Optional[Dict[str, Tuple[float, int]]] = None,
         chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
         max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     ):
-        self.stream = _pack_dir(source_dir=source_dir, files_stats=files_stats)
+        self.stream = _pack_dir(
+            source_dir=source_dir, exclude=exclude, files_stats=files_stats
+        )
 
         # Get buffer size
         self.stream.seek(0, 2)
@@ -349,12 +412,33 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
         yield buffer
 
 
-def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
+def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
-    with FileLock(f"{target_dir}.lock"):
-        with tarfile.open(fileobj=stream) as tar:
-            tar.extractall(target_dir)
+    target_dir = os.path.normpath(target_dir)
+    try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
+        with TempFileLock(f"{target_dir}.lock", timeout=0):
+            with tarfile.open(fileobj=stream) as tar:
+                tar.extractall(target_dir)
+    except TimeoutError:
+        # wait, but do not do anything
+        with TempFileLock(f"{target_dir}.lock"):
+            pass
+        # if the dir was locked due to being deleted,
+        # recreate
+        if not os.path.exists(target_dir):
+            if _retry:
+                _unpack_dir(stream, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
 
 
 @ray.remote
@@ -366,17 +450,63 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     _unpack_dir(stream, target_dir=target_dir)
 
 
-@ray.remote
-def _copy_dir(source_dir: str, target_dir: str) -> None:
+def _copy_dir(
+    source_dir: str,
+    target_dir: str,
+    *,
+    exclude: Optional[List] = None,
+    _retry: bool = True,
+) -> None:
     """Copy dir with shutil on the actor."""
-    with FileLock(f"{target_dir}.lock"):
-        _delete_path_unsafe(target_dir)
-        shutil.copytree(source_dir, target_dir)
+    target_dir = os.path.normpath(target_dir)
+    try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
+        with TempFileLock(f"{target_dir}.lock", timeout=0):
+            _delete_path_unsafe(target_dir)
+
+            _ignore = None
+            if exclude:
+
+                def _ignore(path, names):
+                    ignored_names = set()
+                    rel_path = os.path.relpath(path, source_dir)
+                    for name in names:
+                        candidate = os.path.join(rel_path, name)
+                        for excl in exclude:
+                            if fnmatch.fnmatch(candidate, excl):
+                                ignored_names.add(name)
+                                break
+                    return ignored_names
+
+            shutil.copytree(source_dir, target_dir, ignore=_ignore)
+    except TimeoutError:
+        # wait, but do not do anything
+        with TempFileLock(f"{target_dir}.lock"):
+            pass
+        # if the dir was locked due to being deleted,
+        # recreate
+        if not os.path.exists(target_dir):
+            if _retry:
+                _copy_dir(source_dir, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
+
+
+# Only export once
+_remote_copy_dir = ray.remote(_copy_dir)
 
 
 def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
-    with FileLock(f"{target_path}.lock"):
+    target_path = os.path.normpath(target_path)
+    with TempFileLock(f"{target_path}.lock"):
         return _delete_path_unsafe(target_path)
 
 

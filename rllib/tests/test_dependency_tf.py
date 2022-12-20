@@ -14,23 +14,29 @@ if __name__ == "__main__":
     # signatures/typehints.
     _register_all()
 
-    from ray.rllib.agents.a3c import A2CTrainer
+    from ray.rllib.algorithms.a2c import A2CConfig
 
     assert (
         "tensorflow" not in sys.modules
     ), "`tensorflow` initially present, when it shouldn't!"
 
-    # Note: No ray.init(), to test it works without Ray
-    trainer = A2CTrainer(
-        env="CartPole-v0", config={"framework": "torch", "num_workers": 0}
+    config = (
+        A2CConfig()
+        .environment("CartPole-v1")
+        .framework("torch")
+        .rollouts(num_rollout_workers=0)
     )
-    trainer.train()
+    # Note: No ray.init(), to test it works without Ray
+    algo = config.build()
+    algo.train()
 
     assert (
         "tensorflow" not in sys.modules
-    ), "`tensorflow` should not be imported after creating and training A3CTrainer!"
+    ), "`tensorflow` should not be imported after creating and training A3C!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
+
+    algo.stop()
 
     print("ok")

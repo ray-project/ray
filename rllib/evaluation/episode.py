@@ -1,8 +1,9 @@
-from collections import defaultdict
-import numpy as np
 import random
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy_map import PolicyMap
@@ -10,13 +11,13 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import (
-    SampleBatchType,
     AgentID,
-    PolicyID,
     EnvActionType,
     EnvID,
     EnvInfoDict,
     EnvObsType,
+    PolicyID,
+    SampleBatchType,
 )
 from ray.util import log_once
 
@@ -30,17 +31,17 @@ class Episode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
     Attributes:
-        new_batch_builder (func): Create a new MultiAgentSampleBatchBuilder.
-        add_extra_batch (func): Return a built MultiAgentBatch to the sampler.
-        batch_builder (obj): Batch builder for the current episode.
-        total_reward (float): Summed reward across all agents in this episode.
-        length (int): Length of this episode.
-        episode_id (int): Unique id identifying this trajectory.
-        agent_rewards (dict): Summed rewards broken down by agent.
-        custom_metrics (dict): Dict where the you can add custom metrics.
-        user_data (dict): Dict that you can use for temporary storage. E.g.
+        new_batch_builder: Create a new MultiAgentSampleBatchBuilder.
+        add_extra_batch: Return a built MultiAgentBatch to the sampler.
+        batch_builder: Batch builder for the current episode.
+        total_reward: Summed reward across all agents in this episode.
+        length: Length of this episode.
+        episode_id: Unique id identifying this trajectory.
+        agent_rewards: Summed rewards broken down by agent.
+        custom_metrics: Dict where the you can add custom metrics.
+        user_data: Dict that you can use for temporary storage. E.g.
             in between two custom callbacks referring to the same episode.
-        hist_data (dict): Dict mapping str keys to List[float] for storage of
+        hist_data: Dict mapping str keys to List[float] for storage of
             per-timestep float data throughout the episode.
 
     Use case 1: Model-based rollouts in multi-agent:
@@ -87,10 +88,11 @@ class Episode:
         self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
-        self.episode_id: int = random.randrange(2e9)
+        self.started = False
+        self.episode_id: int = random.randrange(int(1e18))
         self.env_id = env_id
         self.worker = worker
-        self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
+        self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
@@ -100,6 +102,7 @@ class Episode:
         self.policy_mapping_fn: Callable[
             [AgentID, "Episode", "RolloutWorker"], PolicyID
         ] = policy_mapping_fn
+        self.is_faulty = False
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
@@ -112,19 +115,6 @@ class Episode:
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
-
-    @DeveloperAPI
-    def soft_reset(self) -> None:
-        """Clears rewards and metrics, but retains RNN and other state.
-
-        This is used to carry state across multiple logical episodes in the
-        same env (i.e., if `soft_horizon` is set).
-        """
-        self.length = 0
-        self.episode_id = random.randrange(2e9)
-        self.total_reward = 0.0
-        self.agent_rewards = defaultdict(float)
-        self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
     def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> PolicyID:
@@ -448,17 +438,17 @@ class Episode:
         deprecation_warning(
             old="Episode._policy_mapping_fn",
             new="Episode.policy_mapping_fn",
-            error=False,
+            error=True,
         )
         return self.policy_mapping_fn
 
-    @Deprecated(new="Episode.last_extra_action_outs_for", error=False)
+    @Deprecated(new="Episode.last_extra_action_outs_for", error=True)
     def last_pi_info_for(self, *args, **kwargs):
         return self.last_extra_action_outs_for(*args, **kwargs)
 
 
 # Backward compatibility. The name Episode implies that there is
 # also a (single agent?) Episode.
-@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=False)
+@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=True)
 class MultiAgentEpisode(Episode):
     pass

@@ -1,124 +1,85 @@
+import asyncio
 import logging
-import time
-from typing import Any, Dict, List, Tuple, Optional, TYPE_CHECKING
+import queue
+from typing import Dict, List, Set, Optional, TYPE_CHECKING
 
-from dataclasses import dataclass
 import ray
+
 from ray.workflow import common
-from ray.workflow.common import WorkflowStaticRef
-from ray.workflow import recovery
+from ray.workflow.common import WorkflowStatus, TaskID
+from ray.workflow import workflow_state_from_storage
+from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
-from ray.util.annotations import PublicAPI
+from ray.workflow.exceptions import (
+    WorkflowCancellationError,
+    WorkflowNotFoundError,
+    WorkflowNotResumableError,
+    WorkflowStillActiveError,
+)
+from ray.workflow.workflow_executor import WorkflowExecutor
+from ray.workflow.workflow_state import WorkflowExecutionState
+from ray.workflow.workflow_context import WorkflowTaskContext
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.workflow.common import StepID, WorkflowExecutionResult
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
-class WorkflowExecutionError(Exception):
-    def __init__(self, workflow_id: str):
-        self.message = f"Workflow[id={workflow_id}] failed during execution."
-        super().__init__(self.message)
-
-
-class _SelfDereferenceObject:
-    """A object that dereferences itself during deserialization"""
-
-    def __init__(self, workflow_id: Optional[str], nested_ref: ray.ObjectRef):
-        self.workflow_id = workflow_id
-        self.nested_ref = nested_ref
+class SelfResolvingObject:
+    def __init__(self, x):
+        self.x = x
 
     def __reduce__(self):
-        return _resolve_workflow_output, (self.workflow_id, self.nested_ref)
+        return ray.get, (self.x,)
 
 
-def flatten_workflow_output(
-    workflow_id: str, workflow_output: ray.ObjectRef
-) -> ray.ObjectRef:
-    """Converts the nested ref to a direct ref of an object.
+@ray.remote(num_cpus=0)
+def load_task_output_from_storage(workflow_id: str, task_id: Optional[TaskID]):
+    wf_store = workflow_storage.WorkflowStorage(workflow_id)
+    tid = wf_store.inspect_output(task_id)
+    if tid is not None:
+        return wf_store.load_task_output(tid)
+    # TODO(suquark): Unify the error from "workflow.get_output" & "workflow.run_async".
+    # Currently they could be different, because "workflow.get_output" could
+    # get the output from a stopped workflow, it does not may sense to raise
+    # "WorkflowExecutionError" as the workflow is not running.
+    if task_id is not None:
+        raise ValueError(
+            f"Cannot load output from task id '{task_id}' in workflow '{workflow_id}'"
+        )
+    else:
+        raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
+
+
+@ray.remote(num_cpus=0)
+def resume_workflow_task(
+    job_id: str,
+    workflow_id: str,
+    task_id: Optional[TaskID] = None,
+) -> WorkflowExecutionState:
+    """Resume a task of a workflow.
 
     Args:
-        workflow_id: The ID of a workflow.
-        workflow_output: A (nested) object ref of the workflow output.
-
-    Returns:
-        A direct ref of an object.
-    """
-    return ray.put(_SelfDereferenceObject(workflow_id, workflow_output))
-
-
-def _resolve_workflow_output(
-    workflow_id: Optional[str], output: WorkflowStaticRef
-) -> Any:
-    """Resolve the output of a workflow.
-
-    Args:
-        workflow_id: The ID of the workflow. If it's set to be None,
-            it won't report to workflow manager
-        output: The output object ref of a workflow.
+        job_id: The ID of the job that submits the workflow execution. The ID
+        is used to identify the submitter of the workflow.
+        workflow_id: The ID of the workflow job. The ID is used to identify
+            the workflow.
+        task_id: The task to resume in the workflow.
 
     Raises:
-        WorkflowExecutionError: When the workflow fails.
+        WorkflowNotResumableException: fail to resume the workflow.
 
     Returns:
-        The resolved physical object.
+        The execution result of the workflow, represented by Ray ObjectRef.
     """
-    if workflow_id is not None:
+    with workflow_context.workflow_logging_context(job_id):
         try:
-            actor = get_management_actor()
-        except ValueError as e:
-            raise ValueError(
-                "Failed to connect to the workflow management actor."
-            ) from e
-
-    from ray.workflow.step_executor import _resolve_static_workflow_ref
-
-    try:
-        output = _resolve_static_workflow_ref(output)
-    except Exception as e:
-        if workflow_id is not None:
-            # re-raise the exception so we know it is a workflow failure.
-            try:
-                ray.get(actor.report_failure.remote(workflow_id))
-            except Exception:
-                # the actor does not exist
-                logger.warning(
-                    "Could not inform the workflow management actor "
-                    "about the error of the workflow."
-                )
-        raise WorkflowExecutionError(workflow_id) from e
-    if workflow_id is not None:
-        try:
-            ray.get(actor.report_success.remote(workflow_id))
-        except Exception:
-            # the actor does not exist
-            logger.warning(
-                "Could not inform the workflow management actor "
-                "about the success of the workflow."
+            return workflow_state_from_storage.workflow_state_from_storage(
+                workflow_id, task_id
             )
-    return output
-
-
-def cancel_job(obj: ray.ObjectRef):
-    return
-    # TODO (yic) Enable true canceling in ray.
-    #
-    # try:
-    #     while isinstance(obj, ray.ObjectRef):
-    #         ray.cancel(obj)
-    #         obj = ray.get(obj)
-    # except Exception:
-    #     pass
-
-
-@dataclass
-class LatestWorkflowOutput:
-    output: WorkflowStaticRef
-    workflow_id: str
-    step_id: "StepID"
+        except Exception as e:
+            raise WorkflowNotResumableError(workflow_id) from e
 
 
 # TODO(suquark): we may use an actor pool in the future if too much
@@ -127,275 +88,282 @@ class LatestWorkflowOutput:
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
-    def __init__(self):
-        self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
-        # Cache step output. It is used for step output lookup of
-        # "WorkflowRef". The dictionary entry is removed when the status of
-        # a step is marked as finished (successful or failed).
-        self._step_output_cache: Dict[Tuple[str, str], LatestWorkflowOutput] = {}
-        self._actor_initialized: Dict[str, ray.ObjectRef] = {}
-        self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
-        self._workflow_status: Dict[str, common.WorkflowStatus] = {}
+    def __init__(self, max_running_workflows: int, max_pending_workflows: int):
+        self._workflow_executors: Dict[str, WorkflowExecutor] = {}
 
-    def get_cached_step_output(
-        self, workflow_id: str, step_id: "StepID"
-    ) -> ray.ObjectRef:
-        """Get the cached result of a step.
+        self._max_running_workflows: int = max_running_workflows
+        self._max_pending_workflows: int = max_pending_workflows
 
-        Args:
-            workflow_id: The ID of the workflow.
-            step_id: The ID of the step.
+        # 0 means infinite for queue
+        self._workflow_queue = queue.Queue(
+            max_pending_workflows if max_pending_workflows != -1 else 0
+        )
 
-        Returns:
-            An object reference that can be used to retrieve the
-            step result. If it does not exist, return None
-        """
-        try:
-            output = self._step_output_cache[(workflow_id, step_id)].output
-            return output
-        except Exception:
-            return None
+        self._running_workflows: Set[str] = set()
+        self._queued_workflows: Dict[str, asyncio.Future] = {}
+        # TODO(suquark): We do not cleanup "_executed_workflows" because we need to
+        #  know if users are running the same workflow again long after a workflow
+        #  completes. One possible alternative solution is to check the workflow
+        #  status in the storage.
+        self._executed_workflows: Set[str] = set()
 
-    def run_or_resume(
-        self, job_id: str, workflow_id: str, ignore_existing: bool = False
-    ) -> "WorkflowExecutionResult":
-        """Run or resume a workflow.
-
-        Args:
-            job_id: The ID of the job that submits the workflow execution.
-            workflow_id: The ID of the workflow.
-            ignore_existing: Ignore we already have an existing output. When
-            set false, raise an exception if there has already been a workflow
-            running with this id
-
-        Returns:
-            Workflow execution result that contains the state and output.
-        """
-        if workflow_id in self._workflow_outputs and not ignore_existing:
-            raise RuntimeError(
-                f"The output of workflow[id={workflow_id}] already exists."
+    def validate_init_options(
+        self, max_running_workflows: Optional[int], max_pending_workflows: Optional[int]
+    ):
+        if (
+            max_running_workflows is not None
+            and max_running_workflows != self._max_running_workflows
+        ) or (
+            max_pending_workflows is not None
+            and max_pending_workflows != self._max_pending_workflows
+        ):
+            raise ValueError(
+                "The workflow init is called again but the init options"
+                "does not match the original ones. Original options: "
+                f"max_running_workflows={self._max_running_workflows} "
+                f"max_pending_workflows={self._max_pending_workflows}; "
+                f"New options: max_running_workflows={max_running_workflows} "
+                f"max_pending_workflows={max_pending_workflows}."
             )
+
+    def gen_task_id(self, workflow_id: str, task_name: str) -> str:
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        workflow_prerun_metadata = {"start_time": time.time()}
-        wf_store.save_workflow_prerun_metadata(workflow_prerun_metadata)
-        step_id = wf_store.get_entrypoint_step_id()
-        try:
-            current_output = self._workflow_outputs[workflow_id].output
-        except KeyError:
-            current_output = None
-        result = recovery.resume_workflow_step(
-            job_id, workflow_id, step_id, current_output
-        )
-        latest_output = LatestWorkflowOutput(
-            result.persisted_output, workflow_id, step_id
-        )
-        self._workflow_outputs[workflow_id] = latest_output
-        logger.info(
-            f"run_or_resume: {workflow_id}, {step_id}," f"{result.persisted_output.ref}"
-        )
-        self._step_output_cache[(workflow_id, step_id)] = latest_output
-
-        self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
-
-        if workflow_id not in self._step_status:
-            self._step_status[workflow_id] = {}
-            logger.info(f"Workflow job [id={workflow_id}] started.")
-        return result
-
-    def gen_step_id(self, workflow_id: str, step_name: str) -> str:
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        idx = wf_store.gen_step_id(step_name)
+        idx = wf_store.gen_task_id(task_name)
         if idx == 0:
-            return step_name
+            return task_name
         else:
-            return f"{step_name}_{idx}"
+            return f"{task_name}_{idx}"
 
-    def _update_workflow_status(self, workflow_id: str, status: common.WorkflowStatus):
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        wf_store.update_workflow_status(status)
-        self._workflow_status[workflow_id] = status
-
-    def update_step_status(
+    def submit_workflow(
         self,
         workflow_id: str,
-        step_id: str,
-        status: common.WorkflowStatus,
-        outputs: List[WorkflowStaticRef],
+        state: WorkflowExecutionState,
+        ignore_existing: bool = False,
     ):
-        # Note: For virtual actor, we could add more steps even if
-        # the workflow finishes.
-
-        self._step_status.setdefault(workflow_id, {})
-        if status == common.WorkflowStatus.SUCCESSFUL:
-            self._step_status[workflow_id].pop(step_id, None)
-        else:
-            self._step_status.setdefault(workflow_id, {})[step_id] = status
-        remaining = len(self._step_status[workflow_id])
-        if status != common.WorkflowStatus.RUNNING:
-            self._step_output_cache.pop((workflow_id, step_id), None)
-
-        if status != common.WorkflowStatus.FAILED and remaining != 0:
-            return
-
-        if status == common.WorkflowStatus.FAILED:
-            if workflow_id in self._workflow_outputs:
-                cancel_job(self._workflow_outputs.pop(workflow_id).output)
-            self._update_workflow_status(workflow_id, common.WorkflowStatus.FAILED)
-            self._step_status.pop(workflow_id)
-        else:
-            self._update_workflow_status(workflow_id, common.WorkflowStatus.SUCCESSFUL)
-            self._step_status.pop(workflow_id)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        wf_store.save_workflow_postrun_metadata({"end_time": time.time()})
-
-    def cancel_workflow(self, workflow_id: str) -> None:
-        self._step_status.pop(workflow_id)
-        cancel_job(self._workflow_outputs.pop(workflow_id).output)
-        self._update_workflow_status(workflow_id, common.WorkflowStatus.CANCELED)
-
-    def is_workflow_running(self, workflow_id: str) -> bool:
-        return (
-            workflow_id in self._step_status and workflow_id in self._workflow_outputs
-        )
-
-    def list_running_workflow(self) -> List[str]:
-        return list(self._step_status.keys())
-
-    def init_actor(self, actor_id: str, init_marker: List[ray.ObjectRef]) -> None:
-        """Initialize a workflow virtual actor.
+        """Submit workflow. A submitted workflow can be executed later.
 
         Args:
-            actor_id: The ID of a workflow virtual actor.
-            init_marker: A future object (wrapped in a list) that represents
-                the state of the actor. "ray.get" the object successfully
-                indicates the actor is initialized successfully.
+            workflow_id: ID of the workflow.
+            state: The initial state of the workflow.
+            ignore_existing: Ignore existing executed workflows.
         """
-        # TODO(suquark): Maybe we should raise an error if the actor_id
-        # already exists?
-        self._actor_initialized[actor_id] = init_marker[0]
+        if workflow_id in self._workflow_executors:
+            raise RuntimeError(f"Workflow[id={workflow_id}] is being executed.")
+        if workflow_id in self._executed_workflows and not ignore_existing:
+            raise RuntimeError(f"Workflow[id={workflow_id}] has been executed.")
 
-    def actor_ready(self, actor_id: str) -> ray.ObjectRef:
-        """Check if a workflow virtual actor is fully initialized.
-
-        Args:
-            actor_id: The ID of a workflow virtual actor.
-
-        Returns:
-            A future object that represents the state of the actor.
-            "ray.get" the object successfully indicates the actor is
-            initialized successfully.
-        """
-        ws = workflow_storage.WorkflowStorage(actor_id)
-        try:
-            step_id = ws.get_entrypoint_step_id()
-            output_exists = ws.inspect_step(step_id).output_object_valid
-            if output_exists:
-                return ray.put(None)
-        except Exception:
-            pass
-        if actor_id not in self._actor_initialized:
+        if state.output_task_id is None:
             raise ValueError(
-                f"Actor '{actor_id}' has not been created, or "
-                "it has failed before initialization."
+                "No root DAG specified that generates output for the workflow."
             )
-        return self._actor_initialized[actor_id]
 
-    def get_output(self, workflow_id: str, name: Optional[str]) -> WorkflowStaticRef:
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        if (
+            self._max_running_workflows != -1
+            and len(self._running_workflows) >= self._max_running_workflows
+        ):
+            try:
+                self._workflow_queue.put_nowait(workflow_id)
+                self._queued_workflows[workflow_id] = asyncio.Future()
+                wf_store.update_workflow_status(WorkflowStatus.PENDING)
+            except queue.Full:
+                # override with our error message
+                raise queue.Full("Workflow queue has been full") from None
+        else:
+            self._running_workflows.add(workflow_id)
+            wf_store.update_workflow_status(WorkflowStatus.RUNNING)
+        # initialize executor
+        self._workflow_executors[workflow_id] = WorkflowExecutor(state)
+
+    async def reconstruct_workflow(
+        self, job_id: str, context: WorkflowTaskContext
+    ) -> None:
+        """Reconstruct a (failed) workflow and submit it."""
+        state = await resume_workflow_task.remote(job_id, context.workflow_id)
+        self.submit_workflow(context.workflow_id, state, ignore_existing=True)
+
+    async def execute_workflow(
+        self,
+        job_id: str,
+        context: WorkflowTaskContext,
+    ) -> ray.ObjectRef:
+        """Execute a submitted workflow.
+
+        Args:
+            job_id: The ID of the job for logging.
+            context: The execution context.
+        Returns:
+            An object ref that represent the result.
+        """
+        workflow_id = context.workflow_id
+        if workflow_id not in self._workflow_executors:
+            raise RuntimeError(f"Workflow '{workflow_id}' has not been submitted.")
+
+        pending_fut = self._queued_workflows.get(workflow_id)
+        if pending_fut is not None:
+            await pending_fut  # wait until this workflow is ready to go
+
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        executor = self._workflow_executors[workflow_id]
+        try:
+            await executor.run_until_complete(job_id, context, wf_store)
+            return await self.get_output(workflow_id, executor.output_task_id)
+        finally:
+            self._workflow_executors.pop(workflow_id)
+            self._running_workflows.remove(workflow_id)
+            self._executed_workflows.add(workflow_id)
+            if not self._workflow_queue.empty():
+                # schedule another workflow from the pending queue
+                next_workflow_id = self._workflow_queue.get_nowait()
+                self._running_workflows.add(next_workflow_id)
+                fut = self._queued_workflows.pop(next_workflow_id)
+                fut.set_result(None)
+
+    async def cancel_workflow(self, workflow_id: str) -> None:
+        """Cancel workflow execution."""
+        if workflow_id in self._workflow_executors:
+            executor = self._workflow_executors[workflow_id]
+            fut = executor.get_task_output_async(executor.output_task_id)
+            executor.cancel()
+            try:
+                # Wait until cancelled, otherwise workflow status may not
+                # get updated after "workflow.cancel()" is called.
+                await fut
+            except WorkflowCancellationError:
+                pass
+        else:
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            wf_store.update_workflow_status(WorkflowStatus.CANCELED)
+
+    def get_workflow_status(self, workflow_id: str) -> WorkflowStatus:
+        """Get the status of the workflow."""
+        if workflow_id in self._workflow_executors:
+            if workflow_id in self._queued_workflows:
+                return WorkflowStatus.PENDING
+            return WorkflowStatus.RUNNING
+        store = workflow_storage.get_workflow_storage(workflow_id)
+        status = store.load_workflow_status()
+        if status == WorkflowStatus.NONE:
+            raise WorkflowNotFoundError(workflow_id)
+        elif status in WorkflowStatus.non_terminating_status():
+            return WorkflowStatus.RESUMABLE
+        return status
+
+    def is_workflow_non_terminating(self, workflow_id: str) -> bool:
+        """True if the workflow is still running or pending."""
+        return workflow_id in self._workflow_executors
+
+    def list_non_terminating_workflows(self) -> Dict[WorkflowStatus, List[str]]:
+        """List workflows whose status are not of terminated status."""
+        result = {WorkflowStatus.RUNNING: [], WorkflowStatus.PENDING: []}
+        for wf in self._workflow_executors.keys():
+            if wf in self._running_workflows:
+                result[WorkflowStatus.RUNNING].append(wf)
+            else:
+                result[WorkflowStatus.PENDING].append(wf)
+        return result
+
+    async def get_output(
+        self, workflow_id: str, task_id: Optional[TaskID]
+    ) -> ray.ObjectRef:
         """Get the output of a running workflow.
 
         Args:
             workflow_id: The ID of a workflow job.
+            task_id: If set, fetch the specific task output instead of the output
+                of the workflow.
 
         Returns:
-            An object reference that can be used to retrieve the
-            workflow result.
+            An object reference that can be used to retrieve the workflow result.
         """
-        if workflow_id in self._workflow_outputs and name is None:
-            return self._workflow_outputs[workflow_id].output
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        status = wf_store.load_workflow_status()
-        if status == common.WorkflowStatus.NONE:
-            raise ValueError(f"No such workflow {workflow_id}")
-        if status == common.WorkflowStatus.CANCELED:
-            raise ValueError(f"Workflow {workflow_id} is canceled")
-        if name is None:
-            # For resumable workflow, the workflow result is not ready.
-            # It has to be resumed first.
-            if status == common.WorkflowStatus.RESUMABLE:
+        ref = None
+        if self.is_workflow_non_terminating(workflow_id):
+            executor = self._workflow_executors[workflow_id]
+            if task_id is None:
+                task_id = executor.output_task_id
+            workflow_ref = await executor.get_task_output_async(task_id)
+            task_id, ref = workflow_ref.task_id, workflow_ref.ref
+        if ref is None:
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            tid = wf_store.inspect_output(task_id)
+            if tid is not None:
+                ref = load_task_output_from_storage.remote(workflow_id, task_id)
+            elif task_id is not None:
                 raise ValueError(
-                    f"Workflow {workflow_id} is in resumable status, "
-                    "please resume it"
+                    f"Cannot load output from task id '{task_id}' in workflow "
+                    f"'{workflow_id}'"
                 )
+            else:
+                raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
+        return SelfResolvingObject(ref)
 
-        if name is None:
-            step_id = wf_store.get_entrypoint_step_id()
-        else:
-            step_id = name
-            output = self.get_cached_step_output(workflow_id, step_id)
-            if output is not None:
-                return WorkflowStaticRef.from_output(step_id, output)
-
-        @ray.remote
-        def load(wf_store, workflow_id, step_id):
-            result = wf_store.inspect_step(step_id)
-            if result.output_object_valid:
-                # we already have the output
-                return wf_store.load_step_output(step_id)
-            if isinstance(result.output_step_id, str):
-                actor = get_management_actor()
-                return WorkflowStaticRef.from_output(
-                    result.output_step_id,
-                    actor.get_output.remote(workflow_id, result.output_step_id),
-                )
-            raise ValueError(
-                f"Cannot load output from step id {step_id} "
-                f"in workflow {workflow_id}"
-            )
-
-        return WorkflowStaticRef.from_output(
-            step_id,
-            load.remote(wf_store, workflow_id, step_id),
-        )
-
-    def get_running_workflow(self) -> List[str]:
-        return list(self._workflow_outputs.keys())
-
-    def report_failure(self, workflow_id: str) -> None:
-        """Report the failure of a workflow_id.
+    def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow, its checkpoints, and other information it may have
+           persisted to storage.
 
         Args:
-            workflow_id: The ID of the workflow.
-        """
-        logger.error(f"Workflow job [id={workflow_id}] failed.")
-        self._workflow_outputs.pop(workflow_id, None)
+            workflow_id: The workflow to delete.
 
-    def report_success(self, workflow_id: str) -> None:
-        """Report the success of a workflow_id.
-
-        Args:
-            workflow_id: The ID of the workflow.
+        Raises:
+            WorkflowStillActiveError: The workflow is still active.
+            WorkflowNotFoundError: The workflow does not exist.
         """
-        # TODO(suquark): maybe we should not report success for every
-        # step of virtual actor writer?
-        logger.info(f"Workflow job [id={workflow_id}] succeeded.")
-        self._workflow_outputs.pop(workflow_id, None)
+        if self.is_workflow_non_terminating(workflow_id):
+            raise WorkflowStillActiveError("DELETE", workflow_id)
+        wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+        wf_storage.delete_workflow()
+        self._executed_workflows.discard(workflow_id)
+
+    def create_http_event_provider(self) -> None:
+        """Deploy an HTTPEventProvider as a Serve deployment with
+        name = common.HTTP_EVENT_PROVIDER_NAME, if one doesn't exist
+        """
+        ray.serve.start(detached=True)
+        try:
+            ray.serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
+        except KeyError:
+            from ray.workflow.http_event_provider import HTTPEventProvider
+
+            HTTPEventProvider.deploy()
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
 
 
-def init_management_actor() -> None:
-    """Initialize WorkflowManagementActor"""
+def init_management_actor(
+    max_running_workflows: Optional[int], max_pending_workflows: Optional[int]
+) -> None:
+    """Initialize WorkflowManagementActor.
+
+    Args:
+        max_running_workflows: The maximum number of concurrently running workflows.
+            Use -1 as infinity. Use 'None' for keeping the original value if the actor
+            exists, or it is equivalent to infinity if the actor does not exist.
+        max_pending_workflows: The maximum number of queued workflows.
+            Use -1 as infinity. Use 'None' for keeping the original value if the actor
+            exists, or it is equivalent to infinity if the actor does not exist.
+    """
     try:
-        get_management_actor()
+        actor = get_management_actor()
+        # Check if max_running_workflows/max_pending_workflows
+        # matches the previous settings.
+        ray.get(
+            actor.validate_init_options.remote(
+                max_running_workflows, max_pending_workflows
+            )
+        )
     except ValueError:
         logger.info("Initializing workflow manager...")
+        if max_running_workflows is None:
+            max_running_workflows = -1
+        if max_pending_workflows is None:
+            max_pending_workflows = -1
         # the actor does not exist
         actor = WorkflowManagementActor.options(
             name=common.MANAGEMENT_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached",
-        ).remote()
+        ).remote(max_running_workflows, max_pending_workflows)
         # No-op to ensure the actor is created before the driver exits.
         ray.get(actor.ready.remote())
 
@@ -404,26 +372,3 @@ def get_management_actor() -> "ActorHandle":
     return ray.get_actor(
         common.MANAGEMENT_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE
     )
-
-
-def get_or_create_management_actor() -> "ActorHandle":
-    """Get or create WorkflowManagementActor"""
-    # TODO(suquark): We should not get the actor everytime. We also need to
-    # resume the actor if it failed. Using a global variable to cache the
-    # actor seems not enough to resume the actor, because there is no
-    # aliveness detection for an actor.
-    try:
-        workflow_manager = get_management_actor()
-    except ValueError:
-        # the actor does not exist
-        logger.warning(
-            "Cannot access workflow manager. It could be because "
-            "the workflow manager exited unexpectedly. A new "
-            "workflow manager is being created."
-        )
-        workflow_manager = WorkflowManagementActor.options(
-            name=common.MANAGEMENT_ACTOR_NAME,
-            namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
-            lifetime="detached",
-        ).remote()
-    return workflow_manager

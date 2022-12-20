@@ -15,12 +15,12 @@ class StepActor:
         self.current_step = 1
         self.total_steps = total_steps
 
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker_id = worker.core_worker.get_actor_id()
         ray_kv._internal_kv_put(f"JOB:{worker_id}", self.current_step, overwrite=True)
 
     def run(self):
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker_id = worker.core_worker.get_actor_id()
 
         while self.current_step <= self.total_steps:

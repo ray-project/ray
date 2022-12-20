@@ -1,18 +1,18 @@
 import logging
-import pytest
 import time
 
+import pytest
+
 import ray
-import ray.ray_constants as ray_constants
-from ray.util.placement_group import placement_group, remove_placement_group
-from ray.autoscaler.sdk import request_resources
-from ray.autoscaler._private.monitor import Monitor
-from ray.cluster_utils import Cluster
 from ray._private.test_utils import (
+    SignalActor,
     generate_system_config_map,
     wait_for_condition,
-    SignalActor,
 )
+from ray.autoscaler._private.monitor import Monitor
+from ray.autoscaler.sdk import request_resources
+from ray.cluster_utils import Cluster
+from ray.util.placement_group import placement_group, remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,17 @@ def test_shutdown():
     "ray_start_cluster_head",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=3, object_timeout_milliseconds=12345
-        )
+            num_heartbeats_timeout=3,
+            object_timeout_milliseconds=12345,
+            pull_based_healthcheck=False,
+        ),
+        generate_system_config_map(
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
+            object_timeout_milliseconds=12345,
+            pull_based_healthcheck=True,
+        ),
     ],
     indirect=True,
 )
@@ -62,7 +71,12 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 3
+        if ray._config.pull_based_healthcheck():
+            assert ray._config.health_check_initial_delay_ms() == 0
+            assert ray._config.health_check_failure_threshold() == 3
+            assert ray._config.health_check_period_ms() == 1000
+        else:
+            assert ray._config.num_heartbeats_timeout() == 3
 
     ray.get([f.remote() for _ in range(5)])
 
@@ -77,9 +91,7 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD
-    )
+    monitor = Monitor(address, None)
     return monitor
 
 
@@ -195,7 +207,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     monitor = setup_monitor(cluster.gcs_address)
-    total_cpus = ray.state.cluster_resources()["CPU"]
+    total_cpus = ray._private.state.cluster_resources()["CPU"]
     verify_load_metrics(monitor, ({"CPU": 0.0}, {"CPU": total_cpus}))
 
     @ray.remote
@@ -363,6 +375,10 @@ def test_multi_node_pgs(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

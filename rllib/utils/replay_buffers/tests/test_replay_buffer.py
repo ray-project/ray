@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
 
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
@@ -27,7 +27,7 @@ class TestReplayBuffer(unittest.TestCase):
         for i in range(num_batches):
             data = [_generate_data() for _ in range(batch_size)]
             self.batch_id += 1
-            batch = SampleBatch.concat_samples(data)
+            batch = concat_samples(data)
             _buffer.add(batch, **kwargs)
 
     def test_stats(self):
@@ -39,7 +39,7 @@ class TestReplayBuffer(unittest.TestCase):
         batch_size = 5
         buffer_size = 15
 
-        buffer = ReplayBuffer(capacity=buffer_size)
+        buffer = ReplayBuffer(capacity=buffer_size, storage_unit="fragments")
 
         # Test add/sample
         self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
@@ -103,7 +103,7 @@ class TestReplayBuffer(unittest.TestCase):
                 batch = MultiAgentBatch(policy_batches, num_batches * 2)
                 buffer.add(batch, **kwargs)
 
-        buffer = ReplayBuffer(capacity=100, storage_unit="timesteps")
+        buffer = ReplayBuffer(capacity=100, storage_unit="fragments")
 
         # Test add/sample
         _add_multi_agent_batch_to_buffer(buffer, num_policies=2, num_batches=2)

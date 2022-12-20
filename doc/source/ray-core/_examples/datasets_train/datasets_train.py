@@ -18,22 +18,23 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-import ray
+from ray.air.config import DatasetConfig, ScalingConfig
+from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+import ray
 from ray import train
+from ray.air import session, Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
-from ray.train import Trainer
-from ray.train.callbacks.logging import MLflowLoggerCallback
-from ray.train.callbacks import TBXLoggerCallback
-from torch.nn.parallel import DistributedDataParallel
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def make_and_upload_dataset(dir_path):
 
-    import random
     import os
+    import random
 
     import pandas as pd
     import sklearn.datasets
@@ -390,7 +391,6 @@ def test_epoch(dataset, model, device, criterion):
 
 
 def train_func(config):
-    use_gpu = config["use_gpu"]
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_layers = config["num_layers"]
@@ -402,17 +402,15 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
-    device = torch.device(
-        f"cuda:{train.local_rank()}" if use_gpu and torch.cuda.is_available() else "cpu"
-    )
+    device = train.torch.get_device()
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_pipeline = train.get_dataset_shard("train_dataset")
+    train_dataset_pipeline = session.get_dataset_shard("train")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = train.get_dataset_shard("test_dataset")
+    test_dataset = session.get_dataset_shard("test")
     test_torch_dataset = test_dataset.to_torch(
-        label_column="label", batch_size=batch_size
+        label_column="label", batch_size=batch_size, drop_last=True
     )
 
     net = Net(
@@ -455,20 +453,20 @@ def train_func(config):
             f"{test_num_correct} / {test_num_total} = {test_acc:.4f}"
         )
 
-        # Record and log stats.
-        train.report(
-            train_acc=train_acc,
-            train_loss=train_running_loss,
-            test_acc=test_acc,
-            test_loss=test_running_loss,
-        )
-
         # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        train.save_checkpoint(model_state_dict=module.state_dict())
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
-    if train.world_rank() == 0:
-        return module.cpu()
+        # Record and log stats.
+        print(f"session report on {session.get_world_rank()}")
+        session.report(
+            dict(
+                train_acc=train_acc,
+                train_loss=train_running_loss,
+                test_acc=test_acc,
+                test_loss=test_running_loss,
+            ),
+            checkpoint=checkpoint,
+        )
 
 
 if __name__ == "__main__":
@@ -593,14 +591,9 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
-    # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
-    del train_dataset
-
-    datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
+    datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
-        "use_gpu": use_gpu,
         "num_epochs": NUM_EPOCHS,
         "batch_size": BATCH_SIZE,
         "num_hidden": NUM_HIDDEN,
@@ -610,15 +603,8 @@ if __name__ == "__main__":
         "num_features": num_features,
     }
 
-    # Create 2 callbacks: one for TensorBoard Logging and one for MLflow
-    # logging. Pass these into Trainer, and all results that are
-    # reported by ``train.report()`` will be logged to these 2 places.
-    # TODO: TBXLoggerCallback should create nonexistent logdir
-    #       and should also create 1 directory per file.
-    tbx_logdir = "./runs"
-    os.makedirs(tbx_logdir, exist_ok=True)
+    # Create the MLflowLoggerCallback
     callbacks = [
-        TBXLoggerCallback(logdir=tbx_logdir),
         MLflowLoggerCallback(
             experiment_name="cuj-big-data-training", save_artifact=True
         ),
@@ -627,20 +613,44 @@ if __name__ == "__main__":
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
 
-    trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker,
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        datasets=datasets,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker=resources_per_worker,
+        ),
+        run_config=RunConfig(callbacks=callbacks),
+        dataset_config={
+            "train": DatasetConfig(
+                use_stream_api=True, stream_window_size=-1, global_shuffle=True
+            )
+        },
     )
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config=config, callbacks=callbacks, dataset=datasets
-    )
-    model = results[0]
-    trainer.shutdown()
+    results = trainer.fit()
+    state_dict = results.checkpoint.to_dict()["model"]
+
+    def load_model_func():
+        num_layers = config["num_layers"]
+        num_hidden = config["num_hidden"]
+        dropout_every = config["dropout_every"]
+        dropout_prob = config["dropout_prob"]
+        num_features = config["num_features"]
+
+        model = Net(
+            n_layers=num_layers,
+            n_features=num_features,
+            num_hidden=num_hidden,
+            dropout_every=dropout_every,
+            drop_prob=dropout_prob,
+        )
+        model.load_state_dict(state_dict)
+        return model
 
     if args.mlflow_register_model:
+        model = load_model_func()
         mlflow.pytorch.log_model(
             model, artifact_path="models", registered_model_name="torch_model"
         )
@@ -658,26 +668,6 @@ if __name__ == "__main__":
         def load_model_func():
             model_uri = f"models:/torch_model/{latest_version}"
             return mlflow.pytorch.load_model(model_uri)
-
-    else:
-        state_dict = model.state_dict()
-
-        def load_model_func():
-            num_layers = config["num_layers"]
-            num_hidden = config["num_hidden"]
-            dropout_every = config["dropout_every"]
-            dropout_prob = config["dropout_prob"]
-            num_features = config["num_features"]
-
-            model = Net(
-                n_layers=num_layers,
-                n_features=num_features,
-                num_hidden=num_hidden,
-                dropout_every=dropout_every,
-                drop_prob=dropout_prob,
-            )
-            model.load_state_dict(state_dict)
-            return model
 
     class BatchInferModel:
         def __init__(self, load_model_func):

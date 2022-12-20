@@ -1,24 +1,34 @@
 import asyncio
 import os
-import psutil
-import tempfile
+import signal
 import sys
+import tempfile
 import urllib.request
 from uuid import uuid4
-import signal
 
+import psutil
 import pytest
 
 import ray
-from ray.job_submission import JobStatus
-from ray.dashboard.modules.job.common import (
-    JOB_ID_METADATA_KEY,
-    JOB_NAME_METADATA_KEY,
+from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_constants import (
+    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+    KV_NAMESPACE_JOB,
 )
-from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
-from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
-
+from ray._private.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    async_wait_for_condition_async_predicate,
+)
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
+from ray.dashboard.modules.job.job_manager import (
+    JobManager,
+    JobSupervisor,
+    generate_job_id,
+)
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray.job_submission import JobStatus
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -27,14 +37,60 @@ TEST_NAMESPACE = "jobs_test_namespace"
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+@pytest.mark.parametrize("resources_specified", [True, False])
+async def test_get_scheduling_strategy(
+    call_ray_start, monkeypatch, resources_specified, tmp_path  # noqa: F811
+):
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+
+    # If no head node id is found, we should use "DEFAULT".
+    await gcs_aio_client.internal_kv_del(
+        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    assert strategy == "DEFAULT"
+
+    # Add a head node id to the internal KV to simulate what is done in node_head.py.
+    await gcs_aio_client.internal_kv_put(
+        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    if resources_specified:
+        assert strategy == "DEFAULT"
+    else:
+        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        assert expected_strategy.node_id == strategy.node_id
+        assert expected_strategy.soft == strategy.soft
+
+    # When the env var is set to 1, we should use DEFAULT.
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    assert strategy == "DEFAULT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
     ["""ray start --head --resources={"TestResourceKey":123}"""],
     indirect=True,
 )
-async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
+async def test_submit_no_ray_address(call_ray_start, tmp_path):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
-    ray.init(address=call_ray_start)
-    job_manager = JobManager()
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     init_ray_no_address_script = """
 import ray
@@ -50,11 +106,11 @@ assert ray.cluster_resources().get('TestResourceKey') == 123
     # The job script should work even if RAY_ADDRESS is not set on the cluster.
     os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    job_id = job_manager.submit_job(
+    job_id = await job_manager.submit_job(
         entrypoint=f"""python -c "{init_ray_no_address_script}" """
     )
 
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
 
@@ -66,15 +122,26 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+    yield ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        namespace=TEST_NAMESPACE,
+        log_to_driver=True,
+    )
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
+@pytest.mark.asyncio
 @pytest.fixture
-def job_manager(shared_ray_instance):
-    yield JobManager()
+async def job_manager(shared_ray_instance, tmp_path):
+    address_info = shared_ray_instance
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    yield JobManager(gcs_aio_client, tmp_path)
 
 
 def _driver_script_path(file_name: str) -> str:
@@ -94,11 +161,11 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
         "do echo 'Waiting...' && sleep 1; "
         "done"
     )
-    job_id = job_manager.submit_job(
+    job_id = await job_manager.submit_job(
         entrypoint=wait_for_file_cmd, _start_signal_actor=start_signal_actor
     )
 
-    status = job_manager.get_job_status(job_id)
+    status = await job_manager.get_job_status(job_id)
     if start_signal_actor:
         for _ in range(10):
             assert status == JobStatus.PENDING
@@ -106,7 +173,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
             assert logs == ""
             await asyncio.sleep(0.01)
     else:
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_running, job_manager=job_manager, job_id=job_id
         )
         await async_wait_for_condition(
@@ -116,8 +183,8 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     return pid_file, tmp_file, job_id
 
 
-def check_job_succeeded(job_manager, job_id):
-    data = job_manager.get_job_info(job_id)
+async def check_job_succeeded(job_manager, job_id):
+    data = await job_manager.get_job_info(job_id)
     status = data.status
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
@@ -125,20 +192,20 @@ def check_job_succeeded(job_manager, job_id):
     return status == JobStatus.SUCCEEDED
 
 
-def check_job_failed(job_manager, job_id):
-    status = job_manager.get_job_status(job_id)
+async def check_job_failed(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
     return status == JobStatus.FAILED
 
 
-def check_job_stopped(job_manager, job_id):
-    status = job_manager.get_job_status(job_id)
+async def check_job_stopped(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
     return status == JobStatus.STOPPED
 
 
-def check_job_running(job_manager, job_id):
-    status = job_manager.get_job_status(job_id)
+async def check_job_running(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING}
     return status == JobStatus.RUNNING
 
@@ -162,26 +229,30 @@ def test_generate_job_id():
 
 # NOTE(architkulkarni): This test must be run first in order for the job
 # submission history of the shared Ray runtime to be empty.
-def test_list_jobs_empty(job_manager: JobManager):
-    assert job_manager.list_jobs() == dict()
+@pytest.mark.asyncio
+async def test_list_jobs_empty(job_manager: JobManager):
+    assert await job_manager.list_jobs() == dict()
 
 
 @pytest.mark.asyncio
 async def test_list_jobs(job_manager: JobManager):
-    job_manager.submit_job(entrypoint="echo hi", job_id="1")
+    await job_manager.submit_job(entrypoint="echo hi", submission_id="1")
 
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
-    job_manager.submit_job(
-        entrypoint="echo hello", job_id="2", runtime_env=runtime_env, metadata=metadata
+    await job_manager.submit_job(
+        entrypoint="echo hello",
+        submission_id="2",
+        runtime_env=runtime_env,
+        metadata=metadata,
     )
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id="1"
     )
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id="2"
     )
-    jobs_info = job_manager.list_jobs()
+    jobs_info = await job_manager.list_jobs()
     assert "1" in jobs_info
     assert jobs_info["1"].status == JobStatus.SUCCEEDED
 
@@ -195,43 +266,47 @@ async def test_list_jobs(job_manager: JobManager):
 
 @pytest.mark.asyncio
 async def test_pass_job_id(job_manager):
-    job_id = "my_custom_id"
+    submission_id = "my_custom_id"
 
-    returned_id = job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
-    assert returned_id == job_id
+    returned_id = await job_manager.submit_job(
+        entrypoint="echo hello", submission_id=submission_id
+    )
+    assert returned_id == submission_id
 
-    await async_wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=submission_id
     )
 
     # Check that the same job_id is rejected.
     with pytest.raises(RuntimeError):
-        job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
+        await job_manager.submit_job(
+            entrypoint="echo hello", submission_id=submission_id
+        )
 
 
 @pytest.mark.asyncio
 class TestShellScriptExecution:
     async def test_submit_basic_echo(self, job_manager):
-        job_id = job_manager.submit_job(entrypoint="echo hello")
+        job_id = await job_manager.submit_job(entrypoint="echo hello")
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert job_manager.get_job_logs(job_id) == "hello\n"
 
     async def test_submit_stderr(self, job_manager):
-        job_id = job_manager.submit_job(entrypoint="echo error 1>&2")
+        job_id = await job_manager.submit_job(entrypoint="echo error 1>&2")
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert job_manager.get_job_logs(job_id) == "error\n"
 
     async def test_submit_ls_grep(self, job_manager):
         grep_cmd = f"ls {os.path.dirname(__file__)} | grep test_job_manager.py"
-        job_id = job_manager.submit_job(entrypoint=grep_cmd)
+        job_id = await job_manager.submit_job(entrypoint=grep_cmd)
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert job_manager.get_job_logs(job_id) == "test_job_manager.py\n"
@@ -245,10 +320,10 @@ class TestShellScriptExecution:
         4) Empty logs
         """
         run_cmd = f"python {_driver_script_path('script_with_exception.py')}"
-        job_id = job_manager.submit_job(entrypoint=run_cmd)
+        job_id = await job_manager.submit_job(entrypoint=run_cmd)
 
-        def cleaned_up():
-            data = job_manager.get_job_info(job_id)
+        async def cleaned_up():
+            data = await job_manager.get_job_info(job_id)
             if data.status != JobStatus.FAILED:
                 return False
             if "Exception: Script failed with exception !" not in data.message:
@@ -256,15 +331,15 @@ class TestShellScriptExecution:
 
             return job_manager._get_actor_for_job(job_id) is None
 
-        await async_wait_for_condition(cleaned_up)
+        await async_wait_for_condition_async_predicate(cleaned_up)
 
     async def test_submit_with_s3_runtime_env(self, job_manager):
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint="python script.py",
             runtime_env={"working_dir": "s3://runtime-env-test/script_runtime_env.zip"},
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert (
@@ -277,11 +352,11 @@ class TestShellScriptExecution:
                 "https://runtime-env-test.s3.amazonaws.com/script_runtime_env.zip",
                 filename=f.name,
             )
-            job_id = job_manager.submit_job(
+            job_id = await job_manager.submit_job(
                 entrypoint="python script.py",
                 runtime_env={"working_dir": "file://" + filename},
             )
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
             assert (
@@ -296,26 +371,26 @@ class TestRuntimeEnv:
         """Test we can pass env vars in the subprocess that executes job's
         driver script.
         """
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint="echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
             runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"}},
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert job_manager.get_job_logs(job_id) == "233\n"
 
     async def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
-        job_id_1 = job_manager.submit_job(
+        job_id_1 = await job_manager.submit_job(
             entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
             runtime_env={
                 "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}
             },
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id_1
         )
         logs = job_manager.get_job_logs(job_id_1)
@@ -323,14 +398,14 @@ class TestRuntimeEnv:
             "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}" in logs
         )  # noqa: E501
 
-        job_id_2 = job_manager.submit_job(
+        job_id_2 = await job_manager.submit_job(
             entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
             runtime_env={
                 "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"}
             },
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id_2
         )
         logs = job_manager.get_job_logs(job_id_2)
@@ -342,20 +417,21 @@ class TestRuntimeEnv:
         """Ensure we got error message from worker.py and job logs
         if user provided runtime_env in both driver script and submit()
         """
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint=f"python {_driver_script_path('override_env_var.py')}",
             runtime_env={
                 "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}
             },
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         logs = job_manager.get_job_logs(job_id)
-        assert logs.startswith(
-            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) " "are provided"
+        token = (
+            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) are provided"
         )
+        assert token in logs, logs
         assert "JOB_1_VAR" in logs
 
     async def test_failed_runtime_env_validation(self, job_manager):
@@ -363,11 +439,11 @@ class TestRuntimeEnv:
         runtime_env.
         """
         run_cmd = f"python {_driver_script_path('override_env_var.py')}"
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        data = job_manager.get_job_info(job_id)
+        data = await job_manager.get_job_info(job_id)
         assert data.status == JobStatus.FAILED
         assert "path_not_exist is not a valid URI" in data.message
 
@@ -376,15 +452,15 @@ class TestRuntimeEnv:
         runtime_env that fails to be set up.
         """
         run_cmd = f"python {_driver_script_path('override_env_var.py')}"
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint=run_cmd, runtime_env={"working_dir": "s3://does_not_exist.zip"}
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_failed, job_manager=job_manager, job_id=job_id
         )
 
-        data = job_manager.get_job_info(job_id)
+        data = await job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
 
     async def test_pass_metadata(self, job_manager):
@@ -395,15 +471,15 @@ class TestRuntimeEnv:
             'python -c"'
             "import ray;"
             "ray.init();"
-            "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+            "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
             "print(dict(sorted(job_config.metadata.items())))"
             '"'
         )
 
         # Check that we default to only the job ID and job name.
-        job_id = job_manager.submit_job(entrypoint=print_metadata_cmd)
+        job_id = await job_manager.submit_job(entrypoint=print_metadata_cmd)
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert dict_to_str(
@@ -411,32 +487,29 @@ class TestRuntimeEnv:
         ) in job_manager.get_job_logs(job_id)
 
         # Check that we can pass custom metadata.
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint=print_metadata_cmd, metadata={"key1": "val1", "key2": "val2"}
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert (
-            dict_to_str(
-                {
-                    JOB_NAME_METADATA_KEY: job_id,
-                    JOB_ID_METADATA_KEY: job_id,
-                    "key1": "val1",
-                    "key2": "val2",
-                }
-            )
-            in job_manager.get_job_logs(job_id)
-        )
+        assert dict_to_str(
+            {
+                JOB_NAME_METADATA_KEY: job_id,
+                JOB_ID_METADATA_KEY: job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        ) in job_manager.get_job_logs(job_id)
 
         # Check that we can override job name.
-        job_id = job_manager.submit_job(
+        job_id = await job_manager.submit_job(
             entrypoint=print_metadata_cmd,
             metadata={JOB_NAME_METADATA_KEY: "custom_name"},
         )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert dict_to_str(
@@ -447,19 +520,38 @@ class TestRuntimeEnv:
         "env_vars",
         [None, {}, {"hello": "world"}],
     )
-    async def test_cuda_visible_devices(self, job_manager, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior.
+    @pytest.mark.parametrize(
+        "resource_kwarg",
+        [
+            {},
+            {"entrypoint_num_cpus": 1},
+            {"entrypoint_num_gpus": 1},
+            {"entrypoint_resources": {"Custom": 1}},
+        ],
+    )
+    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
-
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
+
+        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
+        logic. Instead, the behavior should match that of the user specifying
+        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
+        driver and tasks.
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
-        job_id = job_manager.submit_job(entrypoint=run_cmd, runtime_env=runtime_env)
+        if resource_kwarg:
+            run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
+        job_id = await job_manager.submit_job(
+            entrypoint=run_cmd,
+            runtime_env=runtime_env,
+            **resource_kwarg,
+        )
 
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
 
@@ -479,7 +571,7 @@ class TestAsyncAPI:
             with open(tmp_file, "w") as f:
                 print("hello", file=f)
 
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
             # Ensure driver subprocess gets cleaned up after job reached
@@ -491,7 +583,7 @@ class TestAsyncAPI:
             _, _, job_id = await _run_hanging_command(job_manager, tmp_dir)
 
             assert job_manager.stop_job(job_id) is True
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
             # Assert re-stopping a stopped job also returns False
@@ -518,7 +610,7 @@ class TestAsyncAPI:
 
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
 
@@ -546,7 +638,7 @@ class TestAsyncAPI:
             assert job_manager.stop_job(job_id) is True
             # Send run signal to unblock run function
             ray.get(start_signal_actor.send.remote())
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
@@ -570,7 +662,7 @@ class TestAsyncAPI:
 
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
 
@@ -588,7 +680,7 @@ class TestAsyncAPI:
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
             assert job_manager.stop_job(job_id) is True
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
@@ -626,7 +718,8 @@ class TestTailLogs:
 
             # TODO(edoakes): check we get no logs before actor starts (not sure
             # how to timeout the iterator call).
-            assert job_manager.get_job_status(job_id) == JobStatus.PENDING
+            job_status = await job_manager.get_job_status(job_id)
+            assert job_status == JobStatus.PENDING
 
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())
@@ -643,7 +736,7 @@ class TestTailLogs:
                 assert all(s == "Waiting..." for s in lines.strip().split("\n"))
                 print(lines, end="")
 
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
 
@@ -664,7 +757,7 @@ class TestTailLogs:
                 assert all(s == "Waiting..." for s in lines.strip().split("\n"))
                 print(lines, end="")
 
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
 
@@ -684,9 +777,79 @@ class TestTailLogs:
                 assert all(s == "Waiting..." for s in lines.strip().split("\n"))
                 print(lines, end="")
 
-            await async_wait_for_condition(
+            await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
+
+
+@pytest.mark.asyncio
+async def test_stop_job_gracefully(job_manager):
+    """
+    Stop job should send SIGTERM to child process (before trying to kill).
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+    assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+
+
+@pytest.mark.asyncio
+async def test_stop_job_timeout(job_manager):
+    """
+    Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    pass
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition(
+        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S,
+    )
 
 
 @pytest.mark.asyncio
@@ -702,7 +865,7 @@ while True:
 
     stream_logs_cmd = f'python -c "{stream_logs_script}"'
 
-    job_id = job_manager.submit_job(entrypoint=stream_logs_cmd)
+    job_id = await job_manager.submit_job(entrypoint=stream_logs_cmd)
     await async_wait_for_condition(
         lambda: "STREAMED" in job_manager.get_job_logs(job_id)
     )
@@ -716,17 +879,17 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
-    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
     print_ray_address_cmd = (
         'python -c"' "import os;" "import ray;" "ray.init();" "print('SUCCESS!');" '"'
     )
 
-    job_id = job_manager.submit_job(entrypoint=print_ray_address_cmd)
+    job_id = await job_manager.submit_job(entrypoint=print_ray_address_cmd)
 
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
     assert "SUCCESS!" in job_manager.get_job_logs(job_id)
@@ -749,8 +912,8 @@ async def test_job_runs_with_no_resources_available(job_manager):
         # Check that the job starts up properly even with no CPUs available.
         # The job won't exit until it has a CPU available because it waits for
         # a task.
-        job_id = job_manager.submit_job(entrypoint=f"python {script_path}")
-        await async_wait_for_condition(
+        job_id = await job_manager.submit_job(entrypoint=f"python {script_path}")
+        await async_wait_for_condition_async_predicate(
             check_job_running, job_manager=job_manager, job_id=job_id
         )
         await async_wait_for_condition(
@@ -761,7 +924,7 @@ async def test_job_runs_with_no_resources_available(job_manager):
         ray.get(hang_signal_actor.send.remote())
 
         # Check the job succeeds now that resources are available.
-        await async_wait_for_condition(
+        await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         await async_wait_for_condition(
@@ -770,6 +933,30 @@ async def test_job_runs_with_no_resources_available(job_manager):
     finally:
         # Just in case the test fails.
         ray.cancel(hanging_ref)
+
+
+async def test_failed_job_logs_max_char(job_manager):
+    """Test failed jobs does not print out too many logs"""
+
+    # Prints 21000 characters
+    print_large_logs_cmd = (
+        "python -c \"print('1234567890'* 2100); raise RuntimeError()\""
+    )
+
+    job_id = await job_manager.submit_job(
+        entrypoint=print_large_logs_cmd,
+    )
+
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify the status message length
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info
+    assert len(job_info.message) == 20000 + len(
+        "Job failed due to an application error, " "last available logs:\n"
+    )
 
 
 if __name__ == "__main__":

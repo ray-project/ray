@@ -1,3 +1,3 @@
-from ray.rllib.algorithms.qmix.qmix import QMixConfig, QMixTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.qmix.qmix import QMix, QMixConfig, DEFAULT_CONFIG
 
-__all__ = ["QMixConfig", "QMixTrainer", "DEFAULT_CONFIG"]
+__all__ = ["QMix", "QMixConfig", "DEFAULT_CONFIG"]

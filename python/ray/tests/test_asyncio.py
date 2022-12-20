@@ -240,7 +240,7 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return ray.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+            return ray._private.state.actors()[a._ray_actor_id.hex()]["State"] != 2
 
         wait_for_condition(cond)
 
@@ -313,7 +313,7 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
         num_exceptions += 1
 
     # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
     # NOTE: Unhandled exception is from waiting for the value of x1's ObjectID
     # in x1's destructor, and receiving an exception from f() instead.
@@ -351,4 +351,7 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

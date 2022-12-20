@@ -27,9 +27,11 @@ option java_multiple_files = true;
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
   uint32 min_replicas = 1;
+
   // Maximal number of replicas, must be a non-negative integer and greater or equals
   // to min_replicas.
   uint32 max_replicas = 2;
+
   // Target number of in flight requests per replicas. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
   // being scaled up. Must be a non-negative integer.
@@ -49,6 +51,9 @@ message AutoscalingConfig {
 
   // How long to wait before scaling up replicas.
   double upscale_delay_s = 8;
+
+  // Initial number of replicas deployment should start with. Must be non-negative.
+  optional uint32 initial_replicas = 9;
 }
 
 // Configuration options for a deployment, to be set by the user.
@@ -89,7 +94,7 @@ message DeploymentConfig {
 
   string version = 11;
 
-  string prev_version = 12;
+  repeated string user_configured_option_names = 12;
 }
 
 // Deployment language.
@@ -143,21 +148,17 @@ message ActorNameList {
   repeated string names = 1;
 }
 
-// It is deprecated. Use ActorNameList instead.
-message ActorSet {
-  repeated string names = 1;
-}
-
 message DeploymentVersion {
   string code_version = 1;
   bytes user_config = 2;
 }
 
 message ReplicaConfig {
-  bytes serialized_deployment_def = 1;
-  bytes init_args = 2;
-  bytes init_kwargs = 3;
-  string ray_actor_options = 4;
+  string deployment_def_name = 1;
+  bytes deployment_def = 2;
+  bytes init_args = 3;
+  bytes init_kwargs = 4;
+  string ray_actor_options = 5;
 }
 
 message DeploymentInfo {
@@ -166,9 +167,8 @@ message DeploymentInfo {
   ReplicaConfig replica_config = 3;
   int64 start_time_ms = 4;
   string actor_name = 5;
-  bytes serialized_deployment_def = 6;
-  string version = 7;
-  int64 end_time_ms = 8;
+  string version = 6;
+  int64 end_time_ms = 7;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -214,4 +214,17 @@ message ApplicationStatusInfo {
 message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
+}
+
+// RPC Schema
+message PredictRequest {
+  map<string, bytes> input = 2;
+}
+
+message PredictResponse {
+  bytes prediction = 1;
+}
+
+service PredictAPIsService {
+  rpc Predict(PredictRequest) returns (PredictResponse);
 }

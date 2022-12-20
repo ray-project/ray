@@ -8,7 +8,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestDreamer(unittest.TestCase):
-    """Sanity tests for DreamerTrainer."""
+    """Sanity tests for Dreamer."""
 
     def setUp(self):
         ray.init()
@@ -17,8 +17,8 @@ class TestDreamer(unittest.TestCase):
         ray.shutdown()
 
     def test_dreamer_compilation(self):
-        """Test whether an DreamerTrainer can be built with all frameworks."""
-        config = dreamer.DREAMERConfig()
+        """Test whether Dreamer can be built with all frameworks."""
+        config = dreamer.DreamerConfig()
         config.environment(
             env=RandomEnv,
             env_config={
@@ -35,12 +35,12 @@ class TestDreamer(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 print(results)
             # check_compute_single_action(trainer, include_state=True)
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

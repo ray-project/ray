@@ -6,10 +6,9 @@ import time
 import numpy as np
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import dicts_equal
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +60,10 @@ def test_auto_global_gc(shutdown_only):
     assert ray.get(test.collected.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 10, 0),
+    reason=("Currently not passing for Python 3.10"),
+)
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -72,7 +75,7 @@ def test_many_fractional_resources(shutdown_only):
     def f(block, accepted_resources):
         true_resources = {
             resource: value[0][1]
-            for resource, value in ray.worker.get_resource_ids().items()
+            for resource, value in ray._private.worker.get_resource_ids().items()
         }
         if block:
             ray.get(g.remote())
@@ -134,4 +137,9 @@ def test_many_fractional_resources(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

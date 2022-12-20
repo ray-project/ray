@@ -5,9 +5,11 @@ import tempfile
 import subprocess
 import random
 
+import requests
 import ray
 from ray import serve
 
+from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
@@ -70,7 +72,7 @@ def _shared_serve_instance():
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    yield serve.start(detached=True)
+    yield serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
 
 @pytest.fixture
@@ -80,3 +82,32 @@ def serve_instance(_shared_serve_instance):
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
+
+
+def check_ray_stop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="function")
+def ray_start_stop():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )

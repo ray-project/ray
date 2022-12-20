@@ -1,7 +1,8 @@
 import json
 import logging
-from pathlib import Path
 import random
+from hashlib import sha256
+from pathlib import Path
 from typing import Any, Callable
 
 from azure.common.credentials import get_cli_profile
@@ -9,11 +10,7 @@ from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
-RETRIES = 30
-MSI_NAME = "ray-msi-user-identity"
-NSG_NAME = "ray-nsg"
-SUBNET_NAME = "ray-subnet"
-VNET_NAME = "ray-vnet"
+UNIQUE_ID_LEN = 4
 
 logger = logging.getLogger(__name__)
 
@@ -79,26 +76,53 @@ def _configure_resource_group(config):
     with open(template_path, "r") as template_fp:
         template = json.load(template_fp)
 
-    # choose a random subnet, skipping most common value of 0
-    random.seed(resource_group)
-    subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
+    # set unique id for resources in this cluster
+    unique_id = config["provider"].get("unique_id")
+    if unique_id is None:
+        hasher = sha256()
+        hasher.update(config["provider"]["resource_group"].encode("utf-8"))
+        hasher.update(config["cluster_name"].encode("utf-8"))
+        unique_id = hasher.hexdigest()[:UNIQUE_ID_LEN]
+    else:
+        unique_id = str(unique_id)
+    config["provider"]["unique_id"] = unique_id
+    logger.info("Using unique id: %s", unique_id)
+
+    subnet_mask = config["provider"].get("subnet_mask")
+    if subnet_mask is None:
+        # choose a random subnet, skipping most common value of 0
+        random.seed(unique_id)
+        subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
+    logger.info("Using subnet mask: %s", subnet_mask)
 
     parameters = {
         "properties": {
             "mode": DeploymentMode.incremental,
             "template": template,
-            "parameters": {"subnet": {"value": subnet_mask}},
+            "parameters": {
+                "subnet": {"value": subnet_mask},
+                "uniqueId": {"value": unique_id},
+            },
         }
     }
 
     create_or_update = get_azure_sdk_function(
         client=resource_client.deployments, function_name="create_or_update"
     )
-    create_or_update(
-        resource_group_name=resource_group,
-        deployment_name="ray-config",
-        parameters=parameters,
-    ).wait()
+    outputs = (
+        create_or_update(
+            resource_group_name=resource_group,
+            deployment_name="ray-config",
+            parameters=parameters,
+        )
+        .result()
+        .properties.outputs
+    )
+
+    # append output resource ids to be used with vm creation
+    config["provider"]["msi"] = outputs["msi"]["value"]
+    config["provider"]["nsg"] = outputs["nsg"]["value"]
+    config["provider"]["subnet"] = outputs["subnet"]["value"]
 
     return config
 

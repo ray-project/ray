@@ -13,7 +13,7 @@ offline source (e.g. a file).
 
 Here, we introduce the generic API and its child classes used for reading offline data (for offline RL).
 For details on RLlib's :py:class:`~ray.rllib.evaluation.sampler.Sampler` implementations
-for collecting data from simulators/environments, see the :ref:`Sampler docs here<sampler-docs>`.
+for collecting data from simulators/environments, see the :ref:`Sampler docs here <sampler-docs>`.
 
 .. autoclass:: ray.rllib.offline.input_reader.InputReader
     :members:

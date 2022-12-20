@@ -56,7 +56,7 @@ results per each added tree in GBDTs, etc.) using early stopping usually allows 
 more configurations, as unpromising trials are pruned before they run their full course.
 Please note that not all search algorithms can use information from pruned trials.
 Early stopping cannot be used without incremental results - in case of the functional API,
-that means that ``tune.report()`` has to be called more than once - usually in a loop.
+that means that ``session.report()`` has to be called more than once - usually in a loop.
 
 **If your model is small**, you can usually try to run many different configurations.
 A **random search** can be used to generate configurations. You can also grid search
@@ -171,7 +171,7 @@ the a and b variables and use them afterwards.
 How does early termination (e.g. Hyperband/ASHA) work?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Early termination algorithms look at the intermediately reported values,
-e.g. what is reported to them via ``tune.report()`` after each training
+e.g. what is reported to them via ``session.report()`` after each training
 epoch. After a certain number of steps, they then remove the worst
 performing trials and keep only the best performing trials. Goodness of a trial
 is determined by ordering them by the objective metric, for instance accuracy
@@ -188,8 +188,8 @@ Why are all my trials returning "1" iteration?
 
 **This is most likely applicable for the Tune function API.**
 
-Ray Tune counts iterations internally every time ``tune.report()`` is
-called. If you only call ``tune.report()`` once at the end of the training,
+Ray Tune counts iterations internally every time ``session.report()`` is
+called. If you only call ``session.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
 the counter is increased after calling ``step()``.
 
@@ -203,7 +203,7 @@ What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You'll notice that Ray Tune not only reports hyperparameters (from the
-``config``) or metrics (passed to ``tune.report()``), but also some other
+``config``) or metrics (passed to ``session.report()``), but also some other
 outputs.
 
 .. code-block:: bash
@@ -233,8 +233,8 @@ See the :ref:`tune-autofilled-metrics` section for a glossary.
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
-``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
-a dict or a :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>` object:
+``tune.with_resources`` and wrap it around you trainable together with
+a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -279,6 +279,24 @@ will try to schedule the actors on the same node, but allows them to be schedule
 on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
+
+You can also use the :ref:`ScalingConfig <train-config>` to achieve the same results:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_scalingconfig_start__
+    :end-before: __resources_scalingconfig_end__
+
+You can also allocate specific resources to a trial based on a custom rule via lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
+
 
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -436,15 +454,11 @@ dictionary should only contain primitive types, like numbers or strings.
 **The Trial result is very large**
 
 This is the case if you return objects, data, or other large objects via the return value of ``step()`` in
-your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as above:
+your class trainable or to ``session.report()`` in your function trainable. The effect is the same as above:
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
-**Solution**: Usually you should be able to write data to the trial directory instead. You can then pass a
-filename back (or assume it is a known location). The trial dir is usually the current working directory. Class
-trainables have the ``Trainable.logdir`` property and function trainables the :func:`ray.tune.get_trial_dir`
-function to retrieve the logdir. If you really have to, you can also ``ray.put()`` an object to the Ray
-object store and retrieve it with ``ray.get()`` on the other side. Generally, your result dictionary
-should only contain primitive types, like numbers or strings.
+**Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
+to do that depending on whether you are using class or functional Trainable API. 
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -577,7 +591,9 @@ How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS.
+natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
+`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
+
 Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
 
 .. literalinclude:: doc_code/faq.py
@@ -586,8 +602,7 @@ Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
     :start-after: __log_1_start__
     :end-before: __log_1_end__
 
-You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``.
-This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize synchronization behavior by implementing your own Syncer:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -595,15 +610,11 @@ This argument supports either strings with the same replacement fields OR arbitr
     :start-after: __log_2_start__
     :end-before: __log_2_end__
 
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like
-``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
+By default, syncing occurs whenever one of the following conditions are met:
 
-.. literalinclude:: doc_code/faq.py
-    :language: python
-    :start-after: __sync_start__
-    :end-before: __sync_end__
+* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
+* a ``sync_period`` of seconds (default 300) has passed since last sync.
 
-By default, syncing occurs every 300 seconds.
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is
@@ -614,6 +625,50 @@ Failing to do so would cause error messages like ``Error message (1): fatal erro
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
+How can I use the awscli or gsutil command line commands for syncing?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Some users reported to run into problems with the default pyarrow-based syncing.
+In this case, a custom syncer that invokes the respective command line tools
+for transferring files between nodes and cloud storage can be implemented.
+
+Here is an example for a syncer that uses string templates that will be run
+as a command:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __custom_command_syncer_start__
+    :end-before: __custom_command_syncer_end__
+
+For different cloud services, these are example templates you can use with this syncer:
+
+AWS S3
+''''''
+
+.. code-block::
+
+    sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    delete_template="aws s3 rm {target} --recursive --only-show-errors"
+
+Google cloud storage
+''''''''''''''''''''
+
+.. code-block::
+
+    sync_up_template="gsutil rsync -r {source} {target}"
+    sync_down_template="down": "gsutil rsync -r {source} {target}"
+    delete_template="delete": "gsutil rm -r {target}"
+
+HDFS
+''''
+
+.. code-block::
+
+    sync_up_template="hdfs dfs -put -f {source} {target}"
+    sync_down_template="down": "hdfs dfs -get -f {source} {target}"
+    delete_template="delete": "hdfs dfs -rm -r {target}"
+
 
 .. _tune-docker:
 
@@ -623,23 +678,13 @@ How can I use Tune with Docker?
 Tune automatically syncs files and checkpoints between different remote
 containers as needed.
 
-To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
-with docker containers, you will need to pass a
-``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __docker_start__
-    :end-before: __docker_end__
-
 .. _tune-kubernetes:
 
 How can I use Tune with Kubernetes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
-This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
+This usually happens via the Ray object store, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
 especially when running many trials in parallel.
 
 Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
@@ -662,26 +707,16 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
     :start-after: __sync_config_start__
     :end-before: __sync_config_end__
 
-Lastly, if you still want to use SSH for trial synchronization, but are not running
-on the Ray cluster launcher, you might need to pass a
-``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
-You have to specify your Kubernetes namespace explicitly:
 
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __k8s_start__
-    :end-before: __k8s_end__
-
-Please note that we strongly encourage you to use one of the other two options instead, as they will
-result in less overhead and don't require pods to SSH into each other.
+Please note that we strongly encourage you to use one of these two options, as they will
+result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
 
 How do I configure search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
+You can specify a grid search or sampling distribution via the dict passed into ``Tuner(param_space=...)``.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -694,7 +729,7 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 13
+    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__
@@ -702,3 +737,35 @@ If `grid_search` is provided as an argument, the grid will be repeated ``num_sam
 Note that search spaces may not be interoperable across different search algorithms.
 For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.
 Read about this in the :ref:`Search Space API <tune-search-space>` page.
+
+.. _tune-working-dir:
+
+How do I access relative filepaths in my Tune training function?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's say you launch a Tune experiment from ``~/code/my_script.py``. By default, Tune
+changes the working directory of each worker from ``~/code`` to its corresponding trial
+directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
+guarantees separate working directories for each worker process, avoiding conflicts when
+saving trial-specific outputs.
+
+You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig`.
+This explicitly tells Tune to not change the working directory
+to the trial directory, giving access to paths relative to the original working directory.
+One caveat is that the working directory is now shared between workers, so the
+:meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
+API should be used to get the path for saving trial-specific outputs.
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :emphasize-lines: 3, 10, 11, 12, 16
+    :language: python
+    :start-after: __no_chdir_start__
+    :end-before: __no_chdir_end__
+
+.. warning::
+
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.

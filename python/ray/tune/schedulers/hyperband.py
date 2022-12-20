@@ -4,10 +4,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import logging
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
@@ -102,7 +102,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._s_max_1 = int(np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
         # bracket max trials
-        self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta ** s))
+        self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta**s))
         # bracket initial iterations
         self._get_r0 = lambda s: int((max_t * self._eta ** (-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
@@ -158,7 +158,7 @@ class HyperBandScheduler(FIFOScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(
+                "to `tune.TuneConfig()`".format(
                     self.__class__.__name__, self._metric, self._mode
                 )
             )
@@ -272,10 +272,15 @@ class HyperBandScheduler(FIFOScheduler):
                     )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
+                        self._unpause_trial(trial_runner, t)
                         t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        """No-op by default."""
+        return
 
     def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Notification when trial terminates.

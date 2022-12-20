@@ -1,17 +1,17 @@
 # Script used for checking changes for incremental testing cases
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import json
 import os
-from pprint import pformat
 import re
 import subprocess
 import sys
+from pprint import pformat
+import traceback
 
 
+# NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
@@ -19,12 +19,16 @@ def list_changed_files(commit_range):
     occurs while running git, the script will abort.
 
     Args:
-        commit_range (string): The commit range to diff, consisting of the two
+        commit_range: The commit range to diff, consisting of the two
             commit IDs separated by \"..\"
 
     Returns:
         list: List of changed files within the commit range
     """
+    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    if base_branch:
+        pull_command = ["git", "fetch", "origin", base_branch]
+        subprocess.check_call(pull_command)
 
     command = ["git", "diff", "--name-only", commit_range, "--"]
     out = subprocess.check_output(command)
@@ -71,6 +75,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
     args = parser.parse_args()
 
+    RAY_CI_BRANCH_BUILD = int(
+        os.environ.get("BUILDKITE_PULL_REQUEST", "false") == "false"
+    )
     RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
@@ -92,6 +99,11 @@ if __name__ == "__main__":
     RAY_CI_DOCKER_AFFECTED = 0
     RAY_CI_DOC_AFFECTED = 0
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
+    RAY_CI_TOOLS_AFFECTED = 0
+    RAY_CI_DATA_AFFECTED = 0
+    RAY_CI_WORKFLOW_AFFECTED = 0
+    RAY_CI_RELEASE_TESTS_AFFECTED = 0
+    RAY_CI_COMPILED_PYTHON_AFFECTED = 0
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -116,37 +128,51 @@ if __name__ == "__main__":
             print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
             for test in impacted.keys():
                 print("    ", test, file=sys.stderr)
-        except Exception as e:
+        except Exception:
             print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
-            print(e, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
         # End of dry run.
 
-        skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
+        skip_prefix_list = [
+            ".buildkite/",
+            "doc/",
+            "examples/",
+            "dev/",
+            "kubernetes/",
+            "site/",
+        ]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/ml"):
+            if changed_file.startswith("python/ray/air"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/data"):
+                RAY_CI_DATA_AFFECTED = 1
+                RAY_CI_ML_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/workflow"):
+                RAY_CI_WORKFLOW_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/train"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/util/ml_utils"):
-                RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_ML_UTILS_AFFECTED = 1
             elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
@@ -173,6 +199,8 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_WORKFLOW_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -185,6 +213,10 @@ if __name__ == "__main__":
                     ".*requirements.*\.txt", changed_file
                 ):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
+                for compiled_extension in (".pxd", ".pyi", ".pyx", ".so"):
+                    if changed_file.endswith(compiled_extension):
+                        RAY_CI_COMPILED_PYTHON_AFFECTED = 1
+                        break
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
             elif changed_file.startswith("cpp/"):
@@ -192,22 +224,41 @@ if __name__ == "__main__":
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("doc/") and (
-                changed_file.endswith(".py")
-                or changed_file.endswith(".ipynb")
-                or changed_file.endswith("BUILD")
-            ):
-                RAY_CI_DOC_AFFECTED = 1
+            elif changed_file.startswith("doc/"):
+                if (
+                    changed_file.endswith(".py")
+                    or changed_file.endswith(".ipynb")
+                    or changed_file.endswith("BUILD")
+                ):
+                    RAY_CI_DOC_AFFECTED = 1
+                # Else, this affects only a rst file or so. In that case,
+                # we pass, as the flag RAY_CI_DOC_AFFECTED is only
+                # used to indicate that tests/examples should be run
+                # (documentation will be built always)
+            elif changed_file.startswith("release/"):
+                if changed_file.startswith("release/ray_release"):
+                    # Release test unit tests are ALWAYS RUN, so pass
+                    pass
+                elif not changed_file.endswith(".yaml") and not changed_file.endswith(
+                    ".md"
+                ):
+                    # Do not run on config changes
+                    RAY_CI_RELEASE_TESTS_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
-            elif changed_file.startswith("release/ray_release/"):
-                # Tests for release/ray_release always run, so it is unnecessary to
-                # tag affected tests.
-                pass
+            elif changed_file.startswith("ci/lint"):
+                # Linter will always be run
+                RAY_CI_TOOLS_AFFECTED = 1
+            elif changed_file.startswith("ci/pipeline"):
+                # These scripts are always run as part of the build process
+                RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_TOOLS_AFFECTED = 1
+            elif changed_file.startswith("ci/run"):
+                RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
@@ -222,7 +273,15 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
+                RAY_CI_RELEASE_TESTS_AFFECTED = 1
             else:
+                print(
+                    "Unhandled source code change: {changed_file}".format(
+                        changed_file=changed_file
+                    ),
+                    file=sys.stderr,
+                )
+
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -236,6 +295,10 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                RAY_CI_TOOLS_AFFECTED = 1
+                RAY_CI_RELEASE_TESTS_AFFECTED = 1
+                RAY_CI_COMPILED_PYTHON_AFFECTED = 1
+
     else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
@@ -251,10 +314,16 @@ if __name__ == "__main__":
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
+        RAY_CI_TOOLS_AFFECTED = 1
+        RAY_CI_WORKFLOW_AFFECTED = 1
+        RAY_CI_DATA_AFFECTED = 1
+        RAY_CI_RELEASE_TESTS_AFFECTED = 1
+        RAY_CI_COMPILED_PYTHON_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
     output_string = " ".join(
         [
+            "RAY_CI_BRANCH_BUILD={}".format(RAY_CI_BRANCH_BUILD),
             "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
@@ -272,6 +341,13 @@ if __name__ == "__main__":
             "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
             "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
                 RAY_CI_PYTHON_DEPENDENCIES_AFFECTED
+            ),
+            "RAY_CI_TOOLS_AFFECTED={}".format(RAY_CI_TOOLS_AFFECTED),
+            "RAY_CI_WORKFLOW_AFFECTED={}".format(RAY_CI_WORKFLOW_AFFECTED),
+            "RAY_CI_DATA_AFFECTED={}".format(RAY_CI_DATA_AFFECTED),
+            "RAY_CI_RELEASE_TESTS_AFFECTED={}".format(RAY_CI_RELEASE_TESTS_AFFECTED),
+            "RAY_CI_COMPILED_PYTHON_AFFECTED={}".format(
+                RAY_CI_COMPILED_PYTHON_AFFECTED
             ),
         ]
     )

@@ -24,6 +24,15 @@ namespace ray {
 
 ClusterResourceManager::ClusterResourceManager() : nodes_{} {}
 
+std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(
+    scheduling::NodeID node_id) const {
+  auto iter = nodes_.find(node_id);
+  if (iter == nodes_.end()) {
+    return std::nullopt;
+  }
+  return iter->second.GetViewModifiedTs();
+}
+
 void ClusterResourceManager::AddOrUpdateNode(
     scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &resources_total,
@@ -126,16 +135,19 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   local_view->available.Set(resource_id, available);
 }
 
-void ClusterResourceManager::DeleteResource(scheduling::NodeID node_id,
-                                            scheduling::ResourceID resource_id) {
+bool ClusterResourceManager::DeleteResources(
+    scheduling::NodeID node_id, const std::vector<scheduling::ResourceID> &resource_ids) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    return;
+    return false;
   }
 
   auto local_view = it->second.GetMutableLocalView();
-  local_view->total.Set(resource_id, 0);
-  local_view->available.Set(resource_id, 0);
+  for (const auto &resource_id : resource_ids) {
+    local_view->total.Set(resource_id, 0);
+    local_view->available.Set(resource_id, 0);
+  }
+  return true;
 }
 
 std::string ClusterResourceManager::GetNodeResourceViewString(
@@ -261,15 +273,16 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
   return false;
 }
 
-bool ClusterResourceManager::ContainsNode(scheduling::NodeID node_id) const {
-  return nodes_.contains(node_id);
-}
-
 void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
   for (auto &node : GetResourceView()) {
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
   }
+  buffer << bundle_location_index_.DebugString();
+}
+
+BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
+  return bundle_location_index_;
 }
 
 }  // namespace ray

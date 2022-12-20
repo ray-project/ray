@@ -18,11 +18,15 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on windows")
 def test_multiple_pip_installs(start_cluster, monkeypatch):
     """Test that multiple pip installs don't interfere with each other."""
     monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
     cluster, address = start_cluster
+
+    if sys.platform == "win32" and "ray" not in address:
+        pytest.skip(
+            "Failing on windows, as python.exe is in use during deletion attempt."
+        )
 
     ray.init(
         address,
@@ -89,7 +93,7 @@ class TestGC:
         for i in range(5):
             assert not check_local_files_gced(cluster)
             ray.kill(actors[i])
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
     @pytest.mark.skipif(
         os.environ.get("CI") and sys.platform != "linux",
@@ -227,4 +231,7 @@ class TestSkipLocalGC:
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

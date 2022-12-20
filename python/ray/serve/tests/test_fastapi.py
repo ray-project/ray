@@ -27,8 +27,8 @@ from starlette.routing import Route
 import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
-from ray.serve.http_util import make_fastapi_class_based_view
-from ray.serve.utils import DEFAULT
+from ray.serve._private.http_util import make_fastapi_class_based_view
+from ray.serve._private.utils import DEFAULT
 from ray._private.test_utils import SignalActor
 
 
@@ -502,6 +502,12 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
             test_model = TestModel(a="a", b=["b"])
             return test_model
 
+        # https://github.com/ray-project/ray/issues/24710
+        @app.get("/inner2", response_model=List[TestModel])
+        def test_endpoint_3(self):
+            test_model = TestModel(a="a", b=["b"])
+            return [test_model]
+
     TestDeployment.deploy()
 
     resp = requests.get("http://localhost:8000/")
@@ -509,6 +515,9 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
 
     resp = requests.get("http://localhost:8000/inner")
     assert resp.json() == {"a": "a", "b": ["b"]}
+
+    resp = requests.get("http://localhost:8000/inner2")
+    assert resp.json() == [{"a": "a", "b": ["b"]}]
 
 
 def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
@@ -580,7 +589,7 @@ def test_fastapi_method_redefinition(serve_instance):
             return "hi get"
 
         @app.post("/")  # noqa: F811 method redefinition
-        def method(self):
+        def method(self):  # noqa: F811 method redefinition
             return "hi post"
 
     A.deploy()

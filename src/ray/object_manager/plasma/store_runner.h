@@ -5,6 +5,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/file_system_monitor.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/store.h"
 
@@ -43,6 +44,7 @@ class PlasmaStoreRunner {
   std::string fallback_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaAllocator> allocator_;
+  std::unique_ptr<ray::FileSystemMonitor> fs_monitor_;
   std::unique_ptr<PlasmaStore> store_;
 };
 

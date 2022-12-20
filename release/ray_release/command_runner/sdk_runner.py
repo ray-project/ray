@@ -2,24 +2,30 @@ import json
 import os
 import tempfile
 import time
-from typing import Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
-
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    CommandTimeout,
+    ClusterNodesWaitTimeout,
     CommandError,
-    ResultsError,
+    CommandTimeout,
     LogsError,
     RemoteEnvSetupError,
-    ClusterNodesWaitTimeout,
+    ResultsError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
-from ray_release.util import format_link, get_anyscale_sdk, exponential_backoff_retry
+from ray_release.util import (
+    exponential_backoff_retry,
+    format_link,
+    get_anyscale_sdk,
+    ANYSCALE_HOST,
+)
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class SDKRunner(CommandRunner):
@@ -28,7 +34,7 @@ class SDKRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
-        sdk: Optional[AnyscaleSDK] = None,
+        sdk: Optional["AnyscaleSDK"] = None,
     ):
         super(SDKRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -50,6 +56,15 @@ class SDKRunner(CommandRunner):
             os.unlink("wait_cluster.py")
         os.link(wait_script, "wait_cluster.py")
 
+        # Copy prometheus metrics script to working dir
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        # Copy wait script to working dir
+        if os.path.exists("prometheus_metrics.py"):
+            os.unlink("prometheus_metrics.py")
+        os.link(metrics_script, "prometheus_metrics.py")
+
         try:
             self.file_manager.upload()
         except Exception as e:
@@ -68,6 +83,11 @@ class SDKRunner(CommandRunner):
             raise ClusterNodesWaitTimeout(
                 f"Not all {num_nodes} nodes came up within {timeout} seconds."
             ) from e
+
+    def save_metrics(self, start_time: float, timeout: float = 900):
+        self.run_prepare_command(
+            f"python prometheus_metrics.py {start_time}", timeout=timeout
+        )
 
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -152,16 +172,16 @@ class SDKRunner(CommandRunner):
             query_params={"start_line": -LAST_LOGS_LENGTH, "end_line": 0},
             header_params={},
             response_type=object,
-            _host="https://console.anyscale.com",
+            _host=str(ANYSCALE_HOST),
             _preload_content=True,
             _return_http_data_only=False,
         )
         return result["result"]["lines"]
 
-    def fetch_results(self) -> Dict[str, Any]:
+    def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
             tmpfile = tempfile.mktemp()
-            self.file_manager.download(self.result_output_json, tmpfile)
+            self.file_manager.download(path, tmpfile)
 
             with open(tmpfile, "rt") as f:
                 data = json.load(f)
@@ -170,3 +190,9 @@ class SDKRunner(CommandRunner):
             return data
         except Exception as e:
             raise ResultsError(f"Could not fetch results from session: {e}") from e
+
+    def fetch_results(self) -> Dict[str, Any]:
+        return self._fetch_json(self.result_output_json)
+
+    def fetch_metrics(self) -> Dict[str, Any]:
+        return self._fetch_json(self.metrics_output_json)

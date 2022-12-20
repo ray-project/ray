@@ -1,29 +1,105 @@
+import io
 import os
 import re
-import sys
-
-from datetime import datetime
-from collections import defaultdict, Counter
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+import logging
+from collections import Counter, defaultdict
+from contextlib import redirect_stderr
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray
-from ray.cross_language import java_actor_class
-from ray import ray_constants
+from ray._private import ray_constants
+from ray._private.log_monitor import (
+    LOG_NAME_UPDATE_INTERVAL_S,
+    RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogFileInfo,
+    LogMonitor,
+)
 from ray._private.test_utils import (
     get_log_batch,
-    wait_for_condition,
-    init_log_pubsub,
     get_log_message,
+    init_log_pubsub,
     run_string_as_driver,
+    wait_for_condition,
 )
+from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+def test_reopen_changed_inode(tmp_path):
+    """Make sure that when we reopen a file because the inode has changed, we
+    open to the right location."""
+
+    path1 = tmp_path / "file"
+    path2 = tmp_path / "changed_file"
+
+    with open(path1, "w") as f:
+        for i in range(1000):
+            print(f"{i}", file=f)
+
+    with open(path2, "w") as f:
+        for i in range(2000):
+            print(f"{i}", file=f)
+
+    file_info = LogFileInfo(
+        filename=path1,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+    for _ in range(1000):
+        file_info.file_handle.readline()
+
+    orig_file_pos = file_info.file_handle.tell()
+    file_info.file_position = orig_file_pos
+
+    # NOTE: On windows, an open file can't be deleted.
+    file_info.file_handle.close()
+    os.remove(path1)
+    os.rename(path2, path1)
+
+    file_info.reopen_if_necessary()
+
+    assert file_info.file_position == orig_file_pos
+    assert file_info.file_handle.tell() == orig_file_pos
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_deleted_file_does_not_throw_error(tmp_path):
+    filename = tmp_path / "file"
+
+    Path(filename).touch()
+
+    file_info = LogFileInfo(
+        filename=filename,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+
+    os.remove(filename)
+
+    file_info.reopen_if_necessary()
 
 
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
@@ -52,7 +128,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     backup_count = 3
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -75,7 +151,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
         for i in range(10):
             print(f"test {i}")
 
-    ray.get(f.remote())
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
     paths = list(log_dir_path.iterdir())
 
@@ -104,7 +181,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
         return True
 
     for component in log_rotating_component:
-        assert component_exist(component, paths)
+        assert component_exist(component, paths), paths
         assert component_file_only_one_log_entry(component)
 
     # Check if the backup count is respected.
@@ -127,7 +204,7 @@ def test_periodic_event_stats(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -164,7 +241,7 @@ def test_worker_id_names(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -225,46 +302,6 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
         submit_job()
 
 
-def test_log_monitor_backpressure(ray_start_cluster, monkeypatch):
-    update_interval = 3
-    monkeypatch.setenv("LOG_NAME_UPDATE_INTERVAL_S", str(update_interval))
-    # Intentionally set low to trigger the backpressure condition.
-    monkeypatch.setenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", "1")
-    expected_str = "abcxyz"
-
-    def matcher(line):
-        return line == expected_str
-
-    # Test log monitor still works with backpressure.
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    # Connect a driver to the Ray cluster.
-    ray.init(address=cluster.address)
-    p = init_log_pubsub()
-
-    @ray.remote
-    class Actor:
-        def print(self):
-            print(expected_str)
-
-    now = datetime.now()
-    a = Actor.remote()
-    ray.get(a.print.remote())
-    logs = get_log_message(p, 1, matcher=matcher)
-    assert logs[0][0] == expected_str
-    # Since the log file update is delayed,
-    # it should take more than update_interval
-    # to publish a message for a new worker.
-    assert (datetime.now() - now).seconds >= update_interval
-
-    now = datetime.now()
-    a = Actor.remote()
-    ray.get(a.print.remote())
-    logs = get_log_message(p, 1, matcher=matcher)
-    assert logs[0][0] == expected_str
-    assert (datetime.now() - now).seconds >= update_interval
-
-
 def test_ignore_windows_access_violation(ray_start_regular_shared):
     @ray.remote
     def print_msg():
@@ -318,7 +355,7 @@ import ray
 os.environ["RAY_LOG_TO_STDERR"] = "1"
 ray.init()
 
-session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
 session_path = Path(session_dir)
 log_dir_path = session_path / "logs"
 
@@ -417,10 +454,332 @@ public class MyClass {
     wait_for_condition(check)
 
 
+"""
+Unit testing log monitor.
+"""
+
+
+def create_file(dir, filename, content):
+    f = dir / filename
+    f.write_text(content)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failing on Windows",
+)
+def test_log_monitor(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    # Create an old dir.
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    dead_pid = "47660"
+    alive_pid = "12345"
+
+    def proc_alive(pid):
+        return pid != int(dead_pid)
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(str(log_dir), mock_publisher, proc_alive, max_files_open=5)
+
+    # files
+    worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+    worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
+    monitor = "monitor.log"
+    raylet_out = "raylet.out"
+    raylet_err = "raylet.err"
+    gcs_server_err = "gcs_server.1.err"
+
+    contents = "123"
+
+    create_file(log_dir, raylet_err, contents)
+    create_file(log_dir, raylet_out, contents)
+    create_file(log_dir, gcs_server_err, contents)
+    create_file(log_dir, monitor, contents)
+    create_file(log_dir, worker_out_log_file, contents)
+    create_file(log_dir, worker_err_log_file, contents)
+
+    """
+    Test files are updated.
+    """
+    log_monitor.update_log_filenames()
+
+    assert len(log_monitor.open_file_infos) == 0
+    assert len(log_monitor.closed_file_infos) == 5
+    assert log_monitor.can_open_more_files is True
+    assert len(log_monitor.log_filenames) == 5
+
+    def file_exists(log_filenames, filename):
+        for f in log_filenames:
+            if filename in f:
+                return True
+        return False
+
+    assert file_exists(log_monitor.log_filenames, raylet_err)
+    assert not file_exists(log_monitor.log_filenames, raylet_out)
+    assert file_exists(log_monitor.log_filenames, gcs_server_err)
+    assert file_exists(log_monitor.log_filenames, monitor)
+    assert file_exists(log_monitor.log_filenames, worker_out_log_file)
+    assert file_exists(log_monitor.log_filenames, worker_err_log_file)
+
+    def get_file_info(file_infos, filename):
+        for file_info in file_infos:
+            if filename in file_info.filename:
+                return file_info
+        assert False, "Shouldn't reach."
+
+    raylet_err_info = get_file_info(log_monitor.closed_file_infos, raylet_err)
+    gcs_server_err_info = get_file_info(log_monitor.closed_file_infos, gcs_server_err)
+    monitor_info = get_file_info(log_monitor.closed_file_infos, monitor)
+    worker_out_log_file_info = get_file_info(
+        log_monitor.closed_file_infos, worker_out_log_file
+    )
+    worker_err_log_file_info = get_file_info(
+        log_monitor.closed_file_infos, worker_err_log_file
+    )
+
+    assert raylet_err_info.is_err_file
+    assert gcs_server_err_info.is_err_file
+    assert not monitor_info.is_err_file
+    assert not worker_out_log_file_info.is_err_file
+    assert worker_err_log_file_info.is_err_file
+
+    assert worker_out_log_file_info.job_id == job_id
+    assert worker_err_log_file_info.job_id == job_id
+    assert worker_out_log_file_info.worker_pid == int(dead_pid)
+    assert worker_out_log_file_info.worker_pid == int(dead_pid)
+
+    """
+    Test files are opened.
+    """
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 5
+    assert len(log_monitor.closed_file_infos) == 0
+    assert not log_monitor.can_open_more_files
+
+    """
+    Test files are published.
+    """
+
+    assert log_monitor.check_log_files_and_publish_updates()
+    assert raylet_err_info.worker_pid == "raylet"
+    assert gcs_server_err_info.worker_pid == "gcs_server"
+    assert monitor_info.worker_pid == "autoscaler"
+
+    assert mock_publisher.publish_logs.call_count
+
+    for file_info in log_monitor.open_file_infos:
+        mock_publisher.publish_logs.assert_any_call(
+            {
+                "ip": log_monitor.ip,
+                "pid": file_info.worker_pid,
+                "job": file_info.job_id,
+                "is_err": file_info.is_err_file,
+                "lines": [contents],
+                "actor_name": file_info.actor_name,
+                "task_name": file_info.task_name,
+            }
+        )
+    # If there's no new update, it should return False.
+    assert not log_monitor.check_log_files_and_publish_updates()
+
+    # Test max lines read == 99 is repsected.
+    lines = "1\n" * int(1.5 * ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)
+    with open(raylet_err_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(lines)
+
+    assert log_monitor.check_log_files_and_publish_updates()
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": raylet_err_info.worker_pid,
+            "job": raylet_err_info.job_id,
+            "is_err": raylet_err_info.is_err_file,
+            "lines": ["1" for _ in range(ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)],
+            "actor_name": file_info.actor_name,
+            "task_name": file_info.task_name,
+        }
+    )
+
+    """
+    Test files are closed.
+    """
+    # log_monitor.open_closed_files() should close all files
+    # if it cannot open new files.
+    new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
+    create_file(log_dir, new_worker_err_file, contents)
+    log_monitor.update_log_filenames()
+
+    # System logs are not closed.
+    # - raylet, gcs, monitor
+    # Dead workers are not tracked anymore. They will be moved to old folder.
+    # - dead pid out & err
+    # alive worker is going to be newly opened.
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 2
+    assert log_monitor.can_open_more_files
+    # Two dead workers are not tracked anymore, and they will be in the old folder.
+    # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
+    assert len(log_monitor.closed_file_infos) == 2
+    assert len(list((log_dir / "old").iterdir())) == 2
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failing on Windows",
+)
+def test_log_monitor_actor_task_name(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    pid = "47660"
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+    )
+    worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
+    first_line = "First line\n"
+    create_file(log_dir, worker_out_log_file, first_line)
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 1
+    file_info = log_monitor.open_file_infos[0]
+
+    # Test task name updated.
+    task_name = "task"
+    with open(file_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(f"{ray_constants.LOG_PREFIX_TASK_NAME}{task_name}\n")
+        f.write("line")
+    log_monitor.check_log_files_and_publish_updates()
+    assert file_info.task_name == task_name
+    assert file_info.actor_name is None
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": file_info.worker_pid,
+            "job": file_info.job_id,
+            "is_err": file_info.is_err_file,
+            "lines": ["line"],
+            "actor_name": None,
+            "task_name": task_name,
+        }
+    )
+
+    # Test the actor name is updated.
+    actor_name = "actor"
+    with open(file_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(f"{ray_constants.LOG_PREFIX_ACTOR_NAME}{actor_name}\n")
+        f.write("line2")
+    log_monitor.check_log_files_and_publish_updates()
+    assert file_info.task_name is None
+    assert file_info.actor_name == actor_name
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": file_info.worker_pid,
+            "job": file_info.job_id,
+            "is_err": file_info.is_err_file,
+            "lines": ["line2"],
+            "actor_name": actor_name,
+            "task_name": None,
+        }
+    )
+
+
+@pytest.fixture
+def mock_timer():
+    f = time.time
+    time.time = MagicMock()
+    yield time.time
+    time.time = f
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failing on Windows",
+)
+def test_log_monitor_update_backpressure(tmp_path, mock_timer):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+    )
+
+    current = 0
+    mock_timer.return_value = current
+
+    log_monitor.log_filenames = []
+    # When threshold < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD, update should happen.
+    assert log_monitor.should_update_filenames(current)
+    # Add a new file.
+    log_monitor.log_filenames = [
+        "raylet.out" for _ in range(RAY_LOG_MONITOR_MANY_FILES_THRESHOLD)
+    ]
+    # If the threshold is met, we should update the file after
+    # LOG_NAME_UPDATE_INTERVAL_S.
+    assert not log_monitor.should_update_filenames(current)
+    mock_timer.return_value = LOG_NAME_UPDATE_INTERVAL_S - 0.1
+    assert not log_monitor.should_update_filenames(current)
+    mock_timer.return_value = LOG_NAME_UPDATE_INTERVAL_S
+    assert not log_monitor.should_update_filenames(current)
+    mock_timer.return_value = LOG_NAME_UPDATE_INTERVAL_S + 0.1
+    assert log_monitor.should_update_filenames(current)
+
+
+def test_repr_inheritance():
+    """Tests that a subclass's repr is used in logging."""
+    logger = logging.getLogger(__name__)
+
+    class MyClass:
+        def __repr__(self) -> str:
+            return "ThisIsMyCustomActorName"
+
+        def do(self):
+            logger.warning("text")
+
+    class MySubclass(MyClass):
+        pass
+
+    my_class_remote = ray.remote(MyClass)
+    my_subclass_remote = ray.remote(MySubclass)
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        my_class_actor = my_class_remote.remote()
+        ray.get(my_class_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True)
+        print("", flush=True, file=sys.stderr)
+        f = f.getvalue()
+        assert "ThisIsMyCustomActorName" in f and "MySubclass" not in f
+
+    f2 = io.StringIO()
+    with redirect_stderr(f2):
+        my_subclass_actor = my_subclass_remote.remote()
+        ray.get(my_subclass_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True, file=sys.stderr)
+        f2 = f2.getvalue()
+        assert "ThisIsMyCustomActorName" in f2 and "MySubclass" not in f2
+
+
 if __name__ == "__main__":
     import sys
 
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

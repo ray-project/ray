@@ -4,7 +4,11 @@ auth: {ssh_user: ubuntu}
 min_workers: 3
 max_workers: 3
 # Deep Learning AMI (Ubuntu) Version 21.0
-head_node: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
-worker_nodes: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
+available_node_types:
+  head_node:
+    node_config: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
+  worker_nodes:
+    node_config: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
+head_node_type: head_node
 setup_commands: # Set up each node.
     - pip install ray torch torchvision tabulate tensorboard

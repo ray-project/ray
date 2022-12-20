@@ -1,36 +1,37 @@
 import copy
-import threading
-from collections import defaultdict, OrderedDict
 import logging
+import sys
+import threading
 import time
+from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
 
 import botocore
+from boto3.resources.base import ServiceResource
 
+import ray._private.ray_constants as ray_constants
+from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
+    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
+    CLOUDWATCH_AGENT_INSTALLED_TAG,
+    CloudwatchHelper,
+)
+from ray.autoscaler._private.aws.config import bootstrap_aws
+from ray.autoscaler._private.aws.utils import (
+    boto_exception_handler,
+    client_cache,
+    resource_cache,
+)
+from ray.autoscaler._private.cli_logger import cf, cli_logger
+from ray.autoscaler._private.constants import BOTO_CREATE_MAX_RETRIES, BOTO_MAX_RETRIES
+from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
     TAG_RAY_USER_NODE_TYPE,
-)
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
-from ray.autoscaler._private.aws.config import bootstrap_aws
-from ray.autoscaler._private.log_timer import LogTimer
-
-from ray.autoscaler._private.aws.utils import (
-    boto_exception_handler,
-    resource_cache,
-    client_cache,
-)
-from ray.autoscaler._private.cli_logger import cli_logger, cf
-import ray.ray_constants as ray_constants
-
-from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
-    CloudwatchHelper,
-    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
-    CLOUDWATCH_AGENT_INSTALLED_TAG,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ def from_aws_format(tags):
     return tags
 
 
-def make_ec2_client(region, max_retries, aws_credentials=None):
+def make_ec2_resource(region, max_retries, aws_credentials=None) -> ServiceResource:
     """Make client, retrying requests up to `max_retries`."""
     aws_credentials = aws_credentials or {}
     return resource_cache("ec2", region, max_retries, **aws_credentials)
@@ -67,7 +68,7 @@ def list_ec2_instances(
 ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
-        region (str): the region of the AWS provider. e.g., "us-west-2".
+        region: the region of the AWS provider. e.g., "us-west-2".
     Returns:
         final_instance_types: a list of instances. An example of one element in
         the list:
@@ -101,12 +102,12 @@ class AWSNodeProvider(NodeProvider):
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
         aws_credentials = provider_config.get("aws_credentials")
 
-        self.ec2 = make_ec2_client(
+        self.ec2 = make_ec2_resource(
             region=provider_config["region"],
             max_retries=BOTO_MAX_RETRIES,
             aws_credentials=aws_credentials,
         )
-        self.ec2_fail_fast = make_ec2_client(
+        self.ec2_fail_fast = make_ec2_resource(
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials,
@@ -449,7 +450,22 @@ class AWSNodeProvider(NodeProvider):
                         )
                 break
             except botocore.exceptions.ClientError as exc:
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
                 if attempt == max_tries:
+                    try:
+                        exc = NodeLaunchException(
+                            category=exc.response["Error"]["Code"],
+                            description=exc.response["Error"]["Message"],
+                            src_exc_info=sys.exc_info(),
+                        )
+                    except Exception:
+                        # In theory, all ClientError's we expect to get should
+                        # have these fields, but just in case we can't parse
+                        # it, it's fine, just throw the original error.
+                        logger.warning("Couldn't parse exception.", exc)
+                        pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
@@ -458,10 +474,6 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.", exc
                     )
-
-                # Launch failure may be due to instance type availability in
-                # the given AZ
-                subnet_idx += 1
 
         return created_nodes_dict
 
@@ -494,7 +506,6 @@ class AWSNodeProvider(NodeProvider):
         # asyncrhonous or error, which would result in a use after free error.
         # If this leak becomes bad, we can garbage collect the tag cache when
         # the node cache is updated.
-        pass
 
     def _check_ami_cwa_installation(self, config):
         response = self.ec2.meta.client.describe_images(ImageIds=[config["ImageId"]])

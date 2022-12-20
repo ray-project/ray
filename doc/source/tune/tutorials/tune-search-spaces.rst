@@ -4,78 +4,88 @@ Working with Tune Search Spaces
 ===============================
 
 Tune has a native interface for specifying search spaces.
-You can specify the search space via ``tune.run(config=...)``.
+You can specify the search space via ``Tuner(param_space=...)``.
 
 Thereby, you can either use the ``tune.grid_search`` primitive to use grid search:
 
 .. code-block:: python
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        config={"bar": tune.grid_search([True, False])})
+        param_space={"bar": tune.grid_search([True, False])})
+    results = tuner.fit()
 
 
 Or you can use one of the random sampling primitives to specify distributions (:ref:`tune-sample-docs`):
 
 .. code-block:: python
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        config={
+        param_space={
             "param1": tune.choice([True, False]),
             "bar": tune.uniform(0, 10),
             "alpha": tune.sample_from(lambda _: np.random.uniform(100) ** 2),
             "const": "hello"  # It is also ok to specify constant values.
         })
+    results = tuner.fit()
 
 .. caution:: If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this
     interface, as some search algorithms may not be compatible.
 
 
-To sample multiple times/run multiple trials, specify ``tune.run(num_samples=N``.
+To sample multiple times/run multiple trials, specify ``tune.RunConfig(num_samples=N``.
 If ``grid_search`` is provided as an argument, the *same* grid will be repeated ``N`` times.
 
 .. code-block:: python
 
     # 13 different configs.
-    tune.run(trainable, num_samples=13, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=13), param_space={
         "x": tune.choice([0, 1, 2]),
         }
     )
+    tuner.fit()
 
     # 13 different configs.
-    tune.run(trainable, num_samples=13, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=13), param_space={
         "x": tune.choice([0, 1, 2]),
         "y": tune.randn([0, 1, 2]),
         }
     )
+    tuner.fit()
 
     # 4 different configs.
-    tune.run(trainable, config={"x": tune.grid_search([1, 2, 3, 4])}, num_samples=1)
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": tune.grid_search([1, 2, 3, 4])})
+    tuner.fit()
 
     # 3 different configs.
-    tune.run(trainable, config={"x": grid_search([1, 2, 3])}, num_samples=1)
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": grid_search([1, 2, 3])})
+    tuner.fit()
 
     # 6 different configs.
-    tune.run(trainable, config={"x": tune.grid_search([1, 2, 3])}, num_samples=2)
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=2), param_space={"x": tune.grid_search([1, 2, 3])})
+    tuner.fit()
 
     # 9 different configs.
-    tune.run(trainable, num_samples=1, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={
         "x": tune.grid_search([1, 2, 3]),
         "y": tune.grid_search([a, b, c])}
     )
+    tuner.fit()
 
     # 18 different configs.
-    tune.run(trainable, num_samples=2, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=2), param_space={
         "x": tune.grid_search([1, 2, 3]),
         "y": tune.grid_search([a, b, c])}
     )
+    tuner.fit()
 
     # 45 different configs.
-    tune.run(trainable, num_samples=5, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=5), param_space={
         "x": tune.grid_search([1, 2, 3]),
         "y": tune.grid_search([a, b, c])}
     )
+    tuner.fit()
 
 
 
@@ -85,11 +95,12 @@ Each can be used independently or in combination with each other.
 .. code-block:: python
 
     # 6 different configs.
-    tune.run(trainable, num_samples=2, config={
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=2), param_space={
         "x": tune.sample_from(...),
         "y": tune.grid_search([a, b, c])
         }
     )
+    tuner.fit()
 
 In the below example, ``num_samples=10`` repeats the 3x3 grid search 10 times,
 for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
@@ -97,12 +108,12 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
 .. code-block:: python
    :emphasize-lines: 12
 
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-        name="my_trainable",
+        run_config=air.RunConfig(name="my_trainable"),
         # num_samples will repeat the entire config 10 times.
-        num_samples=10
-        config={
+        tune_config=tune.TuneConfig(num_samples=10),
+        param_space={
             # ``sample_from`` creates a generator to call the lambda once per trial.
             "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
             # ``sample_from`` also supports "conditional search spaces"
@@ -114,6 +125,14 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
             ],
         },
     )
+    tuner.fit()
+
+.. tip::
+
+    Avoid passing large objects as values in the search space, as that will incur a performance overhead.
+    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    from disk (making sure that all nodes have access to the files) or cloud storage.
+    See :ref:`tune-bottlenecks` for more information.
 
 .. _tune_custom-search:
 
@@ -129,15 +148,16 @@ This is useful for conditional distributions:
 
 .. code-block:: python
 
-    tune.run(
+    tuner = tune.Tuner(
         ...,
-        config={
+        param_space={
             # A random function
             "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
             # Use the `spec.config` namespace to access other hyperparameters
             "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal())
         }
     )
+    tuner.fit()
 
 Here's an example showing a grid search over two nested parameters combined with random sampling from
 two lambda functions, generating 9 different trials.
@@ -148,10 +168,10 @@ This lets you specify conditional parameter distributions.
 .. code-block:: python
    :emphasize-lines: 4-11
 
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-        name="my_trainable",
-        config={
+        run_config=air.RunConfig(name="my_trainable"),
+        param_space={
             "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
             "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
             "nn_layers": [

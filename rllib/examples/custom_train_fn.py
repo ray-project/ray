@@ -10,12 +10,12 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -24,8 +24,11 @@ parser.add_argument(
 def my_train_fn(config, reporter):
     iterations = config.pop("train-iterations", 10)
 
-    # Train for n iterations with high LR
-    agent1 = PPOTrainer(env="CartPole-v0", config=config)
+    config = PPOConfig().update_from_dict(config).environment("CartPole-v1")
+
+    # Train for n iterations with high LR.
+    config.lr = 0.01
+    agent1 = config.build()
     for _ in range(iterations):
         result = agent1.train()
         result["phase"] = 1
@@ -35,8 +38,8 @@ def my_train_fn(config, reporter):
     agent1.stop()
 
     # Train for n iterations with low LR
-    config["lr"] = 0.0001
-    agent2 = PPOTrainer(env="CartPole-v0", config=config)
+    config.lr = 0.0001
+    agent2 = config.build()
     agent2.restore(state)
     for _ in range(iterations):
         result = agent2.train()
@@ -52,11 +55,13 @@ if __name__ == "__main__":
     config = {
         # Special flag signalling `my_train_fn` how many iters to do.
         "train-iterations": 2,
-        "lr": 0.01,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "framework": args.framework,
     }
-    resources = PPOTrainer.default_resource_request(config)
-    tune.run(my_train_fn, resources_per_trial=resources, config=config)
+    resources = PPO.default_resource_request(config)
+    tuner = tune.Tuner(
+        tune.with_resources(my_train_fn, resources=resources), param_space=config
+    )
+    tuner.fit()

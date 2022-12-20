@@ -1,40 +1,52 @@
-from ray import train
-from ray.train import Trainer
-from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
+from ray.air import ScalingConfig, RunConfig, session
+from ray.train.torch import TorchTrainer
+from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.tune.logger import TBXLoggerCallback
 
 
 def train_func():
     for i in range(3):
-        train.report(epoch=i)
+        session.report(dict(epoch=i))
 
 
-trainer = Trainer(backend="torch", num_workers=2)
-trainer.start()
+trainer = TorchTrainer(
+    train_func,
+    scaling_config=ScalingConfig(num_workers=2),
+    run_config=RunConfig(
+        callbacks=[
+            MLflowLoggerCallback(experiment_name="train_experiment"),
+            TBXLoggerCallback(),
+        ],
+    ),
+)
 
 # Run the training function, logging all the intermediate results
 # to MLflow and Tensorboard.
-result = trainer.run(
-    train_func,
-    callbacks=[
-        MLflowLoggerCallback(experiment_name="train_experiment"),
-        TBXLoggerCallback(),
-    ],
-)
+result = trainer.fit()
+
+# For MLFLow logs:
+
+# MLFlow logs will by default be saved in an `mlflow` directory
+# in the current working directory.
+
+# $ cd mlflow
+# # View the MLflow UI.
+# $ mlflow ui
+
+# You can change the directory by setting the `tracking_uri` argument
+# in `MLflowLoggerCallback`.
+
+# For TensorBoard logs:
 
 # Print the latest run directory and keep note of it.
-# For example: /home/ray_results/train_2021-09-01_12-00-00/run_001
-print("Run directory:", trainer.latest_run_dir)
-
-trainer.shutdown()
+# For example: /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06
+print("Run directory:", result.log_dir.parent)  # TensorBoard is saved in parent dir
 
 # How to visualize the logs
 
 # Navigate to the run directory of the trainer.
-# For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
+# For example `cd /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06`
 # $ cd <TRAINER_RUN_DIR>
-#
-# # View the MLflow UI.
-# $ mlflow ui
 #
 # # View the tensorboard UI.
 # $ tensorboard --logdir .

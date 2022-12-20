@@ -1,11 +1,12 @@
 import copy
-import importlib
-import logging
 import json
+import logging
 import os
 from typing import Any, Dict
 
 import yaml
+
+from ray.autoscaler._private.loader import load_function_or_class
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ def _load_aliyun_defaults_config():
 
 
 def _import_external(provider_config):
-    provider_cls = _load_class(path=provider_config["module"])
+    provider_cls = load_function_or_class(path=provider_config["module"])
     return provider_cls
 
 
@@ -181,20 +182,6 @@ _DEFAULT_CONFIGS = {
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
 }
-
-
-def _load_class(path):
-    """Load a class at runtime given a full path.
-
-    Example of the path: mypkg.mysubpkg.myclass
-    """
-    class_data = path.split(".")
-    if len(class_data) < 2:
-        raise ValueError("You need to pass a valid path like mymodule.provider_class")
-    module_path = ".".join(class_data[:-1])
-    class_str = class_data[-1]
-    module = importlib.import_module(module_path)
-    return getattr(module, class_str)
 
 
 def _get_node_provider_cls(provider_config: Dict[str, Any]):

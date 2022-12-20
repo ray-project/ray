@@ -3,14 +3,15 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 # Always import tensorflow using this utility function:
 tf1, tf, tfv = try_import_tf()
@@ -25,8 +26,8 @@ tf1, tf, tfv = try_import_tf()
 # >> x.numpy()
 # 0.0
 
-# RLlib will automatically enable eager mode, if you specify your "framework"
-# config key to be either "tfe" or "tf2".
+# RLlib will automatically enable eager mode, if you set
+# AlgorithmConfig.framework("tf2", eager_tracing=False).
 # If you would like to remain in tf static-graph mode, but still use tf2.x's
 # new APIs (some of which are not supported by tf1.x), specify your "framework"
 # as "tf" and check for the version (tfv) to be 2:
@@ -92,9 +93,10 @@ MyTFPolicy = build_tf_policy(
 )
 
 
-# Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
-    def get_default_policy_class(self, config):
+# Create a new Algorithm using the Policy defined above.
+class MyAlgo(Algorithm):
+    @classmethod
+    def get_default_policy_class(cls, config):
         return MyTFPolicy
 
 
@@ -103,21 +105,27 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 
-    config = {
-        "env": "CartPole-v0",
+    config = (
+        AlgorithmConfig()
+        .environment("CartPole-v1")
+        .framework("tf2")
+        .rollouts(num_rollout_workers=0)
+        .training(model={"custom_model": "eager_model"})
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "model": {"custom_model": "eager_model"},
-        "framework": "tf2",
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     stop = {
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
+    results = tune.Tuner(
+        MyAlgo,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

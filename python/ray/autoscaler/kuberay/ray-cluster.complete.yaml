@@ -8,8 +8,9 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.12.0'
-  enableInTreeAutoscaling: false
+  rayVersion: '1.12.1'
+  # With enableInTreeAutoscaling: true, the operator will insert an autoscaler sidecar container into the Ray head pod.
+  enableInTreeAutoscaling: true
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
   headGroupSpec:
@@ -52,14 +53,11 @@ spec:
         annotations:
           key: value
       spec:
-        # This is needed to give the autoscaler side car permissions to query and update
-        # definitions in the Kubernetes API server (see kuberay-autoscaler-rbac.yaml)
-        serviceAccountName: autoscaler-sa
         containers:
         # The Ray head pod
         - name: ray-head
           # All Ray pods in the RayCluster should use the same version of Ray.
-          image: rayproject/ray:1.12.0
+          image: rayproject/ray:1.12.1
           imagePullPolicy: Always
           # The KubeRay operator uses the ports specified on the ray-head container
           # to configure a service targeting the ports.
@@ -107,49 +105,6 @@ spec:
             requests:
               cpu: "500m"
               memory: "512Mi"
-          volumeMounts:
-            - mountPath: /tmp/ray
-              name: ray-logs
-        # The Ray autoscaler sidecar to the head pod
-        - name: autoscaler
-          # The autoscaler image used carries the latest improvements to KubeRay autoscaling
-          # support.
-          # It is confirmed (via kuberay/test_autoscaling_e2e.py) to be compatible with all
-          # Ray versions since Ray 1.11.0.
-          # TODO: Use released Ray version when autoscaling support is stable.
-          image: rayproject/ray:c6d3ff
-          imagePullPolicy: Always
-          env:
-          - name: RAY_CLUSTER_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
-          - name: RAY_CLUSTER_NAME
-            # This value must match the metadata.name of the RayCluster CR.
-            # The autoscaler uses this env variable to determine which Ray CR to interact with.
-            # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
-            value: raycluster-complete
-          command: ["ray"]
-          args:
-          - "kuberay-autoscaler"
-          - "--cluster-name"
-          - "$(RAY_CLUSTER_NAME)"
-          - "--cluster-namespace"
-          - "$(RAY_CLUSTER_NAMESPACE)"
-          resources:
-            limits:
-              cpu: 500m
-              memory: 1024Mi
-            requests:
-              cpu: 250m
-              memory: 512Mi
-          volumeMounts:
-            - mountPath: /tmp/ray
-              name: ray-logs
-        volumes:
-        # You set volumes at the Pod level, then mount them into containers inside that Pod
-        - name: ray-logs
-          emptyDir: {}
   workerGroupSpecs:
   # the pod replicas in this group typed worker
   - replicas: 1
@@ -193,7 +148,7 @@ spec:
         containers:
         - name: ray-worker # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
           # All Ray pods in the RayCluster should use the same version of Ray.
-          image: rayproject/ray:1.12.0
+          image: rayproject/ray:1.12.1
           # environment variables to set in the container.Optional.
           # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
           env:

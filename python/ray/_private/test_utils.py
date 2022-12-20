@@ -1,42 +1,65 @@
 import asyncio
-import io
+from datetime import datetime
 import fnmatch
+import functools
+import io
+import logging
+import math
 import os
 import pathlib
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 import timeit
-import socket
-import math
 import traceback
-from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from collections import defaultdict
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from typing import Any, Callable, Dict, List, Optional
+import uuid
 
-import yaml
-import logging
-import tempfile
+import requests
+from ray._raylet import Config
+
 import grpc
-from grpc._channel import _InactiveRpcError
 import numpy as np
+import psutil  # We must import psutil after ray because we bundle it with ray.
+from ray._private import (
+    ray_constants,
+)
+from ray._private.worker import RayContext
+import yaml
+from grpc._channel import _InactiveRpcError
 
 import ray
-import ray._private.services
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-)
+import ray._private.services
+import ray._private.utils
+from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
+from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray.util.queue import Queue, _QueueActor, Empty
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray.core.generated import (
+    gcs_pb2,
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
 from ray.scripts.scripts import main as ray_main
-from ray.internal.internal_api import memory_summary
+from ray.util.queue import Empty, Queue, _QueueActor
+from ray.experimental.state.state_manager import StateDataSourceClient
+
+
+logger = logging.getLogger(__name__)
+
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+REDIS_EXECUTABLE = os.path.join(
+    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
+)
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -44,9 +67,6 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
-
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 class RayTestTimeoutException(Exception):
@@ -64,10 +84,115 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def test_external_redis():
+def enable_external_redis():
     import os
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
+def start_redis_instance(
+    session_dir_path: str,
+    port: int,
+    redis_max_clients: Optional[int] = None,
+    num_retries: int = 20,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    password: Optional[str] = None,
+    redis_max_memory: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    port_denylist: Optional[List[int]] = None,
+    listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
+):
+    """Start a single Redis server.
+
+    Notes:
+        We will initially try to start the Redis instance at the given port,
+        and then try at most `num_retries - 1` times to start the Redis
+        instance at successive random ports.
+
+    Args:
+        session_dir_path: Path to the session directory of
+            this Ray cluster.
+        port: Try to start a Redis server at this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
+        num_retries: The number of times to attempt to start Redis at
+            successive ports.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        password: Prevents external clients without the password
+            from connecting to Redis if provided.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
+        port_denylist: A set of denylist ports that shouldn't
+            be used when allocating a new port.
+        listen_to_localhost_only: Redis server only listens to
+            localhost (127.0.0.1) if it's true,
+            otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
+
+    Returns:
+        A tuple of the port used by Redis and ProcessInfo for the process that
+            was started. If a port is passed in, then the returned port value
+            is the same.
+
+    Raises:
+        Exception: An exception is raised if Redis could not be started.
+    """
+
+    assert os.path.isfile(REDIS_EXECUTABLE)
+
+    # Construct the command to start the Redis server.
+    command = [REDIS_EXECUTABLE]
+    if password:
+        if " " in password:
+            raise ValueError("Spaces not permitted in redis password.")
+        command += ["--requirepass", password]
+
+    if enable_tls:
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("", 0))
+            free_port = s.getsockname()[1]
+        command += [
+            "--tls-port",
+            str(port),
+            "--loglevel",
+            "warning",
+            "--port",
+            str(free_port),
+        ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
+
+    if listen_to_localhost_only:
+        command += ["--bind", "127.0.0.1"]
+    pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+    command += ["--pidfile", pidfile]
+    if enable_tls:
+        if Config.REDIS_CA_CERT():
+            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
+        if Config.REDIS_CLIENT_CERT():
+            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
+        if Config.REDIS_CLIENT_KEY():
+            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
+        command += ["--tls-replication", "yes"]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
+    process_info = ray._private.services.start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    port = ray._private.services.new_port(denylist=port_denylist)
+    return port, process_info
 
 
 def _pid_alive(pid):
@@ -213,8 +338,8 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     """Run a driver as a separate process.
 
     Args:
-        driver_script (str): A string to run as a Python script.
-        env (dict): The environment variables for the driver.
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -281,7 +406,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
             len(
                 [
                     _
-                    for _ in ray.state.actors().values()
+                    for _ in ray._private.state.actors().values()
                     if state is None or _["State"] == state
                 ]
             )
@@ -327,11 +452,11 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.state.actors(actor_id)
+        actor_status = ray._private.state.actors(actor_id)
         if (
             actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
             or actor_status["NumRestarts"] > current_num_restarts
@@ -360,8 +485,8 @@ def wait_for_condition(
         try:
             if condition_predictor(**kwargs):
                 return
-        except Exception as ex:
-            last_ex = ex
+        except Exception:
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
@@ -397,6 +522,131 @@ async def async_wait_for_condition(
     raise RuntimeError(message)
 
 
+async def async_wait_for_condition_async_predicate(
+    async_condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
+    """Wait until a condition is met or time out with an exception.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    last_ex = None
+    while time.time() - start <= timeout:
+        try:
+            if await async_condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
+        await asyncio.sleep(retry_interval_ms / 1000.0)
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
+
+
+def get_metric_check_condition(
+    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+) -> Callable[[], bool]:
+    """A condition to check if a prometheus metrics reach a certain value.
+    This is a blocking check that can be passed into a `wait_for_condition`
+    style function.
+
+    Args:
+      metrics_to_check: A map of metric lable to values to check, to ensure
+        that certain conditions have been reached. If a value is None, just check
+        that the metric was emitted with any value.
+
+    Returns:
+      A function that returns True if all the metrics are emitted.
+    """
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+    def f():
+        for metric_name, metric_value in metrics_to_check.items():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            found_metric = False
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
+                        found_metric = True
+            if not found_metric:
+                print(
+                    "Didn't find metric, all metric names: ",
+                    metric_names,
+                    "all values",
+                    metric_samples,
+                )
+                return False
+        return True
+
+    return f
+
+
+def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
+    """Returns a decorator which waits until the stdout emitted
+    by a function contains the provided list of strings.
+    Raises an exception if the stdout doesn't have the expected output in time.
+
+    Note: The decorated function should not block!
+    (It should return soon after being called.)
+
+    Args:
+        strings_to_match: Wait until stdout contains all of these string.
+        timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def decorated_func(*args, **kwargs):
+            success = False
+            try:
+                # Redirect stdout to an in-memory stream.
+                out_stream = io.StringIO()
+                sys.stdout = out_stream
+                # Execute the func. (Make sure the function doesn't block!)
+                out = func(*args, **kwargs)
+                # Check out_stream once a second until the timeout.
+                # Raise a RuntimeError if we timeout.
+                wait_for_condition(
+                    # Does redirected stdout contain all of the expected strings?
+                    lambda: all(
+                        string in out_stream.getvalue() for string in strings_to_match
+                    ),
+                    timeout=timeout_s,
+                    retry_interval_ms=1000,
+                )
+                # out_stream has the expected strings
+                success = True
+                return out
+            # Exception raised on failure.
+            finally:
+                sys.stdout = sys.__stdout__
+                if success:
+                    print("Confirmed expected function stdout. Stdout follows:")
+                else:
+                    print("Did not confirm expected function stdout. Stdout follows:")
+                print(out_stream.getvalue())
+                out_stream.close()
+
+        return decorated_func
+
+    return decorator
+
+
 def wait_until_succeeded_without_exception(
     func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
 ):
@@ -405,7 +655,7 @@ def wait_until_succeeded_without_exception(
 
     Args:
         func: A function to run.
-        exceptions(tuple): Exceptions that are supposed to occur.
+        exceptions: Exceptions that are supposed to occur.
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
@@ -569,7 +819,8 @@ def get_other_nodes(cluster, exclude_head=False):
     return [
         node
         for node in cluster.list_all_nodes()
-        if node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        if node._raylet_socket_name
+        != ray._private.worker._global_node._raylet_socket_name
         and (exclude_head is False or node.head is False)
     ]
 
@@ -581,7 +832,7 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -609,7 +860,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -716,22 +967,29 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_prometheus(prom_addresses):
+def fetch_raw_prometheus(prom_addresses):
     # Local import so minimal dependency tests can run without requests
     import requests
 
-    components_dict = {}
-    metric_names = set()
-    metric_samples = []
     for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
         try:
             response = requests.get(f"http://{address}/metrics")
+            yield address, response.text
         except requests.exceptions.ConnectionError:
             continue
 
-        for line in response.text.split("\n"):
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses):
+        for line in response.split("\n"):
             for family in text_string_to_metric_families(line):
                 for sample in family.samples:
                     metric_names.add(sample.name)
@@ -739,6 +997,36 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
 
 
 def load_test_config(config_file_name):
@@ -866,8 +1154,8 @@ def monitor_memory_usage(
     The monitor will run on the same node as this function is called.
 
     Params:
-        interval_s (int): The interval memory usage information is printed
-        warning_threshold (float): The threshold where the
+        interval_s: The interval memory usage information is printed
+        warning_threshold: The threshold where the
             memory usage warning is printed.
 
     Returns:
@@ -887,13 +1175,13 @@ def monitor_memory_usage(
             """The actor that monitor the memory usage of the cluster.
 
             Params:
-                print_interval_s (float): The interval where
+                print_interval_s: The interval where
                     memory usage is printed.
-                record_interval_s (float): The interval where
+                record_interval_s: The interval where
                     memory usage is recorded.
-                warning_threshold (float): The threshold where
+                warning_threshold: The threshold where
                     memory warning is printed
-                n (int): When memory usage is printed,
+                n: When memory usage is printed,
                     top n entries are printed.
             """
             # -- Interval the monitor prints the memory usage information. --
@@ -959,7 +1247,7 @@ def monitor_memory_usage(
             """
             return self.peak_memory_usage, self.peak_top_n_memory_usage
 
-    current_node_ip = ray.worker.global_worker.node_ip_address
+    current_node_ip = ray._private.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     memory_monitor_actor = MemoryMonitorActor.options(
         resources={f"node:{current_node_ip}": 0.001}
@@ -1029,7 +1317,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = asyncio.get_event_loop().create_future()
+            self.done = ray._private.utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1112,8 +1400,8 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray.worker.global_worker.node_ip_address
-    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    head_node_ip = ray._private.worker.global_worker.node_ip_address
+    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
         resources={f"node:{head_node_ip}": 0.001},
@@ -1158,7 +1446,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster):
+def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1166,16 +1454,13 @@ def check_local_files_gced(cluster):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
+            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (
-                len(
-                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-                )
-                > 0
-            ):
-                print(str(all_files))
+            items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+            if whitelist and set(items).issubset(whitelist):
+                continue
+            if len(items) > 0:
                 return False
-
     return True
 
 
@@ -1258,7 +1543,9 @@ def simulate_storage(storage_type, root=None):
             yield "file://" + root
     elif storage_type == "s3":
         import uuid
+
         from moto import mock_s3
+
         from ray.tests.mock_s3_server import start_service, stop_process
 
         @contextmanager
@@ -1287,3 +1574,213 @@ def simulate_storage(storage_type, root=None):
             yield url
     else:
         raise ValueError(f"Unknown storage type: {storage_type}")
+
+
+def job_hook(**kwargs):
+    """Function called by reflection by test_cli_integration."""
+    cmd = " ".join(kwargs["entrypoint"])
+    print(f"hook intercepted: {cmd}")
+    sys.exit(0)
+
+
+def find_free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def wandb_setup_api_key_hook():
+    """
+    Example external hook to set up W&B API key in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    return "abcd"
+
+
+# Get node stats from node manager.
+def get_node_stats(raylet, num_retry=5, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    for _ in range(num_retry):
+        try:
+            reply = stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
+            )
+            break
+        except grpc.RpcError:
+            continue
+    assert reply is not None
+    return reply
+
+
+# Gets resource usage assuming gcs is local.
+def get_resource_usage(gcs_address, timeout=10):
+    if not gcs_address:
+        gcs_address = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
+    )
+
+    gcs_node_resources_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
+        gcs_channel
+    )
+
+    request = gcs_service_pb2.GetAllResourceUsageRequest()
+    response = gcs_node_resources_stub.GetAllResourceUsage(request, timeout=timeout)
+    resources_batch_data = response.resource_usage_data
+
+    return resources_batch_data
+
+
+# Gets the load metrics report assuming gcs is local.
+def get_load_metrics_report(webui_url):
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
+
+
+# Send a RPC to the raylet to have it self-destruct its process.
+def kill_raylet(raylet, graceful=False):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    try:
+        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+    except _InactiveRpcError:
+        assert not graceful
+
+
+# Creates a state api client assuming the head node (gcs) is local.
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
+
+
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
+
+
+def external_ray_cluster_activity_hook1():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+
+    from pydantic import BaseModel, Extra
+
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
+        """
+        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
+
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
+
+    return {
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
+        )
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }
+
+
+def get_gcs_memory_used():
+    import psutil
+
+    m = {
+        process.name(): process.memory_info().rss
+        for process in psutil.process_iter()
+        if (
+            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and process.name() in ("gcs_server", "redis-server")
+        )
+    }
+    assert "gcs_server" in m
+    return sum(m.values())
+
+
+def wandb_populate_run_location_hook():
+    """
+    Example external hook to populate W&B project and group env vars in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"

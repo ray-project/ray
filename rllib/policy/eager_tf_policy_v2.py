@@ -5,11 +5,11 @@ It supports both traced and non-traced eager execution modes.
 
 import gym
 import logging
+import os
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -20,7 +20,7 @@ from ray.rllib.policy.eager_tf_policy import (
     _OptimizerWrapper,
     _traced_eager_policy,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -31,19 +31,25 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -51,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class EagerTFPolicyV2(Policy):
-    """A TF-eageer / TF2 based tensorflow policy.
+    """A TF-eager / TF2 based tensorflow policy.
 
     This class is intended to be used and extended by sub-classing.
     """
@@ -60,7 +66,7 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -74,15 +80,20 @@ class EagerTFPolicyV2(Policy):
 
         Policy.__init__(self, observation_space, action_space, config)
 
-        config = dict(self.get_default_config(), **config)
-        self.config = config
-
         self._is_training = False
         # Global timestep should be a tensor.
         self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
         self.explore = tf.Variable(
             self.config["explore"], trainable=False, dtype=tf.bool
         )
+
+        # Log device and worker index.
+        num_gpus = self._get_num_gpus_for_policy()
+        if num_gpus > 0:
+            gpu_ids = get_gpu_devices()
+            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+
+        self._is_training = False
 
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -91,9 +102,9 @@ class EagerTFPolicyV2(Policy):
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
-        self._max_seq_len = config["model"]["max_seq_len"]
+        self._max_seq_len = self.config["model"]["max_seq_len"]
 
-        self.validate_spaces(observation_space, action_space, config)
+        self.validate_spaces(observation_space, action_space, self.config)
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
@@ -136,16 +147,11 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -226,11 +232,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -243,18 +249,15 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.
@@ -389,11 +392,12 @@ class EagerTFPolicyV2(Policy):
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given"
                 )
+            return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"]
             )
-        return dist_class
+            return dist_class
 
     def _init_view_requirements(self):
         # Auto-update model's inference view requirements, if recurrent.
@@ -546,15 +550,14 @@ class EagerTFPolicyV2(Policy):
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
-            dist_inputs, dist_class, _ = self.action_distribution_fn(
+            dist_inputs, self.dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
         # Default log-likelihood calculation.
         else:
             dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
-            dist_class = self.dist_class
 
-        action_dist = dist_class(dist_inputs, self.model)
+        action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
@@ -585,12 +588,22 @@ class EagerTFPolicyV2(Policy):
         postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
         postprocessed_batch.set_training(True)
         stats = self._learn_on_batch_helper(postprocessed_batch)
+        self.num_grad_updates += 1
+
         stats.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
+
         return convert_to_numpy(stats)
 
     @override(Policy)
@@ -661,8 +674,11 @@ class EagerTFPolicyV2(Policy):
         return []
 
     @override(Policy)
-    def get_state(self):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
+
         state["global_timestep"] = state["global_timestep"].numpy()
         if self._optimizer and len(self._optimizer.variables()) > 0:
             state["_optimizer_variables"] = self._optimizer.variables()
@@ -671,32 +687,61 @@ class EagerTFPolicyV2(Policy):
         return state
 
     @override(Policy)
-    def set_state(self, state):
-        # Set optimizer vars first.
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
+        # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
-            logger.warning(
-                "Cannot restore an optimizer's state for tf eager! Keras "
-                "is not able to save the v1.x optimizers (from "
-                "tf.compat.v1.train) since they aren't compatible with "
-                "checkpoints."
-            )
+            if not type(self).__name__.endswith("_traced") and log_once(
+                "set_state_optimizer_vars_tf_eager_policy_v2"
+            ):
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints."
+                )
             for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                 opt_var.assign(value)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Weights and global_timestep (tf vars).
-        self.set_weights(state["weights"])
+
+        # Restore glbal timestep (tf vars).
         self.global_timestep.assign(state["global_timestep"])
 
-    @override(Policy)
-    def export_checkpoint(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+        # Then the Policy's (NN) weights and connectors.
+        super().set_state(state)
 
     @override(Policy)
-    def export_model(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+    def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        if onnx:
+            try:
+                import tf2onnx
+            except ImportError as e:
+                raise RuntimeError(
+                    "Converting a TensorFlow model to ONNX requires "
+                    "`tf2onnx` to be installed. Install with "
+                    "`pip install tf2onnx`."
+                ) from e
+
+            model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                self.model.base_model,
+                output_path=os.path.join(export_dir, "model.onnx"),
+            )
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
+            try:
+                self.model.base_model.save(export_dir, save_format="tf")
+            except Exception:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+        else:
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -742,7 +787,7 @@ class EagerTFPolicyV2(Policy):
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_dict[SampleBatch.OBS],
                     explore=explore,
                     timestep=timestep,
                     episodes=episodes,
@@ -758,7 +803,7 @@ class EagerTFPolicyV2(Policy):
                         state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=input_dict,
+                        obs_batch=input_dict[SampleBatch.OBS],
                         state_batches=state_batches,
                         seq_lens=seq_lens,
                         explore=explore,

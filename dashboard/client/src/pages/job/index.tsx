@@ -1,4 +1,5 @@
 import {
+  Box,
   Switch,
   Table,
   TableBody,
@@ -6,34 +7,64 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
-import dayjs from "dayjs";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
-import { SearchInput, SearchSelect } from "../../components/SearchComponent";
+import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
+import { JobRow } from "./JobRow";
 
 const useStyles = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
     width: "100%",
   },
+  progressError: {
+    marginTop: theme.spacing(1),
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
 const columns = [
-  "ID",
-  "DriverIpAddress",
-  "DriverPid",
-  "IsDead",
-  "StartTime",
-  "EndTime",
+  { label: "Job ID" },
+  { label: "Submission ID" },
+  { label: "Entrypoint" },
+  { label: "Status" },
+  { label: "Duration" },
+  {
+    label: "Tasks",
+    helpInfo: (
+      <Typography>
+        The progress of the all submitted tasks per job. Tasks that are not yet
+        submitted will not show up in the progress bar.
+        <br />
+        <br />
+        Note: This column requires that prometheus is running. See{" "}
+        <a href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#exporting-metrics">
+          here
+        </a>{" "}
+        for instructions.
+      </Typography>
+    ),
+  },
+  {
+    label: "Logs",
+  },
+  { label: "StartTime" },
+  { label: "EndTime" },
+  { label: "Driver Pid" },
 ];
 
-const JobList = () => {
+const JobList = ({ newIA = false }: { newIA?: boolean }) => {
   const classes = useStyles();
   const {
     msg,
@@ -52,7 +83,9 @@ const JobList = () => {
         Auto Refresh:
         <Switch
           checked={isRefreshing}
-          onChange={onSwitchChange}
+          onChange={(event) => {
+            onSwitchChange(event);
+          }}
           name="refresh"
           inputProps={{ "aria-label": "secondary checkbox" }}
         />
@@ -62,13 +95,8 @@ const JobList = () => {
       <TitleCard title="Job List">
         <TableContainer>
           <SearchInput
-            label="ID"
-            onChange={(value) => changeFilter("jobId", value)}
-          />
-          <SearchSelect
-            label="Language"
-            onChange={(value) => changeFilter("language", value)}
-            options={["JAVA", "PYTHON"]}
+            label="Job ID"
+            onChange={(value) => changeFilter("job_id", value)}
           />
           <SearchInput
             label="Page Size"
@@ -86,9 +114,20 @@ const JobList = () => {
           <Table>
             <TableHead>
               <TableRow>
-                {columns.map((col) => (
-                  <TableCell align="center" key={col}>
-                    {col}
+                {columns.map(({ label, helpInfo }) => (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo className={classes.helpInfo}>
+                          {helpInfo}
+                        </HelpInfo>
+                      )}
+                    </Box>
                   </TableCell>
                 ))}
               </TableRow>
@@ -99,40 +138,39 @@ const JobList = () => {
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,
                 )
-                .map(
-                  ({
-                    jobId = "",
-                    driverIpAddress,
-                    isDead,
-                    driverPid,
-                    startTime,
-                    endTime,
-                  }) => (
-                    <TableRow key={jobId}>
-                      <TableCell align="center">
-                        <Link to={`/job/${jobId}`}>{jobId}</Link>
-                      </TableCell>
-                      <TableCell align="center">{driverIpAddress}</TableCell>
-                      <TableCell align="center">{driverPid}</TableCell>
-                      <TableCell align="center">
-                        {isDead ? "true" : "false"}
-                      </TableCell>
-                      <TableCell align="center">
-                        {dayjs(Number(startTime)).format("YYYY/MM/DD HH:mm:ss")}
-                      </TableCell>
-                      <TableCell align="center">
-                        {endTime > 0
-                          ? dayjs(Number(endTime)).format("YYYY/MM/DD HH:mm:ss")
-                          : "-"}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
+                .map((job, index) => {
+                  const { job_id, submission_id } = job;
+                  return (
+                    <JobRow
+                      key={job_id ?? submission_id ?? index}
+                      job={job}
+                      newIA={newIA}
+                    />
+                  );
+                })}
             </TableBody>
           </Table>
         </TableContainer>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Jobs page for the new information hierarchy
+ */
+export const NewIAJobsPage = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Jobs",
+          id: "jobs",
+          path: "/new/jobs",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

@@ -5,6 +5,7 @@ import tree  # pip install dm_tree
 from types import MappingProxyType
 from typing import List, Optional
 
+
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -127,7 +128,7 @@ def convert_to_numpy(
     """
 
     if reduce_floats != DEPRECATED_VALUE:
-        deprecation_warning(old="reduce_floats", new="reduce_types", error=False)
+        deprecation_warning(old="reduce_floats", new="reduce_types", error=True)
         reduce_type = reduce_floats
 
     # The mapping function used to numpyize torch/tf Tensors (and move them

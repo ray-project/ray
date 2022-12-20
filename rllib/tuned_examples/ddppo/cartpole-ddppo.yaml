@@ -1,0 +1,9 @@
+cartpole-ddppo:
+    env: CartPole-v1
+    run: DDPPO
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 100000
+    config:
+        framework: torch
+        num_gpus_per_worker: 0

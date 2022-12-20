@@ -13,11 +13,11 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 from ray.tune import PlacementGroupFactory
 from ray.tune.logger import pretty_print
 
@@ -33,7 +33,7 @@ def get_cli_args():
     # general args
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -75,13 +75,13 @@ def get_cli_args():
     return args
 
 
-# The modified Trainer class we will use. This is the exact same
-# as a PPOTrainer, but with the additional default_resource_request
-# override, telling tune that it's ok (not mandatory) to place our
-# n remote envs on a different node (each env using 1 CPU).
-class PPOTrainerRemoteInference(PPOTrainer):
+# The modified Algorithm class we will use:
+# Subclassing from PPO, our algo will only modity `default_resource_request`,
+# telling Ray Tune that it's ok (not mandatory) to place our n remote envs on a
+# different node (each env using 1 CPU).
+class PPORemoteInference(PPO):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
@@ -111,32 +111,37 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
-        "env": "CartPole-v0",
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # Set the number of CPUs used by the (local) worker, aka "driver"
-        # to match the number of ray remote envs.
-        "num_cpus_for_driver": args.num_envs_per_worker + 1,
-        # Use a single worker (however, with n parallelized remote envs, maybe
-        # even running on another node).
-        # Action computations will occur on the "main" (GPU?) node, while
-        # the envs run on one or more CPU node(s).
-        "num_workers": 0,
-        "num_envs_per_worker": args.num_envs_per_worker,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .framework(args.framework)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            num_envs_per_worker=args.num_envs_per_worker,
+            # Use a single worker (however, with n parallelized remote envs, maybe
+            # even running on another node).
+            # Action computations will occur on the "main" (GPU?) node, while
+            # the envs run on one or more CPU node(s).
+            num_rollout_workers=0,
+        )
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # Set the number of CPUs used by the (local) worker, aka "driver"
+            # to match the number of ray remote envs.
+            num_cpus_for_local_worker=args.num_envs_per_worker + 1,
+        )
+    )
 
     # Run as manual training loop.
     if args.no_tune:
         # manual training loop using PPO and manually keeping track of state
-        trainer = PPOTrainerRemoteInference(config=config)
+        algo = PPORemoteInference(config=config)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # Stop training if the target train steps or reward are reached.
             if (
@@ -145,7 +150,7 @@ if __name__ == "__main__":
             ):
                 break
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         stop = {
             "training_iteration": args.stop_iters,
@@ -153,9 +158,11 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        results = tune.run(
-            PPOTrainerRemoteInference, config=config, stop=stop, verbose=1
-        )
+        results = tune.Tuner(
+            PPORemoteInference,
+            param_space=config,
+            run_config=air.RunConfig(stop=stop, verbose=1),
+        ).fit()
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)

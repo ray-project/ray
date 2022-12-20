@@ -6,17 +6,21 @@ import time
 import subprocess
 
 import ray
+from ray.air import session
+from ray.air.config import ScalingConfig, RunConfig
+from ray.tune.tune_config import TuneConfig
 import requests
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
-from ray.train import Trainer
-from ray.util.ml_utils.node import force_on_current_node
-from ray.util.ml_utils.resnet import ResNet18
+from ray.tune.utils.node import _force_on_current_node
+from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
+from torchvision.models import resnet18
 
 
 def load_mnist_data(train: bool, download: bool):
@@ -24,8 +28,13 @@ def load_mnist_data(train: bool, download: bool):
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
 
-    with FileLock(".ray.lock"):
-        return MNIST(root="~/data", train=train, download=download, transform=transform)
+    with FileLock(os.path.expanduser("~/.ray.lock")):
+        return MNIST(
+            root=os.path.expanduser("~/data"),
+            train=train,
+            download=download,
+            transform=transform,
+        )
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
@@ -55,7 +64,7 @@ def validate_epoch(dataloader, model, loss_fn):
 
 def training_loop(config):
     # Create model.
-    model = ResNet18(config)
+    model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
     model = train.torch.prepare_model(model)
 
@@ -91,34 +100,43 @@ def training_loop(config):
         train_epoch(train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        train.save_checkpoint(model_state_dict=model.module.state_dict())
-        train.report(**validation_loss)
+        session.report(
+            validation_loss,
+            checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
+        )
 
 
 def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
-    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
-    TorchTrainable = trainer.to_tune_trainable(training_loop)
-
-    return tune.run(
-        TorchTrainable,
-        num_samples=1,
-        config={
-            "lr": tune.grid_search([1e-4, 1e-3]),
-            "test_mode": test_mode,
-            "batch_size": 128,
-        },
-        stop={"training_iteration": 2},
-        verbose=1,
-        metric="val_loss",
-        mode="min",
-        checkpoint_at_end=True,
+    trainer = TorchTrainer(
+        training_loop,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.grid_search([1e-4, 1e-3]),
+                "test_mode": test_mode,
+                "batch_size": 128,
+            }
+        },
+        tune_config=TuneConfig(
+            metric="val_loss",
+            mode="min",
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            verbose=1,
+        ),
+    )
+
+    return tuner.fit()
 
 
 def get_remote_model(remote_model_checkpoint_path):
     if ray.util.client.ray.is_connected():
         remote_load = ray.remote(get_model)
-        remote_load = force_on_current_node(remote_load)
+        remote_load = _force_on_current_node(remote_load)
         return ray.get(remote_load.remote(remote_model_checkpoint_path))
     else:
         get_best_model_remote = ray.remote(get_model)
@@ -126,12 +144,10 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    checkpoint_dict = Trainer.load_checkpoint_from_path(
-        model_checkpoint_path + "/checkpoint"
-    )
-    model_state = checkpoint_dict["model_state_dict"]
+    checkpoint_dict = TorchCheckpoint.from_directory(model_checkpoint_path)
+    model_state = checkpoint_dict.to_dict()["model"]
 
-    model = ResNet18(None)
+    model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
     model.load_state_dict(model_state)
 
@@ -249,17 +265,19 @@ if __name__ == "__main__":
     if addr is not None and addr.startswith("anyscale://"):
         client = ray.init(address=addr, job_name=job_name)
     else:
-        client = ray.init(address="auto")
+        client = ray.init()
 
     num_workers = 2
     use_gpu = not args.smoke_test
 
     print("Training model.")
-    analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
+    analysis = train_mnist(args.smoke_test, num_workers, use_gpu)._experiment_analysis
 
     print("Retrieving best model.")
-    best_checkpoint = analysis.best_checkpoint.local_path
-    model = get_remote_model(best_checkpoint)
+    best_checkpoint_path = analysis.get_best_checkpoint(
+        analysis.best_trial, return_path=True
+    )
+    model = get_remote_model(best_checkpoint_path)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)

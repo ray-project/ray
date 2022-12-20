@@ -19,6 +19,7 @@
 #include <chrono>
 #include <thread>
 
+#include "absl/container/btree_map.h"
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -32,21 +33,26 @@ class GcsRpcClient;
 /// Executor saves operation and support retries.
 class Executor {
  public:
-  explicit Executor(GcsRpcClient *gcs_rpc_client) : gcs_rpc_client_(gcs_rpc_client) {}
+  Executor(GcsRpcClient *gcs_rpc_client,
+           std::function<void(const ray::Status &)> abort_callback)
+      : gcs_rpc_client_(gcs_rpc_client), abort_callback_(std::move(abort_callback)) {}
 
   /// This function is used to execute the given operation.
   ///
   /// \param operation The operation to be executed.
-  void Execute(const std::function<void(GcsRpcClient *gcs_rpc_client)> &operation) {
-    operation_ = operation;
-    operation(gcs_rpc_client_);
+  void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
+    operation_ = std::move(operation);
+    operation_(gcs_rpc_client_);
   }
 
   /// This function is used to retry the given operation.
   void Retry() { operation_(gcs_rpc_client_); }
 
+  void Abort(const ray::Status &status) { abort_callback_(status); }
+
  private:
   GcsRpcClient *gcs_rpc_client_;
+  std::function<void(ray::Status)> abort_callback_;
   std::function<void(GcsRpcClient *gcs_rpc_client)> operation_;
 };
 
@@ -88,8 +94,10 @@ class Executor {
   void METHOD(const METHOD##Request &request,                                           \
               const ClientCallback<METHOD##Reply> &callback,                            \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                     \
-    auto executor = new Executor(this);                                                 \
-    auto operation_callback = [this, request, callback, executor](                      \
+    auto executor = new Executor(this, [callback](const ray::Status &status) {          \
+      callback(status, METHOD##Reply());                                                \
+    });                                                                                 \
+    auto operation_callback = [this, request, callback, executor, timeout_ms](          \
                                   const ray::Status &status,                            \
                                   const METHOD##Reply &reply) {                         \
       if (status.IsTimedOut()) {                                                        \
@@ -125,7 +133,10 @@ class Executor {
           }                                                                             \
         } else {                                                                        \
           pending_requests_bytes_ += request_bytes;                                     \
-          pending_requests_.emplace_back(executor);                                     \
+          auto timeout = timeout_ms == -1                                               \
+                             ? absl::InfiniteFuture()                                   \
+                             : absl::Now() + absl::Milliseconds(timeout_ms);            \
+          pending_requests_.emplace(timeout, std::make_pair(executor, request_bytes));  \
         }                                                                               \
       }                                                                                 \
     };                                                                                  \
@@ -138,7 +149,7 @@ class Executor {
                                      gcs_rpc_client->grpc_client,                       \
                                      timeout_ms));                                      \
         };                                                                              \
-    executor->Execute(operation);                                                       \
+    executor->Execute(std::move(operation));                                            \
   }                                                                                     \
   ray::Status Sync##METHOD(const METHOD##Request &request,                              \
                            METHOD##Reply *reply_in,                                     \
@@ -219,6 +230,9 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         channel_, client_call_manager);
+
+    task_info_grpc_client_ =
+        std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
 
     SetupCheckTimer();
   }
@@ -313,6 +327,12 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             CheckAlive,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Get internal config of the node from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              GetInternalConfig,
@@ -349,12 +369,6 @@ class GcsRpcClient {
                              heartbeat_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Check GCS is alive.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
-                             CheckAlive,
-                             heartbeat_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Add profile data to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
                              AddProfileData,
@@ -365,6 +379,12 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
                              GetAllProfileInfo,
                              stats_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Add task events info to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             AddTaskEventData,
+                             task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Report a worker failure to GCS Service.
@@ -463,10 +483,12 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   void Shutdown() {
-    bool is_shutdown = false;
-    if (!shutdown_.compare_exchange_strong(is_shutdown, true)) {
-      RAY_LOG(DEBUG) << "GCS client has already been shutdown.";
+    if (!shutdown_.exchange(true)) {
+      // First call to shut down this GCS RPC client.
+      absl::MutexLock lock(&timer_mu_);
       timer_->cancel();
+    } else {
+      RAY_LOG(DEBUG) << "GCS RPC client has already shutdown.";
     }
   }
 
@@ -481,6 +503,7 @@ class GcsRpcClient {
     auto duration = boost::posix_time::milliseconds(
         ::RayConfig::instance()
             .gcs_client_check_connection_status_interval_milliseconds());
+    absl::MutexLock lock(&timer_mu_);
     timer_->expires_from_now(duration);
     timer_->async_wait([this](boost::system::error_code error) {
       if (error == boost::system::errc::success) {
@@ -488,24 +511,52 @@ class GcsRpcClient {
       }
     });
   }
+
   void CheckChannelStatus(bool reset_timer = true) {
     if (shutdown_) {
       return;
     }
+
     auto status = channel_->GetState(false);
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
     RAY_LOG(DEBUG) << "GCS channel status: " << status;
+
+    // We need to cleanup all the pending requets which are timeout.
+    auto now = absl::Now();
+    while (!pending_requests_.empty()) {
+      auto iter = pending_requests_.begin();
+      if (iter->first > now) {
+        break;
+      }
+      auto [executor, request_bytes] = iter->second;
+      executor->Abort(
+          ray::Status::TimedOut("Timed out while waiting for GCS to become available."));
+      pending_requests_bytes_ -= request_bytes;
+      delete executor;
+      pending_requests_.erase(iter);
+    }
+
     switch (status) {
     case GRPC_CHANNEL_TRANSIENT_FAILURE:
     case GRPC_CHANNEL_CONNECTING:
       if (!gcs_is_down_) {
         gcs_is_down_ = true;
       } else {
-        RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
-                  ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
-            << "Failed to connect to GCS within "
-            << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds";
+        if (absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) >=
+            ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
+          RAY_LOG(ERROR) << "Failed to connect to GCS within "
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                         << " seconds. "
+                         << "GCS may have been killed. It's either GCS is terminated by "
+                            "`ray stop` or "
+                         << "is killed unexpectedly. If it is killed unexpectedly, "
+                         << "see the log file gcs_server.out. "
+                         << "https://docs.ray.io/en/master/ray-observability/"
+                            "ray-logging.html#logging-directory-structure. "
+                         << "The program will terminate.";
+          std::_Exit(EXIT_FAILURE);
+        }
       }
       break;
     case GRPC_CHANNEL_SHUTDOWN:
@@ -517,8 +568,8 @@ class GcsRpcClient {
       gcs_is_down_ = false;
       // Retry the one queued.
       while (!pending_requests_.empty()) {
-        pending_requests_.back()->Retry();
-        pending_requests_.pop_back();
+        pending_requests_.begin()->second.first->Retry();
+        pending_requests_.erase(pending_requests_.begin());
       }
       pending_requests_bytes_ = 0;
       break;
@@ -527,10 +578,16 @@ class GcsRpcClient {
     }
     SetupCheckTimer();
   }
-  std::string gcs_address_;
-  int64_t gcs_port_;
 
-  instrumented_io_context *io_context_;
+  const std::string gcs_address_;
+  const int64_t gcs_port_;
+
+  instrumented_io_context *const io_context_;
+
+  // Timer can be called from either the GCS RPC event loop, or the application's
+  // main thread. It needs to be protected by a mutex.
+  absl::Mutex timer_mu_;
+  const std::unique_ptr<boost::asio::deadline_timer> timer_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
@@ -545,13 +602,14 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 
+  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;
   absl::Time gcs_last_alive_time_ = absl::Now();
 
   std::atomic<bool> shutdown_ = false;
-  std::unique_ptr<boost::asio::deadline_timer> timer_;
-  std::vector<Executor *> pending_requests_;
+  absl::btree_multimap<absl::Time, std::pair<Executor *, size_t>> pending_requests_;
   size_t pending_requests_bytes_ = 0;
 
   friend class GcsClientReconnectionTest;

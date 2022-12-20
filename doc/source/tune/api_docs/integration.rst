@@ -8,13 +8,13 @@ External library integrations (tune.integration)
     :depth: 1
 
 
-.. _tune-integration-docker:
+Comet (tune.integration.comet)
+-------------------------------------------
 
-Docker (tune.integration.docker)
---------------------------------
+:ref:`See also here <tune-comet-ref>`.
 
-.. autofunction:: ray.tune.integration.docker.DockerSyncer
-
+.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
+    :noindex:
 
 .. _tune-integration-keras:
 
@@ -25,12 +25,6 @@ Keras (tune.integration.keras)
 
 .. autoclass:: ray.tune.integration.keras.TuneReportCheckpointCallback
 
-.. _tune-integration-kubernetes:
-
-Kubernetes (tune.integration.kubernetes)
-----------------------------------------
-
-.. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
 
 .. _tune-integration-mlflow:
 
@@ -39,7 +33,8 @@ MLflow (tune.integration.mlflow)
 
 :ref:`See also here <tune-mlflow-ref>`.
 
-.. autoclass:: ray.tune.integration.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
+    :noindex:
 
 .. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
 
@@ -70,9 +65,10 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb-ref>`.
 
-.. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback
+    :noindex:
 
-.. autofunction:: ray.tune.integration.wandb.wandb_mixin
+.. autofunction:: ray.air.integrations.wandb.setup_wandb
 
 
 .. _tune-integration-xgboost:

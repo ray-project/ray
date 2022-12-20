@@ -50,6 +50,8 @@ class Queue:
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
+        ray._private.usage.usage_lib.record_library_usage("util.Queue")
+
         actor_options = actor_options or {}
         self.maxsize = maxsize
         self.actor = (
@@ -230,11 +232,11 @@ class Queue:
         All of the resources reserved by the queue will be released.
 
         Args:
-            force (bool): If True, forcefully kill the actor, causing an
+            force: If True, forcefully kill the actor, causing an
                 immediate failure. If False, graceful
                 actor termination will be attempted first, before falling back
                 to a forceful kill.
-            grace_period_s (int): If force is False, how long in seconds to
+            grace_period_s: If force is False, how long in seconds to
                 wait for graceful termination before falling back to
                 forceful kill.
         """

@@ -25,6 +25,8 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. _ray-options-ref:
+
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
 .. autofunction:: ray.actor.ActorClass.options
@@ -98,6 +100,8 @@ ray.method
 ~~~~~~~~~~
 
 .. autofunction:: ray.method
+
+.. _ray-actor-pool-ref:
 
 ray.util.ActorPool
 ~~~~~~~~~~~~~~~~~~
@@ -234,101 +238,61 @@ Debugging APIs
 
 .. autofunction:: ray.util.inspect_serializability
 
-.. _ray-cli:
+.. _ray-core-exceptions:
 
-The Ray Command Line API
-------------------------
+Exceptions
+----------
 
-.. _ray-start-doc:
+.. autoclass:: ray.exceptions.RayError
+   :members:
 
-.. click:: ray.scripts.scripts:start
-   :prog: ray start
-   :show-nested:
-
-.. _ray-stop-doc:
-
-.. click:: ray.scripts.scripts:stop
-   :prog: ray stop
-   :show-nested:
-
-.. _ray-up-doc:
-
-.. click:: ray.scripts.scripts:up
-   :prog: ray up
-   :show-nested:
-
-.. _ray-down-doc:
-
-.. click:: ray.scripts.scripts:down
-   :prog: ray down
-   :show-nested:
-
-.. _ray-exec-doc:
-
-.. click:: ray.scripts.scripts:exec
-   :prog: ray exec
-   :show-nested:
-
-.. _ray-submit-doc:
-
-.. click:: ray.scripts.scripts:submit
-   :prog: ray submit
-   :show-nested:
-
-.. _ray-attach-doc:
-
-.. click:: ray.scripts.scripts:attach
-   :prog: ray attach
-   :show-nested:
-
-.. _ray-get_head_ip-doc:
-
-.. click:: ray.scripts.scripts:get_head_ip
-   :prog: ray get_head_ip
-   :show-nested:
-
-.. _ray-stack-doc:
-
-.. click:: ray.scripts.scripts:stack
-   :prog: ray stack
-   :show-nested:
-
-.. _ray-memory-doc:
-
-.. click:: ray.scripts.scripts:memory
-   :prog: ray memory
-   :show-nested:
-
-.. _ray-timeline-doc:
-
-.. click:: ray.scripts.scripts:timeline
-   :prog: ray timeline
-   :show-nested:
-
-.. _ray-status-doc:
-
-.. click:: ray.scripts.scripts:status
-   :prog: ray status
-   :show-nested:
-
-.. _ray-monitor-doc:
-
-.. click:: ray.scripts.scripts:monitor
-   :prog: ray monitor
-   :show-nested:
-
-.. click:: ray.scripts.scripts:debug
-   :prog: ray debug
-   :show-nested:
-
-.. _ray-disable-usage-stats-doc:
-
-.. click:: ray.scripts.scripts:disable_usage_stats
-   :prog: ray disable-usage-stats
-   :show-nested:
-
-.. _ray-enable-usage-stats-doc:
-
-.. click:: ray.scripts.scripts:enable_usage_stats
-   :prog: ray enable-usage-stats
-   :show-nested:
+.. _ray-core-exceptions-ray-task-error:
+.. autoclass:: ray.exceptions.RayTaskError
+   :members:
+.. autoclass:: ray.exceptions.TaskCancelledError
+   :members:
+.. autoclass:: ray.exceptions.GetTimeoutError
+   :members:
+.. _ray-core-exceptions-ray-actor-error:
+.. autoclass:: ray.exceptions.RayActorError
+   :members:
+.. _ray-core-exceptions-runtime-env-setup-error:
+.. autoclass:: ray.exceptions.RuntimeEnvSetupError
+   :members:
+.. autoclass:: ray.exceptions.TaskUnschedulableError
+   :members:
+.. autoclass:: ray.exceptions.ActorUnschedulableError
+   :members:
+.. autoclass:: ray.exceptions.TaskPlacementGroupRemoved
+   :members:
+.. autoclass:: ray.exceptions.ActorPlacementGroupRemoved
+   :members:
+.. autoclass:: ray.exceptions.LocalRayletDiedError
+   :members:
+.. autoclass:: ray.exceptions.WorkerCrashedError
+   :members:
+.. autoclass:: ray.exceptions.RaySystemError
+   :members:
+.. autoclass:: ray.exceptions.ObjectStoreFullError
+   :members:
+.. autoclass:: ray.exceptions.OutOfDiskError
+   :members:
+.. _ray-core-exceptions-object-lost-error:
+.. autoclass:: ray.exceptions.ObjectLostError
+   :members:
+.. autoclass:: ray.exceptions.ObjectFetchTimedOutError
+   :members:
+.. autoclass:: ray.exceptions.OwnerDiedError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError
+   :members:
+.. autoclass:: ray.exceptions.ObjectReconstructionFailedLineageEvictedError
+   :members:
+.. autoclass:: ray.exceptions.PlasmaObjectNotAvailable
+   :members:
+.. autoclass:: ray.exceptions.AsyncioActorExit
+   :members:
+.. autoclass:: ray.exceptions.CrossLanguageError
+   :members:

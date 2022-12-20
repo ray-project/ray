@@ -1,6 +1,7 @@
+import time
+
 import numpy as np
 import pytest
-import time
 
 import ray
 
@@ -125,4 +126,14 @@ def test_location_pending(ray_start_cluster):
     assert location["node_ids"] == []
     # TODO(chenshen): this is a result of converting int -1 to unsigned int;
     # should be fix by https://github.com/ray-project/ray/issues/16321
-    assert location["object_size"] == 2 ** 64 - 1
+    assert location["object_size"] == 2**64 - 1
+
+
+if __name__ == "__main__":
+    import sys
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

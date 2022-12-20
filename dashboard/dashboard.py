@@ -1,18 +1,21 @@
 import argparse
-import asyncio
 import logging
 import logging.handlers
 import platform
 import traceback
+import signal
+import os
+import sys
 
+import ray._private.ray_constants as ray_constants
+import ray._private.services
+import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
+from typing import Optional, Set
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -28,23 +31,24 @@ class Dashboard:
         which polls said API for display purposes.
 
     Args:
-        host(str): Host address of dashboard aiohttp server.
-        port(int): Port number of dashboard aiohttp server.
-        port_retries(int): The retry times to select a valid port.
-        gcs_address(str): GCS address of the cluster
-        log_dir(str): Log directory of dashboard.
+        host: Host address of dashboard aiohttp server.
+        port: Port number of dashboard aiohttp server.
+        port_retries: The retry times to select a valid port.
+        gcs_address: GCS address of the cluster
+        log_dir: Log directory of dashboard.
     """
 
     def __init__(
         self,
-        host,
-        port,
-        port_retries,
-        gcs_address,
-        log_dir=None,
-        temp_dir=None,
-        session_dir=None,
-        minimal=False,
+        host: str,
+        port: int,
+        port_retries: int,
+        gcs_address: str,
+        log_dir: str = None,
+        temp_dir: str = None,
+        session_dir: str = None,
+        minimal: bool = False,
+        modules_to_load: Optional[Set[str]] = None,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -55,6 +59,7 @@ class Dashboard:
             temp_dir=temp_dir,
             session_dir=session_dir,
             minimal=minimal,
+            modules_to_load=modules_to_load,
         )
 
     async def run(self):
@@ -151,6 +156,16 @@ if __name__ == "__main__":
             "by `pip install ray[default]`."
         ),
     )
+    parser.add_argument(
+        "--modules-to-load",
+        required=False,
+        default=None,
+        help=(
+            "Specify the list of module names in [module_1],[module_2] format."
+            "E.g., JobHead,StateHead... "
+            "If nothing is specified, all modules are loaded."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -164,6 +179,18 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count,
         )
 
+        if args.modules_to_load:
+            modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
+        else:
+            # None == default.
+            modules_to_load = None
+
+        # NOTE: Creating and attaching the event loop to the main OS thread be called
+        # before initializing Dashboard, which will initialize the grpc aio server,
+        # which assumes a working event loop. Ref:
+        # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
+        loop = ray._private.utils.get_or_create_event_loop()
+
         dashboard = Dashboard(
             args.host,
             args.port,
@@ -173,8 +200,22 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
+            modules_to_load=modules_to_load,
         )
-        loop = asyncio.get_event_loop()
+
+        def sigterm_handler():
+            logger.warn("Exiting with SIGTERM immediately...")
+            os._exit(signal.SIGTERM)
+
+        if sys.platform != "win32":
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the dashboard. Most of the underlying
+            # async tasks run by the dashboard head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
         loop.run_until_complete(dashboard.run())
     except Exception as e:
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())

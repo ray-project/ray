@@ -1,12 +1,13 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import File
+from fastapi import File, Request
 from pydantic import BaseModel, Field
 import numpy as np
-
-from ray.serve.utils import require_packages
 import starlette.requests
+
+from ray.util.annotations import PublicAPI
+from ray.serve._private.utils import require_packages
 
 
 _1DArray = List[float]
@@ -40,8 +41,12 @@ class NdArray(BaseModel):
     )
 
 
+@PublicAPI(stability="beta")
 def json_to_ndarray(payload: NdArray) -> np.ndarray:
-    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array."""
+    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array.
+
+    .. autopydantic_model:: ray.serve.http_adapters.NdArray
+    """
     arr = np.array(payload.array)
     if payload.shape:
         arr = arr.reshape(*payload.shape)
@@ -50,6 +55,13 @@ def json_to_ndarray(payload: NdArray) -> np.ndarray:
     return arr
 
 
+@PublicAPI(stability="beta")
+def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
+    """Accepts a JSON of shape {str_key: NdArray} and converts it to dict of arrays."""
+    return {key: json_to_ndarray(arr_obj) for key, arr_obj in payload.items()}
+
+
+@PublicAPI(stability="beta")
 def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:
@@ -58,17 +70,32 @@ def starlette_request(
     return request
 
 
+@PublicAPI(stability="beta")
 async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
     """Return the JSON object from request body."""
     return await request.json()
 
 
 @require_packages(["PIL"])
+@PublicAPI(stability="beta")
 def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
-    """Accepts a PIL-readable file from an HTTP form and converts
-    it to a numpy array.
-    """
+    """Accepts a PIL-readable file from an HTTP form and convert it to a numpy array."""
     from PIL import Image
 
     image = Image.open(BytesIO(img))
     return np.array(image)
+
+
+@require_packages(["pandas"])
+@PublicAPI(stability="beta")
+async def pandas_read_json(raw_request: Request):
+    """Accept JSON body and converts into pandas DataFrame.
+
+    This function simply uses `pandas.read_json(body, **query_params)` under the hood.
+    """
+    import pandas as pd
+
+    raw_json = await raw_request.body()
+    if isinstance(raw_json, bytes):
+        raw_json = raw_json.decode("utf-8")
+    return pd.read_json(raw_json, **raw_request.query_params)

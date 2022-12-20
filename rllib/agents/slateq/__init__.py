@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.slateq.slateq import (
     SlateQConfig,
-    SlateQTrainer,
+    SlateQ as SlateQTrainer,
     DEFAULT_CONFIG,
 )
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
@@ -17,5 +17,5 @@ __all__ = [
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
-    "ray.rllib.agents.slateq", "ray.rllib.algorithms.slateq", error=False
+    "ray.rllib.agents.slateq", "ray.rllib.algorithms.slateq", error=True
 )

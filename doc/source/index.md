@@ -18,6 +18,10 @@
 :target: https://discuss.ray.io/
 ```
 
+```{image} https://img.shields.io/badge/Newsletter-Subscribe-blue
+:target: https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85
+```
+
 ```{image} https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
 :target: https://twitter.com/raydistributed
 ```
@@ -30,19 +34,19 @@
 :column: col-lg-4 px-2 py-2
 :card:
 
-**Run machine learning workflows with**\
-**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">ML**
+**Scale machine learning workloads with**\
+**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">AIR**
 ^^^
-Ray ML is a toolkit for distributed machine learning. 
+Ray AI Runtime (AIR) is an open-source toolkit for building ML applications. 
 It provides libraries for distributed 
 [data processing](data/dataset.rst), 
 [model training](train/train.rst), 
 [tuning](tune/index.rst), 
 [reinforcement learning](rllib/index.rst), 
 [model serving](serve/index.rst), 
-and [more](workflows/concepts.rst). 
+and [more](ray-more-libs/index.rst). 
 +++
-```{link-button} ray-overview/index
+```{link-button} ray-air/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
@@ -66,15 +70,15 @@ You can often [parallelize](ray-core/walkthrough.rst) single machine code with l
 **Deploy large-scale workloads with**\
 **<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
 ^^^
-With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/quickstart) or 
-[on premise](cluster/cloud.html#cluster-private-setup).
-You can also use [Ray Cluster Managers](cluster/deploy) to run Ray on your existing
-[Kubernetes](cluster/kubernetes),
-[YARN](cluster/yarn),
-or [Slurm](cluster/slurm) clusters.
+With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/getting-started) or 
+[on premise](cluster/vms/user-guides/launching-clusters/on-premises).
+You can also use Ray cluster managers to run Ray on your existing
+[Kubernetes](cluster/kubernetes/index),
+[YARN](cluster/vms/user-guides/community/yarn),
+or [Slurm](cluster/vms/user-guides/community/slurm) clusters.
 +++
 
-```{link-button} cluster/quickstart
+```{link-button} cluster/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
@@ -83,17 +87,36 @@ or [Slurm](cluster/slurm) clusters.
 
 ## What is Ray?
 
-Ray is an open-source project developed at UC Berkeley RISE Lab.
-As a general-purpose and universal distributed compute framework, you can flexibly run any compute-intensive Python workload — from distributed training or hyperparameter tuning to deep reinforcement learning and production model serving.
+Ray is a unified framework for scaling AI and Python applications.
+Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
+simplifying ML compute:
 
-- Ray Core provides a simple, universal API for building distributed applications.
-- Ray's native libraries and tools enable you to run complex ML applications with Ray.
-- You can deploy these applications on any of the major cloud providers, including AWS, GCP, and Azure, or run them on your own servers.
-- Ray also has a growing [ecosystem of community integrations](ray-overview/ray-libraries), including [Dask](https://docs.ray.io/en/latest/data/dask-on-ray.html), [MARS](https://docs.ray.io/en/latest/data/mars-on-ray.html), [Modin](https://github.com/modin-project/modin), [Horovod](https://horovod.readthedocs.io/en/stable/ray_include.html), [Hugging Face](https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search), [Scikit-learn](ray-more-libs/joblib), [and others](ray-more-libs/index).
-The following figure gives you an overview of the Ray ecosystem.
+<img src="images/what-is-ray-padded.svg" alt="what-is-ray">
 
-![](ray-overview/images/ray_ecosystem_integration_v2.png)
+&nbsp;
 
+Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
+- [Datasets](data/dataset): Distributed Data Preprocessing
+- [Train](train/train): Distributed Training
+- [Tune](tune/index): Scalable Hyperparameter Tuning
+- [Serve](serve/index): Scalable and Programmable Serving
+- [RLlib](rllib/index): Scalable Reinforcement Learning
+
+Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
+- [Tasks](ray-core/tasks): Stateless functions executed in the cluster.
+- [Actors](ray-core/actors): Stateful worker processes created in the cluster.
+- [Objects](ray-core/objects): Immutable values accessible across the cluster.
+
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
+[ecosystem of community integrations](ray-overview/ray-libraries).
+
+## Why Ray?
+
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
+
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
+
+With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
 
 ## How to get involved?
 
@@ -103,7 +126,10 @@ Here's a list of tips for getting involved with the Ray community:
 ```{include} _includes/_contribute.md
 ```
 
-If you're interested in contributing to Ray, check out our [contributing guide](ray-contribute/getting-involved)
+If you're interested in contributing to Ray, check out our
+[contributing guide for this release](ray-contribute/getting-involved)
+or see the
+[latest version of our contributing guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
 ## What documentation resource is right for you?
@@ -170,6 +196,6 @@ Our developer guides will help you get started.
 
 +++
 
-{link-badge}`ray-contribute/getting-involved.html,"Developer Guides",cls=badge-light`
+{link-badge}`https://docs.ray.io/en/master/ray-contribute/getting-involved.html,"Developer Guides",cls=badge-light`
 
 ````

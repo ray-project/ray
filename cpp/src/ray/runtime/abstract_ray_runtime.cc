@@ -87,7 +87,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id{};
+  ObjectID object_id;
   object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
@@ -141,7 +141,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto owner_address = ray::rpc::Address{};
       if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-        owner_address = core_worker.GetOwnerAddress(id);
+        owner_address = core_worker.GetOwnerAddressOrDie(id);
       }
       ray_arg = absl::make_unique<ray::TaskArgByReference>(id,
                                                            owner_address,
@@ -199,6 +199,15 @@ std::string AbstractRayRuntime::CallActor(
     func_holder.class_name = typed_descriptor->ClassName();
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
+  } else if (remote_function_holder.lang_type == LangType::JAVA) {
+    const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
+        ray::ActorID::FromBinary(actor));
+    auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
+    auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
+    RemoteFunctionHolder func_holder = remote_function_holder;
+    func_holder.class_name = typed_descriptor->ClassName();
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
   } else {
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
@@ -215,8 +224,8 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
-  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
+const ActorID &AbstractRayRuntime::GetCurrentActorID() {
+  return GetWorkerContext().GetCurrentActorID();
 }
 
 void AbstractRayRuntime::AddLocalReference(const std::string &id) {
@@ -233,8 +242,9 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
-  auto actor_id = task_submitter_->GetActor(actor_name);
+std::string AbstractRayRuntime::GetActorId(const std::string &actor_name,
+                                           const std::string &ray_namespace) {
+  auto actor_id = task_submitter_->GetActor(actor_name, ray_namespace);
   if (actor_id.IsNil()) {
     return "";
   }
@@ -295,7 +305,7 @@ void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
 }
 
 bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
-                                                 int timeout_seconds) {
+                                                 int64_t timeout_seconds) {
   return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 
@@ -341,12 +351,36 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) 
 }
 
 PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
-  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(name, "");
+  // TODO(WangTaoTheTonic): Add namespace support for placement group.
+  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(
+      name, CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace());
   if (str_ptr == nullptr) {
     return {};
   }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
+}
+
+std::string AbstractRayRuntime::GetNamespace() {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker.GetJobConfig().ray_namespace();
+}
+
+std::string AbstractRayRuntime::SerializeActorHandle(const std::string &actor_id) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  std::string output;
+  ObjectID actor_handle_id;
+  auto status = core_worker.SerializeActorHandle(
+      ActorID::FromBinary(actor_id), &output, &actor_handle_id);
+  return output;
+}
+
+std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
+    const std::string &serialized_actor_handle) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
+      .Binary();
 }
 
 }  // namespace internal

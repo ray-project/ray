@@ -1,17 +1,50 @@
 A Guide To Using Checkpoints
 ============================
 
+.. _tune-two-types-of-ckpt:
+
+Two different types of Tune checkpoints
+---------------------------------------
+
+There are mainly two types of checkpoints that Tune maintains: Experiment-level checkpoints and Trial-level
+checkpoints.
+Experiment-level checkpoints save the experiment state. This includes the state of the searcher/scheduler,
+the list of trials with their statuses (PENDING, RUNNING, TERMINATED, ERROR), and the
+metadata that is pertained to each trial (hyperparameter configuration, trial logdir, etc).
+
+The experiment-level checkpoint is saved by the driver.
+The frequency at which it is conducted is automatically
+adjusted so that at least 95% of the time is used for handling training results and scheduling.
+This time can also be adjusted with the
+:ref:`TUNE_GLOBAL_CHECKPOINT_S environment variable <tune-env-vars>`.
+
+The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
+can be resumed from if it is interrupted or failed.
+It can also be used to analyze tuning results after a Ray Tune finished.
+
+Trial-level checkpoints capture the per-trial state. They are saved by the trainable itself.
+Commonly, this includes the model and optimizer states. This is useful mostly for three reasons:
+
+- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
+  last state. No training time is lost.
+- Some searchers/schedulers pause trials to free resources so that other trials can train in
+  the meantime. This only makes sense if the trials can then continue training from the latest state.
+- The checkpoint can be later used for other downstream tasks like batch inference.
+
+Everything that is saved by ``session.report()`` (if using the Function API) or
+``Trainable.save_checkpoint`` (if using the Class API) is a **trial-level checkpoint.**
+See :ref:`checkpointing with the Function API <tune-function-checkpointing>` and
+:ref:`checkpointing with the Class API <tune-trainable-save-restore>`
+for examples of saving and loading trial-level checkpoints.
+
 .. _tune-checkpoint-syncing:
 
 Checkpointing and synchronization
 ---------------------------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model.
-This allows you to:
+.. note::
 
-* save intermediate models throughout training
-* use pre-emptible machines (by automatically restoring from last checkpoint)
-* Pausing trials when using Trial Schedulers such as HyperBand and PBT.
+    This topic is relevant to trial checkpoints.
 
 Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
 this means that some trial checkpoints may be on the head node and others are not.
@@ -37,16 +70,19 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
 
 .. code-block:: python
 
-    from ray import tune
+    from ray import air, tune
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        local_dir="/path/to/shared/storage/",
-        sync_config=tune.SyncConfig(
-            syncer=None  # Disable syncing
+        run_config=air.RunConfig(
+            name="experiment_name",
+            local_dir="/path/to/shared/storage/",
+            sync_config=tune.SyncConfig(
+                syncer=None  # Disable syncing
+            )
         )
     )
+    tuner.fit()
 
 Note that the driver (on the head node) will have access to all checkpoints locally (in the
 shared directory) for further processing.
@@ -69,14 +105,18 @@ This will automatically store both the experiment state and the trial checkpoint
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/"
+        run_config=RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/"
+            )
         )
     )
+    tuner.fit()
 
 We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
 a string if you want to use a custom command:
@@ -84,15 +124,20 @@ a string if you want to use a custom command:
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/",
-            syncer="aws s3 sync {source} {target}",  # Custom sync command
+        run_config=RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/",
+                syncer="aws s3 sync {source} {target}",  # Custom sync command
+            )
         )
     )
+    tuner.fit()
+
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``,
 as demonstrated in the example above.
@@ -123,14 +168,16 @@ If you want to customize syncing behavior, you can again specify a custom sync t
 
     from ray import tune
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            # Do not specify an upload dir here
-            syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
-        )
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                # Do not specify an upload dir here
+                syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
+            ))
     )
+    results = tuner.fit()
 
 
 Alternatively, a function can be provided with the following signature:
@@ -144,14 +191,17 @@ Alternatively, a function can be provided with the following signature:
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            syncer=custom_sync_func,
-            sync_period=60  # Synchronize more often
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                syncer=custom_sync_func,
+                sync_period=60  # Synchronize more often
+            )
         )
     )
+    results = tuner.fit()
 
 When syncing results back to the driver, the source would be a path similar to
 ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -181,17 +231,21 @@ Your ``my_trainable`` is either a:
 
 1. **Model with an existing Ray integration**
 
-  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+  * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`__)
   * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
   * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
+  * LightGBM (`example <https://github.com/ray-project/lightgbm_ray/#hyperparameter-tuning>`__)
 
 2. **Custom training function**
 
-  * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature,
-    and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/includes/custom_func_checkpointing>`,
-    it's quite simple to do.
+  All this means is that your function needs to take care of saving and loading from checkpoint.
+
+  * For saving, this is done through :meth:`session.report() <ray.air.session.report>` API, which can take in a ``Checkpoint`` object.
+
+  * For loading, your function can access an existing checkpoint through the :meth:`session.get_checkpoint() <ray.air.session.get_checkpoint>` API.
+
+  * See :doc:`this example </tune/examples/includes/custom_func_checkpointing>` for reference.
 
 Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster
 via ``ray.init()``, making your script on your laptop the "driver".
@@ -204,61 +258,57 @@ via ``ray.init()``, making your script on your laptop the "driver".
 
     ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
 
-    # configure how checkpoints are sync'd to the scheduler/sampler
-    # we recommend cloud storage checkpointing as it survives the cluster when
-    # instances are terminated, and has better performance
+    # Configure how checkpoints are sync'd to the scheduler/sampler
+    # We recommend cloud storage checkpointing as it survives the cluster when
+    # instances are terminated and has better performance
     sync_config = tune.SyncConfig(
         upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
     )
 
-    # this starts the run!
-    tune.run(
+    # This starts the run!
+    tuner = tune.Tuner(
         my_trainable,
-
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # see above! we will sync our checkpoints to S3 directory
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            # Name of your experiment
+            name="my-tune-exp",
+            # Directory where each node's results are stored before being
+            # sync'd to head node/cloud storage
+            local_dir="/tmp/mypath",
+            # See above! we will sync our checkpoints to S3 directory
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                # We'll keep the best five checkpoints at all times
+                # checkpoints (by AUC score, reported by the trainable, descending)
+                checkpoint_score_attribute="max-auc",
+                num_to_keep=5,
+            ),
+        ),
     )
+    results = tuner.fit()
 
 In this example, checkpoints will be saved:
 
 * **Locally**: not saved! Nothing will be sync'd to the driver (your laptop) automatically (because cloud syncing is enabled)
 * **S3**: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
-* **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
-* **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
+* **On head node**: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
+* **On workers nodes**: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
-If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
-
-If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
+If this run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time using experiment checkpoints saved in the cloud:
 
 .. code-block:: python
 
-    # Restored previous trial from the given checkpoint
-    tune.run(
-        # our same trainable as before
-        my_trainable,
-
-        # The name can be different from your original name
-        name="my-tune-exp-restart",
-
-        # our same config as above!
-        restore=sync_config,
+    from ray import tune
+    tuner = tune.Tuner.restore(
+        "s3://my-checkpoints-bucket/path/my-tune-exp",
+        resume_errored=True
     )
+    tuner.fit()
+
+
+There are a few options for restoring an experiment:
+``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
+Please see the documentation of
+:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
 .. _rsync-checkpointing:
 
@@ -269,7 +319,7 @@ Local or rsync checkpointing can be a good option if:
 
 1. You want to tune on a single laptop Ray cluster
 2. You aren't using Ray on Kubernetes (rsync doesn't work with Ray on Kubernetes)
-3. You don't want to use S3
+3. You don't want to cloud storage (e.g. S3)
 
 Let's take a look at an example:
 
@@ -281,33 +331,24 @@ Let's take a look at an example:
 
     ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
 
-    # configure how checkpoints are sync'd to the scheduler/sampler
-    sync_config = tune.syncConfig()  # the default mode is to use use rsync
+    # Configure how checkpoints are sync'd to the scheduler/sampler
+    sync_config = tune.SyncConfig()  # the default mode is to use use rsync
 
-    # this starts the run!
-    tune.run(
+    # This starts the run!
+    tuner = tune.Tuner(
         my_trainable,
-
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # sync our checkpoints via rsync
-        # you don't have to pass an empty sync config - but we
-        # do it here for clarity and comparison
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            name="my-tune-exp",
+            local_dir="/tmp/mypath",
+            # Sync our checkpoints via rsync
+            # You don't have to pass an empty sync config - but we
+            # do it here for clarity and comparison
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_score_attribute="max-auc",
+                num_to_keep=5,
+            ),
+        )
     )
 
 .. _tune-distributed-checkpointing:
@@ -316,10 +357,10 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing
+Note that you must use the ``session.report`` API to trigger syncing
 (or use a model type with a built-in Ray Tune integration as described here).
 See :doc:`/tune/examples/includes/custom_func_checkpointing` for an example.
 
@@ -333,4 +374,5 @@ disable cross-node syncing:
 .. code-block:: python
 
     sync_config = tune.SyncConfig(syncer=None)
-    tune.run(func, sync_config=sync_config)
+    tuner = tune.Tuner(func, run_config=air.RunConfig(sync_config=sync_config))
+    results = tuner.fit()

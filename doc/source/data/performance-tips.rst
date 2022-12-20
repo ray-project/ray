@@ -6,15 +6,8 @@ Performance Tips and Tuning
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
-You can view debug stats for your Dataset and DatasetPipeline executions via ``ds.stats()``.
-These stats can be used to understand the performance of your Datasets workload and can help you debug problematic bottlenecks.
-
-At a high level, execution stats for tasks (e.g., CPU time) are attached to block metadata objects.
-Datasets have stats objects that hold references to these stats and parent dataset stats (this avoids stats holding references to parent datasets, allowing them to be garbage collected).
-Similarly, DatasetPipelines hold stats from recently computed datasets.
-In addition, we also collect statistics about iterator timings (time spent waiting / processing / in user code).
-Here's a sample output of getting stats in one of the most advanced use cases,
-namely iterating over a split of a dataset pipeline in a remote task:
+You can view debug stats for your Dataset and DatasetPipeline executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
+These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
 .. code-block:: python
 
@@ -82,8 +75,8 @@ namely iterating over a split of a dataset pipeline in a remote task:
 Batching Transforms
 ~~~~~~~~~~~~~~~~~~~
 
-Mapping individual records using ``.map(fn)`` can be quite slow.
-Instead, consider using ``.map_batches(batch_fn, batch_format="pandas")`` and writing your ``batch_fn`` to
+Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
+Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
 perform vectorized pandas operations.
 
 Parquet Column Pruning
@@ -91,15 +84,15 @@ Parquet Column Pruning
 
 Current Datasets will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling ``ray.data.read_parquet()`` to avoid loading unnecessary
-data (projection pushdown).
+explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
+avoid loading unnecessary data (projection pushdown).
 For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
 just two of the five columns of Iris dataset.
 
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 
-Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (selection pushdown)
+Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
 For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
@@ -109,45 +102,29 @@ This can be used in conjunction with column pruning when appropriate to get the 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray requests 0.5 CPUs per read task, which means two read tasks can concurrently execute per CPU.
+By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
 For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-The number of read tasks can also be increased by increasing the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to create up to 1000 read tasks.
-Typically, increasing the number of read tasks only helps if you have more cluster CPUs than the default parallelism.
+By default, Datasets automatically selects the read parallelism based on the current cluster size and dataset size.
+However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
-Tuning Max Block Size
-~~~~~~~~~~~~~~~~~~~~~
+.. _shuffle_performance_tips:
 
-Block splitting is off by default. To enable block splitting (beta), run ``ray.data.context.DatasetContext.get_current().block_splitting_enabled = True``.
-
-Once enabled, the max target block size can be adjusted via the Dataset context API.
-For example, to configure a max target block size of 8GiB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 8192 * 1024 * 1024`` prior to creating the Dataset.
-Lower block sizes reduce the max amount of object store and Python heap memory required during execution.
-However, having too many blocks may introduce task scheduling overheads.
-
-We do not recommend adjusting this value for most workloads.
-However, if shuffling a large amount of data, increasing the block size limit reduces the number of intermediate blocks (as a rule of thumb, shuffle creates ``O(num_blocks**2)`` intermediate blocks).
-Alternatively, you can ``.repartition()`` the dataset to reduce the number of blocks prior to shuffle/groupby operations.
-If you're seeing out of memory errors during map tasks, reducing the max block size may also be worth trying.
-
-Note that the number of blocks a Dataset created from ``ray.data.read_*`` contains is not fully known until all read tasks are fully executed.
-The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated.
-To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
-
-Improving shuffle performance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Enabling Push-Based Shuffle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
-These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
+These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
 Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
 
-Starting in Ray v1.13, Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
-We recommend trying this out if your dataset has more than 1k partitions (input files) or 1TB of data.
+Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
+We recommend trying this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
-To get an idea of the performance you can expect, here are some run time results for ``Dataset.random_shuffle`` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
+To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
    :align: center
@@ -179,5 +156,3 @@ setting the ``DatasetContext.use_push_based_shuffle`` flag:
     ds = ray.data.range(n, parallelism=parallelism)
     print(ds.random_shuffle().take(10))
     # [954, 405, 434, 501, 956, 762, 488, 920, 657, 834]
-
-Push-based shuffle is available as **alpha** in Ray 1.13+. Expect some rough edges, and please file any feature requests and bug reports on GitHub Issues.

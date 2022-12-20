@@ -1,19 +1,19 @@
-from contextlib import contextmanager
 import json
+import os
+import ray
 
-from ray.experimental.dag.class_node import ClassNode  # noqa: F401
-from ray.experimental.dag.function_node import FunctionNode  # noqa: F401
-from ray.experimental.dag.input_node import InputNode  # noqa: F401
-from ray.experimental.dag import DAGNode  # noqa: F401
+from ray.dag.class_node import ClassNode  # noqa: F401
+from ray.dag.function_node import FunctionNode  # noqa: F401
+from ray.dag.input_node import InputNode  # noqa: F401
+from ray.dag import DAGNode  # noqa: F401
+from ray.serve._private.constants import (
+    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+)
 from ray.util.annotations import PublicAPI
-import ray.serve.client
 
-
-@contextmanager
-def _mute_sync_handle_warnings():
-    ray.serve.client._WARN_SYNC_ASYNC_HANDLE_CONTEXT = False
-    yield
-    ray.serve.client._WARN_SYNC_ASYNC_HANDLE_CONTEXT = True
+FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
+    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
+)
 
 
 @PublicAPI(stability="alpha")
@@ -40,13 +40,22 @@ class RayServeDAGHandle:
     def __reduce__(self):
         return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
-    def remote(self, *args, **kwargs):
-        # NOTE: There's nothing user can do about these warnings, we should hide it.
-        with _mute_sync_handle_warnings():
-            if self.dag_node is None:
-                from ray.serve.pipeline.json_serde import dagnode_from_json
+    async def remote(
+        self, *args, _ray_cache_refs: bool = False, **kwargs
+    ) -> ray.ObjectRef:
+        """Execute the request, returns a ObjectRef representing final result."""
+        if self.dag_node is None:
+            from ray.serve._private.json_serde import dagnode_from_json
 
-                self.dag_node = json.loads(
-                    self.dag_node_json, object_hook=dagnode_from_json
-                )
-            return self.dag_node.execute(*args, **kwargs)
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+
+        if FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC:
+            return self.dag_node.execute(
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+            )
+        else:
+            return await self.dag_node.execute(
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+            )

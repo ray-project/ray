@@ -13,9 +13,15 @@ from pettingzoo.classic import rps_v2
 import random
 
 import ray
-from ray import tune
-from ray.rllib.algorithms.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
-from ray.rllib.agents.registry import get_trainer_class
+from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.pg import (
+    PG,
+    PGConfig,
+    PGTF2Policy,
+    PGTF1Policy,
+    PGTorchPolicy,
+)
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
     BeatLastHeuristic,
@@ -32,7 +38,7 @@ torch, _ = try_import_torch()
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -66,19 +72,18 @@ register_env("RockPaperScissors", lambda config: PettingZooEnv(env_creator(confi
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
-    config = {
-        "env": "RockPaperScissors",
-        "framework": args.framework,
-    }
+    config = PGConfig().environment("RockPaperScissors").framework(args.framework)
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.
         check_learning_achieved(results, 0.0)
 
 
-def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
+def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
     """Run heuristic policies vs a learned agent.
 
     The learned agent should eventually reach a reward of ~5 with
@@ -93,36 +98,42 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         else:
             return random.choice(["always_same", "beat_last"])
 
-    config = {
-        "env": "RockPaperScissors",
-        "gamma": 0.9,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "num_envs_per_worker": 4,
-        "rollout_fragment_length": 10,
-        "train_batch_size": 200,
-        "metrics_num_episodes_for_smoothing": 200,
-        "multiagent": {
-            "policies_to_train": ["learned"],
-            "policies": {
+    config = (
+        AlgorithmConfig(algo_class=algorithm)
+        .environment("RockPaperScissors")
+        .framework(args.framework)
+        .rollouts(
+            num_rollout_workers=0,
+            num_envs_per_worker=4,
+            rollout_fragment_length=10,
+        )
+        .training(
+            train_batch_size=200,
+            gamma=0.9,
+        )
+        .multi_agent(
+            policies={
                 "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
                 "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
                 "learned": PolicySpec(
-                    config={
-                        "model": {"use_lstm": use_lstm},
-                        "framework": args.framework,
-                    }
+                    config=AlgorithmConfig.overrides(
+                        model={"use_lstm": use_lstm},
+                        framework_str=args.framework,
+                    )
                 ),
             },
-            "policy_mapping_fn": select_policy,
-        },
-        "framework": args.framework,
-    }
-    cls = get_trainer_class(trainer) if isinstance(trainer, str) else trainer
-    trainer_obj = cls(config=config)
+            policy_mapping_fn=select_policy,
+            policies_to_train=["learned"],
+        )
+        .reporting(metrics_num_episodes_for_smoothing=200)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    algo = config.build()
+
     for _ in range(args.stop_iters):
-        results = trainer_obj.train()
+        results = algo.train()
         # Timesteps reached.
         if "policy_always_same_reward" not in results["hist_stats"]:
             reward_diff = 0
@@ -148,30 +159,38 @@ def run_with_custom_entropy_loss(args, stop):
 
     This performs about the same as the default loss does."""
 
-    def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model(train_batch)
-        action_dist = dist_class(logits, model)
-        if args.framework == "torch":
-            # Required by PGTorchPolicy's stats fn.
-            model.tower_stats["policy_loss"] = torch.tensor([0.0])
-            policy.policy_loss = torch.mean(
-                -0.1 * action_dist.entropy()
-                - (action_dist.logp(train_batch["actions"]) * train_batch["advantages"])
-            )
-        else:
-            policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
-                action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
-            )
-        return policy.policy_loss
+    policy_cls = {
+        "torch": PGTorchPolicy,
+        "tf": PGTF1Policy,
+        "tf2": PGTF2Policy,
+    }[args.framework]
 
-    policy_cls = PGTorchPolicy if args.framework == "torch" else PGTFPolicy
-    EntropyPolicy = policy_cls.with_updates(loss_fn=entropy_policy_gradient_loss)
+    class EntropyPolicy(policy_cls):
+        def loss_fn(policy, model, dist_class, train_batch):
+            logits, _ = model(train_batch)
+            action_dist = dist_class(logits, model)
+            if args.framework == "torch":
+                # Required by PGTorchPolicy's stats fn.
+                model.tower_stats["policy_loss"] = torch.tensor([0.0])
+                policy.policy_loss = torch.mean(
+                    -0.1 * action_dist.entropy()
+                    - (
+                        action_dist.logp(train_batch["actions"])
+                        * train_batch["advantages"]
+                    )
+                )
+            else:
+                policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
+                    action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
+                )
+            return policy.policy_loss
 
-    class EntropyLossPG(PGTrainer):
-        def get_default_policy_class(self, config):
+    class EntropyLossPG(PG):
+        @classmethod
+        def get_default_policy_class(cls, config):
             return EntropyPolicy
 
-    run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
+    run_heuristic_vs_learned(args, use_lstm=True, algorithm=EntropyLossPG)
 
 
 if __name__ == "__main__":

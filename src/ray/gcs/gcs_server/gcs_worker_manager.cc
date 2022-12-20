@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request,
+    rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
@@ -87,9 +87,28 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   if (!status.ok()) {
     on_done(status);
   }
+
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    usage::TagKey key;
+    int count = 0;
+    if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
+      worker_crash_system_error_count_ += 1;
+      key = usage::TagKey::WORKER_CRASH_SYSTEM_ERROR;
+      count = worker_crash_system_error_count_;
+    } else if (request.worker_failure().exit_type() ==
+               rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+      worker_crash_oom_count_ += 1;
+      key = usage::TagKey::WORKER_CRASH_OOM;
+      count = worker_crash_oom_count_;
+    }
+    if (usage_stats_client_) {
+      usage_stats_client_->RecordExtraUsageCounter(key, count);
+    }
+  }
 }
 
-void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
+void GcsWorkerManager::HandleGetWorkerInfo(rpc::GetWorkerInfoRequest request,
                                            rpc::GetWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
@@ -112,13 +131,24 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request,
+    rpc::GetAllWorkerInfoRequest request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
+
   RAY_LOG(DEBUG) << "Getting all worker info.";
-  auto on_done = [reply, send_reply_callback](
+  auto on_done = [reply, send_reply_callback, limit](
                      const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
+    auto total_workers = result.size();
+    reply->set_total(total_workers);
+
+    auto count = 0;
     for (auto &data : result) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all worker info.";
@@ -130,7 +160,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   }
 }
 
-void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
+void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
                                            rpc::AddWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();

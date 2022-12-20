@@ -31,6 +31,15 @@ class RandomPolicy(Policy):
             self.action_space_for_sampling = self.action_space
 
     @override(Policy)
+    def init_view_requirements(self):
+        super().init_view_requirements()
+        # Disable for_training and action attributes for SampleBatch.INFOS column
+        # since it can not be properly batched.
+        vr = self.view_requirements[SampleBatch.INFOS]
+        vr.used_for_training = False
+        vr.used_for_compute_actions = False
+
+    @override(Policy)
     def compute_actions(
         self,
         obs_batch,
@@ -41,7 +50,12 @@ class RandomPolicy(Policy):
     ):
         # Alternatively, a numpy array would work here as well.
         # e.g.: np.array([random.choice([0, 1])] * len(obs_batch))
-        return [self.action_space_for_sampling.sample() for _ in obs_batch], [], {}
+        obs_batch_size = len(tree.flatten(obs_batch)[0])
+        return (
+            [self.action_space_for_sampling.sample() for _ in range(obs_batch_size)],
+            [],
+            {},
+        )
 
     @override(Policy)
     def learn_on_batch(self, samples):

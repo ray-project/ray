@@ -2,7 +2,7 @@
 
 Here we create a number of CartPole agents, some of which are trained with
 DQN, and some of which are trained with PPO. We periodically sync weights
-between the two trainers (note that no such syncing is needed when using just
+between the two algorithms (note that no such syncing is needed when using just
 a single training method).
 
 For a simpler example, see also: multiagent_cartpole.py
@@ -13,11 +13,11 @@ import gym
 import os
 
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
-from ray.rllib.agents.ppo import (
-    PPOTrainer,
-    PPOStaticGraphTFPolicy,
-    PPOEagerTFPolicy,
+from ray.rllib.algorithms.dqn import DQNConfig, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.ppo import (
+    PPOConfig,
+    PPOTF1Policy,
+    PPOTF2Policy,
     PPOTorchPolicy,
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 # Use torch for both policies.
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -57,18 +57,18 @@ if __name__ == "__main__":
     register_env(
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
-    single_dummy_env = gym.make("CartPole-v0")
+    single_dummy_env = gym.make("CartPole-v1")
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 
-    def seelct_policy(algorithm, framework):
+    def select_policy(algorithm, framework):
         if algorithm == "PPO":
             if framework == "torch":
                 return PPOTorchPolicy
             elif framework == "tf":
-                return PPOStaticGraphTFPolicy
+                return PPOTF1Policy
             else:
-                return PPOEagerTFPolicy
+                return PPOTF2Policy
         elif algorithm == "DQN":
             if framework == "torch":
                 return DQNTorchPolicy
@@ -77,17 +77,17 @@ if __name__ == "__main__":
         else:
             raise ValueError("Unknown algorithm: ", algorithm)
 
-    # You can also have multiple policies per trainer, but here we just
+    # You can also have multiple policies per algorithm, but here we just
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
-            seelct_policy("PPO", args.framework),
+            select_policy("PPO", args.framework),
             obs_space,
             act_space,
             {},
         ),
         "dqn_policy": (
-            seelct_policy("DQN", args.framework),
+            select_policy("DQN", args.framework),
             obs_space,
             act_space,
             {},
@@ -100,46 +100,49 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPOTrainer(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["ppo_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "num_sgd_iter": 6,
-            "vf_loss_coeff": 0.01,
-            # disable filters, otherwise we would need to synchronize those
-            # as well to the DQN agent
-            "observation_filter": "MeanStdFilter",
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    ppo_config = (
+        PPOConfig()
+        .environment("multi_agent_cartpole")
+        .framework(args.framework)
+        # disable filters, otherwise we would need to synchronize those
+        # as well to the DQN agent
+        .rollouts(observation_filter="MeanStdFilter")
+        .training(
+            model={"vf_share_layers": True},
+            vf_loss_coeff=0.01,
+            num_sgd_iter=6,
+        )
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["ppo_policy"],
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
+    ppo = ppo_config.build()
 
-    dqn_trainer = DQNTrainer(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["dqn_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "gamma": 0.95,
-            "n_step": 3,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    dqn_config = (
+        DQNConfig()
+        .environment("multi_agent_cartpole")
+        .framework(args.framework)
+        # disable filters, otherwise we would need to synchronize those
+        # as well to the DQN agent
+        .rollouts(observation_filter="MeanStdFilter")
+        .training(
+            model={"vf_share_layers": True},
+            n_step=3,
+            gamma=0.95,
+        )
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["dqn_policy"],
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
+    dqn = dqn_config.build()
 
     # You should see both the printed X and Y approach 200 as this trains:
     # info:
@@ -151,12 +154,12 @@ if __name__ == "__main__":
 
         # improve the DQN policy
         print("-- DQN --")
-        result_dqn = dqn_trainer.train()
+        result_dqn = dqn.train()
         print(pretty_print(result_dqn))
 
         # improve the PPO policy
         print("-- PPO --")
-        result_ppo = ppo_trainer.train()
+        result_ppo = ppo.train()
         print(pretty_print(result_ppo))
 
         # Test passed gracefully.
@@ -169,8 +172,8 @@ if __name__ == "__main__":
             quit(0)
 
         # swap weights to synchronize
-        dqn_trainer.set_weights(ppo_trainer.get_weights(["ppo_policy"]))
-        ppo_trainer.set_weights(dqn_trainer.get_weights(["dqn_policy"]))
+        dqn.set_weights(ppo.get_weights(["ppo_policy"]))
+        ppo.set_weights(dqn.get_weights(["dqn_policy"]))
 
     # Desired reward not reached.
     if args.as_test:

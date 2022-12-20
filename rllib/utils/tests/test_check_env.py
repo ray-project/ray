@@ -1,6 +1,6 @@
-import logging
-
 import gym
+from gym.spaces import Box, Dict, Discrete
+import logging
 import numpy as np
 import pytest
 import unittest
@@ -45,15 +45,29 @@ class TestGymCheckEnv(unittest.TestCase):
         reset = MagicMock(return_value=5)
         env = RandomEnv()
         env.reset = reset
-        # check reset with out of bounds fails
+        # Check reset with out of bounds fails.
         error = ".*The observation collected from env.reset().*"
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        # check reset with obs of incorrect type fails
+
+        # Check reset with obs of incorrect type fails.
         reset = MagicMock(return_value=float(0.1))
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
+
+        # Check reset with complex obs in which one sub-space is incorrect.
+        env = RandomEnv(
+            config={
+                "observation_space": Dict(
+                    {"a": Discrete(4), "b": Box(-1.0, 1.0, (1,))}
+                ),
+            }
+        )
+        reset = MagicMock(return_value={"a": float(0.1), "b": np.array([0.5])})
+        error = ".*The observation collected from env.reset.*\\n path: 'a'.*"
+        env.reset = reset
+        self.assertRaisesRegex(ValueError, error, lambda: check_env(env))
 
     def test_step(self):
         step = MagicMock(return_value=(5, 5, True, {}))
@@ -292,7 +306,7 @@ class TestCheckBaseEnv:
         with pytest.raises(
             ValueError,
             match="The element returned by step, "
-            "next_obs has values that are not"
+            "next_obs contains values that are not"
             " MultiAgentDicts",
         ):
             check_env(env)
@@ -325,7 +339,7 @@ class TestCheckBaseEnv:
     def test_check_correct_env(self):
         env = self._make_base_env()
         check_env(env)
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         env = convert_to_base_env(env)
         check_env(env)
 

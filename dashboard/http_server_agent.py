@@ -1,7 +1,10 @@
-import asyncio
 import logging
+from ray._private.utils import get_or_create_event_loop
 
-from distutils.version import LooseVersion
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 
@@ -22,8 +25,8 @@ class HttpServerAgent:
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 
@@ -53,12 +56,20 @@ class HttpServerAgent:
 
         self.runner = aiohttp.web.AppRunner(app)
         await self.runner.setup()
-        site = aiohttp.web.TCPSite(
-            self.runner,
-            "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
-            self.listen_port,
-        )
-        await site.start()
+        try:
+            site = aiohttp.web.TCPSite(
+                self.runner,
+                "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                self.listen_port,
+            )
+            await site.start()
+        except OSError as e:
+            logger.error(
+                f"Agent port #{self.listen_port} already in use. "
+                "Failed to start agent. "
+                f"Ensure port #{self.listen_port} is available, and then try again."
+            )
+            raise e
         self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
         logger.info(
             "Dashboard agent http address: %s:%s", self.http_host, self.http_port

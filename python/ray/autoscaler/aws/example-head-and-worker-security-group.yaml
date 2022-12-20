@@ -16,16 +16,13 @@ auth:
 # VPC peering overview: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.
 # Setup VPC peering: https://docs.aws.amazon.com/vpc/latest/peering/create-vpc-peering-connection.html.
 # Configure VPC peering route tables: https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-routing.html.
+available_node_types:
+    ray.head.default:
+      node_config:
+        SecurityGroupIds:
+            - sg-1234abcd # Replace with an actual security group id.
 
-# To enable external SSH connectivity, you should also ensure that your VPC
-# is configured to assign public IPv4 addresses to every EC2 instance
-# assigned to it.
-head_node:
-    SecurityGroupIds:
-        - sg-1234abcd # Replace with an actual security group id.
-
-worker_nodes:
-    SecurityGroupIds:
-        - sg-1234abcd # Replace with an actual security group id.
-
-
+    ray.worker.default:
+      node_config:
+        SecurityGroupIds:
+            - sg-1234abcd # Replace with an actual security group id.

@@ -1,34 +1,41 @@
 import copy
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
+from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
 from ray_release.config import (
+    DEFAULT_ANYSCALE_PROJECT,
+    DEFAULT_CLOUD_ID,
+    DEFAULT_PYTHON_VERSION,
     Test,
     as_smoke_test,
     parse_python_version,
-    DEFAULT_PYTHON_VERSION,
 )
-from ray_release.template import get_test_env_var
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.util import python_version_str
+from ray_release.template import get_test_env_var
+from ray_release.util import python_version_str, DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
+RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
+RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
+
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
-        "ANYSCALE_CLOUD_ID": "cld_4F7k8814aZzGG8TNUGPKnc",
-        "ANYSCALE_PROJECT": "prj_2xR6uT6t7jJuu1aCwWMsle",
-        "RELEASE_AWS_BUCKET": "ray-release-automation-results",
+        "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
+        "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
+        "RELEASE_AWS_BUCKET": str(RELEASE_AWS_BUCKET),
         "RELEASE_AWS_LOCATION": "dev",
         "RELEASE_AWS_DB_NAME": "ray_ci",
         "RELEASE_AWS_DB_TABLE": "release_test_result",
         "AWS_REGION": "us-west-2",
     },
-    "agents": {"queue": "runner_queue_branch"},
+    "agents": {"queue": str(RELEASE_QUEUE_DEFAULT)},
     "plugins": [
         {
-            "docker#v3.9.0": {
+            "docker#v5.2.0": {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
@@ -69,16 +76,21 @@ def get_step(
         cmd += f" --ray-wheels {ray_wheels}"
 
     step["command"] = cmd
-    step["env"].update(env)
+
+    env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    env_dict.update(env)
+
+    step["env"].update(env_dict)
 
     if "python" in test:
         python_version = parse_python_version(test["python"])
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0]["docker#v3.9.0"][
+    step["plugins"][0]["docker#v5.2.0"][
         "image"
-    ] = f"rayproject/ray:latest-py{python_version_str(python_version)}"
+    ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -102,6 +114,11 @@ def get_step(
     step["concurrency"] = concurrency_limit
 
     step["priority"] = priority_val
+
+    # Set queue to QUEUE_CLIENT for client tests
+    # (otherwise keep default QUEUE_DEFAULT)
+    if test.get("run", {}).get("type") == "client":
+        step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)

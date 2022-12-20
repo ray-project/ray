@@ -1,15 +1,16 @@
 import unittest
 
 import ray
+from ray import air
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.framework import try_import_tf
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
 
 def check_support(alg, config, test_eager=False, test_trace=True):
-    config["framework"] = "tfe"
+    config["framework"] = "tf2"
     config["log_level"] = "ERROR"
     # Test both continuous and discrete actions.
     for cont in [True, False]:
@@ -21,17 +22,25 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         if cont:
             config["env"] = "Pendulum-v1"
         else:
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
 
-        a = get_trainer_class(alg)
+        a = get_trainable_cls(alg)
         if test_eager:
             print("tf-eager: alg={} cont.act={}".format(alg, cont))
             config["eager_tracing"] = False
-            tune.run(a, config=config, stop={"training_iteration": 1}, verbose=1)
+            tune.Tuner(
+                a,
+                param_space=config,
+                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+            ).fit()
         if test_trace:
             config["eager_tracing"] = True
             print("tf-eager-tracing: alg={} cont.act={}".format(alg, cont))
-            tune.run(a, config=config, stop={"training_iteration": 1}, verbose=1)
+            tune.Tuner(
+                a,
+                param_space=config,
+                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+            ).fit()
 
 
 class TestEagerSupportPG(unittest.TestCase):
@@ -44,12 +53,19 @@ class TestEagerSupportPG(unittest.TestCase):
     def test_simple_q(self):
         check_support(
             "SimpleQ",
-            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+            {
+                "num_workers": 0,
+                "num_steps_sampled_before_learning_starts": 0,
+            },
         )
 
     def test_dqn(self):
         check_support(
-            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "DQN",
+            {
+                "num_workers": 0,
+                "num_steps_sampled_before_learning_starts": 0,
+            },
         )
 
     def test_ddpg(self):
@@ -91,12 +107,19 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
     def test_simple_q(self):
         check_support(
             "SimpleQ",
-            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+            {
+                "num_workers": 0,
+                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
+            },
         )
 
     def test_dqn(self):
         check_support(
-            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "DQN",
+            {
+                "num_workers": 0,
+                "num_steps_sampled_before_learning_starts": 0,
+            },
         )
 
     def test_ddpg(self):
@@ -113,10 +136,10 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "replay_buffer_config": {"learning_starts": 0},
+                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
                 "num_gpus": 0,
-                "min_time_s_per_reporting": 1,
-                "min_sample_timesteps_per_reporting": 100,
+                "min_time_s_per_iteration": 1,
+                "min_sample_timesteps_per_iteration": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
                 },
@@ -125,7 +148,11 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
 
     def test_sac(self):
         check_support(
-            "SAC", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "SAC",
+            {
+                "num_workers": 0,
+                "num_steps_sampled_before_learning_starts": 0,
+            },
         )
 
 

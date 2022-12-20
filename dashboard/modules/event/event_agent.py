@@ -1,18 +1,18 @@
-import os
 import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
 import logging
+import os
 from typing import Union
 
-import ray.experimental.internal_kv as internal_kv
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.utils import async_loop_forever, create_task
+import ray.dashboard.utils as dashboard_utils
+from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
-from ray.core.generated import event_pb2
-from ray.core.generated import event_pb2_grpc
+from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,16 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor: Union[asyncio.Task, None] = None
         self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self.monitor_thread_pool_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="event_monitor"
+        )
+        # Total number of event created from this agent.
+        self.total_event_reported = 0
+        # Total number of event report request sent.
+        self.total_request_sent = 0
+        self.module_started = time.monotonic()
+
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
     async def _connect_to_dashboard(self):
@@ -36,11 +46,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         """
         while True:
             try:
-                # TODO: Use async version if performance is an issue
-                dashboard_rpc_address = internal_kv._internal_kv_get(
-                    dashboard_consts.DASHBOARD_RPC_ADDRESS,
+                dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
+                    dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=1,
                 )
+                dashboard_rpc_address = dashboard_rpc_address.decode()
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = ray_constants.GLOBAL_GRPC_OPTIONS
@@ -62,11 +73,13 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         This method will never returns.
         """
         data = await self._cached_events.get()
+        self.total_event_reported += len(data)
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):
             try:
-                logger.info("Report %s events.", len(data))
+                logger.debug("Report %s events.", len(data))
                 request = event_pb2.ReportEventsRequest(event_strings=data)
                 await self._stub.ReportEvents(request)
+                self.total_request_sent += 1
                 break
             except Exception:
                 logger.exception("Report event failed, reconnect to the " "dashboard.")
@@ -79,6 +92,18 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 data_str[:limit] + (data_str[limit:] and "..."),
             )
 
+    async def get_internal_states(self):
+        if self.total_event_reported <= 0 or self.total_request_sent <= 0:
+            return
+
+        elapsed = time.monotonic() - self.module_started
+        return {
+            "total_events_reported": self.total_event_reported,
+            "Total_report_request": self.total_request_sent,
+            "queue_size": self._cached_events.qsize(),
+            "total_uptime": elapsed,
+        }
+
     async def run(self, server):
         # Connect to dashboard.
         self._stub = await self._connect_to_dashboard()
@@ -86,10 +111,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
-            source_types=event_consts.EVENT_AGENT_MONITOR_SOURCE_TYPES,
+            self.monitor_thread_pool_executor,
         )
-        # Start reporting events.
-        await self.report_events()
+
+        await asyncio.gather(
+            self.report_events(),
+        )
 
     @staticmethod
     def is_minimal_module():

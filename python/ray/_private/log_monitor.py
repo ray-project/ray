@@ -9,9 +9,10 @@ import re
 import shutil
 import time
 import traceback
+from typing import Callable, List, Set
 
-import ray.ray_constants as ray_constants
 import ray._private.gcs_pubsub as gcs_pubsub
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
@@ -66,11 +67,44 @@ class LogFileInfo:
         self.actor_name = None
         self.task_name = None
 
+    def reopen_if_necessary(self):
+        """Check if the file's inode has changed and reopen it if necessary.
+        There are a variety of reasons what we would logically consider a file
+        would have different inodes, such as log rotation or file syncing
+        semantics.
+        """
+        try:
+            open_inode = None
+            if self.file_handle and not self.file_handle.closed:
+                open_inode = os.fstat(self.file_handle.fileno()).st_ino
+
+            new_inode = os.stat(self.filename).st_ino
+            if open_inode != new_inode:
+                self.file_handle = open(self.filename, "rb")
+                self.file_handle.seek(self.file_position)
+        except Exception:
+            logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
+
+    def __repr__(self):
+        return (
+            "FileInfo(\n"
+            f"\tfilename: {self.filename}\n"
+            f"\tsize_when_last_opened: {self.size_when_last_opened}\n"
+            f"\tfile_position: {self.file_position}\n"
+            f"\tfile_handle: {self.file_handle}\n"
+            f"\tis_err_file: {self.is_err_file}\n"
+            f"\tjob_id: {self.job_id}\n"
+            f"\tworker_pid: {self.worker_pid}\n"
+            f"\tactor_name: {self.actor_name}\n"
+            f"\ttask_name: {self.task_name}\n"
+            ")"
+        )
+
 
 class LogMonitor:
     """A monitor process for monitoring Ray log files.
 
-    This class mantains a list of open files and a list of closed log files. We
+    This class maintains a list of open files and a list of closed log files. We
     can't simply leave all files open because we'll run out of file
     descriptors.
 
@@ -86,66 +120,78 @@ class LogMonitor:
        lines in the file. If so, we will publish them to Ray pubsub.
 
     Attributes:
-        host (str): The hostname of this machine, for grouping log messages.
-        logs_dir (str): The directory that the log files are in.
-        log_filenames (set): This is the set of filenames of all files in
+        ip: The hostname of this machine, for grouping log messages.
+        logs_dir: The directory that the log files are in.
+        log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
         open_file_infos (list[LogFileInfo]): Info for all of the open files.
         closed_file_infos (list[LogFileInfo]): Info for all of the closed
             files.
-        can_open_more_files (bool): True if we can still open more files and
+        can_open_more_files: True if we can still open more files and
             false otherwise.
+        max_files_open: The maximum number of files that can be open.
     """
 
-    def __init__(self, logs_dir, gcs_address):
+    def __init__(
+        self,
+        logs_dir,
+        gcs_publisher: gcs_pubsub.GcsPublisher,
+        is_proc_alive_fn: Callable[[int], bool],
+        max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
+    ):
         """Initialize the log monitor object."""
-        self.ip = services.get_node_ip_address()
-        self.logs_dir = logs_dir
-        self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
-        self.log_filenames = set()
-        self.open_file_infos = []
-        self.closed_file_infos = []
-        self.can_open_more_files = True
+        self.ip: str = services.get_node_ip_address()
+        self.logs_dir: str = logs_dir
+        self.publisher = gcs_publisher
+        self.log_filenames: Set[str] = set()
+        self.open_file_infos: List[LogFileInfo] = []
+        self.closed_file_infos: List[LogFileInfo] = []
+        self.can_open_more_files: bool = True
+        self.max_files_open: int = max_files_open
+        self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
 
-    def close_all_files(self):
+    def _close_all_files(self):
         """Close all open files (so that we can open more)."""
         while len(self.open_file_infos) > 0:
             file_info = self.open_file_infos.pop(0)
             file_info.file_handle.close()
             file_info.file_handle = None
-            try:
-                # Test if the worker process that generated the log file
-                # is still alive. Only applies to worker processes.
-                if (
-                    file_info.worker_pid != "raylet"
-                    and file_info.worker_pid != "gcs_server"
-                    and file_info.worker_pid != "autoscaler"
-                    and file_info.worker_pid != "runtime_env"
-                    and file_info.worker_pid is not None
-                ):
-                    assert not isinstance(file_info.worker_pid, str), (
-                        "PID should be an int type. "
-                        f"Given PID: {file_info.worker_pid}."
-                    )
-                    os.kill(file_info.worker_pid, 0)
-            except OSError:
-                # The process is not alive any more, so move the log file
-                # out of the log directory so glob.glob will not be slowed
-                # by it.
-                target = os.path.join(
-                    self.logs_dir, "old", os.path.basename(file_info.filename)
+
+            proc_alive = True
+            # Test if the worker process that generated the log file
+            # is still alive. Only applies to worker processes.
+            # For all other system components, we always assume they are alive.
+            if (
+                file_info.worker_pid != "raylet"
+                and file_info.worker_pid != "gcs_server"
+                and file_info.worker_pid != "autoscaler"
+                and file_info.worker_pid != "runtime_env"
+                and file_info.worker_pid is not None
+            ):
+                assert not isinstance(file_info.worker_pid, str), (
+                    "PID should be an int type. " f"Given PID: {file_info.worker_pid}."
                 )
-                try:
-                    shutil.move(file_info.filename, target)
-                except (IOError, OSError) as e:
-                    if e.errno == errno.ENOENT:
-                        logger.warning(
-                            f"Warning: The file {file_info.filename} was not found."
-                        )
-                    else:
-                        raise e
-            else:
+                proc_alive = self.is_proc_alive_fn(file_info.worker_pid)
+                if not proc_alive:
+                    # The process is not alive any more, so move the log file
+                    # out of the log directory so glob.glob will not be slowed
+                    # by it.
+                    target = os.path.join(
+                        self.logs_dir, "old", os.path.basename(file_info.filename)
+                    )
+                    try:
+                        shutil.move(file_info.filename, target)
+                    except (IOError, OSError) as e:
+                        if e.errno == errno.ENOENT:
+                            logger.warning(
+                                f"Warning: The file {file_info.filename} was not found."
+                            )
+                        else:
+                            raise e
+
+            if proc_alive:
                 self.closed_file_infos.append(file_info)
+
         self.can_open_more_files = True
 
     def update_log_filenames(self):
@@ -164,7 +210,6 @@ class LogMonitor:
         runtime_env_setup_paths = []
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
             runtime_env_setup_paths = glob.glob(f"{self.logs_dir}/runtime_env*.log")
-        total_files = 0
         for file_path in (
             log_file_paths
             + raylet_err_paths
@@ -204,8 +249,6 @@ class LogMonitor:
                 )
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
-            total_files += 1
-        return total_files
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -215,11 +258,11 @@ class LogMonitor:
         """
         if not self.can_open_more_files:
             # If we can't open any more files. Close all of the files.
-            self.close_all_files()
+            self._close_all_files()
 
         files_with_no_updates = []
         while len(self.closed_file_infos) > 0:
-            if len(self.open_file_infos) >= ray_constants.LOG_MONITOR_MAX_OPEN_FILES:
+            if len(self.open_file_infos) >= self.max_files_open:
                 self.can_open_more_files = False
                 break
 
@@ -255,12 +298,14 @@ class LogMonitor:
                         raise e
 
                 f.seek(file_info.file_position)
-                file_info.filesize_when_last_opened = file_size
+                file_info.size_when_last_opened = file_size
                 file_info.file_handle = f
                 self.open_file_infos.append(file_info)
             else:
                 files_with_no_updates.append(file_info)
 
+        if len(self.open_file_infos) >= self.max_files_open:
+            self.can_open_more_files = False
         # Add the files with no changes back to the list of closed files.
         self.closed_file_infos += files_with_no_updates
 
@@ -295,8 +340,9 @@ class LogMonitor:
 
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
+            file_info.reopen_if_necessary()
 
-            max_num_lines_to_read = 100
+            max_num_lines_to_read = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
@@ -359,6 +405,24 @@ class LogMonitor:
 
         return anything_published
 
+    def should_update_filenames(self, last_file_updated_time: float) -> bool:
+        """Return true if filenames should be updated.
+
+        This method is used to apply the backpressure on file updates because
+        that requires heavy glob operations which use lots of CPUs.
+
+        Args:
+            last_file_updated_time: The last time filenames are updated.
+
+        Returns:
+            True if filenames should be updated. False otherwise.
+        """
+        elapsed_seconds = float(time.time() - last_file_updated_time)
+        return (
+            len(self.log_filenames) < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
+            or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S
+        )
+
     def run(self):
         """Run the log monitor.
 
@@ -366,16 +430,12 @@ class LogMonitor:
         check if there are new log files to monitor. It will also publish new
         log lines.
         """
-        total_log_files = 0
         last_updated = time.time()
         while True:
-            elapsed_seconds = int(time.time() - last_updated)
-            if (
-                total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
-                or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S
-            ):
-                total_log_files = self.update_log_filenames()
+            if self.should_update_filenames(last_updated):
+                self.update_log_filenames()
                 last_updated = time.time()
+
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking
@@ -448,7 +508,17 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
-    log_monitor = LogMonitor(args.logs_dir, args.gcs_address)
+    def is_proc_alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            # If OSError is raised, the process is not alive.
+            return False
+
+    log_monitor = LogMonitor(
+        args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
+    )
 
     try:
         log_monitor.run()

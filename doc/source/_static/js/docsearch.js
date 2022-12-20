@@ -7,6 +7,9 @@ docsearch({
     algoliaOptions: {
         hitsPerPage: 10,
     },
+    autocompleteOptions: {
+        autoselect: false,
+    },
     handleSelected: function (input, event, suggestion, datasetNumber, context) {
         if (context.selectionMethod === 'click') {
             input.setVal('');
@@ -20,10 +23,13 @@ const searchInput = document.getElementById("search-input");
 searchInput.addEventListener("keydown", function (e) {
     if (e.code === "Enter") {
         var searchForm = document.getElementsByClassName("bd-search")[0];
-
         const text = searchInput.value;
-        searchForm.action = "https://docs.ray.io/en/latest/search.html?q=" + text;
 
+        const pageUrl = window.location.href
+        const res = pageUrl.split("/");
+        const version = (res.length <= 3) ? "latest" : res[4];
+
+        searchForm.action = "https://docs.ray.io/en/" + version +  "/search.html?q=" + text;
         searchForm.submit();
     }
 });

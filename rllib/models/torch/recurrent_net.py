@@ -2,7 +2,7 @@ import numpy as np
 import gym
 from gym.spaces import Discrete, MultiDiscrete
 import tree  # pip install dm_tree
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -70,18 +70,18 @@ class RecurrentNetwork(TorchModelV2):
         input_dict: Dict[str, TensorType],
         state: List[TensorType],
         seq_lens: TensorType,
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
         flat_inputs = input_dict["obs_flat"].float()
-        if isinstance(seq_lens, np.ndarray):
-            seq_lens = torch.Tensor(seq_lens).int()
-        max_seq_len = flat_inputs.shape[0] // seq_lens.shape[0]
+        # Note that max_seq_len != input_dict.max_seq_len != seq_lens.max()
+        # as input_dict may have extra zero-padding beyond seq_lens.max().
+        # Use add_time_dimension to handle this
         self.time_major = self.model_config.get("_time_major", False)
         inputs = add_time_dimension(
             flat_inputs,
-            max_seq_len=max_seq_len,
+            seq_lens=seq_lens,
             framework="torch",
             time_major=self.time_major,
         )
@@ -91,13 +91,13 @@ class RecurrentNetwork(TorchModelV2):
 
     def forward_rnn(
         self, inputs: TensorType, state: List[TensorType], seq_lens: TensorType
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         """Call the model with the given input tensors and state.
 
         Args:
-            inputs (dict): Observation tensor with shape [B, T, obs_size].
-            state (list): List of state tensors, each with shape [B, size].
-            seq_lens (Tensor): 1D tensor holding input sequence lengths.
+            inputs: Observation tensor with shape [B, T, obs_size].
+            state: List of state tensors, each with shape [B, size].
+            seq_lens: 1D tensor holding input sequence lengths.
                 Note: len(seq_lens) == B.
 
         Returns:
@@ -203,7 +203,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         input_dict: Dict[str, TensorType],
         state: List[TensorType],
         seq_lens: TensorType,
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
@@ -248,7 +248,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     @override(RecurrentNetwork)
     def forward_rnn(
         self, inputs: TensorType, state: List[TensorType], seq_lens: TensorType
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         # Don't show paddings to RNN(?)
         # TODO: (sven) For now, only allow, iff time_major=True to not break
         #  anything retrospectively (time_major not supported previously).

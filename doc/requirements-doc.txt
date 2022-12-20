@@ -20,7 +20,7 @@ pandas
 pickle5
 pillow
 pyarrow
-pydantic
+pydantic < 1.10.0
 pyyaml
 scikit-optimize
 redis
@@ -29,6 +29,11 @@ tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
+tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-datasets
+torch
+torchvision
 transformers
 
 # Ray libraries
@@ -48,12 +53,13 @@ sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
 sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
-sphinx-book-theme==0.1.7
+sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.3
 sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
 sphinx-thebe==0.1.1
 autodoc_pydantic==1.6.1
+sphinxcontrib-redoc==1.6.0
 
 # MyST
 myst-parser==0.15.2

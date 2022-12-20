@@ -3,7 +3,7 @@ import pickle
 import unittest
 
 import ray
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
@@ -176,25 +176,28 @@ class TestRNNSequencing(unittest.TestCase):
     def test_simple_optimizer_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOTrainer(
-            env="counter",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 10,
-                "train_batch_size": 10,
-                "sgd_minibatch_size": 10,
-                "num_sgd_iter": 1,
-                "simple_optimizer": True,
-                "model": {
+        config = (
+            PPOConfig()
+            .environment("counter")
+            .framework("tf")
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .training(
+                train_batch_size=10,
+                sgd_minibatch_size=10,
+                num_sgd_iter=1,
+                model={
                     "custom_model": "rnn",
                     "max_seq_len": 4,
                     "vf_share_layers": True,
                 },
-                "framework": "tf",
-            },
+            )
         )
+        # Force-set simple_optimizer (fully deprecated soon).
+        config.simple_optimizer = True
+        ppo = config.build()
         ppo.train()
         ppo.train()
+        ppo.stop()
 
         batch0 = pickle.loads(
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_0")
@@ -244,25 +247,27 @@ class TestRNNSequencing(unittest.TestCase):
     def test_minibatch_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOTrainer(
-            env="counter",
-            config={
-                "shuffle_sequences": False,  # for deterministic testing
-                "num_workers": 0,
-                "rollout_fragment_length": 20,
-                "train_batch_size": 20,
-                "sgd_minibatch_size": 10,
-                "num_sgd_iter": 1,
-                "model": {
+        config = (
+            PPOConfig()
+            .environment("counter")
+            .framework("tf")
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=20)
+            .training(
+                train_batch_size=20,
+                sgd_minibatch_size=10,
+                num_sgd_iter=1,
+                model={
                     "custom_model": "rnn",
                     "max_seq_len": 4,
                     "vf_share_layers": True,
                 },
-                "framework": "tf",
-            },
+                shuffle_sequences=False,  # for deterministic testing
+            )
         )
+        ppo = config.build()
         ppo.train()
         ppo.train()
+        ppo.stop()
 
         # first epoch: 20 observations get split into 2 minibatches of 8
         # four observations are discarded

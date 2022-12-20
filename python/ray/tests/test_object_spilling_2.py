@@ -1,14 +1,20 @@
 import os
-import random
 import platform
+import random
 import subprocess
 import sys
+import tempfile
 
 import numpy as np
 import pytest
+
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
+from ray._private.external_storage import (
+    FileSystemStorage,
+    ExternalStorageRayStorageImpl,
+)
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -142,6 +148,39 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
     assert_no_thrashing(address["address"])
 
 
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_delete_file_non_exists(shutdown_only, tmp_path):
+    ray.init(storage=str(tmp_path))
+
+    def create_spilled_files(num_files):
+        spilled_files = []
+        uris = []
+        for _ in range(3):
+            fd, path = tempfile.mkstemp()
+            with os.fdopen(fd, "w") as tmp:
+                tmp.write("stuff")
+            spilled_files.append(path)
+            uris.append((path + "?offset=0&size=10").encode("ascii"))
+        return spilled_files, uris
+
+    for storage in [
+        ExternalStorageRayStorageImpl("session"),
+        FileSystemStorage("/tmp"),
+    ]:
+        spilled_files, uris = create_spilled_files(3)
+        storage.delete_spilled_objects(uris)
+        for file in spilled_files:
+            assert not os.path.exists(file)
+
+        # delete should succeed even if some files doesn't exist.
+        spilled_files1, uris1 = create_spilled_files(3)
+        spilled_files += spilled_files1
+        uris += uris1
+        storage.delete_spilled_objects(uris)
+        for file in spilled_files:
+            assert not os.path.exists(file)
+
+
 @pytest.mark.skipif(
     platform.system() in ["Windows"], reason="Failing on Windows and MacOS."
 )
@@ -255,7 +294,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     is_test_passing = False
     # Since we'd like to see the temp directory that stores the files,
     # we need to append this directory.
-    temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+    temp_folder = temp_folder / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
         # Make sure there are at least one
@@ -412,4 +451,7 @@ os.kill(os.getpid(), sig)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

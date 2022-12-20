@@ -4,27 +4,27 @@ import glob
 import io
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
-SUPPORTED_BAZEL = (4, 2, 1)
+
+SUPPORTED_BAZEL = (4, 2, 2)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -146,7 +146,6 @@ else:
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -183,8 +182,6 @@ ray_files += [
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
-    "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -195,28 +192,59 @@ ray_files += [
     for filename in filenames
 ]
 
+# Dashboard metrics files.
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
+    for filename in filenames
+]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
+
+# html templates for notebook integration
+ray_files += [
+    p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
+]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
+    if sys.version_info >= (3, 7):
+        pandas_dep = "pandas >= 1.3"
+        numpy_dep = "numpy >= 1.20"
+    else:
+        # Pandas dropped python 3.6 support in 1.2.
+        pandas_dep = "pandas >= 1.0.5"
+        # NumPy dropped python 3.6 support in 1.20.
+        numpy_dep = "numpy >= 1.19"
+    if sys.version_info >= (3, 7) and sys.platform != "win32":
+        pyarrow_dep = "pyarrow >= 6.0.1"
+    else:
+        # pyarrow dropped python 3.6 support in 7.0.0.
+        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
+        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
         "data": [
-            "pandas",
-            "pyarrow >= 6.0.1, < 7.0.0",
+            numpy_dep,
+            pandas_dep,
+            pyarrow_dep,
             "fsspec",
         ],
         "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to dashboard/optional_deps.py as well.
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0b1",  # for windows
+            "gpustat >= 1.0.0",  # for windows
             "opencensus",
-            "prometheus_client >= 0.7.1, < 0.14.0",
+            "pydantic",
+            "prometheus_client >= 0.7.1",
             "smart_open",
         ],
-        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -226,12 +254,6 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
-    if sys.version_info >= (3, 7):
-        # Numpy dropped python 3.6 support in 1.20.
-        setup_spec.extras["data"].append("numpy >= 1.20")
-    else:
-        setup_spec.extras["data"].append("numpy >= 1.19")
-
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
         set(setup_spec.extras["serve"] + setup_spec.extras["default"])
@@ -240,12 +262,9 @@ if setup_spec.type == SetupType.RAY:
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
-
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym<0.22",
+        "gym>=0.21.0,<0.24.0",
         "lz4",
         # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
         # Todo: Remove this when safe?
@@ -253,13 +272,18 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
+        "typer",
+        "rich",
     ]
+
+    setup_spec.extras["train"] = setup_spec.extras["tune"]
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
         set(
             setup_spec.extras["tune"]
             + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
             + setup_spec.extras["serve"]
         )
     )
@@ -271,23 +295,35 @@ if setup_spec.type == SetupType.RAY:
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
+#
+# NOTE: if you add any unbounded dependency, please also update
+# install-core-prerelease-dependencies.sh so we can test
+# new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0, <= 8.0.4",
+        "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0",
+        # Tracking issue: https://github.com/ray-project/ray/issues/30984
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "packaging; python_version >= '3.10'",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",
         "requests",
-        "virtualenv",  # For pip runtime env.
+        # Light weight requirement, can be replaced with "typing" once
+        # we deprecate Python 3.7 (this will take a while).
+        "typing_extensions; python_version < '3.8'",
+        "virtualenv>=20.0.24",  # For pip runtime env.
     ]
 
 
@@ -735,6 +771,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
@@ -747,8 +784,7 @@ setuptools.setup(
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.ray_operator.operator:main",
+            "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]
     },

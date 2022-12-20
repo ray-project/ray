@@ -1,14 +1,23 @@
 from contextlib import contextmanager
+import ray
 import json
 import os
 import logging
 import sys
 import subprocess
 from typing import Optional, Tuple
-
 import pytest
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @contextmanager
@@ -19,12 +28,13 @@ def set_env_var(key: str, val: Optional[str] = None):
     elif key in os.environ:
         del os.environ[key]
 
-    yield
-
-    if key in os.environ:
-        del os.environ[key]
-    if old_val is not None:
-        os.environ[key] = old_val
+    try:
+        yield
+    finally:
+        if key in os.environ:
+            del os.environ[key]
+        if old_val is not None:
+            os.environ[key] = old_val
 
 
 @pytest.fixture
@@ -78,6 +88,15 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
     return p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
 
 
+class TestJobSubmitHook:
+    """Tests the RAY_JOB_SUBMIT_HOOK env var."""
+
+    def test_hook(self, ray_start_stop):
+        with set_env_var("RAY_JOB_SUBMIT_HOOK", "ray._private.test_utils.job_hook"):
+            stdout, _ = _run_cmd("ray job submit -- echo hello")
+            assert "hook intercepted: echo hello" in stdout
+
+
 class TestRayAddress:
     """
     Integration version of job CLI test that ensures interaction with the
@@ -121,6 +140,24 @@ class TestJobSubmit:
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
+    def test_submit_with_logs_instant_job(self, ray_start_stop):
+        """Should exit immediately and print logs even if job returns instantly."""
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
+        assert "hello" in stdout
+
+
+class TestRuntimeEnv:
+    def test_bad_runtime_env(self, ray_start_stop):
+        """Should fail with helpful error if runtime env setup fails."""
+        stdout, _ = _run_cmd(
+            'ray job submit --runtime-env-json=\'{"pip": '
+            '["does-not-exist"]}\' -- echo hi',
+        )
+        assert "Tailing logs until the job exits" in stdout
+        assert "runtime_env setup failed" in stdout
+        assert "No matching distribution found for does-not-exist" in stdout
+
 
 class TestJobStop:
     def test_basic_stop(self, ray_start_stop):
@@ -147,7 +184,7 @@ class TestJobStop:
 class TestJobList:
     def test_empty(self, ray_start_stop):
         stdout, _ = _run_cmd("ray job list")
-        assert "{}" in stdout
+        assert "[]" in stdout
 
     def test_list(self, ray_start_stop):
         _run_cmd("ray job submit --job-id='hello_id' -- echo hello")
@@ -158,10 +195,29 @@ class TestJobList:
             f"--runtime-env-json='{json.dumps(runtime_env)}' -- echo hi"
         )
         stdout, _ = _run_cmd("ray job list")
-        assert "JobInfo" in stdout
         assert "123" in stdout
         assert "hello_id" in stdout
         assert "hi_id" in stdout
+
+
+class TestJobDelete:
+    def test_basic_delete(self, ray_start_stop):
+        cmd = "sleep 1000"
+        job_id = "test_basic_delete"
+        _run_cmd(f"ray job submit --no-wait --submission-id={job_id} -- {cmd}")
+
+        # Job shouldn't be able to be deleted because it is not in a terminal state.
+        stdout, stderr = _run_cmd(f"ray job delete {job_id}", should_fail=True)
+        assert "it is in a non-terminal state" in stderr
+
+        # Submit a job that finishes quickly.
+        cmd = "echo hello"
+        job_id = "test_basic_delete_quick"
+        _run_cmd(f"ray job submit --submission-id={job_id} -- bash -c '{cmd}'")
+
+        # Job should be able to be deleted because it is finished.
+        stdout, _ = _run_cmd(f"ray job delete {job_id}")
+        assert f"Job '{job_id}' deleted successfully" in stdout
 
 
 def test_quote_escaping(ray_start_stop):
@@ -171,6 +227,28 @@ def test_quote_escaping(ray_start_stop):
         f"ray job submit --job-id={job_id} -- {cmd}",
     )
     assert "hello 'world'" in stdout
+
+
+def test_resources(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
+
+    # Check the case of too many resources.
+    for id, arg in [
+        ("entrypoint_num_cpus", "--entrypoint-num-cpus=2"),
+        ("entrypoint_num_gpus", "--entrypoint-num-gpus=2"),
+        ("entrypoint_resources", "--entrypoint-resources='{\"Custom\": 2}'"),
+    ]:
+        _run_cmd(f"ray job submit --submission-id={id} --no-wait {arg} -- echo hi")
+        stdout, _ = _run_cmd(f"ray job status {id}")
+        assert "waiting for resources" in stdout
+
+    # Check the case of sufficient resources.
+    stdout, _ = _run_cmd(
+        "ray job submit --entrypoint-num-cpus=1 "
+        "--entrypoint-num-gpus=1 --entrypoint-resources='{"
+        '"Custom": 1}\' -- echo hello',
+    )
+    assert "hello" in stdout
 
 
 if __name__ == "__main__":

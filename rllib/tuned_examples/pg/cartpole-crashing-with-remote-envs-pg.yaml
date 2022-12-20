@@ -1,0 +1,47 @@
+cartpole-crashing-with-remote-envs-pg:
+    env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
+    run: PG
+    stop:
+        evaluation/episode_reward_mean: 35.0
+        timesteps_total: 25000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        env_config:
+            config:
+                p_crash: 0.0
+                # Crash all envs always exactly after n steps.
+                crash_after_n_steps: 60
+                # Time for the env to initialize when newly created.
+                # Every time a remote sub-environment crashes, a new env is created
+                # in its place and will take this long (sleep) to "initialize".
+                init_time_s: 2.0
+        num_workers: 4
+        num_envs_per_worker: 3
+        train_batch_size: 600
+        # Use parallel remote envs.
+        remote_worker_envs: true
+
+        # Disable env checking. Env checker doesn't handle Exceptions from
+        # user envs, and will crash rollout worker.
+        disable_env_checking: true
+
+        # Switch on resiliency for failed sub environments (within a vectorized stack).
+        restart_failed_sub_environments: true
+
+        evaluation_num_workers: 2
+        evaluation_interval: 1
+        evaluation_duration: 20
+        evaluation_duration_unit: episodes
+        evaluation_parallel_to_training: true
+        evaluation_config:
+            explore: false
+            env_config:
+                config:
+                    # Make eval workers solid.
+                    # This test is to prove that we can learn with crashing env,
+                    # not eval with crashing env.
+                    p_crash: 0.0
+                    p_crash_reset: 0.0
+                    crash_after_n_steps: null
+                    init_time_s: 0.0

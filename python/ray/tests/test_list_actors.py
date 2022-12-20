@@ -53,5 +53,10 @@ def test_list_named_actors_basic_local_mode(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
+
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

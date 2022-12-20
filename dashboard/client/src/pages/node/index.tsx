@@ -10,12 +10,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
@@ -24,7 +23,9 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
+import { NodeRows } from "./NodeRow";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -35,17 +36,20 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const columns = [
+  "", // Expand button
+  "Host / Cmd Line",
   "State",
   "ID",
-  "Host",
-  "IP",
+  "IP / PID",
+  "Actions",
   "CPU Usage",
   "Memory",
+  "GPU",
+  "GRAM",
   "Object Store Memory",
   "Disk(root)",
   "Sent",
   "Received",
-  "Log",
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -62,7 +66,7 @@ export const brpcLinkChanger = (href: string) => {
   return `http://${href}`;
 };
 
-export const NodeCard = (props: { node: NodeDetail }) => {
+export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   const { node } = props;
 
   if (!node) {
@@ -73,10 +77,15 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
     raylet;
 
+  const objectStoreTotalMemory =
+    objectStoreUsedMemory + objectStoreAvailableMemory;
+
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={`node/${nodeId}`}>{nodeId}</Link>{" "}
+        <Link to={props.newIA ? `nodes/${nodeId}` : `/node/${nodeId}`}>
+          {nodeId}
+        </Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -119,10 +128,10 @@ export const NodeCard = (props: { node: NodeDetail }) => {
             Object Store Memory
             <PercentageBar
               num={objectStoreUsedMemory}
-              total={objectStoreAvailableMemory}
+              total={objectStoreTotalMemory}
             >
               {memoryConverter(objectStoreUsedMemory)}/
-              {memoryConverter(objectStoreAvailableMemory)}
+              {memoryConverter(objectStoreTotalMemory)}
             </PercentageBar>
           </Grid>
         )}
@@ -139,7 +148,15 @@ export const NodeCard = (props: { node: NodeDetail }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link to={`/log/${encodeURIComponent(logUrl)}`}>log</Link>
+            <Link
+              to={
+                props.newIA
+                  ? `/new/logs/${encodeURIComponent(logUrl)}`
+                  : `/log/${encodeURIComponent(logUrl)}`
+              }
+            >
+              log
+            </Link>
           </Button>
         </Grid>
       </Grid>
@@ -147,7 +164,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   );
 };
 
-const Nodes = () => {
+const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
   const classes = useStyles();
   const {
     msg,
@@ -177,7 +194,7 @@ const Nodes = () => {
         <br />
         Request Status: {msg}
       </TitleCard>
-      <TitleCard title="Statistics">
+      <TitleCard title="Node Statistics">
         <StateCounter type="node" list={nodeList} />
       </TitleCard>
       <TitleCard title="Node List">
@@ -272,86 +289,15 @@ const Nodes = () => {
                     (page.pageNo - 1) * page.pageSize,
                     page.pageNo * page.pageSize,
                   )
-                  .map(
-                    (
-                      {
-                        hostname = "",
-                        ip = "",
-                        cpu = 0,
-                        mem = [],
-                        disk,
-                        networkSpeed = [0, 0],
-                        raylet,
-                        logUrl,
-                      }: NodeDetail,
-                      i,
-                    ) => (
-                      <TableRow key={hostname + i}>
-                        <TableCell>
-                          <StatusChip type="node" status={raylet.state} />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={raylet.nodeId} arrow interactive>
-                            <Link to={`/node/${raylet.nodeId}`}>
-                              {raylet.nodeId.slice(0, 5)}
-                            </Link>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell align="center">{hostname}</TableCell>
-                        <TableCell align="center">{ip}</TableCell>
-                        <TableCell>
-                          <PercentageBar num={Number(cpu)} total={100}>
-                            {cpu}%
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          <PercentageBar
-                            num={Number(mem[0] - mem[1])}
-                            total={mem[0]}
-                          >
-                            {memoryConverter(mem[0] - mem[1])}/
-                            {memoryConverter(mem[0])}({mem[2]}%)
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          {raylet && (
-                            <PercentageBar
-                              num={raylet.objectStoreUsedMemory}
-                              total={raylet.objectStoreAvailableMemory}
-                            >
-                              {memoryConverter(raylet.objectStoreUsedMemory)}/
-                              {memoryConverter(
-                                raylet.objectStoreAvailableMemory,
-                              )}
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {disk && disk["/"] && (
-                            <PercentageBar
-                              num={Number(disk["/"].used)}
-                              total={disk["/"].total}
-                            >
-                              {memoryConverter(disk["/"].used)}/
-                              {memoryConverter(disk["/"].total)}(
-                              {disk["/"].percent}%)
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[0])}/s
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[1])}/s
-                        </TableCell>
-                        <TableCell>
-                          <Link to={`/log/${encodeURIComponent(logUrl)}`}>
-                            Log
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  )}
+                  .map((node) => (
+                    <NodeRows
+                      key={node.raylet.nodeId}
+                      node={node}
+                      isRefreshing={isRefreshing}
+                      startExpanded={nodeList.length === 1}
+                      newIA={newIA}
+                    />
+                  ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -365,13 +311,31 @@ const Nodes = () => {
               )
               .map((e) => (
                 <Grid item xs={6}>
-                  <NodeCard node={e} />
+                  <NodeCard node={e} newIA={newIA} />
                 </Grid>
               ))}
           </Grid>
         )}
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Cluster page for the new IA
+ */
+export const NewIAClusterPage = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Cluster",
+          id: "cluster",
+          path: "/new/cluster",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

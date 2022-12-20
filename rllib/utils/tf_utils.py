@@ -1,24 +1,29 @@
 import gym
 from gym.spaces import Discrete, MultiDiscrete
+import logging
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
     TensorType,
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
+logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
@@ -225,14 +230,15 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"], config: PartialTrainerConfigDict
-) -> Type["TFPolicy"]:
+    orig_cls: Type["TFPolicy"],
+    config: Union["AlgorithmConfig", PartialAlgorithmConfigDict],
+) -> Type[Union["TFPolicy", "EagerTFPolicy", "EagerTFPolicyV2"]]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Trainer config dict.
+        config: The Algorithm config dict or AlgorithmConfig object.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
@@ -240,10 +246,12 @@ def get_tf_eager_cls_if_necessary(
     cls = orig_cls
     framework = config.get("framework", "tf")
 
-    if framework in ["tf2", "tf", "tfe"] and not tf1:
+    if framework in ["tf2", "tf"] and not tf1:
         raise ImportError("Could not import tensorflow!")
 
-    if framework in ["tf2", "tfe"]:
+    if framework == "tf2":
+        if not tf1.executing_eagerly():
+            tf1.enable_eager_execution()
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy
@@ -259,7 +267,7 @@ def get_tf_eager_cls_if_necessary(
             pass
         else:
             raise ValueError(
-                "This policy does not support eager " "execution: {}".format(orig_cls)
+                "This policy does not support eager execution: {}".format(orig_cls)
             )
 
         # Now that we know, policy is an eager one, add tracing, if necessary.
@@ -293,6 +301,21 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
         tf.math.square(x) * 0.5,
         delta * (tf.abs(x) - 0.5 * delta),
     )
+
+
+@PublicAPI
+def l2_loss(x: TensorType) -> TensorType:
+    """Computes half the L2 norm over a tensor's values without the sqrt.
+
+    output = 0.5 * sum(x ** 2)
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        0.5 times the L2 norm over the given tensor's values (w/o sqrt).
+    """
+    return 0.5 * tf.reduce_sum(tf.pow(x, 2.0))
 
 
 @PublicAPI
@@ -466,11 +489,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = tf.reshape(x, (x.shape[0], -1))
+        else:
+            nvec = space.nvec
         return tf.concat(
-            [
-                tf.one_hot(x[:, i], n, dtype=tf.float32)
-                for i, n in enumerate(space.nvec)
-            ],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(nvec)],
             axis=-1,
         )
     else:
@@ -541,3 +566,26 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     while len(logp_.shape) > 1:
         logp_ = logp_[:, 0]
     return logp_
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+) -> None:
+    def print_warning():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
+        return tf.constant(0.0)
+
+    if policy.loss_initialized():
+        tf.cond(
+            tf.math.is_inf(mean_kl_loss),
+            false_fn=lambda: tf.constant(0.0),
+            true_fn=lambda: print_warning(),
+        )

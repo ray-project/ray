@@ -1,15 +1,14 @@
 import json
 import os
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
-
 from ray_release.anyscale_util import find_cloud_by_name
-from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.util import deep_update
+from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
@@ -21,11 +20,20 @@ DEFAULT_COMMAND_TIMEOUT = 1800
 DEFAULT_BUILD_TIMEOUT = 1800
 DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
+DEFAULT_MAXIMUM_UPTIME_MINS = 3200
 DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
-DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
-
-DEFAULT_PYTHON_VERSION = (3, 7)
+DEFAULT_CLOUD_ID = DeferredEnvVar(
+    "RELEASE_DEFAULT_CLOUD_ID",
+    "cld_4F7k8814aZzGG8TNUGPKnc",
+)
+DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
+    "RELEASE_DEFAULT_PROJECT",
+    "prj_FKRmeV5pA6X72aVscFALNC32",
+)
+DEFAULT_PYTHON_VERSION = tuple(
+    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
+)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -66,6 +74,13 @@ def validate_release_test_collection(test_collection: List[Test]):
             )
             num_errors += 1
 
+        error = validate_test_cluster_compute(test)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
+
     if num_errors > 0:
         raise ReleaseTestConfigError(
             f"Release test configuration error: Found {num_errors} test "
@@ -82,6 +97,44 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
         return str(e.message)
     except Exception as e:
         return str(e)
+
+
+def validate_test_cluster_compute(test: Test) -> Optional[str]:
+    from ray_release.template import load_test_cluster_compute
+
+    cluster_compute = load_test_cluster_compute(test)
+    return validate_cluster_compute(cluster_compute)
+
+
+def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
+    aws = cluster_compute.get("aws", {})
+    head_node_aws = cluster_compute.get("head_node_type", {}).get(
+        "aws_advanced_configurations", {}
+    )
+
+    configs_to_check = [aws, head_node_aws]
+
+    for worker_node in cluster_compute.get("worker_node_types", []):
+        worker_node_aws = worker_node.get("aws_advanced_configurations", {})
+        configs_to_check.append(worker_node_aws)
+
+    for config in configs_to_check:
+        error = validate_aws_config(config)
+        if error:
+            return error
+
+    return None
+
+
+def validate_aws_config(aws_config: Dict[str, Any]) -> Optional[str]:
+    for block_device_mapping in aws_config.get("BlockDeviceMappings", []):
+        ebs = block_device_mapping.get("Ebs")
+        if not ebs:
+            continue
+
+        if not ebs.get("DeleteOnTermination", False) is True:
+            return "Ebs volume does not have `DeleteOnTermination: true` set"
+    return None
 
 
 def find_test(test_collection: List[Test], test_name: str) -> Optional[Test]:
@@ -127,5 +180,5 @@ def get_test_cloud_id(test: Test) -> str:
         if not cloud_id:
             raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
     else:
-        cloud_id = cloud_id or DEFAULT_CLOUD_ID
+        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id

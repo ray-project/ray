@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/file_system_monitor.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
@@ -33,12 +34,14 @@ class CreateRequestQueue {
   using CreateObjectCallback = std::function<PlasmaError(
       bool fallback_allocator, PlasmaObject *result, bool *spilling_required)>;
 
-  CreateRequestQueue(int64_t oom_grace_period_s,
+  CreateRequestQueue(ray::FileSystemMonitor &fs_monitor,
+                     int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time,
                      std::function<std::string()> dump_debug_info_callback = nullptr)
-      : oom_grace_period_ns_(oom_grace_period_s * 1e9),
+      : fs_monitor_(fs_monitor),
+        oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
         get_time_(get_time),
@@ -158,6 +161,9 @@ class CreateRequestQueue {
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
+
+  /// Monitor the disk utilization.
+  ray::FileSystemMonitor &fs_monitor_;
 
   /// The next request ID to assign, so that the caller can get the results of
   /// a request by retrying. Start at 1 because 0 means "do not retry".

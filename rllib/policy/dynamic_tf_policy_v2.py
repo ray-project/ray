@@ -3,17 +3,16 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
@@ -24,15 +23,20 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
@@ -54,14 +58,13 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
         existing_model: Optional[ModelV2] = None,
     ):
         self.observation_space = obs_space
         self.action_space = action_space
-        config = dict(self.get_default_config(), **config)
         self.config = config
         self.framework = "tf"
         self._seq_lens = None
@@ -128,7 +131,7 @@ class DynamicTFPolicyV2(TFPolicy):
             prev_action_input=prev_action_input,
             prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
             explore=explore,
             timestep=timestep,
@@ -143,16 +146,11 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -233,11 +231,11 @@ class DynamicTFPolicyV2(TFPolicy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -250,18 +248,15 @@ class DynamicTFPolicyV2(TFPolicy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.
@@ -403,11 +398,12 @@ class DynamicTFPolicyV2(TFPolicy):
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given"
                 )
+            return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"]
             )
-        return dist_class
+            return dist_class
 
     def _init_view_requirements(self):
         # If ViewRequirements are explicitly specified.
@@ -504,7 +500,7 @@ class DynamicTFPolicyV2(TFPolicy):
         Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
 
         Args:
-            view_requirements (ViewReqs): The view requirements dict.
+            view_requirements: The view requirements dict.
             existing_inputs (Dict[str, tf.placeholder]): A dict of already
                 existing placeholders.
 
@@ -515,7 +511,7 @@ class DynamicTFPolicyV2(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).
@@ -582,7 +578,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     self._state_out,
                 ) = self.action_sampler_fn(
                     self.model,
-                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                    obs_batch=self._input_dict[SampleBatch.OBS],
                     state_batches=self._state_inputs,
                     seq_lens=self._seq_lens,
                     prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
@@ -602,7 +598,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         self._state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=in_dict,
+                        obs_batch=in_dict[SampleBatch.OBS],
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
                         explore=explore,
@@ -664,6 +660,7 @@ class DynamicTFPolicyV2(TFPolicy):
     def maybe_initialize_optimizer_and_loss(self):
         # We don't need to initialize loss calculation for MultiGPUTowerStack.
         if self._is_tower:
+            self.get_session().run(tf1.global_variables_initializer())
             return
 
         # Loss initialization and model/postprocessing test calls.
@@ -713,7 +710,10 @@ class DynamicTFPolicyV2(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
@@ -803,6 +803,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                         SampleBatch.OBS_EMBEDS,
                     ]
                 ):
@@ -824,6 +825,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                     ]
                     and key not in self.model.view_requirements
                 ):
@@ -985,6 +987,7 @@ class DynamicTFPolicyV2(TFPolicy):
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
+            num_grad_updates=batch.num_grad_updates,
         )
 
     @override(Policy)
@@ -1027,9 +1030,21 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        return self.multi_gpu_tower_stacks[buffer_index].optimize(
-            self.get_session(), offset
+        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        results = tower_stack.optimize(self.get_session(), offset)
+        self.num_grad_updates += 1
+
+        results.update(
+            {
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates - 1 - (tower_stack.num_grad_updates or 0)
+                ),
+            }
         )
+
+        return results
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):
@@ -1045,4 +1060,4 @@ class DynamicTFPolicyV2(TFPolicy):
             else:
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
-            return super().gradients(self, optimizers, losses)
+            return super().gradients(optimizers, losses)

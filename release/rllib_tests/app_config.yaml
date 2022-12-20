@@ -5,17 +5,20 @@ debian_packages:
   - zip
 
 python:
-  # These dependencies should be handled by requirements_rllib.txt and
-  # requirements_ml_docker.txt
   pip_packages:
-      - gym
+      # These dependencies should be handled by requirements_rllib.txt and
+      # requirements_ml_docker.txt and removed here
+      - gym>=0.21.0,<0.24.1
+      - ale-py==0.7.5
+      - autorom[accept-rom-license]
   conda_packages: []
 
 post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
-  # TODO(jungong): remove once nightly image gets upgraded.
-  - pip install -U pybullet==3.2.0
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
   - cp rl-experiments/halfcheetah-sac/2021-09-06/halfcheetah_expert_sac.zip ~/.
+  # Use torch+CUDA10.2 for our release tests. CUDA11.x has known performance issues in combination with torch+GPU+CNNs
+  # TODO(sven): remove once nightly image gets upgraded.
+  - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102

@@ -1,3 +1,5 @@
+.. _ray-tracing:
+
 Tracing
 =======
 To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to make it easy to export traces to external tracing stacks such as Jaeger. 
@@ -58,7 +60,7 @@ For open-source users who want to experiment with tracing, Ray has a default tra
 
         $ ray start --head --tracing-startup-hook=ray.util.tracing.setup_local_tmp_tracing:setup_tracing
         $ python
-        >>> ray.init(address="auto")
+        >>> ray.init()
         >>> @ray.remote
             def my_function():
                 return 1
@@ -82,15 +84,15 @@ If you want to provide your own custom tracing startup hook, provide your startu
 
 Tracer Provider
 ~~~~~~~~~~~~~~~
-This configures how to collect traces. View the TracerProvider API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
+This configures how to collect traces. View the TracerProvider API `here <https://opentelemetry-python.readthedocs.io/en/latest/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
 
 .. _remote-span-processors:
 
 Remote Span Processors
 ~~~~~~~~~~~~~~~~~~~~~~
-This configures where to export traces to. View the SpanProcessor API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor>`__.
+This configures where to export traces to. View the SpanProcessor API `here <https://opentelemetry-python.readthedocs.io/en/latest/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor>`__.
 
-Users who want to experiment with tracing can configure their remote span processors to export spans to a local JSON file. Serious users developing locally can push their traces to Jaeger containers via the `Jaeger exporter <https://open-telemetry.github.io/opentelemetry-python/exporter/jaeger/jaeger.html>`_.
+Users who want to experiment with tracing can configure their remote span processors to export spans to a local JSON file. Serious users developing locally can push their traces to Jaeger containers via the `Jaeger exporter <https://opentelemetry-python.readthedocs.io/en/latest/exporter/jaeger/jaeger.html#module-opentelemetry.exporter.jaeger>`_.
 
 .. _additional-instruments:
 

@@ -1,65 +1,25 @@
-from typing import Dict, Callable, Optional
+from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
+
 import logging
+from typing import Callable, Dict, Optional
 
 import ray
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.tune.trainable import Trainable
-from ray.tune.logger import LoggerCallback
-from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
-from ray.tune.trial import Trial
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
+callback_deprecation_message = (
+    "`ray.tune.integration.mlflow.MLflowLoggerCallback` "
+    "is deprecated and will be removed in "
+    "the future. Please use `ray.air.integrations.mlflow.MLflowLoggerCallback` "
+    "instead."
+)
 
-class MLflowLoggerCallback(LoggerCallback):
-    """MLflow Logger to automatically log Tune results and config to MLflow.
 
-    MLflow (https://mlflow.org) Tracking is an open source library for
-    recording and querying experiments. This Ray Tune ``LoggerCallback``
-    sends information (config parameters, training results & metrics,
-    and artifacts) to MLflow for automatic experiment tracking.
-
-    Args:
-        tracking_uri: The tracking URI for where to manage experiments
-            and runs. This can either be a local file path or a remote server.
-            This arg gets passed directly to mlflow
-            initialization. When using Tune in a multi-node setting, make sure
-            to set this to a remote server and not a local file path.
-        registry_uri: The registry URI that gets passed directly to
-            mlflow initialization.
-        experiment_name: The experiment name to use for this Tune run.
-            If the experiment with the name already exists with MLflow,
-            it will be reused. If not, a new experiment will be created with
-            that name.
-        tags: An optional dictionary of string keys and values to set
-            as tags on the run
-        save_artifact: If set to True, automatically save the entire
-            contents of the Tune local_dir as an artifact to the
-            corresponding run in MlFlow.
-
-    Example:
-
-    .. code-block:: python
-
-        from ray.tune.integration.mlflow import MLflowLoggerCallback
-
-        tags = { "user_name" : "John",
-                 "git_commit_hash" : "abc123"}
-
-        tune.run(
-            train_fn,
-            config={
-                # define search space here
-                "parameter_1": tune.choice([1, 2, 3]),
-                "parameter_2": tune.choice([4, 5, 6]),
-            },
-            callbacks=[MLflowLoggerCallback(
-                experiment_name="experiment1",
-                tags=tags,
-                save_artifact=True)])
-
-    """
-
+@Deprecated(message=callback_deprecation_message)
+class MLflowLoggerCallback(_MLflowLoggerCallback):
     def __init__(
         self,
         tracking_uri: Optional[str] = None,
@@ -68,71 +28,10 @@ class MLflowLoggerCallback(LoggerCallback):
         tags: Optional[Dict] = None,
         save_artifact: bool = False,
     ):
-
-        self.tracking_uri = tracking_uri
-        self.registry_uri = registry_uri
-        self.experiment_name = experiment_name
-        self.tags = tags
-        self.should_save_artifact = save_artifact
-
-        self.mlflow_util = MLflowLoggerUtil()
-
-        if ray.util.client.ray.is_connected():
-            logger.warning(
-                "When using MLflowLoggerCallback with Ray Client, "
-                "it is recommended to use a remote tracking "
-                "server. If you are using a MLflow tracking server "
-                "backed by the local filesystem, then it must be "
-                "setup on the server side and not on the client "
-                "side."
-            )
-
-    def setup(self, *args, **kwargs):
-        # Setup the mlflow logging util.
-        self.mlflow_util.setup_mlflow(
-            tracking_uri=self.tracking_uri,
-            registry_uri=self.registry_uri,
-            experiment_name=self.experiment_name,
+        logger.warning(callback_deprecation_message)
+        super().__init__(
+            tracking_uri, registry_uri, experiment_name, tags, save_artifact
         )
-
-        if self.tags is None:
-            # Create empty dictionary for tags if not given explicitly
-            self.tags = {}
-
-        self._trial_runs = {}
-
-    def log_trial_start(self, trial: "Trial"):
-        # Create run if not already exists.
-        if trial not in self._trial_runs:
-
-            # Set trial name in tags
-            tags = self.tags.copy()
-            tags["trial_name"] = str(trial)
-
-            run = self.mlflow_util.start_run(tags=tags, run_name=str(trial))
-            self._trial_runs[trial] = run.info.run_id
-
-        run_id = self._trial_runs[trial]
-
-        # Log the config parameters.
-        config = trial.config
-        self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
-
-    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
-        run_id = self._trial_runs[trial]
-        self.mlflow_util.log_metrics(run_id=run_id, metrics_to_log=result, step=step)
-
-    def log_trial_end(self, trial: "Trial", failed: bool = False):
-        run_id = self._trial_runs[trial]
-
-        # Log the artifact if set_artifact is set to True.
-        if self.should_save_artifact:
-            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.logdir)
-
-        # Stop the run once trial finishes.
-        status = "FINISHED" if not failed else "FAILED"
-        self.mlflow_util.end_run(run_id=run_id, status=status)
 
 
 def mlflow_mixin(func: Callable):
@@ -173,25 +72,25 @@ def mlflow_mixin(func: Callable):
             xgboost_results = xgb.train(config, ...)
 
     The MlFlow configuration is done by passing a ``mlflow`` key to
-    the ``config`` parameter of ``tune.run()`` (see example below).
+    the ``config`` parameter of ``tune.Tuner()`` (see example below).
 
     The content of the ``mlflow`` config entry is used to
     configure MlFlow. Here are the keys you can pass in to this config entry:
 
     Args:
-        tracking_uri (str): The tracking URI for MLflow tracking. If using
+        tracking_uri: The tracking URI for MLflow tracking. If using
             Tune in a multi-node setting, make sure to use a remote server for
             tracking.
-        experiment_id (str): The id of an already created MLflow experiment.
-            All logs from all trials in ``tune.run`` will be reported to this
+        experiment_id: The id of an already created MLflow experiment.
+            All logs from all trials in ``tune.Tuner()`` will be reported to this
             experiment. If this is not provided or the experiment with this
             id does not exist, you must provide an``experiment_name``. This
             parameter takes precedence over ``experiment_name``.
-        experiment_name (str): The name of an already existing MLflow
-            experiment. All logs from all trials in ``tune.run`` will be
+        experiment_name: The name of an already existing MLflow
+            experiment. All logs from all trials in ``tune.Tuner()`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
-        token (optional, str): A token to use for HTTP authentication when
+        token: A token to use for HTTP authentication when
             logging to a remote tracking server. This is useful when you
             want to log to a Databricks server, for example. This value will
             be used to set the MLFLOW_TRACKING_TOKEN environment variable on
@@ -216,9 +115,9 @@ def mlflow_mixin(func: Callable):
                 mlflow.log_metric(key="loss", value=loss)
             tune.report(loss=loss, done=True)
 
-        tune.run(
+        tuner = tune.Tuner(
             train_fn,
-            config={
+            param_space={
                 # define search space here
                 "a": tune.choice([1, 2, 3]),
                 "b": tune.choice([4, 5, 6]),
@@ -228,6 +127,9 @@ def mlflow_mixin(func: Callable):
                     "tracking_uri": mlflow.get_tracking_uri()
                 }
             })
+
+        tuner.fit()
+
     """
     if ray.util.client.ray.is_connected():
         logger.warning(
@@ -247,7 +149,7 @@ def mlflow_mixin(func: Callable):
 
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
         if not isinstance(self, Trainable):
             raise ValueError(

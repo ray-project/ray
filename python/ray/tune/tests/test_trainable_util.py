@@ -5,6 +5,7 @@ import pytest
 import sys
 import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import ray
@@ -12,7 +13,7 @@ import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 
 
 @pytest.mark.parametrize(
@@ -27,7 +28,7 @@ from ray.tune.utils.trainable import TrainableUtil
 @pytest.mark.parametrize("logdir", ["~/tmp/exp/trial", "~/tmp/exp/trial/"])
 def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
     assert (
-        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0/"
+        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
     )
 
 
@@ -60,8 +61,8 @@ class TrainableUtilTest(unittest.TestCase):
             default_mode="max",
         )
         df = a.dataframe()
-        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0]).local_path
-        assert checkpoint_dir.endswith("/checkpoint_000001/")
+        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])._local_path
+        assert Path(checkpoint_dir).stem == "checkpoint_000001"
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir, "0/my/nested/chkpt")
@@ -187,6 +188,12 @@ class UnflattenDictTest(unittest.TestCase):
             {"0/a/0/b": 1, "0/a/1": 2, "1/0": 3, "1/1": 4, "1/2/c": 5, "2": 6}
         )
         assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
+
+    def test_unflatten_noop(self):
+        """Unflattening an already unflattened dict should be a noop."""
+        unflattened = {"a": 1, "b": {"c": {"d": [1, 2]}, "e": 3}, "f": {"g": 3}}
+        assert unflattened == unflatten_dict(unflattened)
+        assert unflattened == unflatten_list_dict(unflattened)
 
     def test_raises_error_on_key_conflict(self):
         """Ensure that an informative exception is raised on key conflict."""

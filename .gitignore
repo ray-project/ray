@@ -163,6 +163,7 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+java/testng_custom.xml
 
 dependency-reduced-pom.xml
 
@@ -183,6 +184,8 @@ venv
 # Vim
 .*.swp
 *.swp
+.*.swo
+*.swo
 tags
 tags.lock
 tags.temp

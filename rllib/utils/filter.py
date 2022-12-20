@@ -1,12 +1,15 @@
 import logging
-import numpy as np
 import threading
+
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
+from ray.rllib.utils.serialization import _serialize_ndarray, _deserialize_ndarray
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +41,9 @@ class Filter:
     def as_serializable(self) -> "Filter":
         raise NotImplementedError
 
-    @Deprecated(new="Filter.reset_buffer()", error=False)
+    @Deprecated(new="Filter.reset_buffer()", error=True)
     def clear_buffer(self):
-        return self.reset_buffer()
+        pass
 
 
 @DeveloperAPI
@@ -77,49 +80,50 @@ class NoFilter(Filter):
 @DeveloperAPI
 class RunningStat:
     def __init__(self, shape=None):
-        self._n = 0
-        self._M = np.zeros(shape)
-        self._S = np.zeros(shape)
+        self.num_pushes = 0
+        self.mean_array = np.zeros(shape)
+        self.std_array = np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
-        other._n = self._n
-        other._M = np.copy(self._M)
-        other._S = np.copy(self._S)
+        other.num_pushes = self.num_pushes
+        other.mean_array = np.copy(self.mean_array)
+        other.std_array = np.copy(self.std_array)
         return other
 
     def push(self, x):
         x = np.asarray(x)
         # Unvectorized update of the running statistics.
-        if x.shape != self._M.shape:
+        if x.shape != self.mean_array.shape:
             raise ValueError(
                 "Unexpected input shape {}, expected {}, value = {}".format(
-                    x.shape, self._M.shape, x
+                    x.shape, self.mean_array.shape, x
                 )
             )
-        n1 = self._n
-        self._n += 1
-        if self._n == 1:
-            self._M[...] = x
+        self.num_pushes += 1
+        if self.num_pushes == 1:
+            self.mean_array[...] = x
         else:
-            delta = x - self._M
-            self._M[...] += delta / self._n
-            self._S[...] += delta * delta * n1 / self._n
+            delta = x - self.mean_array
+            self.mean_array[...] += delta / self.num_pushes
+            self.std_array[...] += (
+                delta * delta * (self.num_pushes - 1) / self.num_pushes
+            )
 
     def update(self, other):
-        n1 = self._n
-        n2 = other._n
+        n1 = self.num_pushes
+        n2 = other.num_pushes
         n = n1 + n2
         if n == 0:
             # Avoid divide by zero, which creates nans
             return
-        delta = self._M - other._M
+        delta = self.mean_array - other.mean_array
         delta2 = delta * delta
-        M = (n1 * self._M + n2 * other._M) / n
-        S = self._S + other._S + delta2 * n1 * n2 / n
-        self._n = n
-        self._M = M
-        self._S = S
+        m = (n1 * self.mean_array + n2 * other.mean_array) / n
+        s = self.std_array + other.std_array + delta2 * n1 * n2 / n
+        self.num_pushes = n
+        self.mean_array = m
+        self.std_array = s
 
     def __repr__(self):
         return "(n={}, mean_mean={}, mean_std={})".format(
@@ -128,15 +132,19 @@ class RunningStat:
 
     @property
     def n(self):
-        return self._n
+        return self.num_pushes
 
     @property
     def mean(self):
-        return self._M
+        return self.mean_array
 
     @property
     def var(self):
-        return self._S / (self._n - 1) if self._n > 1 else np.square(self._M)
+        return (
+            self.std_array / (self.num_pushes - 1)
+            if self.num_pushes > 1
+            else np.square(self.mean_array)
+        )
 
     @property
     def std(self):
@@ -144,7 +152,22 @@ class RunningStat:
 
     @property
     def shape(self):
-        return self._M.shape
+        return self.mean_array.shape
+
+    def to_state(self):
+        return {
+            "num_pushes": self.num_pushes,
+            "mean_array": _serialize_ndarray(self.mean_array),
+            "std_array": _serialize_ndarray(self.std_array),
+        }
+
+    @staticmethod
+    def from_state(state):
+        running_stats = RunningStat()
+        running_stats.num_pushes = state["num_pushes"]
+        running_stats.mean_array = _deserialize_ndarray(state["mean_array"])
+        running_stats.std_array = _deserialize_ndarray(state["std_array"])
+        return running_stats
 
 
 @DeveloperAPI
@@ -164,8 +187,8 @@ class MeanStdFilter(Filter):
             and len(flat_shape) > 0
             and isinstance(flat_shape[0], np.ndarray)
         )
-        # If preprocessing (flattning dicts/tuples), make sure shape
-        # is an np.ndarray so we don't confuse it with a complex Tuple
+        # If preprocessing (flattening dicts/tuples), make sure shape
+        # is an np.ndarray, so we don't confuse it with a complex Tuple
         # space's shape structure (which is a Tuple[np.ndarray]).
         if not self.no_preprocessor:
             self.shape = np.array(self.shape)
@@ -173,7 +196,7 @@ class MeanStdFilter(Filter):
         self.destd = destd
         self.clip = clip
         # Running stats.
-        self.rs = tree.map_structure(lambda s: RunningStat(s), self.shape)
+        self.running_stats = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
         # In distributed rollouts, each worker sees different states.
         # The buffer is used to keep track of deltas amongst all the
@@ -198,19 +221,19 @@ class MeanStdFilter(Filter):
             >>> a = MeanStdFilter(())
             >>> a(1)
             >>> a(2)
-            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, 1.5, 2]
             >>> b = MeanStdFilter(())
             >>> b(10)
             >>> a.apply_changes(b, with_buffer=False)
-            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [3, 4.333333333333333, 2]
             >>> a.apply_changes(b, with_buffer=True)
-            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [4, 5.75, 1]
         """
         tree.map_structure(
-            lambda rs, other_rs: rs.update(other_rs), self.rs, other.buffer
+            lambda rs, other_rs: rs.update(other_rs), self.running_stats, other.buffer
         )
         if with_buffer:
             self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
@@ -231,20 +254,22 @@ class MeanStdFilter(Filter):
             >>> a = MeanStdFilter(())
             >>> a(1)
             >>> a(2)
-            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, array(1.5), 2]
             >>> b = MeanStdFilter(())
             >>> b(10)
-            >>> print([b.rs.n, b.rs.mean, b.buffer.n])
+            >>> print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
             [1, array(10.0), 1]
             >>> a.sync(b)
-            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [1, array(10.0), 1]
         """
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
+        self.running_stats = tree.map_structure(
+            lambda rs: rs.copy(), other.running_stats
+        )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def __call__(self, x: TensorStructType, update: bool = True) -> TensorStructType:
@@ -281,15 +306,10 @@ class MeanStdFilter(Filter):
 
         if self.no_preprocessor:
             return tree.map_structure_up_to(
-                x, _helper, x, self.rs, self.buffer, self.shape
+                x, _helper, x, self.running_stats, self.buffer, self.shape
             )
         else:
-            return _helper(x, self.rs, self.buffer, self.shape)
-
-    def __repr__(self) -> str:
-        return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
-        )
+            return _helper(x, self.running_stats, self.buffer, self.shape)
 
 
 @DeveloperAPI
@@ -298,6 +318,15 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __init__(self, *args, **kwargs):
         super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
+        deprecation_warning(
+            old="ConcurrentMeanStdFilter",
+            error=False,
+            help="ConcurrentMeanStd filters are only used for testing and will "
+            "therefore be deprecated in the course of moving to the "
+            "Connetors API, where testing of filters will be done by other "
+            "means.",
+        )
+
         self._lock = threading.RLock()
 
         def lock_wrap(func):
@@ -323,7 +352,12 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __repr__(self) -> str:
         return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
+            self.shape,
+            self.demean,
+            self.destd,
+            self.clip,
+            self.running_stats,
+            self.buffer,
         )
 
 

@@ -6,7 +6,7 @@ Environment Samplers
 When a simulator (environment) is available, :py:class:`~ray.rllib.evaluation.sampler.Sampler`s - child classes
 of :py:class:`~ray.rllib.offline.input_reader.InputReader` - are used to collect and return experiences from the envs.
 For more details on :py:class:`~ray.rllib.offline.input_reader.InputReader` used for offline RL (e.g. reading files of
-pre-recorded data), see the :ref:`offline RL API reference here<offline-reference-docs>`.
+pre-recorded data), see the :ref:`offline RL API reference here <offline-reference-docs>`.
 
 The base sampler API (SamplerInput) is defined as follows:
 

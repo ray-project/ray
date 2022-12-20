@@ -6,6 +6,8 @@ import pytest
 import ray
 import time
 
+from ray._private.utils import get_or_create_event_loop
+
 
 # This tests the methods are executed in the correct eventloop.
 def test_basic(ray_start_regular_shared):
@@ -16,31 +18,31 @@ def test_basic(ray_start_regular_shared):
             self.eventloop_f2 = None
             self.eventloop_f3 = None
             self.eventloop_f4 = None
-            self.default_eventloop = asyncio.get_event_loop()
+            self.default_eventloop = get_or_create_event_loop()
 
         @ray.method(concurrency_group="io")
         async def f1(self):
-            self.eventloop_f1 = asyncio.get_event_loop()
+            self.eventloop_f1 = get_or_create_event_loop()
             return threading.current_thread().ident
 
         @ray.method(concurrency_group="io")
         def f2(self):
-            self.eventloop_f2 = asyncio.get_event_loop()
+            self.eventloop_f2 = get_or_create_event_loop()
             return threading.current_thread().ident
 
         @ray.method(concurrency_group="compute")
         def f3(self):
-            self.eventloop_f3 = asyncio.get_event_loop()
+            self.eventloop_f3 = get_or_create_event_loop()
             return threading.current_thread().ident
 
         @ray.method(concurrency_group="compute")
         def f4(self):
-            self.eventloop_f4 = asyncio.get_event_loop()
+            self.eventloop_f4 = get_or_create_event_loop()
             return threading.current_thread().ident
 
         def f5(self):
             # If this method is executed in default eventloop.
-            assert asyncio.get_event_loop() == self.default_eventloop
+            assert get_or_create_event_loop() == self.default_eventloop
             return threading.current_thread().ident
 
         @ray.method(concurrency_group="io")
@@ -163,4 +165,9 @@ def test_blocking_group_does_not_block_others(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

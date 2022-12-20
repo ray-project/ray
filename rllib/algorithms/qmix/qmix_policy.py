@@ -19,9 +19,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.torch_utils import apply_grad_clipping
 
 # Torch must be installed.
-torch, nn = try_import_torch(error=True)
+torch, nn = try_import_torch(error=False)
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ class QMixLoss(nn.Module):
         masked_td_error = td_error * mask
 
         # Normal L2 loss, take mean over actual data
-        loss = (masked_td_error ** 2).sum() / mask.sum()
+        loss = (masked_td_error**2).sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
@@ -166,6 +167,12 @@ class QMixTorchPolicy(TorchPolicy):
     """
 
     def __init__(self, obs_space, action_space, config):
+        # We want to error out on instantiation and not on import, because tune
+        # imports all RLlib algorithms when registering them
+        # TODO (Artur): Find a way to only import algorithms when needed
+        if not torch:
+            raise ImportError("Could not import PyTorch, which QMix requires.")
+
         _validate(obs_space, action_space)
         config = dict(ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
@@ -266,7 +273,7 @@ class QMixTorchPolicy(TorchPolicy):
         )
         from torch.optim import RMSprop
 
-        self.optimiser = RMSprop(
+        self.rmsprop_optimizer = RMSprop(
             params=self.params,
             lr=config["lr"],
             alpha=config["optim_alpha"],
@@ -444,23 +451,20 @@ class QMixTorchPolicy(TorchPolicy):
         )
 
         # Optimise
-        self.optimiser.zero_grad()
+        self.rmsprop_optimizer.zero_grad()
         loss_out.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.params, self.config["grad_norm_clipping"]
-        )
-        self.optimiser.step()
+        grad_norm_info = apply_grad_clipping(self, self.rmsprop_optimizer, loss_out)
+        self.rmsprop_optimizer.step()
 
         mask_elems = mask.sum().item()
         stats = {
             "loss": loss_out.item(),
-            "grad_norm": grad_norm
-            if isinstance(grad_norm, float)
-            else grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() / mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
+        stats.update(grad_norm_info)
+
         return {LEARNER_STATS_KEY: stats}
 
     @override(TorchPolicy)

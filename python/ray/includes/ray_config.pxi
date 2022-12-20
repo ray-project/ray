@@ -1,6 +1,11 @@
+from libcpp.string cimport string as c_string
 from ray.includes.ray_config cimport RayConfig
 
 cdef class Config:
+    @staticmethod
+    def initialize(c_string config_list):
+        return RayConfig.instance().initialize(config_list)
+
     @staticmethod
     def ray_cookie():
         return RayConfig.instance().ray_cookie()
@@ -111,3 +116,47 @@ cdef class Config:
     @staticmethod
     def use_ray_syncer():
         return RayConfig.instance().use_ray_syncer()
+
+    @staticmethod
+    def REDIS_CA_CERT():
+        return RayConfig.instance().REDIS_CA_CERT()
+
+    @staticmethod
+    def REDIS_CA_PATH():
+        return RayConfig.instance().REDIS_CA_PATH()
+
+    @staticmethod
+    def REDIS_CLIENT_CERT():
+        return RayConfig.instance().REDIS_CLIENT_CERT()
+
+    @staticmethod
+    def REDIS_CLIENT_KEY():
+        return RayConfig.instance().REDIS_CLIENT_KEY()
+
+    @staticmethod
+    def REDIS_SERVER_NAME():
+        return RayConfig.instance().REDIS_SERVER_NAME()
+
+    @staticmethod
+    def pull_based_healthcheck():
+        return RayConfig.instance().pull_based_healthcheck()
+
+    @staticmethod
+    def health_check_initial_delay_ms():
+        return RayConfig.instance().health_check_initial_delay_ms()
+
+    @staticmethod
+    def health_check_period_ms():
+        return RayConfig.instance().health_check_period_ms()
+
+    @staticmethod
+    def health_check_timeout_ms():
+        return RayConfig.instance().health_check_timeout_ms()
+
+    @staticmethod
+    def health_check_failure_threshold():
+        return RayConfig.instance().health_check_failure_threshold()
+
+    @staticmethod
+    def memory_monitor_refresh_ms():
+        return (RayConfig.instance().memory_monitor_refresh_ms())

@@ -1,14 +1,8 @@
 package io.ray.serve.util;
 
-import com.google.common.collect.Lists;
-import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.Constants;
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.DeploymentVersion;
-import io.ray.serve.RayServeException;
-import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.common.Constants;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.RequestMetadata;
@@ -18,55 +12,8 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
-
-    DeploymentConfig deploymentConfig = new DeploymentConfig();
-    if (deploymentConfigBytes == null) {
-      return deploymentConfig;
-    }
-
-    io.ray.serve.generated.DeploymentConfig pbDeploymentConfig = null;
-    try {
-      pbDeploymentConfig = io.ray.serve.generated.DeploymentConfig.parseFrom(deploymentConfigBytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse DeploymentConfig from protobuf bytes.", e);
-    }
-
-    if (pbDeploymentConfig == null) {
-      return deploymentConfig;
-    }
-
-    if (pbDeploymentConfig.getNumReplicas() != 0) {
-      deploymentConfig.setNumReplicas(pbDeploymentConfig.getNumReplicas());
-    }
-    if (pbDeploymentConfig.getMaxConcurrentQueries() != 0) {
-      deploymentConfig.setMaxConcurrentQueries(pbDeploymentConfig.getMaxConcurrentQueries());
-    }
-    if (pbDeploymentConfig.getGracefulShutdownWaitLoopS() != 0) {
-      deploymentConfig.setGracefulShutdownWaitLoopS(
-          pbDeploymentConfig.getGracefulShutdownWaitLoopS());
-    }
-    if (pbDeploymentConfig.getGracefulShutdownTimeoutS() != 0) {
-      deploymentConfig.setGracefulShutdownTimeoutS(
-          pbDeploymentConfig.getGracefulShutdownTimeoutS());
-    }
-    deploymentConfig.setCrossLanguage(pbDeploymentConfig.getIsCrossLanguage());
-    if (pbDeploymentConfig.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
-      throw new RayServeException(
-          LogUtil.format(
-              "Unrecognized deployment language {}. Deployment language must be in {}.",
-              pbDeploymentConfig.getDeploymentLanguage(),
-              Lists.newArrayList(DeploymentLanguage.values())));
-    }
-    deploymentConfig.setDeploymentLanguage(pbDeploymentConfig.getDeploymentLanguageValue());
-    if (pbDeploymentConfig.getUserConfig() != null
-        && pbDeploymentConfig.getUserConfig().size() != 0) {
-      deploymentConfig.setUserConfig(
-          MessagePackSerializer.decode(
-              pbDeploymentConfig.getUserConfig().toByteArray(), Object.class));
-    }
-    return deploymentConfig;
-  }
+  public static final String SERVE_PROTO_PARSE_ERROR_MSG =
+      "Failed to parse {} from protobuf bytes.";
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes) {
 
@@ -135,48 +82,15 @@ public class ServeProtoUtil {
     return endpointSet.getEndpointsMap();
   }
 
-  public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
-    if (deploymentVersionBytes == null) {
-      return new DeploymentVersion();
+  public static <T> T bytesToProto(byte[] bytes, ProtobufBytesParser<T> protobufBytesParser) {
+    if (bytes == null) {
+      return null;
     }
-
-    io.ray.serve.generated.DeploymentVersion pbDeploymentVersion = null;
     try {
-      pbDeploymentVersion =
-          io.ray.serve.generated.DeploymentVersion.parseFrom(deploymentVersionBytes);
+      T proto = protobufBytesParser.parse(bytes);
+      return proto;
     } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
+      throw new RayServeException("Failed to parse protobuf bytes.", e);
     }
-    if (pbDeploymentVersion == null) {
-      return new DeploymentVersion();
-    }
-    return new DeploymentVersion(
-        pbDeploymentVersion.getCodeVersion(),
-        pbDeploymentVersion.getUserConfig() != null
-                && pbDeploymentVersion.getUserConfig().size() != 0
-            ? new Object[] {
-              MessagePackSerializer.decode(
-                  pbDeploymentVersion.getUserConfig().toByteArray(), Object.class)
-            }
-            : null);
-  }
-
-  public static io.ray.serve.generated.DeploymentVersion toProtobuf(
-      DeploymentVersion deploymentVersion) {
-    io.ray.serve.generated.DeploymentVersion.Builder pbDeploymentVersion =
-        io.ray.serve.generated.DeploymentVersion.newBuilder();
-    if (deploymentVersion == null) {
-      return pbDeploymentVersion.build();
-    }
-
-    if (StringUtils.isNotBlank(deploymentVersion.getCodeVersion())) {
-      pbDeploymentVersion.setCodeVersion(deploymentVersion.getCodeVersion());
-    }
-    if (deploymentVersion.getUserConfig() != null) {
-      pbDeploymentVersion.setUserConfig(
-          ByteString.copyFrom(
-              MessagePackSerializer.encode(deploymentVersion.getUserConfig()).getLeft()));
-    }
-    return pbDeploymentVersion.build();
   }
 }

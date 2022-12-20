@@ -6,10 +6,11 @@ Requires the Nevergrad library to be installed (`pip install nevergrad`).
 """
 import time
 
-from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
+from ray import air, tune
+from ray.air import session
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.nevergrad import NevergradSearch
+from ray.tune.search.nevergrad import NevergradSearch
 
 
 def evaluation_fn(step, width, height):
@@ -24,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -65,20 +66,23 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler()
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        metric="mean_loss",
-        mode="min",
-        name="nevergrad",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 50,
-        config={
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=10 if args.smoke_test else 50,
+        ),
+        run_config=air.RunConfig(name="nevergrad"),
+        param_space={
             "steps": 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
             "activation": tune.choice(["relu", "tanh"]),
         },
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

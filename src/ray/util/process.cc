@@ -203,9 +203,9 @@ class ProcessFD {
       if (decouple) {
         int s;
         (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
+        int r = read(pipefds[0], &pid, sizeof(pid));
+        (void)r;  // can't do much if this fails, so ignore return value
       }
-      int r = read(pipefds[0], &pid, sizeof(pid));
-      (void)r;  // can't do much if this fails, so ignore return value
     }
     // Use pipe to track process lifetime. (The pipe closes when process terminates.)
     fd = pipefds[0];
@@ -373,6 +373,23 @@ std::error_code Process::Call(const std::vector<std::string> &args,
     }
   }
   return ec;
+}
+
+std::string Process::Exec(const std::string command) {
+  /// Based on answer in
+  /// https://stackoverflow.com/questions/478898/how-do-i-execute-a-command-and-get-the-output-of-the-command-within-c-using-po
+  std::array<char, 128> buffer;
+  std::string result;
+#ifdef _WIN32
+  std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(command.c_str(), "r"), _pclose);
+#else
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+#endif
+  RAY_CHECK(pipe) << "popen() failed for command: " + command;
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+  return result;
 }
 
 Process Process::CreateNewDummy() {
@@ -602,7 +619,7 @@ pid_t GetPID() {
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
-#ifdef _WIN32
+#if defined _WIN32
   if (HANDLE handle =
           OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
     DWORD exit_code;

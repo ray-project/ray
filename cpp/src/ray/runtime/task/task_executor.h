@@ -67,9 +67,6 @@ class TaskExecutor {
  public:
   TaskExecutor() = default;
 
-  /// TODO(SongGuyang): support multiple tasks execution
-  std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
-
   static void Invoke(
       const TaskSpecification &task_spec,
       std::shared_ptr<msgpack::sbuffer> actor,
@@ -78,19 +75,23 @@ class TaskExecutor {
       absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
+      const rpc::Address &caller_address,
       ray::TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<ray::RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<ray::RayObject>> *results,
+      const std::string &serialized_retry_exception_allowlist,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error,
+      bool *is_retryable_error,
+      bool *is_application_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute);
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt);
 
   virtual ~TaskExecutor(){};
 

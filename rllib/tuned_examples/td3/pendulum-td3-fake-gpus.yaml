@@ -1,0 +1,23 @@
+pendulum-td3-fake-gpus:
+    env: Pendulum-v1
+    run: TD3
+    stop:
+        episode_reward_mean: -900
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+        num_steps_sampled_before_learning_starts: 5000
+        exploration_config:
+            random_timesteps: 5000
+        evaluation_interval: 10
+        evaluation_duration: 5
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true

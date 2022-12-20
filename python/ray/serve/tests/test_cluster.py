@@ -1,17 +1,17 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 import requests
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
-
-from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.deployment_state import ReplicaStartupStatus, ReplicaState
 
 
 @pytest.fixture
@@ -26,11 +26,11 @@ def ray_cluster():
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(version="1", num_replicas=1, _health_check_period_s=1)
+    @serve.deployment(version="1", num_replicas=1, health_check_period_s=1)
     def D(*args):
         return os.getpid()
 
@@ -76,8 +76,15 @@ def test_scale_up(ray_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
+
     cluster.add_node(num_cpus=3)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    # NOTE(edoakes): we need to start serve before adding the worker node to
+    # guarantee that the controller is placed on the head node (we should be
+    # able to tolerate being placed on workers, but there's currently a bug).
+    # We should add an explicit test for that in the future when it's fixed.
+    serve.start(detached=True)
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -92,12 +99,11 @@ def test_node_failure(ray_cluster):
             pids.add(requests.get("http://localhost:8000/D").text)
             if time.time() - start >= timeout:
                 raise TimeoutError("Timed out waiting for pids.")
+            time.sleep(1)
         return pids
 
-    serve.start(detached=True)
-
     print("Initial deploy.")
-    D.deploy()
+    serve.run(D.bind())
     pids1 = get_pids(5)
 
     # Remove the node. There should still be three replicas running.
@@ -123,7 +129,7 @@ def test_node_failure(ray_cluster):
 def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve_instance = serve.start()
 
     signal = SignalActor.remote()
@@ -170,7 +176,7 @@ def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
 
     @serve.deployment(version="1")
@@ -178,10 +184,10 @@ def test_intelligent_scale_down(ray_cluster):
         pass
 
     def get_actor_distributions():
-        actors = ray.state.actors()
+        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
-            if "RayServeWrappedReplica" not in actor["ActorClassName"]:
+            if "ServeReplica" not in actor["ActorClassName"]:
                 continue
             if actor["State"] != "ALIVE":
                 continue
@@ -194,6 +200,48 @@ def test_intelligent_scale_down(ray_cluster):
 
     f.options(num_replicas=2).deploy()
     assert get_actor_distributions() == {2}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_replica_spread(ray_cluster):
+    cluster = ray_cluster
+
+    cluster.add_node(num_cpus=2)
+
+    # NOTE(edoakes): we need to start serve before adding the worker node to
+    # guarantee that the controller is placed on the head node (we should be
+    # able to tolerate being placed on workers, but there's currently a bug).
+    # We should add an explicit test for that in the future when it's fixed.
+    cluster.connect(namespace=SERVE_NAMESPACE)
+    serve.start(detached=True)
+
+    worker_node = cluster.add_node(num_cpus=2)
+
+    @serve.deployment(num_replicas=2)
+    def get_node_id():
+        return os.getpid(), ray.get_runtime_context().node_id.hex()
+
+    h = serve.run(get_node_id.bind())
+
+    def get_num_nodes():
+        pids = set()
+        node_ids = set()
+        while len(pids) < 2:
+            pid, node = ray.get(h.remote())
+            pids.add(pid)
+            node_ids.add(node)
+
+        return len(node_ids)
+
+    # Check that the two replicas are spread across the two nodes.
+    wait_for_condition(lambda: get_num_nodes() == 2)
+
+    # Kill the worker node. The second replica should get rescheduled on
+    # the head node.
+    cluster.remove_node(worker_node)
+
+    # Check that the replica on the dead node can be rescheduled.
+    wait_for_condition(lambda: get_num_nodes() == 1)
 
 
 if __name__ == "__main__":

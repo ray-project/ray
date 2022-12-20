@@ -1,3 +1,5 @@
+.. include:: /_includes/_latest_contribution_doc.rst
+
 .. _getting-involved:
 
 Getting Involved / Contributing
@@ -93,7 +95,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -r python/requirements.txt
+    pip install -c python/requirements.txt -r python/requirements_test.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,13 +105,15 @@ The full suite of tests is too large to run on a single machine. However, you ca
 
 .. code-block:: shell
 
-    pytest -v -s python/ray/tests/test_basic.py
+    # Directly calling `pytest -v ...` may lose import paths.
+    python -m pytest -v -s python/ray/tests/test_basic.py
 
 This will run all of the tests in the file. To run a specific test, use the following:
 
 .. code-block:: shell
-
-    pytest -v -s test_file.py::name_of_the_test
+    
+    # Directly calling `pytest -v ...` may lose import paths.
+    python -m pytest -v -s test_file.py::name_of_the_test
 
 Testing for C++ development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -129,7 +133,7 @@ Alternatively, you can also run one specific C++ test. You can use:
 Code Style
 ----------
 
-In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for C++ code and the `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html>`__ for Python code. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
+In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for C++ code and the `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html>`__ for Python code. Python imports follow `PEP8 style <https://peps.python.org/pep-0008/#imports>`__. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
 
 For Python documentation, we follow a subset of the `Google pydoc format <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__. The following code snippet demonstrates the canonical Ray pydoc formatting:
 
@@ -244,19 +248,11 @@ check recent tests known to be flaky.
 
 .. _`CI`: https://github.com/ray-project/ray/tree/master/ci
 
-API stability
--------------
-
-Ray provides stability guarantees for its public APIs in Ray core and libraries. The level of stability provided depends on how the API is annotated.
-
-.. autofunction:: ray.util.annotations.PublicAPI
-.. autofunction:: ray.util.annotations.DeveloperAPI
-.. autofunction:: ray.util.annotations.Deprecated
-
-Undecorated functions can be generally assumed to not be part of the Ray public API.
 
 API compatibility style guide
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
+
+Ray provides stability guarantees for its public APIs in Ray core and libraries, which are described in the :ref:`API Stability guide <api-stability>`.
 
 It's hard to fully capture the semantics of API compatibility into a single annotation (for example, public APIs may have "experimental" arguments). For more granular stability contracts, those can be noted in the pydoc (e.g., "the ``random_shuffle`` option is experimental"). When possible, experimental arguments should also be prefixed by underscores in Python (e.g., `_owner=`).
 
@@ -270,11 +266,13 @@ In Python APIs, consider forcing the use of kwargs instead of positional argumen
         pass
 
 For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward compatibility placeholder" in case more args need to be passed to the callback in the future, e.g.:
- 
+
 .. code-block:: python
 
     def tune_user_callback(model, score, **future_kwargs):
         pass
+
+
 
 Becoming a Reviewer
 -------------------

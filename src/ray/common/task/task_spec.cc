@@ -113,7 +113,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-    const auto &resource_set = GetRequiredResources();
+    const bool is_actor_creation_task = IsActorCreationTask();
+    const bool should_report_placement_resources =
+        RayConfig::instance().report_actor_placement_resources();
+    const auto &resource_set =
+        (is_actor_creation_task && should_report_placement_resources)
+            ? GetRequiredPlacementResources()
+            : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc = SchedulingClassDescriptor(
@@ -174,6 +180,10 @@ bool TaskSpecification::HasRuntimeEnv() const {
 
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
+bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
+int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
+
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
@@ -199,6 +209,21 @@ size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
+}
+
+bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
+  RAY_CHECK(message_->returns_dynamic());
+  std::vector<ObjectID> dynamic_return_ids;
+  for (const auto &dynamic_return_id : message_->dynamic_return_ids()) {
+    dynamic_return_ids.push_back(ObjectID::FromBinary(dynamic_return_id));
+  }
+  return dynamic_return_ids;
+}
+
+void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
+  message_->add_dynamic_return_ids(dynamic_return_id.Binary());
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -324,6 +349,10 @@ bool TaskSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
+const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() const {
+  return message_->serialized_retry_exception_allowlist();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -429,12 +458,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts()
+           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -443,6 +473,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  } else if (IsNormalTask()) {
+    stream << ", max_retries=" << MaxRetries();
   }
 
   // Print runtime env.
@@ -450,19 +482,39 @@ std::string TaskSpecification::DebugString() const {
     const auto &runtime_env_info = RuntimeEnvInfo();
     stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
-    if (uris.size() > 0) {
+    if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
-      for (const auto &uri : uris) {
+      if (!uris.working_dir_uri().empty()) {
+        stream << uris.working_dir_uri() << ":";
+      }
+      for (const auto &uri : uris.py_modules_uris()) {
         stream << uri << ":";
       }
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
-    stream << ", runtime_env_eager_install="
-           << runtime_env_info.runtime_env_eager_install();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
   }
 
   return stream.str();
+}
+
+bool TaskSpecification::IsRetriable() const {
+  if (IsActorTask()) {
+    return false;
+  }
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
 }
 
 std::string TaskSpecification::CallSiteString() const {

@@ -58,7 +58,7 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
         if shuffle:
             random.shuffle(data_slices)
         for i, j in data_slices:
-            yield samples.slice(i, j)
+            yield samples[i:j]
     else:
         all_slices = list(zip(data_slices, state_slices))
         if shuffle:
@@ -80,12 +80,12 @@ def do_minibatch_sgd(
     """Execute minibatch SGD.
 
     Args:
-        samples (SampleBatch): Batch of samples to optimize.
-        policies (dict): Dictionary of policies to optimize.
-        local_worker (RolloutWorker): Master rollout worker instance.
-        num_sgd_iter (int): Number of epochs of optimization to take.
-        sgd_minibatch_size (int): Size of minibatches to use for optimization.
-        standardize_fields (list): List of sample field names that should be
+        samples: Batch of samples to optimize.
+        policies: Dictionary of policies to optimize.
+        local_worker: Master rollout worker instance.
+        num_sgd_iter: Number of epochs of optimization to take.
+        sgd_minibatch_size: Size of minibatches to use for optimization.
+        standardize_fields: List of sample field names that should be
             normalized prior to optimization.
 
     Returns:

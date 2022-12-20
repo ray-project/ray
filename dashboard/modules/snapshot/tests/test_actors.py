@@ -1,15 +1,14 @@
+import logging
 import os
 import sys
-import logging
-import requests
 import time
-import ray
+
 import pytest
+import requests
+
+import ray
+from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._private.worker.show_in_dashboard("test")
             return os.getpid()
 
         def loop(self):

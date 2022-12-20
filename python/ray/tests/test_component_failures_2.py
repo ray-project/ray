@@ -5,12 +5,9 @@ import time
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import get_other_nodes, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.test_utils import (
-    get_other_nodes,
-    wait_for_condition,
-)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -123,10 +120,8 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
 
     def get_node_info():
         return ray._private.services.get_node_to_connect_for_driver(
-            cluster.redis_address,
             cluster.gcs_address,
             cluster.head_node.node_ip_address,
-            redis_password=cluster.redis_password,
         )
 
     assert get_node_info().raylet_socket_name == cluster.head_node.raylet_socket_name
@@ -143,6 +138,10 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

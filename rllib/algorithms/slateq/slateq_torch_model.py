@@ -91,7 +91,7 @@ class UserChoiceModel(nn.Module):
 
         This function outputs user click scores for candidate documents. The
         exponentials of these scores are proportional user click probabilities.
-        Here we return the scores unnormalized because because only some of the
+        Here we return the scores unnormalized because only some of the
         documents will be selected and shown to the user.
 
         Args:
@@ -99,7 +99,7 @@ class UserChoiceModel(nn.Module):
             doc: Doc embeddings of shape (batch_size, num_docs, doc embedding size).
 
         Returns:
-            score (TensorType): logits of shape (batch_size, num_docs + 1),
+            score: logits of shape (batch_size, num_docs + 1),
                 where the last dimension represents no_click.
         """
         batch_size = user.shape[0]

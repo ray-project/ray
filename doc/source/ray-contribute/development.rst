@@ -5,7 +5,11 @@ Building Ray from Source
 
 For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
 
-.. tip:: If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+.. tip::
+
+  If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+
+  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first uninstall.
 
 .. contents::
   :local:
@@ -70,14 +74,14 @@ Prepare the Python environment
 .. tip::
 
   To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
-  
+
 You will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
 
 .. code-block:: shell
 
-    python -m venv env
+    python -m venv venv
 
-That will create a virtual environment called ``env`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
+That will create a virtual environment called ``venv`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
 Next, you need to activate the environment to tell your shell/terminal to use this particular Python. This will also depend on the system you use to set up your virtual environment (conda, venv, or other methods).
 
@@ -85,7 +89,7 @@ If you are using the example from above using ``venv``, you would activate your 
 
 .. code-block:: shell
 
-    source env/bin/activate
+    source venv/bin/activate
 
 You will need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
@@ -125,6 +129,13 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
+.. note:: [Advanced] You can also optionally skip creating symbolic link for directories of your choice.
+
+.. code-block:: shell
+
+    # This links all folders except "_private" and "dashboard" without user prompt.
+    python setup-dev.py -y --skip _private dashboard
+
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
 .. code-block:: shell
@@ -142,11 +153,22 @@ To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
+  # Add a PPA containing gcc-9 for older versions of Ubuntu.
+  sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
-  
+  sudo apt-get install -y build-essential curl gcc-9 g++-9 pkg-config psmisc unzip
+  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+                --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+                --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+
   # Install Bazel.
   ci/env/install-bazel.sh
+
+  # Install node version manager and node 14
+  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  nvm install 14
+  nvm use 14
+
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -193,7 +215,7 @@ Then you can install the dependencies and build the dashboard:
 
 .. code-block:: bash
 
-  npm install
+  npm ci
   npm run build
 
 After that, you can now move back to the top level Ray directory:
@@ -211,6 +233,10 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
+  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # See https://github.com/grpc/grpc/issues/25082 for more details.
+  # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+  # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 The ``-e`` means "editable", so changes you make to files in the Ray
@@ -218,7 +244,7 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
-.. tip:: 
+.. tip::
 
   If your machine is running out of memory during the build or the build is causing other programs to crash, try adding the following line to ``~/.bazelrc``:
 
@@ -244,7 +270,7 @@ The following links were correct during the writing of this section. In case the
 You can also use the included script to install Bazel:
 
 .. code-block:: bash
-  
+
   # Install Bazel.
   ray/ci/env/install-bazel.sh
   # (Windows users: please manually place Bazel in your PATH, and point
@@ -287,7 +313,7 @@ Environment variables that influence builds
 
 You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
-- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
+- ``RAY_INSTALL_JAVA``: If set and equal to ``1``, extra build steps will be executed
   to build java portions of the codebase
 - ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
 - ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
@@ -321,7 +347,7 @@ Dependencies for running Ray unit tests under ``python/ray/tests`` can be instal
 
 .. code-block:: shell
 
- pip install -r python/requirements.txt
+ pip install -c python/requirements.txt -r python/requirements_test.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 
@@ -387,3 +413,32 @@ If the dependency already has a Bazel build file in it, you can use
 To test switching back to the original rule, change ``False`` to ``True``.
 
 .. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
+
+Troubleshooting
+---------------
+
+If importing Ray (``python3 -c "import ray"``) in your development clone results
+in this error:
+
+.. code-block:: python
+
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+    File ".../ray/python/ray/__init__.py", line 63, in <module>
+      import ray._raylet  # noqa: E402
+    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
+      import ray.memory_monitor as memory_monitor
+    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
+      import psutil  # noqa E402
+    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
+      from . import _psosx as _psplatform
+    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
+      from . import _psutil_osx as cext
+  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
+
+Then you should run the following commands:
+
+.. code-block:: bash
+
+  rm -rf python/ray/thirdparty_files/
+  python3 -m pip install setproctitle

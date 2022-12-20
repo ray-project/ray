@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
+from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
@@ -358,20 +358,20 @@ class KLCoeffMixin:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_maml_tf_policy(base: type) -> type:
+def get_maml_tf_policy(name: str, base: type) -> type:
     """Construct a MAMLTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class MAMLTFPolicy(KLCoeffMixin, ValueNetworkMixin, base):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -386,7 +386,7 @@ def get_maml_tf_policy(base: type) -> type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
@@ -513,8 +513,11 @@ def get_maml_tf_policy(base: type) -> type:
         ) -> ModelGradients:
             return compute_gradients(self, optimizer, loss)
 
+    MAMLTFPolicy.__name__ = name
+    MAMLTFPolicy.__qualname__ = name
+
     return MAMLTFPolicy
 
 
-MAMLStaticGraphTFPolicy = get_maml_tf_policy(DynamicTFPolicyV2)
-MAMLEagerTFPolicy = get_maml_tf_policy(EagerTFPolicyV2)
+MAMLTF1Policy = get_maml_tf_policy("MAMLTF1Policy", DynamicTFPolicyV2)
+MAMLTF2Policy = get_maml_tf_policy("MAMLTF2Policy", EagerTFPolicyV2)

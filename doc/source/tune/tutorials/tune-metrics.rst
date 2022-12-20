@@ -7,7 +7,7 @@ How to work with Callbacks?
 ---------------------------
 
 Ray Tune supports callbacks that are called during various times of the training process.
-Callbacks can be passed as a parameter to ``tune.run()``, and the sub-method you provide will be invoked automatically.
+Callbacks can be passed as a parameter to ``air.RunConfig``, taken in by ``Tuner``, and the sub-method you provide will be invoked automatically.
 
 This simple callback just prints a metric each time a result is received:
 
@@ -15,6 +15,7 @@ This simple callback just prints a metric each time a result is received:
 
     from ray import tune
     from ray.tune import Callback
+    from ray.air import session
 
 
     class MyCallback(Callback):
@@ -24,12 +25,13 @@ This simple callback just prints a metric each time a result is received:
 
     def train(config):
         for i in range(10):
-            tune.report(metric=i)
+            session.report({"metric": i})
 
 
-    tune.run(
+    tuner = tune.Tuner(
         train,
-        callbacks=[MyCallback()])
+        run_config=air.RunConfig(callbacks=[MyCallback()]))
+    tuner.fit()
 
 For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
 
@@ -46,7 +48,7 @@ You can log arbitrary values and metrics in both Function and Class training API
     def trainable(config):
         for i in range(num_epochs):
             ...
-            tune.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+            session.report({"acc": accuracy, "metric_foo": random_metric_1, "bar": metric_2})
 
     class Trainable(tune.Trainable):
         def step(self):
@@ -56,7 +58,7 @@ You can log arbitrary values and metrics in both Function and Class training API
 
 
 .. tip::
-    Note that ``tune.report()`` is not meant to transfer large amounts of data, like models or datasets.
+    Note that ``session.report()`` is not meant to transfer large amounts of data, like models or datasets.
     Doing so can incur large overheads and slow down your Tune run significantly.
 
 Which metrics get automatically filled in?
@@ -73,7 +75,7 @@ All of these can be used as stopping conditions or passed as a parameter to Tria
 * ``experiment_id``: Unique experiment ID
 * ``experiment_tag``: Unique experiment tag (includes parameter values)
 * ``hostname``: Hostname of the worker
-* ``iterations_since_restore``: The number of times ``tune.report()/trainable.train()`` has been
+* ``iterations_since_restore``: The number of times ``session.report`` has been
   called after restoring the worker from a checkpoint
 * ``node_ip``: Host IP of the worker
 * ``pid``: Process ID (PID) of the worker process
@@ -84,7 +86,7 @@ All of these can be used as stopping conditions or passed as a parameter to Tria
 * ``timestamp``: Timestamp when the result was processed
 * ``timesteps_since_restore``: Number of timesteps since restoring from a checkpoint
 * ``timesteps_total``: Total number of timesteps
-* ``training_iteration``: The number of times ``tune.report()`` has been
+* ``training_iteration``: The number of times ``session.report()`` has been
   called
 * ``trial_id``: Unique trial ID
 

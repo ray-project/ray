@@ -7,18 +7,18 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-import ray.ray_constants as ray_constants
-from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
+import ray._private.ray_constants as ray_constants
+import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
-    init_error_pubsub,
-    get_error_message,
     convert_actor_state,
+    get_error_message,
+    init_error_pubsub,
+    wait_for_condition,
 )
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -39,7 +39,7 @@ def test_unhandled_errors(ray_start_regular):
         num_exceptions += 1
 
     # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
     x2 = a.f.remote()
     del x1
@@ -129,10 +129,10 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 
     def f(worker):
-        if ray.worker.global_worker.mode == ray.WORKER_MODE:
+        if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
     # Check that the error message is in the task info.
     errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
@@ -233,7 +233,7 @@ def test_worker_raising_exception(ray_start_regular, error_pubsub):
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after
@@ -367,11 +367,11 @@ def test_exception_chain(ray_start_regular):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
@@ -412,11 +412,11 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
@@ -472,7 +472,7 @@ def test_version_mismatch(ray_start_cluster):
 
 def test_export_large_objects(ray_start_regular, error_pubsub):
     p = error_pubsub
-    import ray.ray_constants as ray_constants
+    import ray._private.ray_constants as ray_constants
 
     large_object = np.zeros(
         2 * ray_constants.FUNCTION_SIZE_WARN_THRESHOLD, dtype=np.uint8
@@ -562,12 +562,24 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync:
         {
             "num_cpus": 0,
             "_system_config": {
+                "pull_based_healthcheck": False,
                 "raylet_death_check_interval_milliseconds": 10 * 1000,
                 "num_heartbeats_timeout": 10,
                 "raylet_heartbeat_period_milliseconds": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
-        }
+        },
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "pull_based_healthcheck": True,
+                "raylet_death_check_interval_milliseconds": 10 * 1000,
+                "health_check_initial_delay_ms": 0,
+                "health_check_failure_threshold": 10,
+                "health_check_period_ms": 100,
+                "timeout_ms_task_wait_for_death_info": 100,
+            },
+        },
     ],
     indirect=True,
 )
@@ -624,7 +636,7 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = list(ray.state.actors().values())
+        actors = list(ray._private.state.actors().values())
         assert len(actors) == 1
         print(actors)
         return (
@@ -647,4 +659,7 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

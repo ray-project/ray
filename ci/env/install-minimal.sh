@@ -5,13 +5,15 @@ if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
     if [ "$1" = "3.6" ]; then
-        PYTHON_VERSION=${PYTHON-3.6}
+        PYTHON_VERSION="3.6"
     elif [ "$1" = "3.7" ]; then
-        PYTHON_VERSION=${PYTHON-3.7}
+        PYTHON_VERSION="3.7"
     elif [ "$1" = "3.8" ]; then
-        PYTHON_VERSION=${PYTHON-3.8}
+        PYTHON_VERSION="3.8"
     elif [ "$1" = "3.9" ]; then
-        PYTHON_VERSION=${PYTHON-3.9}
+        PYTHON_VERSION="3.9"
+    elif [ "$1" = "3.10" ]; then
+        PYTHON_VERSION="3.10"
     else
         echo "Unsupported Python version."
         exit 1
@@ -19,7 +21,8 @@ else
 fi
 echo "Python version is ${PYTHON_VERSION}"
 
-ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")" || exit; pwd)
+
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 # Installs conda and python 3.7
@@ -32,5 +35,11 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==5.4.3 \
+  pytest==7.0.1 \
   numpy
+
+# Train requirements.
+# TODO: make this dynamic
+if [ "${TRAIN_MINIMAL_INSTALL-}" = 1 ]; then
+    python -m pip install -U "ray[tune]"
+fi

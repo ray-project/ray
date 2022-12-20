@@ -1,33 +1,35 @@
 from typing import Type, Optional
 
 from ray.rllib.algorithms.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 
 
 class RNNSACConfig(SACConfig):
-    """Defines a configuration class from which an RNNSACTrainer can be built.
+    """Defines a configuration class from which an RNNSAC can be built.
 
     Example:
         >>> config = RNNSACConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> print(config.to_dict())  # doctest: +SKIP
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()  # doctest: +SKIP
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or RNNSACTrainer)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or RNNSAC)
+
         # fmt: off
         # __sphinx_doc_begin__
+        self.framework_str = "torch"
         self.batch_mode = "complete_episodes"
         self.zero_init_states = True
         self.replay_buffer_config = {
@@ -49,17 +51,17 @@ class RNNSACConfig(SACConfig):
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
-        },
-        self.burn_in = DEPRECATED_VALUE
-
+        }
         # fmt: on
         # __sphinx_doc_end__
+
+        self.burn_in = DEPRECATED_VALUE
 
     @override(SACConfig)
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
+        zero_init_states: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "RNNSACConfig":
         """Sets the training related configuration.
@@ -73,55 +75,54 @@ class RNNSACConfig(SACConfig):
                 state outputs of the immediately preceding sequence).
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         super().training(**kwargs)
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
 
         return self
 
-
-class RNNSACTrainer(SACTrainer):
-    @classmethod
-    @override(SACTrainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return RNNSACConfig().to_dict()
-
-    @override(SACTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(SACConfig)
+    def validate(self) -> None:
         # Call super's validation method.
-        super().validate_config(config)
+        super().validate()
 
         # Add the `burn_in` to the Model's max_seq_len.
         replay_sequence_length = (
-            config["replay_buffer_config"]["replay_burn_in"]
-            + config["model"]["max_seq_len"]
+            self.replay_buffer_config["replay_burn_in"] + self.model["max_seq_len"]
         )
         # Check if user tries to set replay_sequence_length (to anything
         # other than the proper value)
-        if config["replay_buffer_config"].get("replay_sequence_length", None) not in [
+        if self.replay_buffer_config.get("replay_sequence_length", None) not in [
             None,
             -1,
             replay_sequence_length,
         ]:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
-                "config['model']['max_seq_len'] + config['burn_in']. Leave "
-                "config['replay_sequence_length'] blank to avoid this error."
+                "config.model['max_seq_len'] + config['replay_burn_in']. Leave "
+                "config.replay_buffer_config['replay_sequence_length'] blank to avoid "
+                "this error."
             )
         # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_buffer_config"][
-            "replay_sequence_length"
-        ] = replay_sequence_length
+        self.replay_buffer_config["replay_sequence_length"] = replay_sequence_length
 
-        if config["framework"] != "torch":
-            raise ValueError(
-                "Only `framework=torch` supported so far for RNNSACTrainer!"
-            )
+        if self.framework_str != "torch":
+            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
 
-    @override(SACTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+
+class RNNSAC(SAC):
+    @classmethod
+    @override(SAC)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return RNNSACConfig()
+
+    @classmethod
+    @override(SAC)
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return RNNSACTorchPolicy
 
 
@@ -132,7 +133,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

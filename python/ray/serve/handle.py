@@ -1,28 +1,60 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass
+from functools import wraps
+import inspect
+import os
 from typing import Coroutine, Dict, Optional, Union
 import threading
 
+import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 
 from ray import serve
-from ray.serve.common import EndpointTag
-from ray.serve.constants import (
+from ray.serve._private.common import EndpointTag
+from ray.serve._private.constants import (
     SERVE_HANDLE_JSON_KEY,
+    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     ServeHandleType,
 )
-from ray.serve.utils import (
+from ray.serve._private.utils import (
     get_random_letters,
     DEFAULT,
 )
-from ray.serve.router import Router, RequestMetadata
+from ray.serve._private.autoscaling_metrics import start_metrics_pusher
+from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.constants import HANDLE_METRIC_PUSH_INTERVAL_S
+from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
 
-def create_or_get_async_loop_in_thread():
+# Feature flag to revert to legacy behavior of synchronous deployment
+# handle in dynamic dispatch. This is here as an escape hatch and last resort.
+FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
+    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
+)
+
+
+def _wrap_into_async_task(async_func):
+    """Wrap an async function so it returns async task instead of coroutine
+
+    This makes the returned value awaitable more than once.
+    """
+    assert inspect.iscoroutinefunction(async_func)
+
+    @wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.ensure_future(async_func(*args, **kwargs))
+
+    return wrapper
+
+
+def _create_or_get_async_loop_in_thread():
     global _global_async_loop
     if _global_async_loop is None:
         _global_async_loop = asyncio.new_event_loop()
@@ -34,6 +66,7 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
+@PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class HandleOptions:
     """Options for each ServeHandle instances. These fields are immutable."""
@@ -41,6 +74,7 @@ class HandleOptions:
     method_name: str = "__call__"
 
 
+@PublicAPI(stability="beta")
 class RayServeHandle:
     """A handle to a service deployment.
 
@@ -104,12 +138,39 @@ class RayServeHandle:
 
         self.router: Router = _router or self._make_router()
 
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(
+                self.controller_handle.get_deployment_info.remote(self.deployment_name)
+            )
+        )
+        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+
+        self._stop_event: Optional[threading.Event] = None
+        self._pusher: Optional[threading.Thread] = None
+        remote_func = self.controller_handle.record_handle_metrics.remote
+        if deployment_info.deployment_config.autoscaling_config:
+            self._stop_event = threading.Event()
+            self._pusher = start_metrics_pusher(
+                interval_s=HANDLE_METRIC_PUSH_INTERVAL_S,
+                collection_callback=self._collect_handle_queue_metrics,
+                metrics_process_func=remote_func,
+                stop_event=self._stop_event,
+            )
+
+    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
+        return {self.deployment_name: self.router.get_num_queued_queries()}
+
     def _make_router(self) -> Router:
         return Router(
             self.controller_handle,
             self.deployment_name,
-            event_loop=asyncio.get_event_loop(),
+            event_loop=get_or_create_event_loop(),
         )
+
+    def stop_metrics_pusher(self):
+        if self._stop_event and self._pusher:
+            self._stop_event.set()
+            self._pusher.join()
 
     @property
     def is_polling(self) -> bool:
@@ -122,7 +183,7 @@ class RayServeHandle:
 
         This is only useful for async handles.
         """
-        return asyncio.get_event_loop() == self.router._event_loop
+        return get_or_create_event_loop() == self.router._event_loop
 
     def options(
         self,
@@ -132,7 +193,7 @@ class RayServeHandle:
         """Set options for this handle.
 
         Args:
-            method_name(str): The method to invoke.
+            method_name: The method to invoke.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -161,6 +222,7 @@ class RayServeHandle:
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
+    @_wrap_into_async_task
     async def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the deployment.
 
@@ -201,7 +263,11 @@ class RayServeHandle:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
+    def __del__(self):
+        self.stop_metrics_pusher()
 
+
+@PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):
     @property
     def is_same_loop(self) -> bool:
@@ -214,7 +280,7 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.deployment_name,
-            event_loop=create_or_get_async_loop_in_thread(),
+            event_loop=_create_or_get_async_loop_in_thread(),
         )
 
     def remote(self, *args, **kwargs):
@@ -251,9 +317,11 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-class RayServeLazySyncHandle:
-    """Lazily initialized handle that only gets fulfilled upon first execution."""
+@DeveloperAPI
+class RayServeDeploymentHandle:
+    """Send requests to a deployment. This class should not be manually created."""
 
+    # """Lazily initialized handle that only gets fulfilled upon first execution."""
     def __init__(
         self,
         deployment_name: str,
@@ -263,18 +331,19 @@ class RayServeLazySyncHandle:
         self.handle_options = handle_options or HandleOptions()
         # For Serve DAG we need placeholder in DAG binding and building without
         # requirement of serve.start; Thus handle is fulfilled at runtime.
-        self.handle = None
+        self.handle: RayServeHandle = None
 
     def options(self, *, method_name: str):
         return self.__class__(
             self.deployment_name, HandleOptions(method_name=method_name)
         )
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
-            handle = serve.get_deployment(self.deployment_name).get_handle()
+            handle = serve._private.api.get_deployment(
+                self.deployment_name
+            )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
             self.handle = handle.options(method_name=self.handle_options.method_name)
-        # TODO (jiaodong): Polish async handles later for serve pipeline
         return self.handle.remote(*args, **kwargs)
 
     @classmethod
@@ -287,7 +356,7 @@ class RayServeLazySyncHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
         }
-        return RayServeLazySyncHandle._deserialize, (serialized_data,)
+        return RayServeDeploymentHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -296,11 +365,11 @@ class RayServeLazySyncHandle:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
 
-def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
+def _serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     """Converts a Serve handle to a JSON-serializable dictionary.
 
     The dictionary can be converted back to a ServeHandle using
-    serve_handle_from_json_dict.
+    _serve_handle_from_json_dict.
     """
     if isinstance(handle, RayServeSyncHandle):
         handle_type = ServeHandleType.SYNC
@@ -313,10 +382,10 @@ def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     }
 
 
-def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
+def _serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
     """Converts a JSON-serializable dictionary back to a ServeHandle.
 
-    The dictionary should be constructed using serve_handle_to_json_dict.
+    The dictionary should be constructed using _serve_handle_to_json_dict.
     """
     if SERVE_HANDLE_JSON_KEY not in d:
         raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")

@@ -8,28 +8,34 @@ from xgboost.core import Booster
 import pickle
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.trial import Trial
-from ray.tune import trial_runner
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
 CHECKPOINT_FILENAME = "model.xgb"
 
 
-def get_best_model_checkpoint(analysis):
+def get_best_model_checkpoint(best_result: "ray.air.Result"):
     best_bst = xgb.Booster()
-    try:
-        with open(analysis.best_checkpoint, "rb") as inputFile:
-            _, _, raw_model = pickle.load(inputFile)
-        best_bst.load_model(bytearray(raw_model))
-    except IsADirectoryError:
-        best_bst.load_model(os.path.join(analysis.best_checkpoint, CHECKPOINT_FILENAME))
-    accuracy = 1.0 - analysis.best_result["eval-logloss"]
-    print(f"Best model parameters: {analysis.best_config}")
+
+    with best_result.checkpoint.as_directory() as checkpoint_dir:
+        to_load = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
+
+        if not os.path.exists(to_load):
+            # Class trainable
+            with open(os.path.join(checkpoint_dir, "checkpoint"), "rb") as f:
+                _, _, raw_model = pickle.load(f)
+            to_load = bytearray(raw_model)
+
+        best_bst.load_model(to_load)
+
+    accuracy = 1.0 - best_result.metrics["eval-logloss"]
+    print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
 
@@ -57,7 +63,7 @@ def train_breast_cancer(config: dict, checkpoint_dir=None):
         xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
 
     # we can obtain current trial resources through
-    # tune.get_trial_resources()
+    # `tune.get_trial_resources()`
     config["nthread"] = int(tune.get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
@@ -184,7 +190,7 @@ def tune_xgboost(use_class_trainable=True):
         """
 
         # Get base trial resources as defined in
-        # ``tune.run(resources_per_trial)``
+        # ``tune.with_resources``
         base_trial_resource = scheduler._base_trial_resources
 
         # Don't bother if this is just the first iteration
@@ -196,7 +202,7 @@ def tune_xgboost(use_class_trainable=True):
             base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
 
         # Assume that the number of CPUs cannot go below what was
-        # specified in tune.run
+        # specified in ``Tuner.fit()``.
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
@@ -229,34 +235,35 @@ def tune_xgboost(use_class_trainable=True):
     else:
         fn = train_breast_cancer
 
-    analysis = tune.run(
-        fn,
-        metric="eval-logloss",
-        mode="min",
-        resources_per_trial=PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
-        config=search_space,
-        num_samples=1,
-        scheduler=scheduler,
-        checkpoint_at_end=use_class_trainable,
+    tuner = tune.Tuner(
+        tune.with_resources(
+            fn, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        ),
+        tune_config=tune.TuneConfig(
+            metric="eval-logloss",
+            mode="min",
+            num_samples=1,
+            scheduler=scheduler,
+        ),
+        run_config=air.RunConfig(
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=use_class_trainable,
+            )
+        ),
+        param_space=search_space,
     )
+    results = tuner.fit()
 
     if use_class_trainable:
-        assert analysis.results_df["nthread"].max() > 1
+        assert results.get_dataframe()["nthread"].max() > 1
 
-    return analysis
+    return results.get_best_result()
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     parser.add_argument(
         "--class-trainable",
         action="store_true",
@@ -271,29 +278,15 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(num_cpus=8)
+    ray.init(num_cpus=8)
 
     if args.test:
-        analysis = tune_xgboost(use_class_trainable=True)
-        best_bst = get_best_model_checkpoint(analysis)
+        best_result = tune_xgboost(use_class_trainable=True)
+        best_bst = get_best_model_checkpoint(best_result)
 
-    analysis = tune_xgboost(use_class_trainable=args.class_trainable)
+    best_result = tune_xgboost(use_class_trainable=args.class_trainable)
 
-    # Load the best model checkpoint.
-    if args.server_address:
-        # If connecting to a remote server with Ray Client, checkpoint loading
-        # should be wrapped in a task so it will execute on the server.
-        # We have to make sure it gets executed on the same node that
-        # ``tune.run`` is called on.
-        from ray.util.ml_utils.node import force_on_current_node
-
-        remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-        best_bst = ray.get(remote_fn.remote(analysis))
-    else:
-        best_bst = get_best_model_checkpoint(analysis)
+    best_bst = get_best_model_checkpoint(best_result)
 
     # You could now do further predictions with
     # best_bst.predict(...)

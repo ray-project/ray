@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 import pytest
 import requests
 from pydantic import ValidationError
@@ -7,7 +8,7 @@ from typing import List, Dict
 
 import ray
 from ray import serve
-from ray.serve.common import (
+from ray.serve._private.common import (
     StatusOverview,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
@@ -204,35 +205,13 @@ class TestDeploymentSchema:
     def get_minimal_deployment_schema(self):
         # Generate a DeploymentSchema with the fewest possible attributes set
 
-        return {
-            "name": "deep",
-            "import_path": "my_module.MyClass",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": {},
-                "accelerator_type": None,
-            },
-        }
+        return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
 
         deployment_schema = {
             "name": "shallow",
-            "import_path": "test_env.shallow_import.ShallowClass",
             "num_replicas": 2,
             "route_prefix": "/shallow",
             "max_concurrent_queries": 32,
@@ -265,28 +244,6 @@ class TestDeploymentSchema:
         }
 
         DeploymentSchema.parse_obj(deployment_schema)
-
-    def test_invalid_python_attributes(self):
-        # Test setting invalid attributes for Python to ensure a validation or
-        # value error is raised.
-
-        # Python requires an import path
-        deployment_schema = self.get_minimal_deployment_schema()
-        del deployment_schema["import_path"]
-
-        with pytest.raises(ValueError, match="must be specified"):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # DeploymentSchema should be generated once import_path is set
-        for path in get_valid_import_paths():
-            deployment_schema["import_path"] = path
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # Invalid import_path syntax should raise a ValidationError
-        for path in get_invalid_import_paths():
-            deployment_schema["import_path"] = path
-            with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -386,6 +343,33 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "num_replicas",
+            "route_prefix",
+            "autoscaling_config",
+            "user_config",
+        ],
+    )
+    def test_nullable_options(self, option: str):
+        """Check that nullable options can be set to None."""
+
+        deployment_options = {"name": "test", option: None}
+
+        # One of "num_replicas" or "autoscaling_config" must be provided.
+        if option == "num_replicas":
+            deployment_options["autoscaling_config"] = {
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 5,
+            }
+        elif option == "autoscaling_config":
+            deployment_options["num_replicas"] = 5
+
+        # Schema should be created without error.
+        DeploymentSchema.parse_obj(deployment_options)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
@@ -395,7 +379,6 @@ class TestServeApplicationSchema:
             "deployments": [
                 {
                     "name": "shallow",
-                    "import_path": "test_env.shallow_import.ShallowClass",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
                     "max_concurrent_queries": 32,
@@ -428,25 +411,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "import_path": ("test_env.subdir1.subdir2.deep_import.DeepClass"),
-                    "num_replicas": None,
-                    "route_prefix": None,
-                    "max_concurrent_queries": None,
-                    "user_config": None,
-                    "autoscaling_config": None,
-                    "graceful_shutdown_wait_loop_s": None,
-                    "graceful_shutdown_timeout_s": None,
-                    "health_check_period_s": None,
-                    "health_check_timeout_s": None,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "object_store_memory": None,
-                        "resources": {},
-                        "accelerator_type": None,
-                    },
                 },
             ],
         }
@@ -503,6 +467,71 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
+
+    def test_serve_application_kubernetes_config(self):
+        # Test kubernetes_dict() behavior
+
+        config = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "num_replicas": 2,
+                    "route_prefix": "/shallow",
+                    "user_config": {"a": 1, "b": "c", 2: 3},
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "py_modules": ["gs://fake2/file2.zip"],
+                        },
+                        "num_cpus": 3,
+                        "memory": 5,
+                        "object_store_memory": 3,
+                        "resources": {"custom_asic": 8},
+                        "accelerator_type": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
+
+        kubernetes_config = ServeApplicationSchema.parse_obj(config).kubernetes_dict(
+            exclude_unset=True
+        )
+
+        assert kubernetes_config == {
+            "importPath": "module.graph",
+            "runtimeEnv": json.dumps({"working_dir": "s3://path/file.zip"}),
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "numReplicas": 2,
+                    "routePrefix": "/shallow",
+                    "userConfig": json.dumps({"a": 1, "b": "c", 2: 3}),
+                    "rayActorOptions": {
+                        "runtimeEnv": json.dumps(
+                            {
+                                "py_modules": ["gs://fake2/file2.zip"],
+                            }
+                        ),
+                        "numCpus": 3.0,
+                        "memory": 5.0,
+                        "objectStoreMemory": 3.0,
+                        "resources": json.dumps({"custom_asic": 8}),
+                        "acceleratorType": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
 
 
 class TestServeStatusSchema:
@@ -581,9 +610,8 @@ def test_deployment_to_schema_to_deployment():
         # decorator without converting global_f() into a Deployment object.
         pass
 
-    f._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
@@ -613,9 +641,8 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     def f():
         pass
 
-    f._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
     assert len(deployment.ray_actor_options) == 0
 
@@ -655,28 +682,6 @@ def test_status_schema_helpers():
     assert len(deployment_names) == 0
 
     serve.shutdown()
-
-
-@serve.deployment
-def decorated_f(*args):
-    return "reached decorated_f"
-
-
-def test_use_deployment_import_path():
-    """Ensure deployment func_or_class becomes import path when schematized."""
-
-    d = schema_to_deployment(deployment_to_schema(decorated_f))
-
-    assert isinstance(d.func_or_class, str)
-
-    # CI may change the parent path, so check only that the suffix matches.
-    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
-
-    serve.start()
-    d.deploy()
-    assert (
-        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
-    )
 
 
 if __name__ == "__main__":

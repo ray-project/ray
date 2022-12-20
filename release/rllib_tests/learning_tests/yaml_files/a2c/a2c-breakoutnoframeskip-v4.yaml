@@ -1,0 +1,20 @@
+a2c-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: A2C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 7200
+    config:
+        train_batch_size: 500
+        rollout_fragment_length: auto
+        clip_rewards: True
+        num_workers: 5
+        num_envs_per_worker: 5
+        num_gpus: 1
+        lr_schedule: [
+            [0, 0.0007],
+            [20000000, 0.000000000001],
+        ]

@@ -1,56 +1,60 @@
-import inspect
 import itertools
 import logging
+import sys
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    List,
-    Iterator,
-    Iterable,
+    Dict,
     Generic,
-    Union,
+    Iterable,
+    Iterator,
+    List,
     Optional,
-    TYPE_CHECKING,
+    Tuple,
+    Union,
 )
+import warnings
 
 import ray
-from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U
-from ray.data.impl.pipeline_executor import (
+from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal import progress_bar
+from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data.block import Block
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data.block import BatchUDF, Block, KeyFn, RowUDF
+from ray.data.context import DatasetContext
+from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
+from ray.data.datasource import Datasource
+from ray.data.datasource.file_based_datasource import (
+    BlockWritePathProvider,
+    DefaultBlockWritePathProvider,
+)
 from ray.data.row import TableRow
-from ray.data.impl import progress_bar
-from ray.data.impl.block_batching import batch_blocks, BatchType
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
+    import pandas
     import pyarrow
+    import tensorflow as tf
+    import torch
+
 
 logger = logging.getLogger(__name__)
-
-# Operations that can be naively applied per dataset row in the pipeline.
-_PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
-
-# Operations that apply to each dataset holistically in the pipeline.
-_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
-
-# Similar to above but we should force evaluation immediately.
-_PER_DATASET_OUTPUT_OPS = [
-    "write_json",
-    "write_csv",
-    "write_parquet",
-    "write_datasource",
-]
-
-# Operations that operate over the stream of output batches from the pipeline.
-_OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
 @PublicAPI
@@ -140,9 +144,11 @@ class DatasetPipeline(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: int = None,
-        batch_format: str = "native",
+        batch_size: Optional[int] = 256,
+        batch_format: str = "default",
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -157,29 +163,58 @@ class DatasetPipeline(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format (promoting
+                Specify "default" to use the current block format (promoting
                 Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table``. Default is "native".
+                ``pyarrow.Table``. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
+        if self._first_dataset is not None:
+            blocks_owned_by_consumer = (
+                self._first_dataset._plan.execute()._owned_by_consumer
+            )
+        else:
+            blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=blocks_owned_by_consumer,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def _iter_blocks(self) -> Iterator[Block]:
+    def _iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         ds_wait_start = time.perf_counter()
         for ds in self.iter_datasets():
             self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
@@ -217,8 +252,8 @@ class DatasetPipeline(Generic[T]):
             equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
-            locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the ith pipeline
+            locality_hints: [Experimental] A list of Ray actor handles of size ``n``.
+                The system will try to co-locate the blocks of the ith pipeline
                 shard with the ith actor to maximize data locality.
 
         Returns:
@@ -275,20 +310,22 @@ class DatasetPipeline(Generic[T]):
 
         return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
-    def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
-
-        resources = {}
+    def _split(
+        self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
+    ) -> List["DatasetPipeline[T]"]:
+        ctx = DatasetContext.get_current()
+        scheduling_strategy = ctx.scheduling_strategy
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
             # errors during node failures. If the local node dies, then the driver
             # will fate-share with the coordinator anyway.
-            resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
-
-        ctx = DatasetContext.get_current()
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
 
         coordinator = PipelineSplitExecutorCoordinator.options(
-            resources=resources,
-            scheduling_strategy=ctx.scheduling_strategy,
+            scheduling_strategy=scheduling_strategy,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
@@ -406,7 +443,15 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(WindowIterable(self.iter_datasets()), length=length)
+        # The newly created DatasetPipeline will contain a PipelineExecutor (because
+        # this will execute the pipeline so far to iter the datasets). In order to
+        # make this new DatasetPipeline serializable, we need to make sure the
+        # PipelineExecutor has not been iterated. So this uses
+        # _iter_datasets_without_peek() instead of iter_datasets().
+        return DatasetPipeline(
+            WindowIterable(self._iter_datasets_without_peek()),
+            length=length,
+        )
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -518,6 +563,35 @@ class DatasetPipeline(Generic[T]):
             self._schema = self._peek().schema(fetch_if_missing)
         return self._schema
 
+    def dataset_format(self) -> BlockFormat:
+        """The format of the dataset pipeline's underlying data blocks. Possible
+        values are: "arrow", "pandas" and "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+
+        try:
+            import pyarrow as pa
+
+            if isinstance(schema, pa.Schema):
+                return BlockFormat.ARROW
+        except ModuleNotFoundError:
+            pass
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return BlockFormat.PANDAS
+        return BlockFormat.SIMPLE
+
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
 
@@ -573,7 +647,7 @@ class DatasetPipeline(Generic[T]):
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
 
-    def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+    def iter_epochs(self, max_epoch: int = -1) -> Iterator["DatasetPipeline[T]"]:
         """Split this pipeline up by epoch.
 
         This allows reading of data per-epoch for repeated Datasets, which is
@@ -581,6 +655,9 @@ class DatasetPipeline(Generic[T]):
         generates a pipeline with 500 rows total split across 50 epochs. This
         method allows iterating over the data individually per epoch
         (repetition) of the original data.
+
+        Args:
+            max_epoch: If greater than zero, stop after the given number of epochs.
 
         Examples:
             >>> import ray
@@ -637,15 +714,18 @@ class DatasetPipeline(Generic[T]):
                 return self
 
         class EpochDelimitedIterator:
-            def __init__(self, pipe):
+            def __init__(self, pipe, max_epoch):
                 self._iter = Peekable(pipe.iter_datasets())
                 self._cur_epoch = None
+                self._max_epoch = max_epoch
 
             def __next__(self) -> "DatasetPipeline[T]":
                 if self._cur_epoch is None:
                     self._cur_epoch = self._iter.peek()._get_epoch()
                 else:
                     self._cur_epoch += 1
+                if self._max_epoch > 0 and self._cur_epoch >= self._max_epoch:
+                    raise StopIteration
                 warned = False
                 while self._iter.peek()._get_epoch() < self._cur_epoch:
                     if not warned:
@@ -663,7 +743,402 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return self
 
-        return EpochDelimitedIterator(self)
+        return EpochDelimitedIterator(self, max_epoch)
+
+    def map(
+        self,
+        fn: RowUDF,
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.map <ray.data.Dataset.map>` to each dataset/window
+        in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.map(fn, compute=compute, **ray_remote_args)
+        )
+
+    def map_batches(
+        self,
+        fn: BatchUDF,
+        *,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.map_batches <ray.data.Dataset.map_batches>` to each
+        dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.map_batches(
+                fn,
+                batch_size=batch_size,
+                compute=compute,
+                batch_format=batch_format,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
+                fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
+                **ray_remote_args,
+            )
+        )
+
+    def flat_map(
+        self,
+        fn: RowUDF,
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.flat_map <ray.data.Dataset.flat_map>` to each
+        dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.flat_map(fn, compute=compute, **ray_remote_args)
+        )
+
+    def filter(
+        self,
+        fn: RowUDF,
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[T]":
+        """Apply :py:meth:`Dataset.filter <ray.data.Dataset.filter>` to each
+        dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.filter(fn, compute=compute, **ray_remote_args)
+        )
+
+    def add_column(
+        self,
+        col: str,
+        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.add_column <ray.data.Dataset.add_column>` to each
+        dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.add_column(col, fn, compute=compute, **ray_remote_args)
+        )
+
+    def drop_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.drop_columns <ray.data.Dataset.drop_columns>` to
+        each dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.drop_columns(cols, compute=compute, **ray_remote_args)
+        )
+
+    def select_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.select_columns <ray.data.Dataset.select_columns>` to
+        each dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.select_columns(cols, compute=compute, **ray_remote_args)
+        )
+
+    def repartition_each_window(
+        self, num_blocks: int, *, shuffle: bool = False
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.repartition <ray.data.Dataset.repartition>` to each
+        dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.repartition(num_blocks, shuffle=shuffle)
+        )
+
+    def random_shuffle_each_window(
+        self,
+        *,
+        seed: Optional[int] = None,
+        num_blocks: Optional[int] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to
+        each dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.random_shuffle(
+                seed=seed, num_blocks=num_blocks, **ray_remote_args
+            )
+        )
+
+    def sort_each_window(
+        self, key: Optional[KeyFn] = None, descending: bool = False
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.sort <ray.data.Dataset.sort>` to each dataset/window
+        in this pipeline."""
+        return self.foreach_window(lambda ds: ds.sort(key, descending))
+
+    def randomize_block_order_each_window(
+        self, *, seed: Optional[int] = None
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.randomize_block_order
+        <ray.data.Dataset.randomize_block_order>` to each dataset/window in this
+        pipeline."""
+        return self.foreach_window(lambda ds: ds.randomize_block_order(seed=seed))
+
+    def write_json(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
+        **pandas_json_args,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_json <ray.data.Dataset.write_json>` on each
+        output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_json(
+                path,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                block_path_provider=block_path_provider,
+                pandas_json_args_fn=pandas_json_args_fn,
+                ray_remote_args=ray_remote_args,
+                **pandas_json_args,
+            )
+        )
+
+    def write_csv(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
+        **arrow_csv_args,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_csv <ray.data.Dataset.write_csv>` on each
+        output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_csv(
+                path,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                block_path_provider=block_path_provider,
+                arrow_csv_args_fn=arrow_csv_args_fn,
+                ray_remote_args=ray_remote_args,
+                **arrow_csv_args,
+            )
+        )
+
+    def write_parquet(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
+        **arrow_parquet_args,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` on
+        each output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_parquet(
+                path,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                block_path_provider=block_path_provider,
+                arrow_parquet_args_fn=arrow_parquet_args_fn,
+                ray_remote_args=ray_remote_args,
+                **arrow_parquet_args,
+            )
+        )
+
+    def write_tfrecords(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_tfrecords <ray.data.Dataset.write_tfrecords>` on
+        each output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_tfrecords(
+                path,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                block_path_provider=block_path_provider,
+                ray_remote_args=ray_remote_args,
+            )
+        )
+
+    def write_datasource(
+        self,
+        datasource: Datasource[T],
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        **write_args,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_datasource <ray.data.Dataset.write_datasource>`
+        on each output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_datasource(
+                datasource,
+                ray_remote_args=ray_remote_args,
+                **write_args,
+            )
+        )
+
+    def take(self, limit: int = 20) -> List[T]:
+        """Call :py:meth:`Dataset.take <ray.data.Dataset.take>` over the stream of
+        output batches from the pipeline"""
+        return Dataset.take(self, limit)
+
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
+        """Call :py:meth:`Dataset.take_all <ray.data.Dataset.take_all>` over the stream
+        of output batches from the pipeline"""
+        return Dataset.take_all(self, limit)
+
+    def show(self, limit: int = 20) -> None:
+        """Call :py:meth:`Dataset.show <ray.data.Dataset.show>` over the stream of
+        output batches from the pipeline"""
+        return Dataset.show(self, limit)
+
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = 256,
+        batch_format: str = "default",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["tf.Tensor", Dict[str, "tf.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_tf_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def iter_torch_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = 256,
+        batch_format: str = "default",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_torch_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def to_tf(
+        self,
+        *,
+        output_signature: Union[
+            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
+        ],
+        label_column: Optional[str] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
+        prefetch_blocks: int = 0,
+        batch_size: int = 1,
+        drop_last: bool = False,
+    ) -> "tf.data.Dataset":
+        """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
+        output batches from the pipeline"""
+        return Dataset.to_tf(
+            self,
+            output_signature=output_signature,
+            label_column=label_column,
+            feature_columns=feature_columns,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+        )
+
+    def to_torch(
+        self,
+        *,
+        label_column: Optional[str] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
+        label_column_dtype: Optional["torch.dtype"] = None,
+        feature_column_dtypes: Optional[
+            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
+        ] = None,
+        batch_size: int = 1,
+        prefetch_blocks: int = 0,
+        drop_last: bool = False,
+        unsqueeze_label_tensor: bool = True,
+        unsqueeze_feature_tensors: bool = True,
+    ) -> "torch.utils.data.IterableDataset":
+        """Call :py:meth:`Dataset.to_torch <ray.data.Dataset.to_torch>` over the stream
+        of output batches from the pipeline"""
+        return Dataset.to_torch(
+            self,
+            label_column=label_column,
+            feature_columns=feature_columns,
+            label_column_dtype=label_column_dtype,
+            feature_column_dtypes=feature_column_dtypes,
+            batch_size=batch_size,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            unsqueeze_feature_tensors=unsqueeze_feature_tensors,
+        )
+
+    def _iter_datasets_without_peek(self):
+        """This is similar to iter_datasets(), but without peeking PipelineExecutor."""
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
+        if self._first_dataset:
+            raise RuntimeError("The pipeline has been peeked.")
+        self._optimize_stages()
+        return PipelineExecutor(self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
@@ -729,7 +1204,7 @@ class DatasetPipeline(Generic[T]):
             length = len(iterable)
         else:
             length = None
-        return DatasetPipeline(iterable, length=length)
+        return DatasetPipeline(iterable, False, length=length)
 
     def __repr__(self) -> str:
         return "DatasetPipeline(num_windows={}, num_stages={})".format(
@@ -755,7 +1230,11 @@ class DatasetPipeline(Generic[T]):
 
         # This dummy dataset will be used to get a set of optimized stages.
         dummy_ds = Dataset(
-            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            ExecutionPlan(
+                BlockList([], [], owned_by_consumer=True),
+                DatasetStats(stages={}, parent=None),
+                run_by_consumer=True,
+            ),
             0,
             True,
         )
@@ -768,10 +1247,13 @@ class DatasetPipeline(Generic[T]):
         # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
         for stage in stages:
+
+            def add_stage(ds, stage):
+                ds._plan._run_by_consumer = True
+                return ds._plan.with_stage(stage)
+
             optimized_stages.append(
-                lambda ds, stage=stage: Dataset(
-                    ds._plan.with_stage(stage), ds._epoch, True
-                )
+                lambda ds, stage=stage: Dataset(add_stage(ds, stage), ds._epoch, True)
             )
         self._optimized_stages = optimized_stages
 
@@ -782,101 +1264,15 @@ class DatasetPipeline(Generic[T]):
             self._first_dataset = next(self._dataset_iter)
         return self._first_dataset
 
+    def _write_each_dataset(self, write_fn: Callable[[Dataset[T]], None]) -> None:
+        """Write output for each dataset.
 
-for method in _PER_DATASET_OPS:
-
-    def _make_impl(method):
-        delegate = getattr(Dataset, method)
-
-        def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
-            return self.foreach_window(lambda ds: getattr(ds, method)(*args, **kwargs))
-
-        impl.__name__ = delegate.__name__
-        impl.__doc__ = """
-Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
-""".format(
-            method=method
-        )
-        setattr(
-            impl,
-            "__signature__",
-            inspect.signature(delegate).replace(return_annotation="DatasetPipeline[U]"),
-        )
-        return impl
-
-    setattr(DatasetPipeline, method, _make_impl(method))
-
-for method in _HOLISTIC_PER_DATASET_OPS:
-
-    def _make_impl(method):
-        delegate = getattr(Dataset, method)
-
-        def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
-            return self.foreach_window(lambda ds: getattr(ds, method)(*args, **kwargs))
-
-        impl.__name__ = delegate.__name__
-        impl.__doc__ = """
-Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
-""".format(
-            method=method
-        )
-        setattr(
-            impl,
-            "__signature__",
-            inspect.signature(delegate).replace(return_annotation="DatasetPipeline[U]"),
-        )
-        return impl
-
-    def _deprecation_warning(method: str):
-        def impl(*a, **kw):
-            raise DeprecationWarning(
-                "`{}` has been renamed to `{}_each_window`.".format(method, method)
-            )
-
-        return impl
-
-    setattr(DatasetPipeline, method, _deprecation_warning(method))
-    setattr(DatasetPipeline, method + "_each_window", _make_impl(method))
-
-for method in _PER_DATASET_OUTPUT_OPS:
-
-    def _make_impl(method):
-        delegate = getattr(Dataset, method)
-
-        def impl(self, *args, **kwargs):
-            uuid = None
-            for i, ds in enumerate(self.iter_datasets()):
-                if uuid is None:
-                    uuid = self._get_uuid() or ds._get_uuid()
-                ds._set_uuid(f"{uuid}_{i:06}")
-                getattr(ds, method)(*args, **kwargs)
-
-        impl.__name__ = delegate.__name__
-        impl.__doc__ = """
-Call ``Dataset.{method}`` on each output dataset of this pipeline.
-""".format(
-            method=method
-        )
-        setattr(impl, "__signature__", inspect.signature(delegate))
-        return impl
-
-    setattr(DatasetPipeline, method, _make_impl(method))
-
-for method in _OUTPUT_ITER_OPS:
-
-    def _make_impl(method):
-        delegate = getattr(Dataset, method)
-
-        def impl(self, *args, **kwargs):
-            return delegate(self, *args, **kwargs)
-
-        impl.__name__ = delegate.__name__
-        impl.__doc__ = """
-Call ``Dataset.{method}`` over the stream of output batches from the pipeline.
-""".format(
-            method=method
-        )
-        setattr(impl, "__signature__", inspect.signature(delegate))
-        return impl
-
-    setattr(DatasetPipeline, method, _make_impl(method))
+        This is utility method used for write_json,
+        write_csv, write_parquet, write_datasource, etc.
+        """
+        uuid = None
+        for i, ds in enumerate(self.iter_datasets()):
+            if uuid is None:
+                uuid = self._get_uuid() or ds._get_uuid()
+            ds._set_uuid(f"{uuid}_{i:06}")
+            write_fn(ds)

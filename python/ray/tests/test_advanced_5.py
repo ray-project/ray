@@ -7,11 +7,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-
-from ray._private.test_utils import (
-    client_test_enabled,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -64,17 +60,17 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster_enabled):
 def test_schedule_actor_and_normal_task(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
     cluster.add_node(
-        memory=1024 ** 3, _system_config={"gcs_actor_scheduling_enabled": True}
+        memory=1024**3, _system_config={"gcs_actor_scheduling_enabled": True}
     )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=600 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=600 * 1024**2, num_cpus=0.01)
     class Foo:
         def method(self):
             return 2
 
-    @ray.remote(memory=600 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=600 * 1024**2, num_cpus=0.01)
     def fun(singal1, signal_actor2):
         signal_actor2.send.remote()
         ray.get(singal1.wait.remote())
@@ -114,7 +110,7 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     actor_count = 50
     each_actor_task_count = 50
     normal_task_count = 1000
-    node_memory = 2 * 1024 ** 3
+    node_memory = 2 * 1024**3
 
     for i in range(node_count):
         cluster.add_node(
@@ -124,12 +120,12 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
     class Foo:
         def method(self):
             return 2
 
-    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
     def fun():
         return 1
 
@@ -158,16 +154,16 @@ def test_actor_distribution_balance(ray_start_cluster_enabled, args):
 
     for i in range(node_count):
         cluster.add_node(
-            memory=1024 ** 3,
+            memory=1024**3,
             _system_config={"gcs_actor_scheduling_enabled": True} if i == 0 else {},
         )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01, scheduling_strategy="SPREAD")
+    @ray.remote(memory=100 * 1024**2, num_cpus=0.01, scheduling_strategy="SPREAD")
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     actor_distribution = {}
     actor_list = [Foo.remote() for _ in range(actor_count)]
@@ -192,18 +188,18 @@ def test_actor_distribution_balance(ray_start_cluster_enabled, args):
 def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
     cluster.add_node(
-        memory=2000 * 1024 ** 2,
+        memory=2000 * 1024**2,
         num_cpus=1,
         _system_config={
             "gcs_resource_report_poll_period_ms": 1000000,
             "gcs_actor_scheduling_enabled": True,
         },
     )
-    node2 = cluster.add_node(memory=1000 * 1024 ** 2, num_cpus=1)
+    node2 = cluster.add_node(memory=1000 * 1024**2, num_cpus=1)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=1500 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=1500 * 1024**2, num_cpus=0.01)
     def fun(signal):
         signal.send.remote()
         time.sleep(30)
@@ -214,10 +210,10 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     # Make sure that the `fun` is running.
     ray.get(signal.wait.remote())
 
-    @ray.remote(memory=800 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=800 * 1024**2, num_cpus=0.01)
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     foo1 = Foo.remote()
     o1 = foo1.method.remote()
@@ -231,6 +227,10 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

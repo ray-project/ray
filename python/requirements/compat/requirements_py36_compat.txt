@@ -1,0 +1,25 @@
+# ATTENTION: THESE DEPENDENCIES SHOULD NOT BE UPDATED!
+
+# These are compatibility requirements to make sure certain workflows continue to work
+# with these dependency versions and on Python 3.6.
+# Concretely, we set up a fresh Python 3.6 environment and
+# run the pipeline job in `Ray Python 3.6 ML compatibility tests` with these dependencies installed.
+# We can get rid of these tests once we decide to not support Python 3.6 legacy compatibility
+# for good.
+
+# ML libraries
+torch==1.7.0
+tensorflow==2.6.0
+keras==2.6.0
+
+# Torch addons
+torchmetrics==0.7.3
+torchvision==0.8.1
+
+pytorch-lightning==1.5.8
+
+# Upstream libraries
+lightgbm_ray==0.1.5
+xgboost_ray==0.1.10
+
+ray[tune,data]

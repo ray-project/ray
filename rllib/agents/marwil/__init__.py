@@ -1,12 +1,12 @@
-from ray.rllib.algorithms.marwil.bc import BCConfig, BCTrainer, BC_DEFAULT_CONFIG
+from ray.rllib.algorithms.bc.bc import BCConfig, BC as BCTrainer, BC_DEFAULT_CONFIG
 from ray.rllib.algorithms.marwil.marwil import (
     DEFAULT_CONFIG,
     MARWILConfig,
-    MARWILTrainer,
+    MARWIL as MARWILTrainer,
 )
 from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-    MARWILStaticGraphTFPolicy,
-    MARWILEagerTFPolicy,
+    MARWILTF1Policy,
+    MARWILTF2Policy,
 )
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 
@@ -14,8 +14,8 @@ __all__ = [
     "BCConfig",
     "BCTrainer",
     "MARWILConfig",
-    "MARWILStaticGraphTFPolicy",
-    "MARWILEagerTFPolicy",
+    "MARWILTF1Policy",
+    "MARWILTF2Policy",
     "MARWILTorchPolicy",
     "MARWILTrainer",
     # Deprecated.
@@ -27,5 +27,5 @@ __all__ = [
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
-    "ray.rllib.agents.marwil", "ray.rllib.algorithms.marwil", error=False
+    "ray.rllib.agents.marwil", "ray.rllib.algorithms.[marwil|bc]", error=True
 )

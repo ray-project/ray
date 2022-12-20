@@ -1,6 +1,7 @@
 # coding: utf-8
 import glob
 import logging
+import multiprocessing
 import os
 import sys
 import tempfile
@@ -8,21 +9,18 @@ import time
 from unittest import mock
 
 import numpy as np
-import pytest
 import psutil
+import pytest
 
 import ray
-from ray.dashboard import k8s_utils
-import ray.ray_constants as ray_constants
-import ray.util.accelerators
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-import ray.cluster_utils
+import ray._private.ray_constants as ray_constants
 import ray._private.resource_spec as resource_spec
-
-from ray._private.test_utils import (
-    wait_for_condition,
-)
+import ray._private.utils
+import ray.cluster_utils
+import ray.util.accelerators
+from ray._private.test_utils import wait_for_condition
+from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -147,7 +145,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to the cluster address.
     os.environ["RAY_ADDRESS"] = address
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -155,7 +153,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to "auto".
     os.environ["RAY_ADDRESS"] = "auto"
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -163,13 +161,20 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # when `address` is not `auto`.
     os.environ["RAY_ADDRESS"] = "test"
     ray.init(address=address)
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
-    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    # Make sure we connect to the existing cluster with on args and RAY_ADDRESS
+    # is not set.
     ray.init()
-    assert "CPU" in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
+    ray.shutdown()
+
+    # Make sure we start a new cluster if "local" is explicitly passed.
+    # is not set.
+    ray.init(address="local")
+    assert "CPU" in ray._private.state.cluster_resources()
     ray.shutdown()
 
 
@@ -290,7 +295,7 @@ def test_get_system_memory():
 
     # cgroups v1, high
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
-        memory_limit_file.write(str(2 ** 64))
+        memory_limit_file.write(str(2**64))
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
@@ -302,7 +307,7 @@ def test_get_system_memory():
         )
     # cgroups v2, set
     with tempfile.NamedTemporaryFile("w") as memory_max_file:
-        memory_max_file.write("100")
+        memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
             ray._private.utils.get_system_memory(
@@ -324,6 +329,70 @@ def test_get_system_memory():
             )
             == psutil_memory_in_bytes
         )
+
+
+@pytest.mark.parametrize("in_k8s", [True, False])
+@pytest.mark.parametrize("env_disable", [True, False])
+@pytest.mark.parametrize("override_disable", [True, False])
+@pytest.mark.parametrize("got_docker_cpus", [True, False])
+def test_get_num_cpus(
+    in_k8s: bool,
+    env_disable: bool,
+    override_disable: bool,
+    got_docker_cpus: bool,
+    monkeypatch,
+):
+    """Tests
+    - Conditions under which ray._private.utils.get_num_cpus logs a warning about
+        docker.
+    - Fallback to multiprocessing.cpu_count if there's no docker count available.
+    """
+    # Shouldn't get the log warning if we're in K8s, the env variable is set,
+    # the flag arg to get_num_cpus is set, or getting docker cpus fails.
+    # Otherwise, should get the log message.
+    should_not_log = any([in_k8s, env_disable, override_disable, not got_docker_cpus])
+    expected_warning = (
+        "Detecting docker specified CPUs. In "
+        "previous versions of Ray, CPU detection in containers "
+        "was incorrect. Please ensure that Ray has enough CPUs "
+        "allocated. As a temporary workaround to revert to the "
+        "prior behavior, set "
+        "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+        "before starting Ray. Set the env var: "
+        "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning."
+    )
+    if got_docker_cpus:
+        mock_get_docker_cpus = mock.Mock(return_value=128)
+    else:
+        mock_get_docker_cpus = mock.Mock(side_effect=Exception())
+
+    if in_k8s:
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", 1)
+    else:
+        try:
+            monkeypatch.delenv("KUBERNETES_SERVICE_HOST")
+        except KeyError:
+            pass
+
+    with mock.patch.multiple(
+        "ray._private.utils",
+        _get_docker_cpus=mock_get_docker_cpus,
+        ENV_DISABLE_DOCKER_CPU_WARNING=env_disable,
+        logger=mock.DEFAULT,
+    ) as mocks:
+        num_cpus = ray._private.utils.get_num_cpus(override_disable)
+
+        if got_docker_cpus:
+            # Got the docker count of 128 CPUs in the giant mock container.
+            assert num_cpus == 128
+        else:
+            # Failed to get docker count and fell back to multiprocessing count.
+            assert num_cpus == multiprocessing.cpu_count()
+
+        if should_not_log:
+            mocks["logger"].warning.assert_not_called()
+        else:
+            mocks["logger"].warning.assert_called_with(expected_warning)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
@@ -554,7 +623,7 @@ def test_sync_job_config(shutdown_only):
     )
 
     # Check that the job config is synchronized at the driver side.
-    job_config = ray.worker.global_worker.core_worker.get_job_config()
+    job_config = ray._private.worker.global_worker.core_worker.get_job_config()
     job_runtime_env = RuntimeEnv.deserialize(
         job_config.runtime_env_info.serialized_runtime_env
     )
@@ -562,7 +631,7 @@ def test_sync_job_config(shutdown_only):
 
     @ray.remote
     def get_job_config():
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        job_config = ray._private.worker.global_worker.core_worker.get_job_config()
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
@@ -622,4 +691,7 @@ def test_duplicated_arg(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
-using namespace boost::filesystem;
+using namespace std::filesystem;
 
 namespace plasma {
 namespace {
 const int64_t kMB = 1024 * 1024;
 std::string CreateTestDir() {
-  path directory = temp_directory_path() / unique_path();
+  path directory = std::filesystem::temp_directory_path() / GenerateUUIDV4();
   create_directories(directory);
   return directory.string();
 }
@@ -44,9 +44,11 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
   {
     auto allocation_1 = allocator.Allocate(object_size);
     EXPECT_TRUE(allocation_1.has_value());
+    EXPECT_FALSE(allocation_1->fallback_allocated);
 
     auto allocation_2 = allocator.Allocate(object_size);
     EXPECT_TRUE(allocation_2.has_value());
+    EXPECT_FALSE(allocation_2->fallback_allocated);
 
     EXPECT_EQ(2 * object_size, allocator.Allocated());
 
@@ -69,6 +71,7 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
     auto allocation = allocator.Allocate(kMB);
     expect_allocated += kMB;
     EXPECT_TRUE(allocation.has_value());
+    EXPECT_FALSE(allocation->fallback_allocated);
     EXPECT_EQ(expect_allocated, allocator.Allocated());
     EXPECT_EQ(0, allocator.FallbackAllocated());
     allocations.push_back(std::move(allocation.value()));
@@ -90,6 +93,7 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
       expect_allocated += kMB;
       expect_fallback_allocated += kMB;
       EXPECT_TRUE(allocation.has_value());
+      EXPECT_TRUE(allocation->fallback_allocated);
       EXPECT_EQ(expect_allocated, allocator.Allocated());
       EXPECT_EQ(expect_fallback_allocated, allocator.FallbackAllocated());
       fallback_allocations.push_back(std::move(allocation.value()));

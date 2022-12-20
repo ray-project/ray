@@ -152,6 +152,8 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
     return Status::ObjectNotFound("object does not exist in the plasma store");
   case fb::PlasmaError::OutOfMemory:
     return Status::ObjectStoreFull("object does not fit in the plasma store");
+  case fb::PlasmaError::OutOfDisk:
+    return Status::OutOfDisk("Local disk is full");
   case fb::PlasmaError::UnexpectedError:
     return Status::UnknownError(
         "an unexpected error occurred, likely due to a bug in the system or caller");

@@ -1,8 +1,8 @@
 cartpole-sac:
-    env: CartPole-v0
+    env: CartPole-v1
     run: SAC
     stop:
-        episode_reward_mean: 100
+        episode_reward_mean: 150.0
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

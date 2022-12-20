@@ -7,13 +7,16 @@ pendulum-cql:
     run: CQL
     stop:
         evaluation/episode_reward_mean: -700
-        timesteps_total: 200000
+        timesteps_total: 800000
     config:
         # Works for both torch and tf.
         framework: tf
 
         # Use one or more offline files or "input: sampler" for online learning.
-        input: ["tests/data/pendulum/enormous.zip"]
+        input: 'dataset'
+        input_config:         
+            paths: ["tests/data/pendulum/enormous.zip"]
+            format: 'json'
         # Our input file above comes from an SAC run. Actions in there
         # are already normalized (produced by SquashedGaussian).
         actions_in_input_normalized: true
@@ -21,17 +24,16 @@ pendulum-cql:
 
         twin_q: true
         train_batch_size: 2000
-        replay_buffer_config:
-          type: MultiAgentReplayBuffer
-          learning_starts: 0
         bc_iters: 100
+        num_workers: 2
+        min_time_s_per_iteration: 10
 
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5
 
         # Evaluate in an actual environment.
         evaluation_interval: 1
         evaluation_num_workers: 2
-        evaluation_num_episodes: 10
+        evaluation_duration: 10
         evaluation_parallel_to_training: true
         evaluation_config:
             input: sampler

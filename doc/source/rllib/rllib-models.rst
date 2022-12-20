@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-models-walkthrough:
+
 Models, Preprocessors, and Action Distributions
 ===============================================
 
@@ -43,7 +45,7 @@ observation space. Thereby, the following simple rules apply:
   observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
 
 For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/atari_wrappers.py>`__
-(``preprocessor_pref=deepmind``). However, if the Trainer's config key ``preprocessor_pref`` is set to "rllib",
+(``preprocessor_pref=deepmind``). However, if the Algorithm's config key ``preprocessor_pref`` is set to "rllib",
 the following mappings apply for Atari-type observation spaces:
 
 - Images of shape ``(210, 160, 3)`` are downscaled to ``dim x dim``, where
@@ -75,7 +77,7 @@ and some special options for Atari environments:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-The dict above (or an overriding sub-set) is handed to the Trainer via the ``model`` key within
+The dict above (or an overriding sub-set) is handed to the Algorithm via the ``model`` key within
 the main config dict like so:
 
 .. code-block:: python
@@ -90,7 +92,7 @@ the main config dict like so:
             "fcnet_activation": "relu",
         },
 
-        # ... other Trainer config keys, e.g. "lr" ...
+        # ... other Algorithm config keys, e.g. "lr" ...
         "lr": 0.00001,
     }
 
@@ -107,7 +109,7 @@ based on simple heuristics:
 - A fully connected network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__)
   for everything else.
 
-These default model types can further be configured via the ``model`` config key inside your Trainer config (as discussed above).
+These default model types can further be configured via the ``model`` config key inside your Algorithm config (as discussed above).
 Available settings are `listed above <#default-model-config-settings>`__ and also documented in the `model catalog file <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__.
 
 Note that for the vision network case, you'll probably have to configure ``conv_filters``, if your environment observations
@@ -149,7 +151,7 @@ Custom Preprocessors and Environment Filters
 
 .. warning::
 
-    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
+    Custom preprocessors have been fully deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
     Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
     Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
 
@@ -215,7 +217,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
 .. code-block:: python
 
     import ray
-    import ray.rllib.agents.ppo as ppo
+    import ray.rllib.algorithms.ppo as ppo
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 
@@ -227,7 +229,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
     ModelCatalog.register_custom_model("my_tf_model", MyModelClass)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "model": {
             "custom_model": "my_tf_model",
             # Extra kwargs to be passed to your model's c'tor.
@@ -270,7 +272,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     import torch.nn as nn
 
     import ray
-    from ray.rllib.agents import ppo
+    from ray.rllib.algorithms import ppo
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
@@ -282,7 +284,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     ModelCatalog.register_custom_model("my_torch_model", CustomTorchModel)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "framework": "torch",
         "model": {
             "custom_model": "my_torch_model",
@@ -359,7 +361,7 @@ You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"
 (see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__).
 RLlib will automatically run the update ops for the batch norm layers during optimization
 (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and
-`multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_impl.py>`__ for the exact handling of these updates).
+`multi_gpu_learner_thread.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_learner_thread.py>`__ for the exact handling of these updates).
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 
@@ -368,7 +370,7 @@ Custom Model APIs (on Top of Default- or Custom Models)
 ```````````````````````````````````````````````````````
 
 So far we talked about a) the default models that are built into RLlib and are being provided
-automatically if you don't specify anything in your Trainer's config and b) custom Models through
+automatically if you don't specify anything in your Algorithm's config and b) custom Models through
 which you can define any arbitrary forward passes.
 
 Another typical situation in which you would have to customize a model would be to
@@ -488,7 +490,7 @@ Similar to custom models and preprocessors, you can also specify a custom action
 .. code-block:: python
 
     import ray
-    import ray.rllib.agents.ppo as ppo
+    import ray.rllib.algorithms.ppo as ppo
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.preprocessors import Preprocessor
 
@@ -508,7 +510,7 @@ Similar to custom models and preprocessors, you can also specify a custom action
     ModelCatalog.register_custom_action_dist("my_dist", MyActionDist)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "model": {
             "custom_action_dist": "my_dist",
         },
@@ -600,7 +602,17 @@ Custom models can be used to work with environments where (1) the set of valid a
             return action_logits + inf_mask, state
 
 
-Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
+Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code, 
+check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__. 
+
+.. |just the masking| replace:: just the **masking**
+.. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/models/action_mask_model.py
+.. |just action embeddings| replace:: just action **embeddings**
+.. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
+.. |both| replace:: **both**
+.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py 
+
+Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
 
 Autoregressive Action Distributions
@@ -716,5 +728,3 @@ To do this, you need both a custom model that implements the autoregressive patt
 .. note::
 
    Not all algorithms support autoregressive action distributions; see the `algorithm overview table <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
-
-.. include:: /_includes/rllib/announcement_bottom.rst

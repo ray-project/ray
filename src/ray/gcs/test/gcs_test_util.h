@@ -55,6 +55,7 @@ struct Mocker {
                               TaskID::Nil(),
                               owner_address,
                               1,
+                              false,
                               required_resources,
                               required_placement_resources,
                               "",
@@ -97,7 +98,7 @@ struct Mocker {
       int max_restarts = 0,
       bool detached = false,
       const std::string &name = "",
-      const std::string &ray_namespace = "") {
+      const std::string &ray_namespace = "test") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
@@ -160,6 +161,7 @@ struct Mocker {
                                   bundles,
                                   strategy,
                                   /* is_detached */ false,
+                                  /* max_cpu_fraction_per_node */ 1.0,
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);
@@ -250,6 +252,21 @@ struct Mocker {
     auto add_job_request = std::make_shared<rpc::AddJobRequest>();
     add_job_request->mutable_data()->CopyFrom(*job_table_data);
     return add_job_request;
+  }
+
+  static rpc::TaskEventData GenTaskEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      int32_t num_profile_task_events_dropped = 0,
+      int32_t num_status_task_events_dropped = 0) {
+    rpc::TaskEventData data;
+    for (auto &events : task_events) {
+      auto new_events = data.add_events_by_task();
+      new_events->CopyFrom(events);
+    }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    return data;
   }
 };
 

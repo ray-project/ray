@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_other_nodes
 
 
@@ -73,15 +73,15 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 
 def test_driver_lives_sequential(ray_start_regular):
-    ray.worker._global_node.kill_raylet()
-    ray.worker._global_node.kill_log_monitor()
-    ray.worker._global_node.kill_monitor()
+    ray._private.worker._global_node.kill_raylet()
+    ray._private.worker._global_node.kill_log_monitor()
+    ray._private.worker._global_node.kill_monitor()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
 
 def test_driver_lives_parallel(ray_start_regular):
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
 
     process_infos = (
         all_processes[ray_constants.PROCESS_TYPE_RAYLET]
@@ -116,6 +116,10 @@ def test_dying_worker(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

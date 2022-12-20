@@ -1,29 +1,29 @@
 import logging
 import os
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
-from pathlib import Path
-import asyncio
 
-from ray.experimental.internal_kv import _internal_kv_initialized
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
+    Protocol,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    is_whl_uri,
     package_exists,
     parse_uri,
-    is_whl_uri,
-    Protocol,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
-from ray._private.utils import get_directory_size_bytes
-from ray._private.utils import try_to_create_directory
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
@@ -91,23 +91,35 @@ def upload_py_modules_if_needed(
                 excludes = runtime_env.get("excludes", None)
                 module_uri = get_uri_for_directory(module_path, excludes=excludes)
                 if upload_fn is None:
-                    upload_package_if_needed(
-                        module_uri,
-                        scratch_dir,
-                        module_path,
-                        excludes=excludes,
-                        include_parent_dir=True,
-                        logger=logger,
-                    )
+                    try:
+                        upload_package_if_needed(
+                            module_uri,
+                            scratch_dir,
+                            module_path,
+                            excludes=excludes,
+                            include_parent_dir=True,
+                            logger=logger,
+                        )
+                    except Exception as e:
+                        raise RuntimeEnvSetupError(
+                            f"Failed to upload module {module_path} to the Ray "
+                            f"cluster: {e}"
+                        ) from e
                 else:
                     upload_fn(module_path, excludes=excludes)
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
                 if upload_fn is None:
                     if not package_exists(module_uri):
-                        upload_package_to_gcs(
-                            module_uri, Path(module_path).read_bytes()
-                        )
+                        try:
+                            upload_package_to_gcs(
+                                module_uri, Path(module_path).read_bytes()
+                            )
+                        except Exception as e:
+                            raise RuntimeEnvSetupError(
+                                f"Failed to upload {module_path} to the Ray "
+                                f"cluster: {e}"
+                            ) from e
                 else:
                     upload_fn(module_path, excludes=None, is_file=True)
             else:
@@ -125,11 +137,14 @@ def upload_py_modules_if_needed(
     return runtime_env
 
 
-class PyModulesManager:
-    def __init__(self, resources_dir: str):
+class PyModulesPlugin(RuntimeEnvPlugin):
+
+    name = "py_modules"
+
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def _get_local_dir_from_uri(self, uri: str):
         return get_local_dir_from_uri(uri, self._resources_dir)
@@ -148,15 +163,15 @@ class PyModulesManager:
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+    def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
-    def _download_and_install_wheel(
+    async def _download_and_install_wheel(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
-        wheel_file = download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
+        wheel_file = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         module_dir = self._get_local_dir_from_uri(uri)
 
@@ -170,6 +185,7 @@ class PyModulesManager:
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
         try:
+            # TODO(architkulkarni): Use `await check_output_cmd` or similar.
             exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
         finally:
             if Path(wheel_file).exists():
@@ -191,33 +207,23 @@ class PyModulesManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            if is_whl_uri(uri):
-                module_dir = self._download_and_install_wheel(uri=uri, logger=logger)
+        if is_whl_uri(uri):
+            module_dir = await self._download_and_install_wheel(uri=uri, logger=logger)
 
-            else:
-                module_dir = download_and_unpack_package(
-                    uri, self._resources_dir, logger=logger
-                )
+        else:
+            module_dir = await download_and_unpack_package(
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            )
 
-            return get_directory_size_bytes(module_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        return get_directory_size_bytes(module_dir)
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)

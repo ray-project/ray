@@ -62,8 +62,7 @@ closeComment: |
   Thanks again for opening the issue! 
 
 # Limit the number of actions per hour, from 1-30. Default is 30
-# It will check 120 issues per day.
-limitPerRun: 5
+limitPerRun: 30
 
 # Limit to only `issues` or `pulls`
 # only: issues

@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
+.. TODO: We need algorithms, environments, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
 
 .. _rllib-core-concepts:
@@ -10,49 +10,98 @@
 Key Concepts
 ============
 
-On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
-In RLlib you use `trainers` to train `algorithms`.
-These algorithms use `policies` to select actions for your agents.
-Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `execution plans` of your RL experiments.
+On this page, we'll cover the key concepts to help you understand how RLlib works and
+how to use it. In RLlib, you use ``Algorithm``'s to learn how to solve problem ``environments``.
+The algorithms use ``policies`` to select actions. Given a policy,
+``rollouts`` throughout an ``environment`` produce
+``sample batches`` (or ``trajectories``) of experiences.
+You can also customize the ``training_step``\s of your RL experiments.
 
-Trainers
---------
+.. _environments:
 
-Trainers bring all RLlib components together, making algorithms accessible via RLlib's Python API and its command line interface (CLI).
-They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics.
-Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
+Environments
+------------
 
-You have three ways to interact with a trainer. You can use the basic Python API or the command line to train it, or you
+Solving a problem in RL begins with an **environment**. In the simplest definition of RL:
+
+  An **agent** interacts with an **environment** and receives a reward.
+
+An environment in RL is the agent's world, it is a simulation of the problem to be solved.
+
+.. image:: images/env_key_concept1.png
+
+An RLlib environment consists of: 
+
+1. all possible actions (**action space**)
+2. a complete description of the environment, nothing hidden (**state space**)
+3. an observation by the agent of certain parts of the state (**observation space**)
+4. **reward**, which is the only feedback the agent receives per action.
+
+The model that tries to maximize the expected sum over all future rewards is called a **policy**. The policy is a function mapping the environment's observations to an action to take, usually written **π** (s(t)) -> a(t). Below is a diagram of the RL iterative learning process.
+
+.. image:: images/env_key_concept2.png
+
+The RL simulation feedback loop repeatedly collects data, for one (single-agent case) or multiple (multi-agent case) policies, trains the policies on these collected data, and makes sure the policies' weights are kept in synch. Thereby, the collected environment data contains observations, taken actions, received rewards and so-called **done** flags, indicating the boundaries of different episodes the agents play through in the simulation.
+
+The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
+
+.. _algorithms:
+
+Algorithms
+----------
+
+Algorithms bring all RLlib components together, making learning of different tasks
+accessible via RLlib's Python API and its command line interface (CLI).
+Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
+configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
+An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
+``Algorithms`` also implement the :ref:`Tune Trainable API <tune-60-seconds>` for
+easy experiment management.
+
+You have three ways to interact with an algorithm. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
-The following example shows three equivalent ways of interacting with the ``PPOTrainer``,
+The following example shows three equivalent ways of interacting with ``PPO``,
 which implements the proximal policy optimization algorithm in RLlib.
 
-.. tabbed:: Basic RLlib Trainer
+.. tabbed:: Basic RLlib Algorithm
 
     .. code-block:: python
 
-        trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
+        # Configure.
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+
+        # Build.
+        algo = config.build()
+
+        # Train.
         while True:
-            print(trainer.train())
+            print(algo.train())
+
+
+.. tabbed:: RLlib Algorithms and Tune
+
+    .. code-block:: python
+
+        from ray import tune
+
+        # Configure.
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+
+        # Train via Ray Tune.
+        tune.run("PPO", config=config)
+
 
 .. tabbed:: RLlib Command Line
 
     .. code-block:: bash
 
-        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
-
-.. tabbed:: RLlib Tune Trainer
-
-    .. code-block:: python
-
-        from ray import tune
-        tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
+        rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
-
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Trainer classes leverage parallel iterators to implement the desired computation pattern.
+RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
+Algorithm classes leverage parallel iterators to implement the desired computation pattern.
 The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: images/a2c-arch.svg
@@ -111,11 +160,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
 .. code-block:: python
 
     # Setup policy and rollout workers.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
         policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
+        env_creator=lambda c: gym.make("CartPole-v1"),
         num_workers=10)
 
     while True:
@@ -163,176 +212,187 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
-Execution Plans
----------------
+Training Step Method (``Algorithm.training_step()``)
+----------------------------------------------------
 
-.. TODO all four execution plan snippets below must be tested
+.. TODO all training_step snippets below must be tested
+.. note::
+    It's important to have a good understanding of the basic :ref:`ray core methods <core-walkthrough>` before reading this section.
+    Furthermore, we utilize concepts such as the ``SampleBatch`` (and its more advanced sibling: the ``MultiAgentBatch``),
+    ``RolloutWorker``, and ``Algorithm``, which can be read about on this page
+    and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
-Execution plans let you easily express the execution of an RL algorithm as a sequence of steps that
-occur either sequentially in the learner, or in parallel across many actors.
-Under the hood, RLlib *translates* these plans into ``ray.get()`` and ``ray.wait()`` operations over Ray actors,
-so you easily write high-performance algorithms without needing to manage individual low-level Ray actor calls.
+    Finally, developers who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
+    :ref:`Model <rllib-models-walkthrough>` classes.
 
-Execution plans represent the **dataflow of the RL training job**. For example, the A2C algorithm can be thought
-of a sequence of repeating steps, or *dataflow*, of:
+What is it?
+~~~~~~~~~~~
 
- 1. ``ParallelRollouts``: Generate experiences from many envs in parallel using rollout workers.
- 2. ``ConcatBatches``: The experiences are concatenated into one batch for training.
- 3. ``TrainOneStep``: Take a gradient step with respect to the policy loss, and update the worker weights.
+The ``training_step()`` method of the ``Algorithm`` class defines the repeatable
+execution logic that sits at the core of any algorithm. Think of it as the python implementation
+of an algorithm's pseudocode you can find in research papers.
+You can use ``training_step()`` to express how you want to
+coordinate the collection of samples from the environment(s), the movement of this data to other
+parts of the algorithm, and the updates and management of your policy's weights
+across the different distributed components.
 
-In code, this dataflow can be expressed as the following execution plan, which is a static method that can be overridden in your custom Trainer sub-classes to define new algorithms.
-It takes in a ``WorkerSet`` and config, and returns an iterator over training results:
+**In short, a developer will need to override/modify the ``training_step`` method if they want to
+make custom changes to an existing algorithm, write their own algo from scratch, or implement some algorithm from a paper.**
 
-.. code-block:: python
+When is ``training_step()`` invoked?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    @staticmethod
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-        # type: LocalIterator[SampleBatchType]
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+The ``Algorithm``'s ``training_step()`` method is called:
 
-        # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(workers))
+ 1. when the ``train()`` method of ``Algorithm`` is called (e.g. "manually" by a user that has constructed an ``Algorithm`` instance).
+ 2. when an RLlib Algorithm is being run by Ray Tune. ``training_step()`` will be continuously called till the
+    :ref:`ray tune stop criteria <tune-run-ref>` is met.
 
-        # type: LocalIterator[ResultDict]
-        return StandardMetricsReporting(train_op, workers, config)
+Key Subconcepts
+~~~~~~~~~~~~~~~
 
+In the following, using the example of VPG ("vanilla policy gradient"), we will try to illustrate
+how to use the ``training_step()`` method to implement this algorithm in RLlib.
+The "vanilla policy gradient" algo can be thought of as a sequence of repeating steps, or *dataflow*, of:
 
-As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators implementation <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__).
-The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program.
-A couple other points to note:
+ 1. Sampling (to collect data from an env)
+ 2. Updating the Policy (to learn a behavior)
+ 3. Broadcasting the updated Policy's weights (to make sure all distributed units have the same weights again)
+ 4. Metrics reporting (returning relevant stats from all the above operations with regards to performance and runtime)
 
- - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
- - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
-
-These iterators represent the infinite stream of data items that can be produced from the dataflow.
-Each operator (e.g., ``ConcatBatches``, ``TrainOneStep``), executes an operation over each item and returns a transformed item (e.g., concatenated batches, learner stats from training). Finally, some operators such as TrainOneStep have the *side-effect* of updating the rollout worker weights (that's why ``TrainOneStep`` takes the list of worker actors ``workers`` as an argument).
-
-Understanding and Debugging Execution Plans
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Execution plans are based on Ray `parallel iterators <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
+An example implementation of VPG could look like the following:
 
 .. code-block:: python
 
-    def debug_print(item):
-        print("I saw", type(item))
-        return item
+    def training_step(self) -> ResultDict:
+        # 1. Sampling.
+        train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
 
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
-        .for_each(debug_print) \
-        .for_each(TrainOneStep(workers))
+        # 2. Updating the Policy.
+        train_results = train_one_step(self, train_batch)
 
-You'll see output like this on the console:
+        # 3. Synchronize worker weights.
+        self.workers.sync_weights()
 
-.. code-block:: bash
+        # 4. Return results.
+        return train_results
 
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
+.. note::
+    Note that the ``training_step`` method is deep learning framework agnostic.
+    This means that you should not write PyTorch- or TensorFlow specific code inside this module,
+    allowing for a strict separation of concerns and enabling us to use the same ``training_step()``
+    method for both TF- and PyTorch versions of your algorithms.
+    DL framework specific code should only be added to the
+    :ref:`Policy <rllib-policy-walkthrough>` (e.g. in its loss function(s)) and
+    :ref:`Model <rllib-models-walkthrough>` (e.g. tf.keras or torch.nn neural network code) classes.
 
-It is important to understand that the iterators of an execution plan are evaluated *lazily*. This means that no computation happens until the `trainer <#trainers>`__ tries to read the next item from the iterator (i.e., get the next training result for a ``Trainer.train()`` call).
+Let's further break down our above ``training_step()`` code.
+In the first step, we collect trajectory data from the environment(s):
 
-Execution Plan Concepts
-~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: python
 
-RLlib provides a library of operators `(GitHub link) <https://github.com/ray-project/ray/tree/master/rllib/execution>`__ that can be used in execution plans.
-You can of course write your own operators (which are just normal Python functions).
-As a reminder, operators are simply functions (or stateful function objects) that can be chained on the iterator (e.g., the ``debug_print`` operator above).
-A few categories of operators are summarized below:
+    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
 
-**Rollout ops** (`rollout_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/rollout_ops.py>`__):
-These are functions for generating and working with experiences, including ``ParallelRollouts`` (for generating experiences synchronously or asynchronously), ``ConcatBatches`` (for combining batches together), ``SelectExperiences`` (for selecting relevant experiences in a multi-agent setting), and ``AsyncGradients`` (for computing gradients over new experiences on the fly, asynchronously, as in A3C).
+Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
+(prior to calling ``training_step()``).
+This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
+The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
+fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
+It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
+(exactly one from each remote rollout worker).
 
-**Train ops** (`train_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/train_ops.py>`__):
-These are functions that improve the policy and update workers. The most basic operator, ``TrainOneStep``, take in as input a batch of experiences and emit metrics as output.
-Important operators here include ``TrainOneStep``, ``TrainTFMultiGPU`` (for multi-GPU optimization), ``ComputeGradients`` (to compute gradients without updating the policy), and ``ApplyGradients`` (to apply computed gradients to a policy).
+RLlib includes other utilities, such as the ``AsyncRequestsManager``,
+for facilitating the dataflow between various components in parallel, asyncronous fashion.
+These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
-**Replay ops** (`replay_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/replay_ops.py>`__):
-The main operator provided here is ``StoreToReplayBuffer``, which can save experiences batches to either a local replay buffer or a set of distributed replay actors.
-It has a counterpart, ``Replay``, that produces a new stream of experiences replayed from one of the aforementioned replay buffers.
-Algorithms that use ``StoreToReplayBuffer`` and ``Replay`` are necessarily composed of *multiple sub-dataflows* (different iterators), that are combined with *concurrency ops*.
+The ``train_batch`` is then passed to another utility function: ``train_one_step``.
 
-**Concurrency ops** (`concurrency_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/concurrency_ops.py>`__):
-The main operator provided here is ``Concurrently``, which composes multiple iterators (dataflows) into a single dataflow by executing them in an interleaved fashion.
-The output can be defined to be the mixture of the two dataflows, or filtered to that of one of the sub-dataflows. It has two modes:
+.. code-block:: python
 
-    - ``round_robin``: Alternate taking items from each input dataflow.
-      This ensures a fixed ratio of computations between, e.g., experience generation and experience replay.
-      The ratio can be adjusted by setting ``round_robin_weights``.
-    - ``async``: Execute each input dataflow as fast as possible without blocking.
-      You might want to use this when, e.g., you want replay to proceed as fast as possible irregardless of how fast experiences are being generated.
+    train_results = train_one_step(self, train_batch)
 
-**Metric ops** (`metric_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/metric_ops.py>`__):
-Finally, we provide a ``StandardMetricsReporting`` operator that collects training metrics from the rollout workers in a unified fashion, and returns a stream of training result dicts.
-Execution plans should always end with this operator.
-This metrics op also reports various internal performance metrics stored by other operators in the shared metrics context accessible via ``_get_shared_metrics()``.
+Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for training our Policy.
+Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
-Examples
-~~~~~~~~
+The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
+Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
+holds a copy of the policy.
 
-.. dropdown::  **Example: Asynchrony**
+Now that we updated the local policy (the copy in self.workers.local_worker), we need to make sure
+that the copies in all remote workers (self.workers.remote_workers) have their weights synchronized
+(from the local one):
 
-    Suppose we wanted to make the above A2C example asynchronous (i.e., A3C). We would switch the synchronous ``ParallelRollouts`` operator with ``AsyncGradients``, and use ``ApplyGradients`` to apply gradient updates as fast as they are collected. The ``AsyncGradients`` operator is going to execute rollouts in parallel, compute the policy gradient over the new batches (of size ``rollout_fragment_length``) on the remote workers, and then return a stream of the computed gradients:
+.. code-block:: python
 
-    .. code-block:: python
+    self.workers.sync_weights()
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-            # type: LocalIterator[(ModelGradients, int)]
-            grads = AsyncGradients(workers)
+By calling ``self.workers.sync_weights()``,
+weights are broadcasted from the local worker to the remote workers. See :ref:`rollout worker
+reference docs <rolloutworker-reference-docs>` for further details.
 
-            # type: LocalIterator[_]
-            train_op = grads.for_each(ApplyGradients(workers, update_all=False))
+.. code-block:: python
 
-            # type: LocalIterator[ResultDict]
-            return StandardMetricsReporting(train_op, workers, config)
+    return train_results
 
-    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__.
+A dictionary is expected to be returned that contains the results of the training update.
+It maps keys of type ``str`` to values that are of type ``float`` or to dictionaries of
+the same form, allowing for a nested structure.
 
-.. dropdown:: **Example: Replay**
+For example, a results dictionary could map policy_ids to learning and sampling statistics for that policy:
 
-    Let's try adding a replay buffer to A2C. This can be done as follows by inserting store / replay ops and using ``Concurrently`` to compose them together:
+.. code-block:: python
 
-    .. code-block:: python
+     {
+        'policy_1': {
+                      'learner_stats': {'policy_loss': 6.7291455},
+                      'num_agent_steps_trained': 32
+                   },
+        'policy_2': {
+                     'learner_stats': {'policy_loss': 3.554927},
+                     'num_agent_steps_trained': 32
+                   },
+     }
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-            # Construct a replay buffer.
-            replay_buffer = LocalReplayBuffer(...)
+Training Step Method Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-            # type: LocalIterator[_]
-            store_op = ParallelRollouts(workers, mode="bulk_sync") \
-                .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+RLlib provides a collection of utilities that abstract away common tasks in RL training.
+In particular, if you would like to work with the various ``training_step`` methods or implement your
+own, it's recommended to familiarize yourself first with these following concepts here:
 
-            # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-            replay_op = Replay(local_buffer=replay_buffer) \
-                .for_each(TrainOneStep(workers))
+`Sample Batch <core-concepts.html#sample-batches>`__:
+``SampleBatch`` and ``MultiAgentBatch`` are the two types that we use for storing trajectory data in RLlib. All of our
+RLlib abstractions (policies, replay buffers, etc.) operate on these two types.
 
-            # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-            train_op = Concurrently(
-                [store_op, replay_op], mode="round_robin", output_indexes=[1])
-
-            # type: LocalIterator[ResultDict]
-            return StandardMetricsReporting(train_op, workers, config)
-
-
-    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
-
-
-.. dropdown:: **Example: Multi-agent**
-
-    One of the primary motivations behind execution plans, beyond their conciseness, is to enable complex multi-agent training workflows to be easily composed.
-    For example, suppose one wanted to, in a multi-agent environment, concurrently train one set of agents with ``DQN``, and another set with ``PPO``.
-    This requires stitching together two entirely different distributed dataflows. Fortunately, as we've seen earlier, this is quite simple with the ``Concurrently`` operator.
-
-    Check out the `PPO + DQN multi-agent workflow example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__ for more details.
-    One line to pay particular attention to in this example is the use of ``LocalIterator.duplicate()`` to clone the iterator of experiences into two separate iterators,
-    which are filtered via ``SelectExperiences`` and then consumed by PPO and DQN sub-dataflows respectively.
-
+:ref:`Rollout Workers <rolloutworker-reference-docs>`:
+Rollout workers are an abstraction that wraps a policy (or policies in the case of multi-agent) and an environment.
+From a high level, we can use rollout workers to collect experiences from the environment by calling
+their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
+By default, in RLlib, we create a set of workers that can be used for sampling and training.
+We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
+and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we typically use ``local_worker``
+for training and ``remote_workers`` for sampling.
 
 
-.. include:: /_includes/rllib/announcement_bottom.rst
+:ref:`Train Ops <train-ops-docs>`:
+These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, takes in as
+input a batch of experiences and emits a ``ResultDict`` with metrics as output. For training with GPUs, use
+``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the
+training update.
+
+:ref:`Replay Buffers <replay-buffer-reference-docs>`:
+RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
+buffers that can be used for storing and sampling experiences.
+
+:ref:`Parallel Request Utilities <parallel-requests-docs>`:
+RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
+``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently, in RLlib, it is
+used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
+``synchronous_parallel_sample`` has a more narrow but common usage of synchronously sampling from a set of rollout workers.
+

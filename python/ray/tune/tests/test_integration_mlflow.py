@@ -4,15 +4,17 @@ import unittest
 from collections import namedtuple
 from unittest.mock import patch
 
-from ray.tune.function_runner import wrap_function
-from ray.tune.integration.mlflow import (
-    MLflowLoggerCallback,
-    mlflow_mixin,
-    MLflowTrainableMixin,
-)
-
 from mlflow.tracking import MlflowClient
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+
+from ray.tune.trainable import wrap_function
+from ray.tune.integration.mlflow import (
+    MLflowTrainableMixin,
+    mlflow_mixin,
+)
+from ray.air.integrations.mlflow import (
+    MLflowLoggerCallback,
+)
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
 class MockTrial(
@@ -25,7 +27,7 @@ class MockTrial(
         return self.trial_name
 
 
-class MockMLflowLoggerUtil(MLflowLoggerUtil):
+class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
     def save_artifacts(self, dir, run_id):
         self.artifact_saved = True
         self.artifact_info = {"dir": dir, "run_id": run_id}
@@ -136,7 +138,7 @@ class MLflowTest(unittest.TestCase):
         logger.setup()
         self.assertEqual(logger.tags, tags)
 
-    @patch("ray.tune.integration.mlflow.MLflowLoggerUtil", MockMLflowLoggerUtil)
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
@@ -226,7 +228,8 @@ class MLflowTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -28,7 +28,8 @@ import logging
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -36,7 +37,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -55,12 +56,17 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=0.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=args.local_mode)
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -69,15 +75,16 @@ if __name__ == "__main__":
     }
 
     if args.flat:
-        results = tune.run(
+        results = tune.Tuner(
             "PPO",
-            stop=stop,
-            config={
-                "env": WindyMazeEnv,
-                "num_workers": 0,
-                "framework": args.framework,
-            },
-        )
+            run_config=air.RunConfig(stop=stop),
+            param_space=(
+                PPOConfig()
+                .environment(WindyMazeEnv)
+                .rollouts(num_rollout_workers=0)
+                .framework(args.framework)
+            ).to_dict(),
+        ).fit()
     else:
         maze = WindyMazeEnv(None)
 
@@ -87,33 +94,38 @@ if __name__ == "__main__":
             else:
                 return "high_level_policy"
 
-        config = {
-            "env": HierarchicalWindyMazeEnv,
-            "num_workers": 0,
-            "entropy_coeff": 0.01,
-            "multiagent": {
-                "policies": {
+        config = (
+            PPOConfig()
+            .environment(HierarchicalWindyMazeEnv)
+            .framework(args.framework)
+            .rollouts(num_rollout_workers=0)
+            .training(entropy_coeff=0.01)
+            .multi_agent(
+                policies={
                     "high_level_policy": (
                         None,
                         maze.observation_space,
                         Discrete(4),
-                        {"gamma": 0.9},
+                        PPOConfig.overrides(gamma=0.9),
                     ),
                     "low_level_policy": (
                         None,
                         Tuple([maze.observation_space, Discrete(4)]),
                         maze.action_space,
-                        {"gamma": 0.0},
+                        PPOConfig.overrides(gamma=0.0),
                     ),
                 },
-                "policy_mapping_fn": policy_mapping_fn,
-            },
-            "framework": args.framework,
+                policy_mapping_fn=policy_mapping_fn,
+            )
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        }
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        )
 
-        results = tune.run("PPO", stop=stop, config=config, verbose=1)
+        results = tune.Tuner(
+            "PPO",
+            param_space=config.to_dict(),
+            run_config=air.RunConfig(stop=stop, verbose=1),
+        ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

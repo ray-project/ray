@@ -1,0 +1,20 @@
+<div class="scrollableTable jp-RenderedHTMLCommon">
+  {{ table }}
+</div>
+<style>
+.scrollableTable {
+  overflow-y: auto;
+  max-height: {{ max_height }};
+}
+.scrollableTable table {
+  width: 100%;
+}
+.scrollableTable table :is(th,td) {
+  text-align: left !important;
+}
+.scrollableTable th {
+  background: var(--jp-layout-color1);
+  position: sticky;
+  top: 0;
+}
+</style>

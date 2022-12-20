@@ -14,11 +14,13 @@ import msgpack
 import os
 import pickle
 import setproctitle
+import signal
 import sys
 import threading
 import time
 import traceback
 import _thread
+import typing
 
 from libc.stdint cimport (
     int32_t,
@@ -119,23 +121,25 @@ from ray.exceptions import (
     RaySystemError,
     RayTaskError,
     ObjectStoreFullError,
+    OutOfDiskError,
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
 )
-from ray import external_storage
+from ray._private import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+import ray.cloudpickle as ray_pickle
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode
+from ray._private.utils import decode, DeferSigint
 
 cimport cpython
 
@@ -156,6 +160,27 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
+# The currently executing task, if any. These are used to synchronize task
+# interruption for ray.cancel.
+current_task_id = None
+current_task_id_lock = threading.Lock()
+
+
+class ObjectRefGenerator:
+    def __init__(self, refs):
+        # TODO(swang): As an optimization, can also store the generator
+        # ObjectID so that we don't need to keep individual ref counts for the
+        # inner ObjectRefs.
+        self._refs = refs
+
+    def __iter__(self):
+        while self._refs:
+            yield self._refs.pop(0)
+
+    def __len__(self):
+        return len(self._refs)
+
+
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
@@ -165,11 +190,17 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    elif status.IsOutOfDisk():
+        raise OutOfDiskError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
         raise ValueError(message)
     else:
         raise RaySystemError(message)
@@ -394,19 +425,23 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -480,36 +515,207 @@ cdef raise_if_dependency_failed(arg):
         raise arg
 
 
-cdef execute_task(
+cdef c_bool determine_if_retryable(
+    Exception e,
+    const c_string serialized_retry_exception_allowlist,
+    FunctionDescriptor function_descriptor,
+):
+    """Determine if the provided exception is retryable, according to the
+    (possibly null) serialized exception allowlist.
+
+    If the serialized exception allowlist is an empty string or is None once
+    deserialized, the exception is considered retryable and we return True.
+
+    This method can raise an exception if:
+        - Deserialization of exception allowlist fails (TypeError)
+        - Exception allowlist is not None and not a tuple (AssertionError)
+    """
+    if len(serialized_retry_exception_allowlist) == 0:
+        # No exception allowlist specified, default to all retryable.
+        return True
+
+    # Deserialize exception allowlist and check that the exception is in the allowlist.
+    try:
+        exception_allowlist = ray_pickle.loads(
+            serialized_retry_exception_allowlist,
+        )
+    except TypeError as inner_e:
+        # Exception allowlist deserialization failed.
+        msg = (
+            "Could not deserialize the retry exception allowlist "
+            f"for task {function_descriptor.repr}. "
+            "Check "
+            "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+            "for more information.")
+        raise TypeError(msg) from inner_e
+
+    if exception_allowlist is None:
+        # No exception allowlist specified, default to all retryable.
+        return True
+
+    # Python API should have converted the list of exceptions to a tuple.
+    assert isinstance(exception_allowlist, tuple)
+
+    # Check that e is in allowlist.
+    return isinstance(e, exception_allowlist)
+
+cdef store_task_errors(
+        worker,
+        exc,
+        task_exception,
+        actor,
+        function_name,
+        CTaskType task_type,
+        proctitle,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        ):
+    cdef:
+        CoreWorker core_worker = worker.core_worker
+
+    # If the debugger is enabled, drop into the remote pdb here.
+    if "RAY_PDB" in os.environ:
+        ray.util.pdb.post_mortem()
+
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=task_exception)
+
+    # Generate the actor repr from the actor class.
+    actor_repr = repr(actor) if actor else None
+
+    if isinstance(exc, RayTaskError):
+        # Avoid recursive nesting of RayTaskError.
+        failure_object = RayTaskError(function_name, backtrace,
+                                      exc.cause, proctitle=proctitle,
+                                      actor_repr=actor_repr)
+    else:
+        failure_object = RayTaskError(function_name, backtrace,
+                                      exc, proctitle=proctitle,
+                                      actor_repr=actor_repr)
+    errors = []
+    for _ in range(returns[0].size()):
+        errors.append(failure_object)
+    num_errors_stored = core_worker.store_task_outputs(
+        worker, errors,
+        returns)
+
+    ray._private.utils.push_error_to_driver(
+        worker,
+        ray_constants.TASK_PUSH_ERROR,
+        str(failure_object),
+        job_id=worker.current_job_id)
+    if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+        raise RayActorError.from_task_error(failure_object)
+    return num_errors_stored
+
+cdef execute_dynamic_generator_and_store_task_outputs(
+        generator,
+        const CObjectID &generator_id,
+        CTaskType task_type,
+        const c_string &serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
+        c_bool is_reattempt,
+        function_name,
+        function_descriptor,
+        title):
+    worker = ray._private.worker.global_worker
+    cdef:
+        CoreWorker core_worker = worker.core_worker
+
+    try:
+        core_worker.store_task_outputs(
+            worker, generator,
+            dynamic_returns,
+            generator_id)
+    except Exception as error:
+        is_application_error[0] = True
+        is_retryable_error[0] = determine_if_retryable(
+            error,
+            serialized_retry_exception_allowlist,
+            function_descriptor,
+        )
+        if (
+            is_retryable_error[0]
+            and core_worker.get_current_task_retry_exceptions()
+        ):
+            logger.info("Task failed with retryable exception:"
+                        " {}.".format(
+                            core_worker.get_current_task_id()),
+                        exc_info=True)
+            raise error
+        else:
+            logger.debug("Task failed with unretryable exception:"
+                         " {}.".format(
+                             core_worker.get_current_task_id()),
+                         exc_info=True)
+
+            if not is_reattempt:
+                # If this is the first execution, we should
+                # generate one additional ObjectRef. This last
+                # ObjectRef will contain the error.
+                error_id = (CCoreWorkerProcess.GetCoreWorker()
+                            .AllocateDynamicReturnId())
+                dynamic_returns[0].push_back(
+                        c_pair[CObjectID, shared_ptr[CRayObject]](
+                            error_id, shared_ptr[CRayObject]()))
+
+            # If a generator task fails mid-execution, we fail the
+            # dynamically generated nested ObjectRefs instead of
+            # the top-level ObjectRefGenerator.
+            num_errors_stored = store_task_errors(
+                        worker, error,
+                        False,  # task_exception
+                        None,  # actor
+                        function_name, task_type, title,
+                        dynamic_returns)
+            if num_errors_stored == 0:
+                assert is_reattempt
+                # TODO(swang): The generator task failed and we
+                # also failed to store the error in any of its
+                # return values. This should only occur if the
+                # generator task was re-executed and returned more
+                # values than the initial execution.
+                logger.error(
+                    "Unhandled error: Re-executed generator task "
+                    "returned more than the "
+                    f"{dynamic_returns[0].size()} values returned "
+                    "by the first execution.\n"
+                    "See https://github.com/ray-project/ray/issues/28688.")
+
+
+cdef void execute_task(
+        const CAddress &caller_address,
         CTaskType task_type,
         const c_string name,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
-        const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns,
-        c_bool *is_application_level_error,
+        const c_string serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
-        const c_string c_name_of_concurrency_group_to_execute):
-
-    is_application_level_error[0] = False
-
-    worker = ray.worker.global_worker
+        const c_string c_name_of_concurrency_group_to_execute,
+        c_bool is_reattempt,
+        execution_info,
+        title,
+        task_name) except *:
+    worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
     cdef:
-        dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
-
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -526,44 +732,12 @@ cdef execute_task(
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-
-    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        actor_class = manager.load_actor_class(job_id, function_descriptor)
-        actor_id = core_worker.get_actor_id()
-        actor = actor_class.__new__(actor_class)
-        worker.actors[actor_id] = actor
-        if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-            # Record the actor class via :actor_name: magic token in the log.
-            #
-            # (Phase 1): this covers code run before __init__ finishes.
-            # We need to handle this separately because `__repr__` may not be
-            # runnable until after `__init__` (e.g., if it accesses fields
-            # defined in the constructor).
-            actor_magic_token = "{}{}\n".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-            # Flush to both .out and .err
-            print(actor_magic_token, end="")
-            print(actor_magic_token, file=sys.stderr, end="")
-
-        # Initial eventloops for asyncio for this actor.
-        if core_worker.current_actor_is_asyncio():
-            core_worker.initialize_eventloops_for_actor_concurrency_group(
-                c_defined_concurrency_groups)
-
-    execution_info = execution_infos.get(function_descriptor)
-    if not execution_info:
-        execution_info = manager.get_execution_info(
-            job_id, function_descriptor)
-        execution_infos[function_descriptor] = execution_info
-
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
-    task_name = name.decode("utf-8")
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
-    title = f"ray::{task_name}"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
@@ -579,19 +753,18 @@ cdef execute_task(
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
-        pid = os.getpid()
-        worker_name = f"ray_{class_name}_{pid}"
-        if c_resources.find(b"object_store_memory") != c_resources.end():
-            worker.core_worker.set_object_store_client_options(
-                worker_name,
-                int(ray_constants.from_memory_units(
-                        dereference(
-                            c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
+                if len(inspect.getmembers(
+                        actor.__class__,
+                        predicate=inspect.iscoroutinefunction)) == 0:
+                    raise RayActorError(
+                        f"Failed to create the actor {core_worker.get_actor_id()}. "
+                        "The failure reason is that you set the async flag, "
+                        "but the actor has no any coroutine function.")
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -618,9 +791,9 @@ cdef execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            task_exception = False
-            if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                    and function_name == "__ray_terminate__"):
+            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                     and function_name == "__ray_terminate__") and
+                    ray._config.memory_monitor_refresh_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -631,20 +804,30 @@ cdef execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
-
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
                         async def deserialize_args():
-                            return (ray.worker.global_worker
+                            return (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_in_event_loop(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
                     else:
-                        args = ray.worker.global_worker.deserialize_objects(
-                            metadata_pairs, object_refs)
+                        # Defer task cancellation (SIGINT) until after the task argument
+                        # deserialization context has been left.
+                        # NOTE (Clark): We defer SIGINT until after task argument
+                        # deserialization completes to keep from interrupting
+                        # non-reentrant imports that may be re-entered during error
+                        # serialization or storage.
+                        # See https://github.com/ray-project/ray/issues/30453.
+                        # NOTE (Clark): Signal handlers can only be registered on the
+                        # main thread.
+                        with DeferSigint.create_if_main_thread():
+                            args = (ray._private.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_refs))
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
@@ -659,17 +842,17 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    is_existing = core_worker.is_exiting()
-                    if is_existing:
+                    is_exiting = core_worker.is_exiting()
+                    if is_exiting:
                         title = f"{title}::Exiting"
                         next_title = f"{next_title}::Exiting"
-                    with ray.worker._changeproctitle(title, next_title):
+                    with ray._private.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
-                            ray.worker.global_worker.debugger_breakpoint)
+                            ray._private.worker.global_worker.debugger_breakpoint)
                         if next_breakpoint != b"":
                             # If this happens, the user typed "remote" and
                             # there were no more remote calls left in this
@@ -683,22 +866,35 @@ cdef execute_task(
                                 "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
                                 namespace=ray_constants.KV_NAMESPACE_PDB
                             )
-                            ray.worker.global_worker.debugger_breakpoint = b""
+                            (ray._private.worker.global_worker
+                             .debugger_breakpoint) = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
-                except KeyboardInterrupt as e:
-                    raise TaskCancelledError(
-                            core_worker.get_current_task_id())
                 except Exception as e:
-                    is_application_level_error[0] = True
-                    if core_worker.get_current_task_retry_exceptions():
+                    is_application_error[0] = True
+                    is_retryable_error[0] = determine_if_retryable(
+                        e,
+                        serialized_retry_exception_allowlist,
+                        function_descriptor,
+                    )
+                    if (
+                        is_retryable_error[0]
+                        and core_worker.get_current_task_retry_exceptions()
+                    ):
                         logger.info("Task failed with retryable exception:"
                                     " {}.".format(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
+                    else:
+                        logger.debug("Task failed with unretryable exception:"
+                                     " {}.".format(
+                                        core_worker.get_current_task_id()),
+                                     exc_info=True)
                     raise e
-                if c_return_ids.size() == 1:
+                if returns[0].size() == 1 and not inspect.isgenerator(outputs):
+                    # If there is only one return specified, we should return
+                    # all return values as a single object.
                     outputs = (outputs,)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 # Record actor repr via :actor_name: magic token in the log.
@@ -706,61 +902,210 @@ cdef execute_task(
                 # (Phase 2): after `__init__` finishes, we override the
                 # log prefix with the full repr of the actor. The log monitor
                 # will pick up the updated token.
+                actor_class = manager.load_actor_class(job_id, function_descriptor)
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in
-                        actor_class.__ray_actor_class__.__dict__):
+                        (actor_class.__ray_actor_class__.__repr__
+                         != object.__repr__)):
                     actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
-            # Check for a cancellation that was called when the function
-            # was exiting and was raised after the except block.
-            if not check_signals().ok():
-                task_exception = True
-                raise TaskCancelledError(
-                            core_worker.get_current_task_id())
-            if (c_return_ids.size() > 0 and
-                    len(outputs) != int(c_return_ids.size())):
+
+            if (returns[0].size() > 0 and
+                    not inspect.isgenerator(outputs) and
+                    len(outputs) != int(returns[0].size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
-                        len(outputs), c_return_ids.size()))
+                        len(outputs), returns[0].size()))
+
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
+                num_returns = returns[0].size()
+                if dynamic_returns != NULL:
+                    if not inspect.isgenerator(outputs):
+                        raise ValueError(
+                                "Functions with "
+                                "@ray.remote(num_returns=\"dynamic\" must return a "
+                                "generator")
+                    task_exception = True
+
+                    execute_dynamic_generator_and_store_task_outputs(
+                            outputs,
+                            returns[0][0].first,
+                            task_type,
+                            serialized_retry_exception_allowlist,
+                            dynamic_returns,
+                            is_retryable_error,
+                            is_application_error,
+                            is_reattempt,
+                            function_name,
+                            function_descriptor,
+                            title)
+
+                    task_exception = False
+                    dynamic_refs = []
+                    for idx in range(dynamic_returns.size()):
+                        dynamic_refs.append(ObjectRef(
+                            dynamic_returns[0][idx].first.Binary(),
+                            caller_address.SerializeAsString(),
+                        ))
+                    # Swap out the generator for an ObjectRef generator.
+                    outputs = (ObjectRefGenerator(dynamic_refs), )
+
+                # TODO(swang): For generator tasks, iterating over outputs will
+                # actually run the task. We should run the usual handlers for
+                # task cancellation, retrying on application exception, etc. for
+                # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
-                    worker, outputs, c_return_ids, returns)
-        except Exception as error:
-            # If the debugger is enabled, drop into the remote pdb here.
-            if "RAY_PDB" in os.environ:
-                ray.util.pdb.post_mortem()
+                    worker, outputs,
+                    returns)
+        except Exception as e:
+            num_errors_stored = store_task_errors(
+                    worker, e, task_exception, actor, function_name,
+                    task_type, title, returns)
+            if returns[0].size() > 0 and num_errors_stored == 0:
+                logger.exception(
+                        "Unhandled error: Task threw exception, but all "
+                        f"{returns[0].size()} return values already created. "
+                        "This should only occur when using generator tasks.\n"
+                        "See https://github.com/ray-project/ray/issues/28689.")
 
-            backtrace = ray._private.utils.format_error_message(
-                traceback.format_exc(), task_exception=task_exception)
 
-            # Generate the actor repr from the actor class.
-            actor_repr = repr(actor) if actor else None
+cdef execute_task_with_cancellation_handler(
+        const CAddress &caller_address,
+        CTaskType task_type,
+        const c_string name,
+        const CRayFunction &ray_function,
+        const unordered_map[c_string, double] &c_resources,
+        const c_vector[shared_ptr[CRayObject]] &c_args,
+        const c_vector[CObjectReference] &c_arg_refs,
+        const c_string debugger_breakpoint,
+        const c_string serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
+        # This parameter is only used for actor creation task to define
+        # the concurrency groups of this actor.
+        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
+        const c_string c_name_of_concurrency_group_to_execute,
+        c_bool is_reattempt):
 
-            if isinstance(error, RayTaskError):
-                # Avoid recursive nesting of RayTaskError.
-                failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause, proctitle=title,
-                                              actor_repr=actor_repr)
-            else:
-                failure_object = RayTaskError(function_name, backtrace,
-                                              error, proctitle=title,
-                                              actor_repr=actor_repr)
-            errors = []
-            for _ in range(c_return_ids.size()):
-                errors.append(failure_object)
-            core_worker.store_task_outputs(
-                worker, errors, c_return_ids, returns)
-            ray._private.utils.push_error_to_driver(
-                worker,
-                ray_constants.TASK_PUSH_ERROR,
-                str(failure_object),
-                job_id=worker.current_job_id)
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                raise RayActorError.from_task_error(failure_object)
+    is_application_error[0] = False
+    is_retryable_error[0] = False
+
+    worker = ray._private.worker.global_worker
+    manager = worker.function_actor_manager
+    cdef:
+        dict execution_infos = manager.execution_infos
+        CoreWorker core_worker = worker.core_worker
+        JobID job_id = core_worker.get_current_job_id()
+        TaskID task_id = core_worker.get_current_task_id()
+        CFiberEvent task_done_event
+        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
+
+    task_name = name.decode("utf-8")
+    title = f"ray::{task_name}"
+
+    # Automatically restrict the GPUs available to this task.
+    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+
+    # Initialize the actor if this is an actor creation task. We do this here
+    # before setting the current task ID so that we can get the execution info,
+    # in case executing the main task throws an exception.
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
+    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        actor_class = manager.load_actor_class(job_id, function_descriptor)
+        actor_id = core_worker.get_actor_id()
+        actor = actor_class.__new__(actor_class)
+        worker.actors[actor_id] = actor
+        # Record the actor class via :actor_name: magic token in the log.
+        #
+        # (Phase 1): this covers code run before __init__ finishes.
+        # We need to handle this separately because `__repr__` may not be
+        # runnable until after `__init__` (e.g., if it accesses fields
+        # defined in the constructor).
+        actor_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+        # Flush to both .out and .err
+        print(actor_magic_token, end="")
+        print(actor_magic_token, file=sys.stderr, end="")
+
+        # Initial eventloops for asyncio for this actor.
+        if core_worker.current_actor_is_asyncio():
+            core_worker.initialize_eventloops_for_actor_concurrency_group(
+                c_defined_concurrency_groups)
+
+    execution_info = execution_infos.get(function_descriptor)
+    if not execution_info:
+        execution_info = manager.get_execution_info(
+            job_id, function_descriptor)
+        execution_infos[function_descriptor] = execution_info
+
+    global current_task_id
+
+    try:
+        task_id = (ray._private.worker.
+                   global_worker.core_worker.get_current_task_id())
+        # Set the current task ID, which is checked by a separate thread during
+        # task cancellation. We must do this inside the try block so that, if
+        # the task is interrupted because of cancellation, we will catch the
+        # interrupt error here.
+        with current_task_id_lock:
+            current_task_id = task_id
+
+        execute_task(caller_address,
+                     task_type,
+                     name,
+                     ray_function,
+                     c_resources,
+                     c_args,
+                     c_arg_refs,
+                     debugger_breakpoint,
+                     serialized_retry_exception_allowlist,
+                     returns,
+                     dynamic_returns,
+                     is_retryable_error,
+                     is_application_error,
+                     c_defined_concurrency_groups,
+                     c_name_of_concurrency_group_to_execute,
+                     is_reattempt, execution_info, title, task_name)
+
+        # Check for cancellation.
+        PyErr_CheckSignals()
+
+    except KeyboardInterrupt as e:
+        # Catch and handle task cancellation, which will result in an interrupt being
+        # raised.
+        e = TaskCancelledError(
+            core_worker.get_current_task_id()).with_traceback(e.__traceback__)
+
+        actor = None
+        actor_id = core_worker.get_actor_id()
+        if not actor_id.is_nil():
+            actor = core_worker.actors[actor_id]
+
+        store_task_errors(
+                worker, e,
+                # Task cancellation can happen anytime so we don't really need
+                # to differentiate between mid-task or not.
+                False,  # task_exception
+                actor, execution_info.function_name,
+                task_type, title, returns)
+    finally:
+        with current_task_id_lock:
+            current_task_id = None
+
+        if omp_num_threads_overriden:
+            # Reset the OMP_NUM_THREADS environ if it was set.
+            os.environ.pop("OMP_NUM_THREADS", None)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -782,30 +1127,44 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
         <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef CRayStatus task_execution_handler(
+        const CAddress &caller_address,
         CTaskType task_type,
         const c_string task_name,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
-        const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns,
+        const c_string serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
-        c_bool *is_application_level_error,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
-        const c_string name_of_concurrency_group_to_execute) nogil:
+        const c_string name_of_concurrency_group_to_execute,
+        c_bool is_reattempt) nogil:
+
     with gil, disable_client_hook():
         try:
             try:
-                # The call to execute_task should never raise an exception. If
-                # it does, that indicates that there was an internal error.
-                execute_task(task_type, task_name, ray_function, c_resources,
-                             c_args, c_arg_refs, c_return_ids,
-                             debugger_breakpoint, returns,
-                             is_application_level_error,
-                             defined_concurrency_groups,
-                             name_of_concurrency_group_to_execute)
+                # Exceptions, including task cancellation, should be handled
+                # internal to this call. If it does raise an exception, that
+                # indicates that there was an internal error.
+                execute_task_with_cancellation_handler(
+                        caller_address,
+                        task_type, task_name,
+                        ray_function, c_resources,
+                        c_args, c_arg_refs,
+                        debugger_breakpoint,
+                        serialized_retry_exception_allowlist,
+                        returns,
+                        dynamic_returns,
+                        is_retryable_error,
+                        is_application_error,
+                        defined_concurrency_groups,
+                        name_of_concurrency_group_to_execute,
+                        is_reattempt)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -828,7 +1187,7 @@ cdef CRayStatus task_execution_handler(
                         "occurred while the worker "
                         "was executing a task.")
                     ray._private.utils.push_error_to_driver(
-                        ray.worker.global_worker,
+                        ray._private.worker.global_worker,
                         "worker_crash",
                         traceback_str,
                         job_id=None)
@@ -861,12 +1220,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-cdef c_bool kill_main_task() nogil:
+cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
     with gil:
-        if setproctitle.getproctitle() != "ray::IDLE":
+        task_id_to_kill = TaskID(task_id.Binary())
+        with current_task_id_lock:
+            if current_task_id != task_id_to_kill:
+                return False
             _thread.interrupt_main()
             return True
-        return False
 
 
 cdef CRayStatus check_signals() nogil:
@@ -904,7 +1265,7 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs_to_spill[i].owner_address()
                     .SerializeAsString())
         try:
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
                 urls = external_storage.spill_objects(
@@ -917,7 +1278,7 @@ cdef c_vector[c_string] spill_objects_handler(
                 "was spilling objects: {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
+                ray._private.worker.global_worker,
                 "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
@@ -938,7 +1299,7 @@ cdef int64_t restore_spilled_objects_handler(
                 object_refs_to_restore,
                 skip_adding_local_ref=False)
         try:
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
                 bytes_restored = external_storage.restore_spilled_objects(
@@ -950,7 +1311,7 @@ cdef int64_t restore_spilled_objects_handler(
             logger.exception(exception_str)
             if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
                 ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
+                    ray._private.worker.global_worker,
                     "restore_objects_error",
                     traceback.format_exc() + exception_str,
                     job_id=None)
@@ -981,7 +1342,7 @@ cdef void delete_spilled_objects_handler(
                 assert False, ("This line shouldn't be reachable.")
 
             # Delete objects.
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     proctitle,
                     original_proctitle):
                 external_storage.delete_spilled_objects(urls)
@@ -991,7 +1352,7 @@ cdef void delete_spilled_objects_handler(
                 "was deleting spilled objects.")
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
+                ray._private.worker.global_worker,
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
@@ -999,7 +1360,7 @@ cdef void delete_spilled_objects_handler(
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
     with gil:
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         data = None
         metadata = None
         if error.HasData():
@@ -1029,10 +1390,10 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         while frame and len(msg_frames) < 4:
             filename = frame.f_code.co_filename
             # Decode Ray internal frames to add annotations.
-            if filename.endswith("ray/worker.py"):
+            if filename.endswith("_private/worker.py"):
                 if frame.f_code.co_name == "put":
                     msg_frames = ["(put object) "]
-            elif filename.endswith("ray/workers/default_worker.py"):
+            elif filename.endswith("_private/workers/default_worker.py"):
                 pass
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
@@ -1042,7 +1403,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 # TODO(ekl) distinguish between actor return objects and
                 # arguments. This can only be done in the core worker.
                 msg_frames = ["(actor call) "]
-            elif filename.endswith("ray/serialization.py"):
+            elif filename.endswith("_private/serialization.py"):
                 if frame.f_code.co_name == "id_deserializer":
                     msg_frames = ["(deserialize task arg) "]
             else:
@@ -1065,7 +1426,7 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 
 cdef void terminate_asyncio_thread() nogil:
     with gil:
-        core_worker = ray.worker.global_worker.core_worker
+        core_worker = ray._private.worker.global_worker.core_worker
         core_worker.stop_and_join_asyncio_threads_if_exist()
 
 
@@ -1084,7 +1445,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token):
+                  startup_token, session_name, entrypoint):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1134,6 +1495,8 @@ cdef class CoreWorker:
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
+        options.session_name = session_name
+        options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1165,6 +1528,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
 
     def get_current_job_id(self):
         return JobID(
@@ -1207,8 +1573,9 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1339,6 +1706,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
+                            generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
@@ -1397,6 +1765,7 @@ cdef class CoreWorker:
                         check_status(
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
+                                        generator_id=CObjectID.Nil(),
                                         owner_address=move(c_owner_address)))
 
         return c_object_id.Binary()
@@ -1410,8 +1779,9 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -1516,6 +1886,7 @@ cdef class CoreWorker:
                     resources,
                     int max_retries,
                     c_bool retry_exceptions,
+                    retry_exception_allowlist,
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
@@ -1523,13 +1894,28 @@ cdef class CoreWorker:
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
+            CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
+            c_string serialized_retry_exception_allowlist
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
+
+        try:
+            serialized_retry_exception_allowlist = ray_pickle.dumps(
+                retry_exception_allowlist,
+            )
+        except TypeError as e:
+            msg = (
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
+                "Check "
+                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                "for more information.")
+            raise TypeError(msg) from e
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1539,17 +1925,18 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
-            # NOTE(edoakes): releasing the GIL while calling this method causes
-            # segfaults. See relevant issue for details:
-            # https://github.com/ray-project/ray/pull/12803
-            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                ray_function, args_vector, CTaskOptions(
-                    name, num_returns, c_resources,
-                    b"",
-                    serialized_runtime_env_info),
-                max_retries, retry_exceptions,
-                c_scheduling_strategy,
-                debugger_breakpoint)
+            task_options = CTaskOptions(
+                name, num_returns, c_resources,
+                b"",
+                serialized_runtime_env_info)
+            with nogil:
+                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                    ray_function, args_vector, task_options,
+                    max_retries, retry_exceptions,
+                    c_scheduling_strategy,
+                    debugger_breakpoint,
+                    serialized_retry_exception_allowlist,
+                )
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
@@ -1650,7 +2037,8 @@ cdef class CoreWorker:
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
-                            c_bool is_detached):
+                            c_bool is_detached,
+                            double max_cpu_fraction_per_node):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -1675,8 +2063,8 @@ cdef class CoreWorker:
                                 name,
                                 c_strategy,
                                 bundles,
-                                is_detached
-                            ),
+                                is_detached,
+                                max_cpu_fraction_per_node),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
@@ -1693,11 +2081,11 @@ cdef class CoreWorker:
 
     def wait_placement_group_ready(self,
                                    PlacementGroupID placement_group_id,
-                                   int32_t timeout_seconds):
+                                   int64_t timeout_seconds):
         cdef CRayStatus status
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
-        cdef int ctimeout_seconds = timeout_seconds
+        cdef int64_t ctimeout_seconds = timeout_seconds
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
                 .WaitPlacementGroupReady(cplacement_group_id, ctimeout_seconds)
@@ -1733,15 +2121,13 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
-            # NOTE(edoakes): releasing the GIL while calling this method causes
-            # segfaults. See relevant issue for details:
-            # https://github.com/ray-project/ray/pull/12803
-            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                c_actor_id,
-                ray_function,
-                args_vector,
-                CTaskOptions(
-                    name, num_returns, c_resources, concurrency_group_name))
+            with nogil:
+                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector,
+                    CTaskOptions(
+                        name, num_returns, c_resources, concurrency_group_name))
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -1831,7 +2217,7 @@ cdef class CoreWorker:
             c_actor_id)
 
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
 
@@ -1852,7 +2238,7 @@ cdef class CoreWorker:
                 actor_method_cpu = 0  # Actor is created by non Python worker.
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
-            method_meta = ray.actor.ActorClassMethodMetadata.create(
+            method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.decorators,
@@ -1946,16 +2332,20 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, &c_owner_address)
+        check_status(op_status)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)
@@ -1982,6 +2372,7 @@ cdef class CoreWorker:
                 serialized_object_status))
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
+                           const CObjectID &generator_id,
                            size_t data_size, shared_ptr[CBuffer] &metadata,
                            const c_vector[CObjectID] &contained_id,
                            int64_t *task_output_inlined_bytes,
@@ -2008,59 +2399,117 @@ cdef class CoreWorker:
                 with nogil:
                     check_status(
                         CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, return_ptr[0]))
+                            return_id, return_ptr[0], generator_id))
             return True
         else:
             with nogil:
                 success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(return_id, return_ptr))
+                           .PinExistingReturnObject(
+                                   return_id, return_ptr, generator_id))
             return success
 
-    cdef store_task_outputs(
-            self, worker, outputs, const c_vector[CObjectID] return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns):
+    cdef store_task_outputs(self,
+                            worker, outputs,
+                            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
+                            *returns,
+                            CObjectID ref_generator_id=CObjectID.Nil()):
         cdef:
             CObjectID return_id
             size_t data_size
             shared_ptr[CBuffer] metadata
             c_vector[CObjectID] contained_id
             int64_t task_output_inlined_bytes
+            int64_t num_returns = -1
+            shared_ptr[CRayObject] *return_ptr
+        num_outputs_stored = 0
+        if not ref_generator_id.IsNil():
+            # The task specified a dynamic number of return values. Determine
+            # the expected number of return values.
+            if returns[0].size() > 0:
+                # We are re-executing the task. We should return the same
+                # number of objects as before.
+                num_returns = returns[0].size()
+            else:
+                # This is the first execution of the task, so we don't know how
+                # many return objects it should have yet.
+                # NOTE(swang): returns could also be empty if the task returned
+                # an empty generator and was re-executed. However, this should
+                # not happen because we never reconstruct empty
+                # ObjectRefGenerators (since these are not stored in plasma).
+                num_returns = -1
+        else:
+            # The task specified how many return values it should have.
+            num_returns = returns[0].size()
 
-        if return_ids.size() == 0:
-            return
+        if num_returns == 0:
+            return num_outputs_stored
 
-        n_returns = len(outputs)
-        returns.resize(n_returns)
         task_output_inlined_bytes = 0
-        for i in range(n_returns):
-            return_id, output = return_ids[i], outputs[i]
+        i = -1
+        for i, output in enumerate(outputs):
+            if num_returns >= 0 and i >= num_returns:
+                raise ValueError(
+                    "Task returned more than num_returns={} objects.".format(
+                        num_returns))
+            while i >= returns[0].size():
+                return_id = (CCoreWorkerProcess.GetCoreWorker()
+                             .AllocateDynamicReturnId())
+                returns[0].push_back(
+                        c_pair[CObjectID, shared_ptr[CRayObject]](
+                            return_id, shared_ptr[CRayObject]()))
+            assert i < returns[0].size()
+            return_id = returns[0][i].first
+            if returns[0][i].second == nullptr:
+                returns[0][i].second = shared_ptr[CRayObject]()
+            return_ptr = &returns[0][i].second
+
+            # Skip return values that we already created.  This can occur if
+            # there were multiple return values, and we initially errored while
+            # trying to create one of them.
+            if (return_ptr.get() != NULL and return_ptr.get().GetData().get()
+                    != NULL):
+                continue
+
             context = worker.get_serialization_context()
+
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
-            if ray.worker.global_worker.debugger_get_breakpoint:
+            if ray._private.worker.global_worker.debugger_get_breakpoint:
                 breakpoint = (
-                    ray.worker.global_worker.debugger_get_breakpoint)
+                    ray._private.worker.global_worker.debugger_get_breakpoint)
                 metadata_str += (
                     b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
                     breakpoint.encode())
                 # Reset debugging context of this worker.
-                ray.worker.global_worker.debugger_get_breakpoint = b""
+                ray._private.worker.global_worker.debugger_get_breakpoint = b""
             metadata = string_to_buffer(metadata_str)
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
             if not self.store_task_output(
                     serialized_object, return_id,
+                    ref_generator_id,
                     data_size, metadata, contained_id,
-                    &task_output_inlined_bytes, &returns[0][i]):
+                    &task_output_inlined_bytes, return_ptr):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
-                        serialized_object, return_id, data_size, metadata,
+                        serialized_object, return_id,
+                        ref_generator_id,
+                        data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
-                        &returns[0][i])
+                        return_ptr)
+            num_outputs_stored += 1
+
+        i += 1
+        if i < num_returns:
+            raise ValueError(
+                    "Task returned {} objects, but num_returns={}.".format(
+                        i, num_returns))
+
+        return num_outputs_stored
 
     cdef c_function_descriptors_to_python(
             self,
@@ -2217,7 +2666,7 @@ cdef class CoreWorker:
 
     def get_actor_call_stats(self):
         cdef:
-            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
+            unordered_map[c_string, c_vector[int64_t]] c_tasks_count
 
         c_tasks_count = (
             CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
@@ -2284,7 +2733,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         objects_to_deserialize)
     ids_to_deserialize = [ObjectRef(object_ref.Binary())]
-    result = ray.worker.global_worker.deserialize_objects(
+    result = ray._private.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
     py_callback = <object>user_callback

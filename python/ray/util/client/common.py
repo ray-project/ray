@@ -1,40 +1,35 @@
+import inspect
+import logging
+import os
+import pickle
+import threading
+import uuid
+from collections import OrderedDict
+from concurrent.futures import Future
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import grpc
+
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client import ray
-from ray.util.client.options import validate_options
-from ray._private.signature import get_signature, extract_signature
-from ray._private.utils import check_oversized_function
-
-from concurrent.futures import Future
-from dataclasses import dataclass
-import grpc
-import os
-import uuid
-import inspect
-import pickle
-from ray.util.inspect import (
-    is_cython,
+from ray._private.inspect_util import (
     is_class_method,
+    is_cython,
     is_function_or_method,
     is_static_method,
 )
-import logging
-import threading
-from collections import OrderedDict
-from typing import Any
-from typing import List
-from typing import Dict
-from typing import Optional
-from typing import Tuple
-from typing import Union
-from typing import Callable
+from ray._private.signature import extract_signature, get_signature
+from ray._private.utils import check_oversized_function
+from ray.util.client import ray
+from ray.util.client.options import validate_options
 
 logger = logging.getLogger(__name__)
 
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
-INT32_MAX = (2 ** 31) - 1
+INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -85,10 +80,10 @@ GRPC_OPTIONS = [
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Large objects are chunked into 64 MiB messages
-OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2 ** 20
+OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2**20
 
 # Warn the user if the object being transferred is larger than 2 GiB
-OBJECT_TRANSFER_WARNING_SIZE = 2 * 2 ** 30
+OBJECT_TRANSFER_WARNING_SIZE = 2 * 2**30
 
 
 class ClientObjectRef(raylet.ObjectRef):

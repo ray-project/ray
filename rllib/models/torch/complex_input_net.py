@@ -32,7 +32,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
     `obs` (e.g. Tuple[img0, img1, discrete0]) -> `CNN0 + CNN1 + ONE-HOT`
     `CNN0 + CNN1 + ONE-HOT` -> concat all flat outputs -> `out`
     `out` -> (optional) FC-stack -> `out2`
-    `out2` -> action (logits) and vaulue heads.
+    `out2` -> action (logits) and value heads.
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
@@ -60,18 +60,19 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         #     "conv_type", "atari")
 
         # Build the CNN(s) given obs_space's image components.
-        self.cnns = {}
-        self.one_hot = {}
+        self.cnns = nn.ModuleDict()
+        self.one_hot = nn.ModuleDict()
         self.flatten_dims = {}
-        self.flatten = {}
+        self.flatten = nn.ModuleDict()
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
+            i = str(i)
             # Image space.
             if len(component.shape) == 3:
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config
-                    else get_filter_config(obs_space.shape),
+                    else get_filter_config(component.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
@@ -100,7 +101,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 if isinstance(component, Discrete):
                     size = component.n
                 else:
-                    size = sum(component.nvec)
+                    size = np.sum(component.nvec)
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),
@@ -115,6 +116,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     name="one_hot_{}".format(i),
                 )
                 concat_size += self.one_hot[i].num_outputs
+                self.add_module("one_hot_{}".format(i), self.one_hot[i])
             # Everything else (1D Box).
             else:
                 size = int(np.product(component.shape))
@@ -133,6 +135,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 )
                 self.flatten_dims[i] = size
                 concat_size += self.flatten[i].num_outputs
+                self.add_module("flatten_{}".format(i), self.flatten[i])
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
@@ -183,14 +186,21 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         # (CNNs, one-hot + FC, etc..).
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):
+            i = str(i)
             if i in self.cnns:
                 cnn_out, _ = self.cnns[i](SampleBatch({SampleBatch.OBS: component}))
                 outs.append(cnn_out)
             elif i in self.one_hot:
-                if component.dtype in [torch.int32, torch.int64, torch.uint8]:
+                if component.dtype in [
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                    torch.uint8,
+                ]:
                     one_hot_in = {
                         SampleBatch.OBS: one_hot(
-                            component, self.flattened_input_space[i]
+                            component, self.flattened_input_space[int(i)]
                         )
                     }
                 else:

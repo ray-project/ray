@@ -1,16 +1,20 @@
+# Requirements to run release tests from the local machine (including client tests)
 click
-anyscale>0.5.0
+# Copy anyscale pin to requirements_buildkite.txt and util.py
+anyscale==0.5.51
 slackclient
 boto3
 jinja2
 PyGithub
-pydantic
+pydantic < 1.10.0
 pyyaml
 typer[all]
 toml
 python-dotenv
 expiringdict
 requests
+protobuf >= 3.15.3, != 3.19.5
 pytz
+retry
 git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray

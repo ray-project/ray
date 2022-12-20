@@ -3,7 +3,9 @@
 Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
 import ray
-from ray import tune
+from ray import air, tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 import argparse
@@ -16,14 +18,22 @@ import torch.optim as optim
 import torch.utils.data
 import numpy as np
 
-from common import beta1, MODEL_PATH
-from common import demo_gan, get_data_loader, plot_images, train, weights_init
-from common import Discriminator, Generator, Net
+from ray.tune.examples.pbt_dcgan_mnist.common import (
+    beta1,
+    MODEL_PATH,
+    demo_gan,
+    get_data_loader,
+    plot_images,
+    train,
+    weights_init,
+    Discriminator,
+    Generator,
+    Net,
+)
 
 
 # __Train_begin__
-def dcgan_train(config, checkpoint_dir=None):
-    step = 0
+def dcgan_train(config):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     netD = Discriminator().to(device)
@@ -37,18 +47,25 @@ def dcgan_train(config, checkpoint_dir=None):
     optimizerG = optim.Adam(
         netG.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999)
     )
-    with FileLock(os.path.expanduser("~/.data.lock")):
+    with FileLock(os.path.expanduser("~/ray_results/.data.lock")):
         dataloader = get_data_loader()
 
-    if checkpoint_dir is not None:
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        checkpoint = torch.load(path)
-        netD.load_state_dict(checkpoint["netDmodel"])
-        netG.load_state_dict(checkpoint["netGmodel"])
-        optimizerD.load_state_dict(checkpoint["optimD"])
-        optimizerG.load_state_dict(checkpoint["optimG"])
-        step = checkpoint["step"]
+    step = 1
+    if session.get_checkpoint():
+        checkpoint_dict = session.get_checkpoint().to_dict()
+        netD.load_state_dict(checkpoint_dict["netDmodel"])
+        netG.load_state_dict(checkpoint_dict["netGmodel"])
+        optimizerD.load_state_dict(checkpoint_dict["optimD"])
+        optimizerG.load_state_dict(checkpoint_dict["optimG"])
+        # Note: Make sure to increment the loaded step by 1 to get the
+        # current step.
+        last_step = checkpoint_dict["step"]
+        step = last_step + 1
 
+        # NOTE: It's important to set the optimizer learning rates
+        # again, since we want to explore the parameters passed in by PBT.
+        # Without this, we would continue using the exact same
+        # configuration as the trial whose checkpoint we are exploiting.
         if "netD_lr" in config:
             for param_group in optimizerD.param_groups:
                 param_group["lr"] = config["netD_lr"]
@@ -68,35 +85,28 @@ def dcgan_train(config, checkpoint_dir=None):
             device,
             config["mnist_model_ref"],
         )
-        step += 1
-        with tune.checkpoint_dir(step=step) as checkpoint_dir:
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            torch.save(
+        checkpoint = None
+        if step % config["checkpoint_interval"] == 0:
+            checkpoint = Checkpoint.from_dict(
                 {
                     "netDmodel": netD.state_dict(),
                     "netGmodel": netG.state_dict(),
                     "optimD": optimizerD.state_dict(),
                     "optimG": optimizerG.state_dict(),
                     "step": step,
-                },
-                path,
+                }
             )
-        tune.report(lossg=lossG, lossd=lossD, is_score=is_score)
+        session.report(
+            {"lossg": lossG, "lossd": lossD, "is_score": is_score},
+            checkpoint=checkpoint,
+        )
+        step += 1
 
 
 # __Train_end__
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing"
-    )
-    parser.add_argument(
-        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
-    )
-    args, _ = parser.parse_known_args()
-    ray.init()
 
+def download_mnist_cnn():
     import urllib.request
 
     # Download a pre-trained MNIST model for inception score calculation.
@@ -109,6 +119,21 @@ if __name__ == "__main__":
             "examples/pbt_dcgan_mnist/mnist_cnn.pt",
             MODEL_PATH,
         )
+    return MODEL_PATH
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
+    parser.add_argument(
+        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
+    )
+    args, _ = parser.parse_known_args()
+    ray.init()
+
+    download_mnist_cnn()
 
     dataloader = get_data_loader(args.data_dir)
     if not args.smoke_test:
@@ -133,30 +158,29 @@ if __name__ == "__main__":
     )
 
     tune_iter = 5 if args.smoke_test else 300
-    analysis = tune.run(
+    tuner = tune.Tuner(
         dcgan_train,
-        name="pbt_dcgan_mnist",
-        scheduler=scheduler,
-        verbose=1,
-        stop={
-            "training_iteration": tune_iter,
-        },
-        metric="is_score",
-        mode="max",
-        num_samples=8,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_dcgan_mnist",
+            stop={"training_iteration": tune_iter},
+            verbose=1,
+        ),
+        tune_config=tune.TuneConfig(
+            metric="is_score",
+            mode="max",
+            num_samples=8,
+            scheduler=scheduler,
+        ),
+        param_space={
             "netG_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "netD_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "mnist_model_ref": mnist_model_ref,
         },
     )
+    results = tuner.fit()
     # __tune_end__
 
     # demo of the trained Generators
     if not args.smoke_test:
-        all_trials = analysis.trials
-        checkpoint_paths = [
-            os.path.join(analysis.get_best_checkpoint(t), "checkpoint")
-            for t in all_trials
-        ]
-        demo_gan(analysis, checkpoint_paths)
+        checkpoint_paths = [result.checkpoint.to_directory() for result in results]
+        demo_gan(checkpoint_paths)

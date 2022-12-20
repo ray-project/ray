@@ -65,12 +65,12 @@ ObjectManager::ObjectManager(
     AddObjectCallback add_object_callback,
     DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    const std::function<void(const ObjectID &)> fail_pull_request)
+    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
-      object_store_internal_(
+      object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
           spill_objects_callback,
           object_store_full_callback,
@@ -97,7 +97,7 @@ ObjectManager::ObjectManager(
                   delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
-          }),
+          })),
       buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
@@ -158,7 +158,10 @@ ObjectManager::ObjectManager(
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
-void ObjectManager::Stop() { plasma::plasma_store_runner->Stop(); }
+void ObjectManager::Stop() {
+  plasma::plasma_store_runner->Stop();
+  object_store_internal_.reset();
+}
 
 bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
@@ -230,9 +233,10 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 }
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                             BundlePriority prio) {
+                             BundlePriority prio,
+                             const TaskMetricsKey &task_key) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, task_key, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
@@ -283,16 +287,17 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
               pull_request,
               [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
                 if (!status.ok()) {
-                  RAY_LOG(WARNING) << "Send pull " << object_id << " request to client "
-                                   << client_id << " failed due to" << status.message();
+                  RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+                      << "Send pull " << object_id << " request to client " << client_id
+                      << " failed due to" << status.message();
                 }
               });
         },
         "ObjectManager.SendPull");
   } else {
-    RAY_LOG(ERROR) << "Couldn't send pull request from " << self_node_id_ << " to "
-                   << client_id << " of object " << object_id
-                   << " , setup rpc connection failed.";
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+        << "Couldn't send pull request from " << self_node_id_ << " to " << client_id
+        << " of object " << object_id << " , setup rpc connection failed.";
   }
 }
 
@@ -556,7 +561,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePush(const rpc::PushRequest &request,
+void ObjectManager::HandlePush(rpc::PushRequest request,
                                rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -622,11 +627,14 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   } else {
     num_chunks_received_failed_due_to_plasma_++;
     RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
+    if (chunk_status.IsOutOfDisk()) {
+      pull_manager_->SetOutOfDisk(object_id);
+    }
     return false;
   }
 }
 
-void ObjectManager::HandlePull(const rpc::PullRequest &request,
+void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::PullReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -639,7 +647,7 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
                                       rpc::FreeObjectsReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;

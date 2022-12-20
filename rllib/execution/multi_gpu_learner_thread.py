@@ -1,7 +1,8 @@
 import logging
-from six.moves import queue
+import queue
 import threading
 
+from ray.util.timer import _Timer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -9,7 +10,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 tf1, tf, tfv = try_import_tf()
@@ -63,21 +63,21 @@ class MultiGPULearnerThread(LearnerThread):
         """Initializes a MultiGPULearnerThread instance.
 
         Args:
-            local_worker (RolloutWorker): Local RolloutWorker holding
+            local_worker: Local RolloutWorker holding
                 policies this thread will call `load_batch_into_buffer` and
                 `learn_on_loaded_batch` on.
-            num_gpus (int): Number of GPUs to use for data-parallel SGD.
-            train_batch_size (int): Size of batches (minibatches if
+            num_gpus: Number of GPUs to use for data-parallel SGD.
+            train_batch_size: Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
-            num_multi_gpu_tower_stacks (int): Number of buffers to parallelly
+            num_multi_gpu_tower_stacks: Number of buffers to parallelly
                 load data into on one device. Each buffer is of size of
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
-            num_sgd_iter (int): Number of passes to learn on per train batch
+            num_sgd_iter: Number of passes to learn on per train batch
                 (minibatch if `num_sgd_iter` > 1).
-            learner_queue_size (int): Max size of queue of inbound
+            learner_queue_size: Max size of queue of inbound
                 train batches to this thread.
-            num_data_load_threads (int): Number of threads to use to load
+            num_data_load_threads: Number of threads to use to load
                 data into GPU memory in parallel.
         """
         # Deprecated: No need to specify as we don't need the actual
@@ -85,7 +85,7 @@ class MultiGPULearnerThread(LearnerThread):
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",
-                error=False,
+                error=True,
             )
         super().__init__(
             local_worker=local_worker,
@@ -153,14 +153,17 @@ class MultiGPULearnerThread(LearnerThread):
 
             for pid in self.policy_map.keys():
                 # Not a policy-to-train.
-                if not self.local_worker.is_policy_to_train(pid):
+                if (
+                    self.local_worker.is_policy_to_train is not None
+                    and not self.local_worker.is_policy_to_train(pid)
+                ):
                     continue
                 policy = self.policy_map[pid]
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
                 )
                 learner_info_builder.add_learn_on_batch_results(default_policy_results)
-                self.weights_updated = True
+                self.policy_ids_updated.append(pid)
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )
@@ -192,8 +195,8 @@ class _MultiGPULoaderThread(threading.Thread):
             self.queue_timer = multi_gpu_learner_thread.queue_timer
             self.load_timer = multi_gpu_learner_thread.load_timer
         else:
-            self.queue_timer = TimerStat()
-            self.load_timer = TimerStat()
+            self.queue_timer = _Timer()
+            self.load_timer = _Timer()
 
     def run(self) -> None:
         while True:
@@ -213,7 +216,10 @@ class _MultiGPULoaderThread(threading.Thread):
         # Load the batch into the idle stack.
         with self.load_timer:
             for pid in policy_map.keys():
-                if not s.local_worker.is_policy_to_train(pid, batch):
+                if (
+                    s.local_worker.is_policy_to_train is not None
+                    and not s.local_worker.is_policy_to_train(pid, batch)
+                ):
                     continue
                 policy = policy_map[pid]
                 if isinstance(batch, SampleBatch):

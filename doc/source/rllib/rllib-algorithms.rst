@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-algorithms-doc:
+
 Algorithms
 ==========
 
@@ -15,14 +17,18 @@ Available Algorithms - Overview
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 Algorithm                      Frameworks Discrete Actions              Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
 ============================== ========== ============================= ================== =========== ============================================================= ===============
-`A2C, A3C`_                    tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`A2C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`A3C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   No
+`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`APPO`_                        tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `ARS`_                         tf + torch **Yes**                       **Yes**            No                                                                        No
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
-`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
-`DDPG`_, `TD3`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`CRR`_                         torch      **Yes** `+parametric`_        **Yes**            **Yes**                                                                   torch
+`DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
+`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
 `Dreamer`_                     torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
@@ -31,11 +37,11 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
 `PG`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`PPO`_, `APPO`_                tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `R2D2`_                        tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
 `SAC`_                         tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
 `SlateQ`_                      tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
-`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`TD3`_                         tf + torch No                            **Yes**            **Yes**                                                                   torch
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
@@ -60,7 +66,6 @@ Algorithm                        Frameworks Discrete Actions        Continuous A
 `Curiosity`_                     tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 ================================ ========== ======================= ================== =========== =====================
 
-.. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
@@ -68,110 +73,94 @@ Algorithm                        Frameworks Discrete Actions        Continuous A
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`Rainbow`: rllib-algorithms.html#dqn
 .. _`+RNN`: rllib-models.html#rnns
-.. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+Attention`: rllib-models.html#attention
 .. _`TS`: rllib-algorithms.html#lints
 .. _`LinUCB`: rllib-algorithms.html#lin-ucb
 
-High-throughput architectures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Offline
+~~~~~~~
 
-.. _apex:
+.. _bc:
 
-Distributed Prioritized Experience Replay (Ape-X)
--------------------------------------------------
+Behavior Cloning (BC; derived from MARWIL implementation)
+---------------------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1803.00933>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
-Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py>`__
 
-.. figure:: images/apex-arch.svg
+Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
+with the only difference being the ``beta`` parameter force-set to 0.0. This makes
+BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
+BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-    Ape-X architecture
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole-bc.yaml>`__
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-apex.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-apex.yaml>`__.
+**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+.. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
+   :members: training
 
-=============  ================================  ========================================
- Atari env     RLlib Ape-X 8-workers             Mnih et al Async DQN 16-workers
-=============  ================================  ========================================
-BeamRider      6134                              ~6000
-Breakout       123                               ~50
-Qbert          15302                             ~1200
-SpaceInvaders  686                               ~600
-=============  ================================  ========================================
+.. _crr:
 
-**Scalability**:
+Critic Regularized Regression (CRR)
+-----------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/2006.15134>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/crr/crr.py>`__
 
-=============  ================================  ========================================
- Atari env     RLlib Ape-X 8-workers @1 hour     Mnih et al Async DQN 16-workers @1 hour
-=============  ================================  ========================================
-BeamRider      4873                              ~1000
-Breakout       77                                ~10
-Qbert          4083                              ~500
-SpaceInvaders  646                               ~300
-=============  ================================  ========================================
+CRR is another offline RL algorithm based on Q-learning that can learn from an offline experience replay.
+The challenge in applying existing Q-learning algorithms to offline RL lies in the overestimation of the Q-function, as well as, the lack of exploration beyond the observed data.
+The latter becomes increasingly important during bootstrapping in the bellman equation, where the Q-function queried for the next state's Q-value(s) does not have support in the observed data.
+To mitigate these issues, CRR implements a simple and yet powerful idea of "value-filtered regression".
+The key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper (see link above).
 
-.. figure:: images/apex.png
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v1-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
 
-    Ape-X using 32 workers in RLlib vs vanilla DQN (orange) and A3C (blue) on PongNoFrameskip-v4.
+.. autoclass:: ray.rllib.algorithms.crr.crr.CRRConfig
+   :members: training
 
-**Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+.. _cql:
 
-.. literalinclude:: ../../../rllib/agents/dqn/apex.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-.. _impala:
-
-Importance Weighted Actor-Learner Architecture (IMPALA)
--------------------------------------------------------
+Conservative Q-Learning (CQL)
+-----------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1802.01561>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/impala/impala.py>`__
-In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
+`[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py>`__
 
-.. figure:: images/impala-arch.svg
+In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples.
+In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via
+conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss.
+This ensures that the critic does not output overly-optimistic Q-values. This conservative
+correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
 
-    IMPALA architecture
+RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__, `vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-vectorized.yaml>`__, `multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-fast.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/atari-impala.yaml>`__
+Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/halfcheetah-cql.yaml>`__, `Hopper Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/hopper-cql.yaml>`__
 
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-=============  ==================================  ====================================
- Atari env     RLlib IMPALA 32-workers             Mnih et al A3C 16-workers
-=============  ==================================  ====================================
-BeamRider      2071                                ~3000
-Breakout       385                                 ~150
-Qbert          4068                                ~1000
-SpaceInvaders  719                                 ~600
-=============  ==================================  ====================================
+.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
+   :members: training
 
-**Scalability:**
+.. _marwil:
 
-=============  ===============================  =================================
- Atari env     RLlib IMPALA 32-workers @1 hour  Mnih et al A3C 16-workers @1 hour
-=============  ===============================  =================================
-BeamRider      3181                             ~1000
-Breakout       538                              ~10
-Qbert          10850                            ~500
-SpaceInvaders  843                              ~300
-=============  ===============================  =================================
+Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
+-----------------------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/marwil.py>`__
 
-.. figure:: images/impala.png
+MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data.
+When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
+MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-   Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
-   The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
 
-**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/impala/impala.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
+   :members: training
+
+Model-free On-policy RL
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. _appo:
 
@@ -179,7 +168,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
 We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
 
 .. tip::
@@ -190,14 +179,12 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
     APPO architecture (same as IMPALA)
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pong-appo.yaml>`__
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/appo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
+   :members: training
 
 .. _ddppo:
 
@@ -205,8 +192,8 @@ Decentralized Distributed Proximal Policy Optimization (DD-PPO)
 ---------------------------------------------------------------
 |pytorch|
 `[paper] <https://arxiv.org/abs/1911.00357>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ddppo.py>`__
-Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddppo/ddppo.py>`__
+Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the algorithm process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
 
 .. tip::
 
@@ -216,154 +203,12 @@ Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized
 
     DD-PPO architecture (both sampling and learning are done on worker GPUs)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari-ddppo.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/atari-ddppo.yaml>`__
 
 **DDPPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/ddppo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-Gradient-based
-~~~~~~~~~~~~~~
-
-.. _a3c:
-
-Advantage Actor-Critic (A2C, A3C)
----------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
-RLlib implements both A2C and A3C. These algorithms scale to 16-32+ worker processes depending on the environment.
-
-A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
-
-.. figure:: images/a2c-arch.svg
-
-    A2C architecture
-
-Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/pong-a3c.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/atari-a2c.yaml>`__
-
-.. tip::
-    Consider using `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ for faster training with similar timestep efficiency.
-
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ========================  ==============================
- Atari env     RLlib A2C 5-workers       Mnih et al A3C 16-workers
-=============  ========================  ==============================
-BeamRider      1401                      ~3000
-Breakout       374                       ~150
-Qbert          3620                      ~1000
-SpaceInvaders  692                       ~600
-=============  ========================  ==============================
-
-**A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/agents/a3c/a3c.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-.. _ddpg:
-
-Deep Deterministic Policy Gradients (DDPG, TD3)
------------------------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/ddpg.py>`__
-DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
-
-.. figure:: images/dqn-arch.svg
-
-    DDPG architecture (same as DQN)
-
-Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-ddpg.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/halfcheetah-ddpg.yaml>`__, `TD3 Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-td3.yaml>`__, `TD3 InvertedPendulum-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/invertedpendulum-td3.yaml>`__, `TD3 Mujoco suite (Ant-v2, HalfCheetah-v2, Hopper-v2, Walker2d-v2) <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mujoco-td3.yaml>`__.
-
-**DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/ddpg/ddpg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-.. _dqn:
-
-Deep Q Networks (DQN, Rainbow, Parametric DQN)
-----------------------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
-DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
-
-.. figure:: images/dqn-arch.svg
-
-    DQN architecture
-
-Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dist-dqn.yaml>`__.
-
-.. tip::
-    Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
-
-.. hint::
-    For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
-    make the following changes to the default DQN config:
-    ``"n_step": [between 1 and 10],
-    "noisy": True,
-    "num_atoms": [more than 1],
-    "v_min": -10.0,
-    "v_max": 10.0``
-    (set ``v_min`` and ``v_max`` according to your expected range of returns).
-
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ========================  =============================  ==============================  ===============================
- Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN
-=============  ========================  =============================  ==============================  ===============================
-BeamRider      2869                      1910                           4447                            ~2000
-Breakout       287                       312                            410                             ~150
-Qbert          3921                      7968                           15780                           ~4000
-SpaceInvaders  650                       1001                           1025                            ~500
-=============  ========================  =============================  ==============================  ===============================
-
-**DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/dqn/dqn.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-
-.. _r2d2:
-
-Recurrent Replay Distributed DQN (R2D2)
----------------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://openreview.net/pdf?id=r1lyTjAqYX>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/r2d2.py>`__
-R2D2 can be scaled by increasing the number of workers. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
-
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/stateless-cartpole-r2d2.yaml>`__
-
-
-.. _pg:
-
-Policy Gradients
-----------------
-|pytorch| |tensorflow|
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`__
-We include a vanilla policy gradients implementation as an example algorithm.
-
-.. figure:: images/a2c-arch.svg
-
-    Policy gradients architecture (same as A2C)
-
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
-
-**PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/pg/pg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ddppo.ddppo.DDPPOConfig
+   :members: training
 
 .. _ppo:
 
@@ -371,7 +216,7 @@ Proximal Policy Optimization (PPO)
 ----------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. PPO scales out using multiple workers for experience collection, and also to multiple GPUs for SGD.
 
 .. tip::
@@ -420,10 +265,288 @@ HalfCheetah    9664                       ~7700
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/ppo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
+   :members: training
+
+.. _impala:
+
+Importance Weighted Actor-Learner Architecture (IMPALA)
+-------------------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1802.01561>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
+In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
+
+.. figure:: images/impala-arch.svg
+
+    IMPALA architecture
+
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__, `vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-vectorized.yaml>`__, `multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-fast.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/atari-impala.yaml>`__
+
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ==================================  ====================================
+ Atari env     RLlib IMPALA 32-workers             Mnih et al A3C 16-workers
+=============  ==================================  ====================================
+BeamRider      2071                                ~3000
+Breakout       385                                 ~150
+Qbert          4068                                ~1000
+SpaceInvaders  719                                 ~600
+=============  ==================================  ====================================
+
+**Scalability:**
+
+=============  ===============================  =================================
+ Atari env     RLlib IMPALA 32-workers @1 hour  Mnih et al A3C 16-workers @1 hour
+=============  ===============================  =================================
+BeamRider      3181                             ~1000
+Breakout       538                              ~10
+Qbert          10850                            ~500
+SpaceInvaders  843                              ~300
+=============  ===============================  =================================
+
+.. figure:: images/impala.png
+
+   Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
+   The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
+
+**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
+   :members: training
+
+.. _a2c:
+
+Advantage Actor-Critic (A2C)
+----------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a2c/a2c.py>`__
+A2C scales to 16-32+ worker processes depending on the environment and supports microbatching
+(i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config.
+Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
+
+.. figure:: images/a2c-arch.svg
+
+    A2C architecture
+
+Tuned examples: `Atari environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a2c/atari-a2c.yaml>`__
+
+.. tip::
+    Consider using `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ for faster training with similar timestep efficiency.
+
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ========================  ==============================
+Atari env      RLlib A2C 5-workers       Mnih et al A3C 16-workers
+=============  ========================  ==============================
+BeamRider      1401                      ~3000
+Breakout       374                       ~150
+Qbert          3620                      ~1000
+SpaceInvaders  692                       ~600
+=============  ========================  ==============================
+
+**A2C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.a2c.a2c.A2CConfig
+   :members: training
+
+.. _a3c:
+
+Asynchronous Advantage Actor-Critic (A3C)
+-----------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__
+A3C is the asynchronous version of A2C, where gradients are computed on the workers directly after trajectory rollouts,
+and only then shipped to a central learner to accumulate these gradients on the central model. After the central model update, parameters are broadcast back to
+all workers.
+Similar to A2C, A3C scales to 16-32+ worker processes depending on the environment.
+
+Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/pong-a3c.yaml>`__
+
+.. tip::
+    Consider using `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ for faster training with similar timestep efficiency.
+
+**A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.a3c.a3c.A3CConfig
+   :members: training
+
+.. _pg:
+
+Policy Gradients (PG)
+---------------------
+|pytorch| |tensorflow|
+`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`__
+We include a vanilla policy gradients implementation as an example algorithm.
+
+.. figure:: images/a2c-arch.svg
+
+    Policy gradients architecture (same as A2C)
+
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
+
+**PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.pg.pg.PGConfig
+   :members: training
+
+.. _maml:
+
+Model-Agnostic Meta-Learning (MAML)
+-----------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1703.03400>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/maml/maml.py>`__
+
+RLlib's MAML implementation is a meta-learning method for learning and quick adaptation across different tasks for continuous control. Code here is adapted from https://github.com/jonasrothfuss, which outperforms vanilla MAML and avoids computation of the higher order gradients during the meta-update step. MAML is evaluated on custom environments that are described in greater detail `here <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__.
+
+MAML uses additional metrics to measure performance; ``episode_reward_mean`` measures the agent's returns before adaptation, ``episode_reward_mean_adapt_N`` measures the agent's returns after N gradient steps of inner adaptation, and ``adaptation_delta`` measures the difference in performance before and after adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/maml>`__.
+
+Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/halfcheetah_rand_direc.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/halfcheetah-rand-direc-maml.yaml>`__), AntRandGoalEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/ant_rand_goal.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/ant-rand-goal-maml.yaml>`__), PendulumMassEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/pendulum_mass.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/pendulum-mass-maml.yaml>`__)
+
+**MAML-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.maml.maml.MAMLConfig
+   :members: training
+   
+Model-free Off-policy RL
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _apex:
+
+Distributed Prioritized Experience Replay (Ape-X)
+-------------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1803.00933>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__
+Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_ddpg/apex_ddpg.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+
+.. figure:: images/apex-arch.svg
+
+    Ape-X architecture
+
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_dqn/pong-apex-dqn.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_ddpg/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_ddpg/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_dqn/atari-apex-dqn.yaml>`__.
+
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ================================  ========================================
+ Atari env     RLlib Ape-X 8-workers             Mnih et al Async DQN 16-workers
+=============  ================================  ========================================
+BeamRider      6134                              ~6000
+Breakout       123                               ~50
+Qbert          15302                             ~1200
+SpaceInvaders  686                               ~600
+=============  ================================  ========================================
+
+**Scalability**:
+
+=============  ================================  ========================================
+ Atari env     RLlib Ape-X 8-workers @1 hour     Mnih et al Async DQN 16-workers @1 hour
+=============  ================================  ========================================
+BeamRider      4873                              ~1000
+Breakout       77                                ~10
+Qbert          4083                              ~500
+SpaceInvaders  646                               ~300
+=============  ================================  ========================================
+
+.. figure:: images/apex.png
+
+    Ape-X using 32 workers in RLlib vs vanilla DQN (orange) and A3C (blue) on PongNoFrameskip-v4.
+
+**Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig
+   :members: training
+
+.. _r2d2:
+
+Recurrent Replay Distributed DQN (R2D2)
+---------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://openreview.net/pdf?id=r1lyTjAqYX>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/r2d2/r2d2.py>`__
+R2D2 can be scaled by increasing the number of workers. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
+
+Tuned examples: `Stateless CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/r2d2/stateless-cartpole-r2d2.yaml>`__
+
+.. _dqn:
+
+Deep Q Networks (DQN, Rainbow, Parametric DQN)
+----------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
+DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
+
+.. figure:: images/dqn-arch.svg
+
+    DQN architecture
+
+Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dist-dqn.yaml>`__.
+
+.. tip::
+    Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
+
+.. hint::
+    For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
+    make the following changes to the default DQN config:
+    ``"n_step": [between 1 and 10],
+    "noisy": True,
+    "num_atoms": [more than 1],
+    "v_min": -10.0,
+    "v_max": 10.0``
+    (set ``v_min`` and ``v_max`` according to your expected range of returns).
+
+**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ========================  =============================  ==============================  ===============================
+ Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN
+=============  ========================  =============================  ==============================  ===============================
+BeamRider      2869                      1910                           4447                            ~2000
+Breakout       287                       312                            410                             ~150
+Qbert          3921                      7968                           15780                           ~4000
+SpaceInvaders  650                       1001                           1025                            ~500
+=============  ========================  =============================  ==============================  ===============================
+
+**DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
+   :members: training
+
+.. _ddpg:
+
+Deep Deterministic Policy Gradients (DDPG)
+------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1509.02971>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/ddpg.py>`__
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X.
+The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
+
+.. figure:: images/dqn-arch.svg
+
+    DDPG architecture (same as DQN)
+
+Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-ddpg.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/halfcheetah-ddpg.yaml>`__.
+
+**DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.ddpg.ddpg.DDPGConfig
+   :members: training
+
+.. _td3:
+
+Twin Delayed DDPG (TD3)
+-----------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1509.02971>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/td3/td3.py>`__
+TD3 represents an improvement over DDPG. Its implementation is available in RLlib as `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__.
+
+Tuned examples: `TD3 Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/pendulum-td3.yaml>`__, `TD3 InvertedPendulum-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/invertedpendulum-td3.yaml>`__, `TD3 Mujoco suite (Ant-v2, HalfCheetah-v2, Hopper-v2, Walker2d-v2) <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/mujoco-td3.yaml>`__.
+
+**TD3-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.td3.td3.TD3Config
+   :members: training
 
 .. _sac:
 
@@ -444,7 +567,7 @@ Tuned examples (continuous actions):
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
 Tuned examples (discrete actions):
-`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
 **MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -456,64 +579,11 @@ HalfCheetah    13000       ~15000
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/sac/sac.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
+   :members: training
 
-.. _maml:
-
-Model-Agnostic Meta-Learning (MAML)
------------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1703.03400>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/maml/maml.py>`__
-
-RLlib's MAML implementation is a meta-learning method for learning and quick adaptation across different tasks for continuous control. Code here is adapted from https://github.com/jonasrothfuss, which outperforms vanilla MAML and avoids computation of the higher order gradients during the meta-update step. MAML is evaluated on custom environments that are described in greater detail `here <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__.
-
-MAML uses additional metrics to measure performance; ``episode_reward_mean`` measures the agent's returns before adaptation, ``episode_reward_mean_adapt_N`` measures the agent's returns after N gradient steps of inner adaptation, and ``adaptation_delta`` measures the difference in performance before and after adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/maml>`__.
-
-Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/halfcheetah_rand_direc.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/halfcheetah-rand-direc-maml.yaml>`__), AntRandGoalEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/ant_rand_goal.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/ant-rand-goal-maml.yaml>`__), PendulumMassEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/pendulum_mass.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/pendulum-mass-maml.yaml>`__)
-
-**MAML-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/maml/maml.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-.. _mbmpo:
-
-Model-Based Meta-Policy-Optimization (MB-MPO)
----------------------------------------------
-|pytorch|
-`[paper] <https://arxiv.org/pdf/1809.05214.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/mbmpo/mbmpo.py>`__
-
-RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns based on the predictions of an ensemble of transition-dynamics models. Similar to MAML, MBMPO metalearns an optimal policy by treating each dynamics model as a different task. Code here is adapted from https://github.com/jonasrothfuss/model_ensemble_meta_learning. Similar to the original paper, MBMPO is evaluated on MuJoCo, with the horizon set to 200 instead of the default 1000.
-
-Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
-
-Tuned examples (continuous actions):
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/pendulum-mbmpo.yaml>`__,
-`HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__,
-`Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__,
-Tuned examples (discrete actions):
-`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
-
-**MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ============  ====================
-MuJoCo env     RLlib MBMPO   Clavera et al MBMPO
-=============  ============  ====================
-HalfCheetah    520           ~550
-Hopper         620           ~650
-=============  ============  ====================
-
-**MBMPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/mbmpo/mbmpo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+Model-based RL
+~~~~~~~~~~~~~~
 
 .. _dreamer:
 
@@ -539,52 +609,40 @@ Cheetah-Run    640             ~800
 
 **Dreamer-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/dreamer/dreamer.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.dreamer.dreamer.DreamerConfig
+   :members: training
 
-.. _slateq:
+.. _mbmpo:
 
-SlateQ
--------
+Model-Based Meta-Policy-Optimization (MB-MPO)
+---------------------------------------------
 |pytorch|
-`[paper] <https://storage.googleapis.com/pub-tools-public-publication-data/pdf/9f91de1fa0ac351ecb12e4062a37afb896aa1463.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/slateq/slateq.py>`__
+`[paper] <https://arxiv.org/pdf/1809.05214.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/mbmpo/mbmpo.py>`__
 
-SlateQ is a model-free RL method that builds on top of DQN and generates recommendation slates for recommender system environments. Since these types of environments come with large combinatorial action spaces, SlateQ mitigates this by decomposing the Q-value into single-item Q-values and solves the decomposed objective via mixing integer programming and deep learning optimization. SlateQ can be evaluated on Google's RecSim `environment <https://github.com/google-research/recsim>`__. `An RLlib wrapper for RecSim can be found here < <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__.
+RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns based on the predictions of an ensemble of transition-dynamics models. Similar to MAML, MBMPO metalearns an optimal policy by treating each dynamics model as a different task. Code here is adapted from https://github.com/jonasrothfuss/model_ensemble_meta_learning. Similar to the original paper, MBMPO is evaluated on MuJoCo, with the horizon set to 200 instead of the default 1000.
 
-RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__
+Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
 
-**SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+Tuned examples (continuous actions):
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/pendulum-mbmpo.yaml>`__,
+`HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__,
+`Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__,
+Tuned examples (discrete actions):
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
 
-.. literalinclude:: ../../../rllib/algorithms/slateq/slateq.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+**MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
-.. _cql:
+=============  ============  ====================
+MuJoCo env     RLlib MBMPO   Clavera et al MBMPO
+=============  ============  ====================
+HalfCheetah    520           ~550
+Hopper         620           ~650
+=============  ============  ====================
 
-Conservative Q-Learning (CQL)
------------------------------------
-|pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py>`__
+**MBMPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples.
-In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via
-conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss.
-This ensures that the critic does not output overly-optimistic Q-values. This conservative
-correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
-
-RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
-
-Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/halfcheetah-cql.yaml>`__, `Hopper Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/hopper-cql.yaml>`__
-
-**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/cql/cql.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig
+   :members: training
 
 Derivative-free
 ~~~~~~~~~~~~~~~
@@ -597,19 +655,17 @@ Augmented Random Search (ARS)
 `[paper] <https://arxiv.org/abs/1803.07055>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ars/ars.py>`__
 ARS is a random search method for training linear policies for continuous control problems. Code here is adapted from https://github.com/modestyachts/ARS to integrate with RLlib APIs.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/swimmer-ars.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/swimmer-ars.yaml>`__
 
 **ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/ars/ars.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ars.ars.ARSConfig
+   :members: training
 
 .. _es:
 
-Evolution Strategies
---------------------
+Evolution Strategies (ES)
+-------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1703.03864>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/es/es.py>`__
 Code here is adapted from https://github.com/openai/evolution-strategies-starter to execute in the distributed setting with Ray.
@@ -625,60 +681,32 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **ES-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/es/es.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.es.es.ESConfig
+   :members: training
 
-.. _marwil:
+RL for recommender systems
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
------------------------------------------------------------
-|pytorch| |tensorflow|
-`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/marwil.py>`__
+.. _slateq:
 
-MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data.
-When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
-MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
+SlateQ
+-------
+|pytorch|
+`[paper] <https://storage.googleapis.com/pub-tools-public-publication-data/pdf/9f91de1fa0ac351ecb12e4062a37afb896aa1463.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/slateq/slateq.py>`__
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
+SlateQ is a model-free RL method that builds on top of DQN and generates recommendation slates for recommender system environments. Since these types of environments come with large combinatorial action spaces, SlateQ mitigates this by decomposing the Q-value into single-item Q-values and solves the decomposed objective via mixing integer programming and deep learning optimization. SlateQ can be evaluated on Google's RecSim `environment <https://github.com/google-research/recsim>`__. `An RLlib wrapper for RecSim can be found here < <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__.
 
-**MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__
 
-.. literalinclude:: ../../../rllib/algorithms/marwil/marwil.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+**SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-
-.. _bc:
-
-Behavior Cloning (BC; derived from MARWIL implementation)
----------------------------------------------------------
-|pytorch| |tensorflow|
-`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/bc.py>`__
-
-Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
-with the only difference being the ``beta`` parameter force-set to 0.0. This makes
-BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
-BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
-
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-bc.yaml>`__
-
-**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/marwil/bc.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-
-.. _bandits:
-
+.. autoclass:: ray.rllib.algorithms.slateq.slateq.SlateQConfig
+   :members: training
+   
 Contextual Bandits
 ~~~~~~~~~~~~~~~~~~
+
+.. _bandits:
 
 The Multi-armed bandit (MAB) problem provides a simplified RL setting that
 involves learning to act under one situation only, i.e. the context (observation/state) and arms (actions/items-to-select) are both fixed.
@@ -699,8 +727,8 @@ named after the exploration strategies that they employ:
 
 .. _lin-ucb:
 
-Linear Upper Confidence Bound (BanditLinUCBTrainer)
----------------------------------------------------
+Linear Upper Confidence Bound (BanditLinUCB)
+--------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
@@ -718,16 +746,13 @@ Tuned examples:
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
+.. autoclass:: ray.rllib.algorithms.bandit.bandit.BanditLinUCBConfig
+   :members: training
 
 .. _lints:
 
-Linear Thompson Sampling (BanditLinTSTrainer)
----------------------------------------------
+Linear Thompson Sampling (BanditLinTS)
+--------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
@@ -744,31 +769,20 @@ Tuned examples:
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.bandit.bandit.BanditLinTSConfig
+   :members: training
 
+Multi-agent
+~~~~~~~~~~~
 
-.. _alphazero:
+.. _parameter:
 
-Single-Player Alpha Zero (AlphaZero)
-------------------------------------
-|pytorch|
-`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be scaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+Parameter Sharing
+-----------------
 
-Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml>`__
+`[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>`__, `[paper] <https://arxiv.org/abs/2005.13625>`__ and `[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__. Parameter sharing refers to a class of methods that take a base single agent method, and use it to learn a single policy for all agents. This simple approach has been shown to achieve state of the art performance in cooperative games, and is usually how you should start trying to learn a multi-agent problem.
 
-**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../../rllib/algorithms/alpha_zero/alpha_zero.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-
-Multi-Agent Methods
-~~~~~~~~~~~~~~~~~~~
+Tuned examples: `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__, `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__, `rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__, `multi-agent cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
 .. _qmix:
 
@@ -781,10 +795,8 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/qmix/qmix.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.qmix.qmix.QMixConfig
+   :members: training
 
 .. _maddpg:
 
@@ -797,27 +809,9 @@ Multi-Agent Deep Deterministic Policy Gradient (MADDPG)
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
-.. literalinclude:: ../../../rllib/algorithms/maddpg/maddpg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig
+   :members: training
 
-.. _parameter:
-
-Parameter Sharing
------------------
-
-`[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>`__, `[paper] <https://arxiv.org/abs/2005.13625>`__ and `[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__. Parameter sharing refers to a class of methods that take a base single agent method, and use it to learn a single policy for all agents. This simple approach has been shown to achieve state of the art performance in cooperative games, and is usually how you should start trying to learn a multi-agent problem.
-
-Tuned examples: `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__, `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__, `rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__, `multi-agent cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
-
-.. _fil:
-
-Fully Independent Learning
---------------------------
-`[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other via single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they do not account for the non-stationarity of the multi-agent environment.
-
-Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
 .. _sc:
 
@@ -828,10 +822,24 @@ Shared Critic Methods
 
 Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
 
+Others
+~~~~~~
 
-Exploration-based plug-ins (can be combined with any algo)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _alphazero:
 
+Single-Player Alpha Zero (AlphaZero)
+------------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be scaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+
+Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml>`__
+
+**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig
+   :members: training
+
+   
 .. _curiosity:
 
 Curiosity (ICM: Intrinsic Curiosity Module)
@@ -847,7 +855,7 @@ Tuned examples:
 
 **Activating Curiosity**
 The curiosity plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config. Most of its parameters usually do not have to be specified
+in the main Algorithm config. Most of its parameters usually do not have to be specified
 as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
@@ -885,7 +893,7 @@ In such environments, agents have to navigate (and change the underlying state o
 For example, the task could be to find a key in some room, pick it up, find a matching door (matching the color of the key), and eventually unlock this door with the key to reach a goal state,
 all the while not seeing any rewards.
 Such problems are impossible to solve with standard RL exploration methods like epsilon-greedy or stochastic sampling.
-The Curiosity module - when configured as the Exploration class to use via the Trainer's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
+The Curiosity module - when configured as the Exploration class to use via the Algorithm's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
 a) a latent space learning ("feature") model, taking an environment observation and outputting a latent vector, which represents this observation and
 b) a "forward" model, predicting the next latent vector, given the current observation vector and an action to take next.
 c) a so-called "inverse" net, only used to train the "feature" net. The inverse net tries to predict the action taken between two latent vectors (obs and next obs).
@@ -897,8 +905,6 @@ Intrinsic rewards for each env-step are calculated by taking the euclidian dista
 ("forward" model).
 This allows the agent to explore areas of the environment, where the "forward" model still performs poorly (are not "understood" yet), whereas exploration to these areas will taper down after the agent has visited them
 often: The "forward" model will eventually get better at predicting these next latent vectors, which in turn will diminish the intrinsic rewards (decrease the euclidian distance between predicted and actual vectors).
-
-
 
 .. _re3:
 
@@ -915,7 +921,7 @@ Examples:
 
 **Activating RE3**
 The RE3 plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
+in the main Algorithm config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
 
@@ -926,7 +932,7 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
     config["exploration_config"] = {
     	"type": "RE3",
          # the dimensionality of the observation embedding vectors in latent space.
-         "embeds_dim": 128, 
+         "embeds_dim": 128,
          "rho": 0.1, # Beta decay factor, used for on-policy algorithm.
          "k_nn": 50, # Number of neighbours to set for K-NN entropy estimation.
          # Configuration for the encoder network, producing embedding vectors from observations.
@@ -937,11 +943,11 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
              "fcnet_activation": "relu",
          },
          # Hyperparameter to choose between exploration and exploitation. A higher value of beta adds
-         # more importance to the intrinsic reward, as per the following equation 
+         # more importance to the intrinsic reward, as per the following equation
          # `reward = r + beta * intrinsic_reward`
          "beta": 0.2,
          # Schedule to use for beta decay, one of constant" or "linear_decay".
-         "beta_schedule": 'constant', 
+         "beta_schedule": 'constant',
          # Specify, which exploration sub-type to use (usually, the algo's "default"
          # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
          "sub_exploration": {
@@ -960,6 +966,14 @@ using the state entropy as "intrinsic rewards".
 This exploration objective can be used with both model-free and model-based RL algorithms. 
 RE3 uses a randomly initialized encoder to get the state’s latent representation, thus taking away the complexity of training the representation learning method. The encoder weights are fixed during the entire duration of the training process. 
 
+.. _fil:
+
+Fully Independent Learning
+--------------------------
+`[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other via single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they do not account for the non-stationarity of the multi-agent environment.
+
+Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
+
 
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
@@ -968,5 +982,3 @@ RE3 uses a randomly initialized encoder to get the state’s latent representati
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 24
-
-.. include:: /_includes/rllib/announcement_bottom.rst

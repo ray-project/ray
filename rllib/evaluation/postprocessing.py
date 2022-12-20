@@ -68,7 +68,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         for j in range(1, n_step):
             if i + j < len_:
                 batch[SampleBatch.REWARDS][i] += (
-                    gamma ** j * batch[SampleBatch.REWARDS][i + j]
+                    gamma**j * batch[SampleBatch.REWARDS][i + j]
                 )
 
 
@@ -178,7 +178,27 @@ def compute_gae_for_sample_batch(
         input_dict = sample_batch.get_single_step_input_dict(
             policy.model.view_requirements, index="last"
         )
-        last_r = policy._value(**input_dict)
+
+        if policy.config["_enable_rl_module_api"]:
+            # Note: During sampling you are using the parameters at the beginning of
+            # the sampling process. If I'll be using this advantages during training
+            # should it not be the latest parameters during training for this to be
+            # correct? Does this mean that I need to preserve the trajectory
+            # information during training and compute the advantages inside the loss
+            # function?
+            # TODO (Kourosh)
+            # Another thing I need to figure out is which end point to call here?
+            # forward_exploration? what if this method is getting called inside the
+            # learner loop? or via another abstraction like
+            # RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
+            # running across different processes for different trajectories?
+            # This implementation right now will compute even the action_dist which
+            # will not be needed but takes time to compute.
+            input_dict = policy._lazy_tensor_dict(input_dict)
+            fwd_out = policy.model.forward_exploration(input_dict)
+            last_r = fwd_out[SampleBatch.VF_PREDS]
+        else:
+            last_r = policy._value(**input_dict)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.

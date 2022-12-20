@@ -8,8 +8,6 @@ pendulum-ddpg:
     config:
         # Works for both torch and tf.
         seed: 42
-        soft_horizon: false
-        no_done_at_end: true
         framework: torch
         # === Model ===
         actor_hiddens: [64, 64]
@@ -28,7 +26,7 @@ pendulum-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        min_sample_timesteps_per_reporting: 600
+        min_sample_timesteps_per_iteration: 600
         target_network_update_freq: 0
         tau: 0.001
 
@@ -37,6 +35,7 @@ pendulum-ddpg:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           worker_side_prioritization: false
+        num_steps_sampled_before_learning_starts: 500
         clip_rewards: False
 
         # === Optimization ===
@@ -45,7 +44,6 @@ pendulum-ddpg:
         use_huber: True
         huber_threshold: 1.0
         l2_reg: 0.000001
-        learning_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 64
 

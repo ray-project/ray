@@ -3,7 +3,8 @@
 import argparse
 import time
 
-from ray import tune
+from ray import air, tune
+from ray.air import session
 from ray.tune.logger import LoggerCallback
 
 
@@ -29,7 +30,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":
@@ -51,19 +52,26 @@ if __name__ == "__main__":
 
         ray.init(f"ray://{args.server_address}")
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="hyperband_test",
-        metric="mean_loss",
-        mode="min",
-        num_samples=5,
-        trial_name_creator=trial_str_creator,
-        callbacks=[TestLoggerCallback()],
-        stop={"training_iteration": 1 if args.smoke_test else 100},
-        config={
+        run_config=air.RunConfig(
+            name="hyperband_test",
+            callbacks=[TestLoggerCallback()],
+            stop={"training_iteration": 1 if args.smoke_test else 100},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            num_samples=5,
+            trial_name_creator=trial_str_creator,
+            trial_dirname_creator=trial_str_creator,
+        ),
+        param_space={
             "steps": 100,
             "width": tune.randint(10, 100),
             "height": tune.loguniform(10, 100),
         },
     )
-    print("Best hyperparameters: ", analysis.best_config)
+    results = tuner.fit()
+
+    print("Best hyperparameters: ", results.get_best_result().config)

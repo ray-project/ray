@@ -1,28 +1,33 @@
-from dataclasses import dataclass, replace
-from enum import Enum
+import asyncio
+import json
 import time
-from typing import Any, Dict, Optional, Tuple
-import pickle
+from dataclasses import dataclass, replace, asdict
+from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, Union
 
-from ray import ray_constants
+from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
+from ray._private.runtime_env.packaging import parse_uri
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
-    _internal_kv_get,
-    _internal_kv_list,
-    _internal_kv_put,
 )
-from ray._private.runtime_env.packaging import parse_uri
+
+from ray.util.annotations import PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
+JOB_ACTOR_NAME_TEMPLATE = (
+    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+)
+# In order to get information about SupervisorActors launched by different jobs,
+# they must be set to the same namespace.
+SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
-# Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
-CURRENT_VERSION = "1"
 
-
+@PublicAPI(stability="stable")
 class JobStatus(str, Enum):
     """An enumeration for describing the status of a job."""
 
@@ -52,6 +57,8 @@ class JobStatus(str, Enum):
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
+# TODO(aguo): Convert to pydantic model
+@PublicAPI(stability="stable")
 @dataclass
 class JobInfo:
     """A class for recording information associated with a job and its execution."""
@@ -73,14 +80,41 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: The quantity of CPU cores to reserve for the entrypoint command.
+    entrypoint_num_cpus: Optional[Union[int, float]] = None
+    #: The number of GPUs to reserve for the entrypoint command.
+    entrypoint_num_gpus: Optional[Union[int, float]] = None
+    #: The quantity of various custom resources to reserve for the entrypoint command.
+    entrypoint_resources: Optional[Dict[str, float]] = None
+    #: Driver agent http address
+    driver_agent_http_address: Optional[str] = None
+    #: The node id that driver running on. It will be None only when the job status
+    # is PENDING, and this field will not be deleted or modified even if the driver dies
+    driver_node_id: Optional[str] = None
 
     def __post_init__(self):
+        if isinstance(self.status, str):
+            self.status = JobStatus(self.status)
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = (
-                    "Job has not started yet, likely waiting "
-                    "for the runtime_env to be set up."
-                )
+                self.message = "Job has not started yet."
+                if any(
+                    [
+                        self.entrypoint_num_cpus is not None
+                        and self.entrypoint_num_cpus > 0,
+                        self.entrypoint_num_gpus is not None
+                        and self.entrypoint_num_gpus > 0,
+                        self.entrypoint_resources not in [None, {}],
+                    ]
+                ):
+                    self.message += (
+                        " It may be waiting for resources "
+                        "(CPUs, GPUs, custom resources) to become available."
+                    )
+                if self.runtime_env not in [None, {}]:
+                    self.message += (
+                        " It may be waiting for the runtime environment to be set up."
+                    )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
@@ -90,64 +124,115 @@ class JobInfo:
             elif self.status == JobStatus.FAILED:
                 self.message = "Job failed."
 
+    def to_json(self) -> Dict[str, Any]:
+        """Convert this object to a JSON-serializable dictionary.
+
+        Returns:
+            A JSON-serializable dictionary representing the JobInfo object.
+        """
+
+        json_dict = asdict(self)
+
+        # Convert enum values to strings.
+        json_dict["status"] = str(json_dict["status"])
+
+        # Assert that the dictionary is JSON-serializable.
+        json.dumps(json_dict)
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, json_dict: Dict[str, Any]) -> None:
+        """Initialize this object from a JSON dictionary.
+
+        Args:
+            json_dict: A JSON dictionary to use to initialize the JobInfo object.
+        """
+        # Convert enum values to enum objects.
+        json_dict["status"] = JobStatus(json_dict["status"])
+
+        return cls(**json_dict)
+
 
 class JobInfoStorageClient:
     """
     Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_DATA_KEY_PREFIX = "_ray_internal_job_info_"
+    JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
-    def __init__(self):
+    def __init__(self, gcs_aio_client: GcsAioClient):
+        self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    def put_info(self, job_id: str, data: JobInfo):
-        _internal_kv_put(
-            self.JOB_DATA_KEY.format(job_id=job_id),
-            pickle.dumps(data),
+    async def put_info(self, job_id: str, job_info: JobInfo):
+        await self._gcs_aio_client.internal_kv_put(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
+            json.dumps(job_info.to_json()).encode(),
+            True,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    def get_info(self, job_id: str) -> Optional[JobInfo]:
-        pickled_info = _internal_kv_get(
-            self.JOB_DATA_KEY.format(job_id=job_id),
+    async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
+        serialized_info = await self._gcs_aio_client.internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
-        if pickled_info is None:
+        if serialized_info is None:
             return None
         else:
-            return pickle.loads(pickled_info)
+            return JobInfo.from_json(json.loads(serialized_info))
 
-    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
+    async def delete_info(self, job_id: str, timeout: int = 30):
+        await self._gcs_aio_client.internal_kv_del(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
+            False,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
+        )
+
+    async def put_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        message: Optional[str] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
-        old_info = self.get_info(job_id)
+        old_info = await self.get_info(job_id)
 
+        if jobinfo_replace_kwargs is None:
+            jobinfo_replace_kwargs = dict()
+        jobinfo_replace_kwargs.update(status=status, message=message)
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
-            new_info = replace(old_info, status=status, message=message)
+            new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
-                entrypoint="Entrypoint not found.", status=status, message=message
+                entrypoint="Entrypoint not found.", **jobinfo_replace_kwargs
             )
 
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
-        self.put_info(job_id, new_info)
+        await self.put_info(job_id, new_info)
 
-    def get_status(self, job_id: str) -> Optional[JobStatus]:
-        job_info = self.get_info(job_id)
+    async def get_status(self, job_id: str) -> Optional[JobStatus]:
+        job_info = await self.get_info(job_id)
         if job_info is None:
             return None
         else:
             return job_info.status
 
-    def get_all_jobs(self) -> Dict[str, JobInfo]:
-        raw_job_ids_with_prefixes = _internal_kv_list(
-            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+    async def get_all_jobs(self, timeout: int = 30) -> Dict[str, JobInfo]:
+        raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
+            self.JOB_DATA_KEY_PREFIX.encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
@@ -158,7 +243,17 @@ class JobInfoStorageClient:
                 self.JOB_DATA_KEY_PREFIX
             ), "Unexpected format for internal_kv key for Job submission"
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
-        return {job_id: self.get_info(job_id) for job_id in job_ids}
+
+        async def get_job_info(job_id: str):
+            job_info = await self.get_info(job_id, timeout)
+            return job_id, job_info
+
+        return {
+            job_id: job_info
+            for job_id, job_info in await asyncio.gather(
+                *[get_job_info(job_id) for job_id in job_ids]
+            )
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
@@ -180,32 +275,45 @@ def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) ->
 
 
 @dataclass
-class VersionResponse:
-    version: str
-    ray_version: str
-    ray_commit: str
-
-
-@dataclass
 class JobSubmitRequest:
     # Command to start execution, ex: "python script.py"
     entrypoint: str
-    # Optional job_id to specify for the job. If the job_id is not specified,
-    # one will be generated. If a job with the same job_id already exists, it
-    # will be rejected.
+    # Optional submission_id to specify for the job. If the submission_id
+    # is not specified, one will be generated. If a job with the same
+    # submission_id already exists, it will be rejected.
+    submission_id: Optional[str] = None
+    # DEPRECATED. Use submission_id instead
     job_id: Optional[str] = None
     # Dict to setup execution environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # Metadata to pass in to the JobConfig.
     metadata: Optional[Dict[str, str]] = None
+    # The quantity of CPU cores to reserve for the execution
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_cpus: Optional[Union[int, float]] = None
+    # The quantity of GPUs to reserve for the execution
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_gpus: Optional[Union[int, float]] = None
+    # The quantity of various custom resources
+    # to reserve for the entrypoint command, separately from any Ray tasks
+    # or actors that are created by it.
+    entrypoint_resources: Optional[Dict[str, float]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
             raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
 
+        if self.submission_id is not None and not isinstance(self.submission_id, str):
+            raise TypeError(
+                "submission_id must be a string if provided, "
+                f"got {type(self.submission_id)}"
+            )
+
         if self.job_id is not None and not isinstance(self.job_id, str):
             raise TypeError(
-                f"job_id must be a string if provided, got {type(self.job_id)}"
+                "job_id must be a string if provided, " f"got {type(self.job_id)}"
             )
 
         if self.runtime_env is not None:
@@ -233,15 +341,58 @@ class JobSubmitRequest:
                             f"metadata values must be strings, got {type(v)}"
                         )
 
+        if self.entrypoint_num_cpus is not None and not isinstance(
+            self.entrypoint_num_cpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_cpus must be a number, "
+                f"got {type(self.entrypoint_num_cpus)}"
+            )
+
+        if self.entrypoint_num_gpus is not None and not isinstance(
+            self.entrypoint_num_gpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_gpus must be a number, "
+                f"got {type(self.entrypoint_num_gpus)}"
+            )
+
+        if self.entrypoint_resources is not None:
+            if not isinstance(self.entrypoint_resources, dict):
+                raise TypeError(
+                    "entrypoint_resources must be a dict, "
+                    f"got {type(self.entrypoint_resources)}"
+                )
+            else:
+                for k in self.entrypoint_resources.keys():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            "entrypoint_resources keys must be strings, "
+                            f"got {type(k)}"
+                        )
+                for v in self.entrypoint_resources.values():
+                    if not isinstance(v, (int, float)):
+                        raise TypeError(
+                            "entrypoint_resources values must be numbers, "
+                            f"got {type(v)}"
+                        )
+
 
 @dataclass
 class JobSubmitResponse:
+    # DEPRECATED: Use submission_id instead.
     job_id: str
+    submission_id: str
 
 
 @dataclass
 class JobStopResponse:
     stopped: bool
+
+
+@dataclass
+class JobDeleteResponse:
+    deleted: bool
 
 
 # TODO(jiaodong): Support log streaming #19415

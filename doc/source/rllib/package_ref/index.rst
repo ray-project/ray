@@ -17,15 +17,18 @@ If you think there is anything missing, please open an issue on `Github`_.
 .. TODO: Eventually, move all reference pages into this dir here (doc/source/rllib/package_ref/)
 
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
 
-   env.rst
-   trainer.rst
-   policy.rst
-   models.rst
-   evaluation.rst
-   offline.rst
-   execution.rst
-   utils.rst
+    algorithm.rst
+    env.rst
+    policy.rst
+    models.rst
+    evaluation.rst
+    offline.rst
+    parallel_requests.rst
+    train_ops.rst
+    replay-buffers.rst
+    utils.rst
+    external-app.rst
 
 .. include:: /_includes/rllib/announcement_bottom.rst

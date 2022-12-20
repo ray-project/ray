@@ -26,7 +26,7 @@ import time
 import ray
 from xgboost_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from release_test_util import train_ray
 
 if __name__ == "__main__":
     # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
@@ -37,7 +37,8 @@ if __name__ == "__main__":
     runtime_env = {
         "env_vars": {
             "NCCL_SOCKET_IFNAME": "ens3",
-        }
+        },
+        "working_dir": os.path.dirname(__file__),
     }
     ray.init(address="auto", runtime_env=runtime_env)
 

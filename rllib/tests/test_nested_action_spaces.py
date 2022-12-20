@@ -6,10 +6,11 @@ import tree  # pip install dm_tree
 import unittest
 
 import ray
-from ray.rllib.algorithms.marwil import BCTrainer
-from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.bc import BC
+from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SPACES = {
@@ -69,47 +70,63 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["output"] = tmp_dir
         # Switch off OPE as we don't write action-probs.
         # TODO: We should probably always write those if `output` is given.
-        config["input_evaluation"] = []
+        config["off_policy_estimation_methods"] = {}
 
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True
 
+        # Remove lr schedule from config, not needed here, and not supported by BC.
+        del config["lr_schedule"]
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
                     "action_space": action_space,
                 }
-                for flatten in [False, True]:
+                for flatten in [True, False]:
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
-                    trainer = PGTrainer(config)
-                    trainer.train()
-                    trainer.stop()
+                    pg = PG(config)
+                    pg.train()
+                    pg.stop()
 
                     # Check actions in output file (whether properly flattened
                     # or not).
                     reader = JsonReader(
                         inputs=config["output"],
-                        ioctx=trainer.workers.local_worker().io_context,
+                        ioctx=pg.workers.local_worker().io_context,
                     )
                     sample_batch = reader.next()
+                    sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
                     if flatten:
                         assert isinstance(sample_batch["actions"], np.ndarray)
                         assert len(sample_batch["actions"].shape) == 2
                         assert sample_batch["actions"].shape[0] == len(sample_batch)
                     else:
                         tree.assert_same_structure(
-                            trainer.get_policy().action_space_struct,
+                            pg.get_policy().action_space_struct,
                             sample_batch["actions"],
                         )
 
-                    # Test, whether offline data can be properly read by a
-                    # BCTrainer, configured accordingly.
-                    config["input"] = config["output"]
+                    # Test, whether offline data can be properly read by
+                    # BC, configured accordingly.
+
+                    # doing this for backwards compatibility until we move to parquet
+                    # as default output
+                    config["input"] = lambda ioctx: JsonReader(
+                        ioctx.config["input_config"]["paths"], ioctx
+                    )
+                    config["input_config"] = {"paths": config["output"]}
                     del config["output"]
-                    bc_trainer = BCTrainer(config=config)
-                    bc_trainer.train()
-                    bc_trainer.stop()
+                    bc = BC(config=config)
+                    bc.train()
+                    bc.stop()
                     config["output"] = tmp_dir
                     config["input"] = "sampler"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

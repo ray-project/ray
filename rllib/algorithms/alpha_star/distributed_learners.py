@@ -3,11 +3,12 @@ from typing import Any, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict
 
 
 class DistributedLearners:
@@ -30,7 +31,7 @@ class DistributedLearners:
         """Initializes a DistributedLearners instance.
 
         Args:
-            config: The Trainer's config dict.
+            config: The Algorithm's config dict.
             max_num_policies_to_train: Maximum number of policies that will ever be
                 trainable. For these policies, we'll have to create remote
                 policy actors, distributed across n "learner shards".
@@ -46,7 +47,7 @@ class DistributedLearners:
                 actor's constructor.
         """
         self.config = config
-        self.num_gpus = self.config["num_gpus"]
+        self.num_gpus = self.config.num_gpus
         self.max_num_policies_to_train = max_num_policies_to_train
         self.replay_actor_class = replay_actor_class
         self.replay_actor_args = replay_actor_args
@@ -147,6 +148,10 @@ class _Shard:
         replay_actor_class,
         replay_actor_args,
     ):
+        # For now, remain in config dict-land (b/c we are dealing with Policy classes
+        # here which do NOT use AlgorithmConfig yet).
+        if isinstance(config, AlgorithmConfig):
+            config = config.to_dict()
         self.config = config
         self.has_replay_buffer = False
         self.max_num_policies = max_num_policies
@@ -161,7 +166,7 @@ class _Shard:
         # Merge the policies config overrides with the main config.
         # Also, adjust `num_gpus` (to indicate an individual policy's
         # num_gpus, not the total number of GPUs).
-        cfg = Trainer.merge_trainer_configs(
+        cfg = Algorithm.merge_trainer_configs(
             self.config,
             dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}),
         )
@@ -207,7 +212,7 @@ class _Shard:
         self,
         policy_id: PolicyID,
         policy_spec: PolicySpec,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         assert self.replay_actor is None
         assert len(self.policy_actors) == 0
@@ -215,6 +220,9 @@ class _Shard:
         actual_policy_class = get_tf_eager_cls_if_necessary(
             policy_spec.policy_class, config
         )
+
+        if isinstance(config, AlgorithmConfig):
+            config = config.to_dict()
 
         colocated = create_colocated_actors(
             actor_specs=[

@@ -13,7 +13,9 @@ worker_node_types:
     - name: worker_node
       # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
       instance_type: m5.2xlarge
-      min_workers: 1
+      # smaller min workers will make the head node cpu usage very high, and crash the head node.
+      # issue: https://github.com/ray-project/ray/issues/18908
+      min_workers: 5
       # 1k max replicas
       max_workers: 130
       use_spot: false

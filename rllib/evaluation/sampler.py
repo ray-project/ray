@@ -1,59 +1,64 @@
-from abc import abstractmethod, ABCMeta
-from collections import defaultdict, namedtuple
 import logging
-import numpy as np
 import queue
 import threading
 import time
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
+from collections import defaultdict, namedtuple
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    List,
     Iterator,
+    List,
     Optional,
     Set,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
-from ray.util.debug import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv, convert_to_base_env
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.env_runner_v2 import (
+    EnvRunnerV2,
+    _fetch_atari_metrics,
+    _get_or_raise,
+    _PerfStats,
+)
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, ASYNC_RESET_RETURN
-from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, MonitorEnv
-from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.filter import Filter
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy, make_action_immutable
-from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, unbatch, unsquash_action
 from ray.rllib.utils.typing import (
-    SampleBatchType,
     AgentID,
-    PolicyID,
-    EnvObsType,
-    EnvInfoDict,
-    EnvID,
-    MultiEnvDict,
     EnvActionType,
+    EnvID,
+    EnvInfoDict,
+    EnvObsType,
+    MultiEnvDict,
+    PolicyID,
+    SampleBatchType,
     TensorStructType,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -76,34 +81,6 @@ class _NewEpisodeDefaultDict(defaultdict):
         else:
             ret = self[env_id] = self.default_factory(env_id)
             return ret
-
-
-class _PerfStats:
-    """Sampler perf stats that will be included in rollout metrics."""
-
-    def __init__(self):
-        self.iters = 0
-        self.raw_obs_processing_time = 0.0
-        self.inference_time = 0.0
-        self.action_processing_time = 0.0
-        self.env_wait_time = 0.0
-        self.env_render_time = 0.0
-
-    def get(self):
-        # Mean multiplicator (1000 = ms -> sec).
-        factor = 1000 / self.iters
-        return {
-            # Raw observation preprocessing.
-            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * factor,
-            # Computing actions through policy.
-            "mean_inference_ms": self.inference_time * factor,
-            # Processing actions (to be sent to env, e.g. clipping).
-            "mean_action_processing_ms": self.action_processing_time * factor,
-            # Waiting for environment (during poll).
-            "mean_env_wait_ms": self.env_wait_time * factor,
-            # Environment rendering (False by default).
-            "mean_env_render_ms": self.env_render_time * factor,
-        }
 
 
 @DeveloperAPI
@@ -177,11 +154,9 @@ class SyncSampler(SamplerInput):
         rollout_fragment_length: int,
         count_steps_by: str = "env_steps",
         callbacks: "DefaultCallbacks",
-        horizon: int = None,
         multiple_episodes_in_batch: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
-        soft_horizon: bool = False,
         no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
@@ -192,6 +167,8 @@ class SyncSampler(SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
+        horizon=DEPRECATED_VALUE,
+        soft_horizon=DEPRECATED_VALUE,
     ):
         """Initializes a SyncSampler instance.
 
@@ -212,7 +189,6 @@ class SyncSampler(SamplerInput):
                 ongoing episode.
             callbacks: The Callbacks object to use when episode
                 events happen during rollout.
-            horizon: Hard-reset the Env after this many timesteps.
             multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
@@ -220,14 +196,11 @@ class SyncSampler(SamplerInput):
                 action space's bounds.
             clip_actions: Whether to clip actions according to the
                 given action_space's bounds.
-            soft_horizon: If True, calculate bootstrapped values as if
-                episode had ended, but don't physically reset the environment
-                when the horizon is hit.
             no_done_at_end: Ignore the done=True at the end of the
                 episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
-            sample_collector_class: An optional Samplecollector sub-class to
+            sample_collector_class: An optional SampleCollector sub-class to
                 use to collect, store, and retrieve environment-, model-,
                 and sampler data.
             render: Whether to try to render the environment after each step.
@@ -245,12 +218,17 @@ class SyncSampler(SamplerInput):
                 deprecation_warning(old="obs_filters")
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
+            if horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="horizon")
+            if soft_horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="soft_horizon", error=True)
 
         self.base_env = convert_to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
-        self.horizon = horizon
         self.extra_batches = queue.Queue()
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema_coef=worker.config.sampler_perf_stats_ema_coef,
+        )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
         self.sample_collector = sample_collector_class(
@@ -263,23 +241,37 @@ class SyncSampler(SamplerInput):
         )
         self.render = render
 
-        # Create the rollout generator to use for calls to `get_data()`.
-        self._env_runner = _env_runner(
-            worker,
-            self.base_env,
-            self.extra_batches.put,
-            self.horizon,
-            normalize_actions,
-            clip_actions,
-            multiple_episodes_in_batch,
-            callbacks,
-            self.perf_stats,
-            soft_horizon,
-            no_done_at_end,
-            observation_fn,
-            self.sample_collector,
-            self.render,
-        )
+        if worker.config.enable_connectors:
+            # Keep a reference to the underlying EnvRunnerV2 instance for
+            # unit testing purpose.
+            self._env_runner_obj = EnvRunnerV2(
+                worker=worker,
+                base_env=self.base_env,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
+                callbacks=callbacks,
+                perf_stats=self.perf_stats,
+                no_done_at_end=no_done_at_end,
+                rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
+                render=self.render,
+            )
+            self._env_runner = self._env_runner_obj.run()
+        else:
+            # Create the rollout generator to use for calls to `get_data()`.
+            self._env_runner = _env_runner(
+                worker,
+                self.base_env,
+                self.extra_batches.put,
+                normalize_actions,
+                clip_actions,
+                multiple_episodes_in_batch,
+                callbacks,
+                self.perf_stats,
+                no_done_at_end,
+                observation_fn,
+                self.sample_collector,
+                self.render,
+            )
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -334,11 +326,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
         rollout_fragment_length: int,
         count_steps_by: str = "env_steps",
         callbacks: "DefaultCallbacks",
-        horizon: Optional[int] = None,
         multiple_episodes_in_batch: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
-        soft_horizon: bool = False,
         no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
@@ -350,6 +340,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
+        horizon=DEPRECATED_VALUE,
+        soft_horizon=DEPRECATED_VALUE,
     ):
         """Initializes an AsyncSampler instance.
 
@@ -368,7 +360,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 a single env_step contains one or more agent_steps, depending
                 on how many agents are present at any given time in the
                 ongoing episode.
-            horizon: Hard-reset the Env after this many timesteps.
             multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
@@ -378,9 +369,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 given action_space's bounds.
             blackhole_outputs: Whether to collect samples, but then
                 not further process or store them (throw away all samples).
-            soft_horizon: If True, calculate bootstrapped values as if
-                episode had ended, but don't physically reset the environment
-                when the horizon is hit.
             no_done_at_end: Ignore the done=True at the end of the
                 episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
@@ -403,6 +391,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 deprecation_warning(old="obs_filters")
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
+            if horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="horizon", error=True)
+            if soft_horizon != DEPRECATED_VALUE:
+                deprecation_warning(old="soft_horizon", error=True)
 
         self.worker = worker
 
@@ -417,7 +409,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.extra_batches = queue.Queue()
         self.metrics_queue = queue.Queue()
         self.rollout_fragment_length = rollout_fragment_length
-        self.horizon = horizon
         self.clip_rewards = clip_rewards
         self.daemon = True
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
@@ -425,9 +416,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
-        self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema_coef=worker.config.sampler_perf_stats_ema_coef,
+        )
         self.shutdown = False
         self.observation_fn = observation_fn
         self.render = render
@@ -441,6 +433,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.rollout_fragment_length,
             count_steps_by=count_steps_by,
         )
+        self.count_steps_by = count_steps_by
 
     @override(threading.Thread)
     def run(self):
@@ -451,10 +444,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise e
 
     def _run(self):
-        # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
+        # We are in a thread: Switch on eager execution mode, iff framework==tf2.
         if (
             tf1
-            and self.worker.policy_config.get("framework", "tf") in ["tf2", "tfe"]
+            and self.worker.config.framework_str == "tf2"
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
@@ -465,22 +458,33 @@ class AsyncSampler(threading.Thread, SamplerInput):
         else:
             queue_putter = self.queue.put
             extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
-        env_runner = _env_runner(
-            self.worker,
-            self.base_env,
-            extra_batches_putter,
-            self.horizon,
-            self.normalize_actions,
-            self.clip_actions,
-            self.multiple_episodes_in_batch,
-            self.callbacks,
-            self.perf_stats,
-            self.soft_horizon,
-            self.no_done_at_end,
-            self.observation_fn,
-            self.sample_collector,
-            self.render,
-        )
+        if self.worker.config.enable_connectors:
+            env_runner = EnvRunnerV2(
+                worker=self.worker,
+                base_env=self.base_env,
+                multiple_episodes_in_batch=self.multiple_episodes_in_batch,
+                callbacks=self.callbacks,
+                perf_stats=self.perf_stats,
+                no_done_at_end=self.no_done_at_end,
+                rollout_fragment_length=self.rollout_fragment_length,
+                count_steps_by=self.count_steps_by,
+                render=self.render,
+            ).run()
+        else:
+            env_runner = _env_runner(
+                self.worker,
+                self.base_env,
+                extra_batches_putter,
+                self.normalize_actions,
+                self.clip_actions,
+                self.multiple_episodes_in_batch,
+                self.callbacks,
+                self.perf_stats,
+                self.no_done_at_end,
+                self.observation_fn,
+                self.sample_collector,
+                self.render,
+            )
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -532,13 +536,11 @@ def _env_runner(
     worker: "RolloutWorker",
     base_env: BaseEnv,
     extra_batch_callback: Callable[[SampleBatchType], None],
-    horizon: Optional[int],
     normalize_actions: bool,
     clip_actions: bool,
     multiple_episodes_in_batch: bool,
     callbacks: "DefaultCallbacks",
     perf_stats: _PerfStats,
-    soft_horizon: bool,
     no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: Optional[SampleCollector] = None,
@@ -550,7 +552,6 @@ def _env_runner(
         worker: Reference to the current rollout worker.
         base_env: Env implementing BaseEnv.
         extra_batch_callback: function to send extra batch data to.
-        horizon: Horizon of the episode.
         multiple_episodes_in_batch: Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
@@ -559,8 +560,6 @@ def _env_runner(
         clip_actions: Whether to clip actions to the space range.
         callbacks: User callbacks to run on episode events.
         perf_stats: Record perf stats into this object.
-        soft_horizon: Calculate rewards but don't reset the
-            environment when the horizon is hit.
         no_done_at_end: Ignore the done=True at the end of the episode
             and instead record done=False.
         observation_fn: Optional multi-agent
@@ -578,44 +577,7 @@ def _env_runner(
     # May be populated with used for image rendering
     simple_image_viewer: Optional["SimpleImageViewer"] = None
 
-    # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
-    # error and continue with max_episode_steps=None.
-    max_episode_steps = None
-    try:
-        max_episode_steps = base_env.get_sub_environments()[0].spec.max_episode_steps
-    except Exception:
-        pass
-
-    # Trainer has a given `horizon` setting.
-    if horizon:
-        # `horizon` is larger than env's limit.
-        if max_episode_steps and horizon > max_episode_steps:
-            # Try to override the env's own max-step setting with our horizon.
-            # If this won't work, throw an error.
-            try:
-                base_env.get_sub_environments()[0].spec.max_episode_steps = horizon
-                base_env.get_sub_environments()[0]._max_episode_steps = horizon
-            except Exception:
-                raise ValueError(
-                    "Your `horizon` setting ({}) is larger than the Env's own "
-                    "timestep limit ({}), which seems to be unsettable! Try "
-                    "to increase the Env's built-in limit to be at least as "
-                    "large as your wanted `horizon`.".format(horizon, max_episode_steps)
-                )
-    # Otherwise, set Trainer's horizon to env's max-steps.
-    elif max_episode_steps:
-        horizon = max_episode_steps
-        logger.debug(
-            "No episode horizon specified, setting it to Env's limit ({}).".format(
-                max_episode_steps
-            )
-        )
-    # No horizon/max_episode_steps -> Episodes may be infinitely long.
-    else:
-        horizon = float("inf")
-        logger.debug("No episode horizon specified, assuming inf.")
-
-    def new_episode(env_id):
+    def _new_episode(env_id):
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
@@ -627,38 +589,23 @@ def _env_runner(
             env_id=env_id,
             worker=worker,
         )
-        # Call each policy's Exploration.on_episode_start method.
-        # Note: This may break the exploration (e.g. ParameterNoise) of
-        # policies in the `policy_map` that have not been recently used
-        # (and are therefore stashed to disk). However, we certainly do not
-        # want to loop through all (even stashed) policies here as that
-        # would counter the purpose of the LRU policy caching.
-        for p in worker.policy_map.cache.values():
-            if getattr(p, "exploration", None) is not None:
-                p.exploration.on_episode_start(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=p.get_session(),
-                )
-        callbacks.on_episode_start(
-            worker=worker,
-            base_env=base_env,
-            policies=worker.policy_map,
-            episode=episode,
-            env_index=env_id,
-        )
         return episode
 
-    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
+    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(_new_episode)
+
+    # Before the very first poll (this will reset all vector sub-environments):
+    # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+    for env_id, sub_env in base_env.get_sub_environments(as_dict=True).items():
+        _create_episode(active_episodes, env_id, callbacks, worker, base_env)
 
     while True:
-        perf_stats.iters += 1
+        perf_stats.incr("iters", 1)
+
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        env_poll_time = time.time() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(summarize(unfiltered_obs)))
@@ -676,15 +623,13 @@ def _env_runner(
             rewards=rewards,
             dones=dones,
             infos=infos,
-            horizon=horizon,
             multiple_episodes_in_batch=multiple_episodes_in_batch,
             callbacks=callbacks,
-            soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
             observation_fn=observation_fn,
             sample_collector=sample_collector,
         )
-        perf_stats.raw_obs_processing_time += time.time() - t1
+        perf_stats.incr("raw_obs_processing_time", time.time() - t1)
         for o in outputs:
             yield o
 
@@ -697,7 +642,7 @@ def _env_runner(
             sample_collector=sample_collector,
             active_episodes=active_episodes,
         )
-        perf_stats.inference_time += time.time() - t2
+        perf_stats.incr("inference_time", time.time() - t2)
 
         # Process results and update episode state.
         t3 = time.time()
@@ -713,13 +658,13 @@ def _env_runner(
             normalize_actions=normalize_actions,
             clip_actions=clip_actions,
         )
-        perf_stats.action_processing_time += time.time() - t3
+        perf_stats.incr("action_processing_time", time.time() - t3)
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
 
         # Try to render the env, if required.
         if render:
@@ -750,7 +695,7 @@ def _env_runner(
                     "uint8/w x h x 3 (RGB) image or handle rendering in a "
                     "window and then return `True`."
                 )
-            perf_stats.env_render_time += time.time() - t5
+            perf_stats.incr("env_render_time", time.time() - t5)
 
 
 def _process_observations(
@@ -762,10 +707,8 @@ def _process_observations(
     rewards: Dict[EnvID, Dict[AgentID, float]],
     dones: Dict[EnvID, Dict[AgentID, bool]],
     infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
-    horizon: int,
     multiple_episodes_in_batch: bool,
     callbacks: "DefaultCallbacks",
-    soft_horizon: bool,
     no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: SampleCollector,
@@ -790,13 +733,10 @@ def _process_observations(
             boolean done flags, returned by a `BaseEnv.poll()` call.
         infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
-        horizon: Horizon of the episode.
         multiple_episodes_in_batch: Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         callbacks: User callbacks to run on episode events.
-        soft_horizon: Calculate rewards but don't reset the
-            environment when the horizon is hit.
         no_done_at_end: Ignore the done=True at the end of the episode
             and instead record done=False.
         observation_fn: Optional multi-agent
@@ -818,33 +758,31 @@ def _process_observations(
     # For each (vectorized) sub-environment.
     # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
-        is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
 
-        if not is_new_episode:
+        # Check for env_id having returned an error instead of a multi-agent obs dict.
+        # This is how our BaseEnv can tell the caller to `poll()` that one of its
+        # sub-environments is faulty and should be restarted (and the ongoing episode
+        # should not be used for training).
+        if isinstance(all_agents_obs, Exception):
+            episode.is_faulty = True
+            assert dones[env_id]["__all__"] is True, (
+                f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
+                "as observation, the dones[__all__] flag must also be set to True!"
+            )
+            # This will be filled with dummy observations below.
+            all_agents_obs = {}
+
+        # If this episode is brand-new, call the episode start callback(s).
+        if episode.started is False:
+            _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
+        else:
             sample_collector.episode_step(episode)
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
-        if dones[env_id]["__all__"] or episode.length >= horizon:
-            hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
+        if dones[env_id]["__all__"]:
             all_agents_done = True
-            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if atari_metrics is not None:
-                for m in atari_metrics:
-                    outputs.append(m._replace(custom_metrics=episode.custom_metrics))
-            else:
-                outputs.append(
-                    RolloutMetrics(
-                        episode.length,
-                        episode.total_reward,
-                        dict(episode.agent_rewards),
-                        episode.custom_metrics,
-                        {},
-                        episode.hist_data,
-                        episode.media,
-                    )
-                )
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -859,7 +797,6 @@ def _process_observations(
                         np.zeros_like, obs_sp.sample()
                     )
         else:
-            hit_horizon = False
             all_agents_done = False
             active_envs.add(env_id)
 
@@ -914,12 +851,12 @@ def _process_observations(
             # Record transition info if applicable.
             if last_observation is None:
                 sample_collector.add_init_obs(
-                    episode,
-                    agent_id,
-                    env_id,
-                    policy_id,
-                    episode.length - 1,
-                    filtered_obs,
+                    episode=episode,
+                    agent_id=agent_id,
+                    env_id=env_id,
+                    policy_id=policy_id,
+                    init_obs=filtered_obs,
+                    t=episode.length - 1,
                 )
             else:
                 # Add actions, rewards, next-obs to collectors.
@@ -932,11 +869,7 @@ def _process_observations(
                     # Reward received after taking a at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (
-                        False
-                        if (no_done_at_end or (hit_horizon and soft_horizon))
-                        else agent_done
-                    ),
+                    SampleBatch.DONES: False if no_done_at_end else agent_done,
                     # Next observation.
                     SampleBatch.NEXT_OBS: filtered_obs,
                 }
@@ -979,7 +912,7 @@ def _process_observations(
         # Exception: The very first env.poll() call causes the env to get reset
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
-        if episode.length > 0:
+        if not episode.is_faulty and episode.length > 0:
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
@@ -988,8 +921,8 @@ def _process_observations(
                 env_index=env_id,
             )
 
-        # Episode is done for all agents (dones[__all__] == True)
-        # or we hit the horizon.
+        # Episode is terminated for all agents:
+        # dones[__all__] == True.
         if all_agents_done:
             is_done = dones[env_id]["__all__"]
             check_dones = is_done and not no_done_at_end
@@ -999,60 +932,111 @@ def _process_observations(
             # MultiAgentBatch from a single episode and add it to "outputs".
             # Otherwise, just postprocess and continue collecting across
             # episodes.
-            ma_sample_batch = sample_collector.postprocess_episode(
-                episode,
-                is_done=is_done or (hit_horizon and not soft_horizon),
-                check_dones=check_dones,
-                build=not multiple_episodes_in_batch,
-            )
-            if ma_sample_batch:
+            # If an episode was marked faulty, perform regular postprocessing
+            # (to e.g. properly flush and clean up the SampleCollector's buffers),
+            # but then discard the entire batch and don't return it.
+            ma_sample_batch = None
+            if not episode.is_faulty or episode.length > 0:
+                ma_sample_batch = sample_collector.postprocess_episode(
+                    episode,
+                    is_done=is_done,
+                    check_dones=check_dones,
+                    build=episode.is_faulty or not multiple_episodes_in_batch,
+                )
+            if not episode.is_faulty:
+                # Call each (in-memory) policy's Exploration.on_episode_end
+                # method.
+                # Note: This may break the exploration (e.g. ParameterNoise) of
+                # policies in the `policy_map` that have not been recently used
+                # (and are therefore stashed to disk). However, we certainly do not
+                # want to loop through all (even stashed) policies here as that
+                # would counter the purpose of the LRU policy caching.
+                for p in worker.policy_map.cache.values():
+                    if getattr(p, "exploration", None) is not None:
+                        p.exploration.on_episode_end(
+                            policy=p,
+                            environment=base_env,
+                            episode=episode,
+                            tf_sess=p.get_session(),
+                        )
+                # Call custom on_episode_end callback.
+                callbacks.on_episode_end(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
+
+            # Now that all callbacks are done and users had the chance to add custom
+            # metrics based on the last observation in the episode, finish up metrics
+            # object and append to `outputs`.
+            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
+            if not episode.is_faulty:
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        outputs.append(
+                            m._replace(
+                                custom_metrics=episode.custom_metrics,
+                                hist_data=episode.hist_data,
+                            )
+                        )
+                else:
+                    outputs.append(
+                        RolloutMetrics(
+                            episode.length,
+                            episode.total_reward,
+                            dict(episode.agent_rewards),
+                            episode.custom_metrics,
+                            {},
+                            episode.hist_data,
+                            episode.media,
+                        )
+                    )
+            else:
+                # Add metrics about a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
+
+            # Only after the RolloutMetrics were appended, append the collected sample
+            # batch, if any.
+            if not episode.is_faulty and ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
-            # Call each (in-memory) policy's Exploration.on_episode_end
-            # method.
-            # Note: This may break the exploration (e.g. ParameterNoise) of
-            # policies in the `policy_map` that have not been recently used
-            # (and are therefore stashed to disk). However, we certainly do not
-            # want to loop through all (even stashed) policies here as that
-            # would counter the purpose of the LRU policy caching.
-            for p in worker.policy_map.cache.values():
-                if getattr(p, "exploration", None) is not None:
-                    p.exploration.on_episode_end(
-                        policy=p,
-                        environment=base_env,
-                        episode=episode,
-                        tf_sess=p.get_session(),
-                    )
-            # Call custom on_episode_end callback.
-            callbacks.on_episode_end(
-                worker=worker,
-                base_env=base_env,
-                policies=worker.policy_map,
-                episode=episode,
-                env_index=env_id,
-            )
-            # Horizon hit and we have a soft horizon (no hard env reset).
-            if hit_horizon and soft_horizon:
-                episode.soft_reset()
-                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
-                    env_id: all_agents_obs
-                }
-            else:
-                del active_episodes[env_id]
-                resetted_obs: Dict[
-                    EnvID, Dict[AgentID, EnvObsType]
+            # Terminated: Try to reset the sub environment.
+            # Clean up old finished episode.
+            del active_episodes[env_id]
+
+            # Create a new episode and call `on_episode_created` callback(s).
+            _create_episode(active_episodes, env_id, callbacks, worker, base_env)
+
+            # The sub environment at index `env_id` might throw an exception
+            # during the following `try_reset()` attempt. If configured with
+            # `restart_failed_sub_environments=True`, the BaseEnv will restart
+            # the affected sub environment (create a new one using its c'tor) and
+            # must reset the recreated sub env right after that.
+            # Should the sub environment fail indefinitely during these
+            # repeated reset attempts, the entire worker will be blocked.
+            # This would be ok, b/c the alternative would be the worker crashing
+            # entirely.
+            while True:
+                resetted_obs: Optional[
+                    Dict[EnvID, Dict[AgentID, EnvObsType]]
                 ] = base_env.try_reset(env_id)
-            # Reset not supported, drop this env from the ready list.
-            if resetted_obs is None:
-                if horizon != float("inf"):
-                    raise ValueError(
-                        "Setting episode horizon requires reset() support "
-                        "from the environment."
-                    )
+                if resetted_obs is None or not isinstance(
+                    resetted_obs[env_id], Exception
+                ):
+                    break
+                else:
+                    # Failed to reset, add metrics about a faulty episode.
+                    outputs.append(RolloutMetrics(episode_faulty=True))
+
             # Creates a new episode if this is not async return.
             # If reset is async, we will get its result in some future poll.
-            elif resetted_obs != ASYNC_RESET_RETURN:
+            if resetted_obs is not None and resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                _call_on_episode_start(new_episode, env_id, callbacks, worker, base_env)
+
+                _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
@@ -1078,20 +1062,20 @@ def _process_observations(
 
                     # Add initial obs to buffer.
                     sample_collector.add_init_obs(
-                        new_episode,
-                        agent_id,
-                        env_id,
-                        policy_id,
-                        new_episode.length - 1,
-                        filtered_obs,
+                        episode=new_episode,
+                        agent_id=agent_id,
+                        env_id=env_id,
+                        policy_id=policy_id,
+                        init_obs=filtered_obs,
+                        t=new_episode.length - 1,
                     )
 
                     item = _PolicyEvalData(
                         env_id,
                         agent_id,
                         filtered_obs,
-                        episode.last_info_for(agent_id) or {},
-                        episode.rnn_state_for(agent_id),
+                        new_episode.last_info_for(agent_id) or {},
+                        new_episode.rnn_state_for(agent_id),
                         None,
                         0.0,
                     )
@@ -1145,6 +1129,7 @@ def _do_policy_eval(
             # have already been changed (mapping fn stay constant
             # within one episode).
             episode = active_episodes[eval_data[0].env_id]
+            _assert_episode_not_faulty(episode)
             policy_id = episode.policy_mapping_fn(
                 eval_data[0].agent_id, episode, worker=episode.worker
             )
@@ -1240,9 +1225,12 @@ def _process_policy_eval_results(
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
             episode: Episode = active_episodes[env_id]
-            episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+            _assert_episode_not_faulty(episode)
+            episode._set_rnn_state(
+                agent_id, tree.map_structure(lambda x: x[i], rnn_out_cols)
+            )
             episode._set_last_extra_action_outs(
-                agent_id, {k: v[i] for k, v in extra_action_out_cols.items()}
+                agent_id, tree.map_structure(lambda x: x[i], extra_action_out_cols)
             )
             if env_id in off_policy_actions and agent_id in off_policy_actions[env_id]:
                 episode._set_last_action(agent_id, off_policy_actions[env_id][agent_id])
@@ -1258,22 +1246,47 @@ def _process_policy_eval_results(
     return actions_to_send
 
 
-def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
-    """Atari games have multiple logical episodes, one per life.
+def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
+    # Make sure we are really creating a new episode here.
+    assert env_id not in active_episodes
 
-    However, for metrics reporting we count full episodes, all lives included.
-    """
-    sub_environments = base_env.get_sub_environments()
-    if not sub_environments:
-        return None
-    atari_out = []
-    for sub_env in sub_environments:
-        monitor = get_wrapper_by_cls(sub_env, MonitorEnv)
-        if not monitor:
-            return None
-        for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew))
-    return atari_out
+    # Create a new episode under the given `env_id` and call the
+    # `on_episode_created` callbacks.
+    new_episode = active_episodes[env_id]
+    # Call `on_episode_created()` callback.
+    callbacks.on_episode_created(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        env_index=env_id,
+        episode=new_episode,
+    )
+    return new_episode
+
+
+def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
+    # Call each policy's Exploration.on_episode_start method.
+    # Note: This may break the exploration (e.g. ParameterNoise) of
+    # policies in the `policy_map` that have not been recently used
+    # (and are therefore stashed to disk). However, we certainly do not
+    # want to loop through all (even stashed) policies here as that
+    # would counter the purpose of the LRU policy caching.
+    for p in worker.policy_map.cache.values():
+        if getattr(p, "exploration", None) is not None:
+            p.exploration.on_episode_start(
+                policy=p,
+                environment=base_env,
+                episode=episode,
+                tf_sess=p.get_session(),
+            )
+    callbacks.on_episode_start(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        episode=episode,
+        env_index=env_id,
+    )
+    episode.started = True
 
 
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
@@ -1281,26 +1294,9 @@ def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
 
 
-def _get_or_raise(
-    mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]], policy_id: PolicyID
-) -> Union[Policy, Preprocessor, Filter]:
-    """Returns an object under key `policy_id` in `mapping`.
-
-    Args:
-        mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
-            mapping dict from policy id (str) to actual object (Policy,
-            Preprocessor, etc.).
-        policy_id (str): The policy ID to lookup.
-
-    Returns:
-        Union[Policy, Preprocessor, Filter]: The found object.
-
-    Raises:
-        ValueError: If `policy_id` cannot be found in `mapping`.
-    """
-    if policy_id not in mapping:
-        raise ValueError(
-            "Could not find policy for agent: PolicyID `{}` not found "
-            "in policy map, whose keys are `{}`.".format(policy_id, mapping.keys())
+def _assert_episode_not_faulty(episode):
+    if episode.is_faulty:
+        raise AssertionError(
+            "Episodes marked as `faulty` should not be kept in the "
+            f"`active_episodes` map! Episode ID={episode.episode_id}."
         )
-    return mapping[policy_id]

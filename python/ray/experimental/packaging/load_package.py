@@ -10,26 +10,23 @@ runtime environment, which can include:
 You can run this file for an example of loading a "hello world" package.
 """
 
+import hashlib
 import importlib.util
 import os
 import re
-import hashlib
 import subprocess
 import tempfile
+
 import yaml
 
 import ray
-from ray._private.runtime_env.packaging import (
-    get_uri_for_directory,
-    upload_package_if_needed,
-)
 
 
 def load_package(config_path: str) -> "_RuntimePackage":
     """Load the code package given its config path.
 
     Args:
-        config_path (str): The path to the configuration YAML that defines
+        config_path: The path to the configuration YAML that defines
             the package. For documentation on the packaging format, see the
             example YAML in ``example_pkg/ray_pkg.yaml``.
 
@@ -59,6 +56,11 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> def f(): ...
     """
 
+    from ray._private.runtime_env.packaging import (
+        get_uri_for_directory,
+        upload_package_if_needed,
+    )
+
     config_path = _download_from_github_if_needed(config_path)
 
     if not os.path.exists(config_path):
@@ -81,7 +83,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         if ray.is_initialized():
             do_register_package()
         else:
-            ray.worker._post_init_hooks.append(do_register_package)
+            ray._private.worker._post_init_hooks.append(do_register_package)
         runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.

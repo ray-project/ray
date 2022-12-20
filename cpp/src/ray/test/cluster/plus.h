@@ -29,6 +29,8 @@ std::array<std::string, 2> GetArray(std::array<std::string, 2> array);
 std::vector<std::string> GetList(std::vector<std::string> list);
 std::tuple<int, std::string> GetTuple(std::tuple<int, std::string> tp);
 
+std::string GetNamespaceInTask();
+
 struct Student {
   std::string name;
   int age;

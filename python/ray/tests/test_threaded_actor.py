@@ -2,12 +2,12 @@ import sys
 import threading
 import time
 
-import pytest
 import numpy as np
-import ray
+import pytest
 
-from ray.state import available_resources
+import ray
 import ray._private.test_utils as test_utils
+from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):
@@ -252,11 +252,11 @@ def test_threaded_actor_integration_test_stress(
         loop_times.append(time.time() - loop_start)
     result = {}
     print("Finished in: {}s".format(time.time() - start))
-    print("Average iteration time: {}s".format(sum(loop_times) / len(loop_times)))
+    print("Average iteration time: {}s".format(np.mean(loop_times)))
     print("Max iteration time: {}s".format(max(loop_times)))
     print("Min iteration time: {}s".format(min(loop_times)))
     result["total_time"] = time.time() - start
-    result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
+    result["avg_iteration_time"] = np.mean(loop_times)
     result["max_iteration_time"] = max(loop_times)
     result["min_iteration_time"] = min(loop_times)
     result["success"] = 1
@@ -291,5 +291,10 @@ def test_threaded_actor_integration_test_stress(
 
 
 if __name__ == "__main__":
+    import os
+
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

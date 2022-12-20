@@ -88,9 +88,9 @@ def ray_deps_setup():
     # https://github.com/ray-project/ray/issues/14117
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.16.0",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
-        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -98,11 +98,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
-        url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
-        sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
+        patch_args = ["-p1"],
+        url = "https://github.com/redis/redis/archive/refs/tags/7.0.5.tar.gz",
+        sha256 = "40827fcaf188456ad9b3be8e27a4f403c43672b6bb6201192dc15756af6f1eae",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
+        workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
     )
 
     auto_http_archive(
@@ -179,8 +181,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz",
-        sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
+        url = "https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz",
+        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
     )
 
     auto_http_archive(
@@ -216,8 +218,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.tar.gz",
-        sha256 = "dcf71b9cba8dc0ca9940c4b316a0c796be8fab42b070bb6b7cab62b48f0e66c4",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
+        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -242,6 +244,36 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
+    )
+    
+    http_archive(
+        name = "openssl",
+        strip_prefix = "openssl-1.1.1f",
+        sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
+        urls = [
+            "https://www.openssl.org/source/openssl-1.1.1f.tar.gz",
+        ],
+        build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
+    )
+    
+    http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
+        strip_prefix = "rules_foreign_cc-0.9.0",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
+    )
+
+    git_repository(
+        name = "rules_perl",
+        remote = "https://github.com/bazelbuild/rules_perl.git",
+        commit = "022b8daf2bb4836ac7a50e4a1d8ea056a3e1e403",
+    )
+
+    http_archive(
+        name = "rules_foreign_cc_thirdparty",
+        sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
+        strip_prefix = "rules_foreign_cc-0.9.0/examples/third_party",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
     http_archive(
@@ -314,8 +346,8 @@ def ray_deps_setup():
 
         # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
         # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
-        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce.tar.gz",
-        strip_prefix = "bazel-compile-commands-extractor-cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce",
+        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
+        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
-        sha256 = "4c2753a8d446f561391b7968a6d0eed748e8bb0f40adeda51301c57e829c7696",
+        sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )

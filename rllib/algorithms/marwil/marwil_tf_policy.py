@@ -98,7 +98,7 @@ class MARWILLoss:
 
             # Update averaged advantage norm.
             # Eager.
-            if policy.config["framework"] in ["tf2", "tfe"]:
+            if policy.config["framework"] == "tf2":
                 update_term = adv_squared - policy._moving_average_sqd_adv_norm
                 policy._moving_average_sqd_adv_norm.assign_add(rate * update_term)
 
@@ -152,20 +152,20 @@ class MARWILLoss:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_marwil_tf_policy(base: type) -> type:
+def get_marwil_tf_policy(name: str, base: type) -> type:
     """Construct a MARWILTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -174,12 +174,14 @@ def get_marwil_tf_policy(base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG, **config)
+            config = dict(
+                ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
+            )
 
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
@@ -215,7 +217,7 @@ def get_marwil_tf_policy(base: type) -> type:
             action_dist = dist_class(model_out, model)
             value_estimates = model.value_function()
 
-            self.loss = MARWILLoss(
+            self._marwil_loss = MARWILLoss(
                 self,
                 value_estimates,
                 action_dist,
@@ -224,18 +226,18 @@ def get_marwil_tf_policy(base: type) -> type:
                 self.config["beta"],
             )
 
-            return self.loss.total_loss
+            return self._marwil_loss.total_loss
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
             stats = {
-                "policy_loss": self.loss.p_loss,
-                "total_loss": self.loss.total_loss,
+                "policy_loss": self._marwil_loss.p_loss,
+                "total_loss": self._marwil_loss.total_loss,
             }
             if self.config["beta"] != 0.0:
                 stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
-                stats["vf_explained_var"] = self.loss.explained_variance
-                stats["vf_loss"] = self.loss.v_loss
+                stats["vf_explained_var"] = self._marwil_loss.explained_variance
+                stats["vf_loss"] = self._marwil_loss.v_loss
 
             return stats
 
@@ -245,8 +247,11 @@ def get_marwil_tf_policy(base: type) -> type:
         ) -> ModelGradients:
             return compute_gradients(self, optimizer, loss)
 
+    MARWILTFPolicy.__name__ = name
+    MARWILTFPolicy.__qualname__ = name
+
     return MARWILTFPolicy
 
 
-MARWILStaticGraphTFPolicy = get_marwil_tf_policy(DynamicTFPolicyV2)
-MARWILEagerTFPolicy = get_marwil_tf_policy(EagerTFPolicyV2)
+MARWILTF1Policy = get_marwil_tf_policy("MARWILTF1Policy", DynamicTFPolicyV2)
+MARWILTF2Policy = get_marwil_tf_policy("MARWILTF2Policy", EagerTFPolicyV2)

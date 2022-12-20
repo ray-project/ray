@@ -30,23 +30,27 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py36": "3.6.12",
-    "py37": "3.7.7",
-    "py38": "3.8.5",
-    "py39": "3.9.5",
-    "py310": "3.10.4",
+    "py36": "3.6",
+    "py37": "3.7",
+    "py38": "3.8",
+    "py39": "3.9",
+    "py310": "3.10",
 }
 
 BASE_IMAGES = {
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04",
-    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04",
-    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
+    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
+    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
+    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
+    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
+    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
     "cpu": "ubuntu:focal",
 }
 
 CUDA_FULL = {
+    "cu116": "CUDA 11.6",
+    "cu113": "CUDA 11.3",
     "cu112": "CUDA 11.2",
     "cu111": "CUDA 11.1",
     "cu110": "CUDA 11.0",
@@ -56,9 +60,9 @@ CUDA_FULL = {
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
-# image being used in ~/.buildkite/Dockerfile.gpu to match the same image being used
+# image being used in ~/ci/docker/Dockerfile.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu112"
+ML_CUDA_VERSION = "cu116"
 
 DEFAULT_PYTHON_VERSION = "py37"
 
@@ -158,13 +162,13 @@ def _build_docker_image(
 ):
     """Builds Docker image with the provided info.
 
-    image_name (str): The name of the image to build. Must be one of
+    image_name: The name of the image to build. Must be one of
         IMAGE_NAMES.
-    py_version (str): The Python version to build the image for.
+    py_version: The Python version to build the image for.
         Must be one of PY_MATRIX.keys()
-    image_type (str): The image type to build. Must be one of
+    image_type: The image type to build. Must be one of
         BASE_IMAGES.keys()
-    no_cache (bool): If True, don't use caching when building the image.
+    no_cache: If True, don't use caching when building the image.
     """
 
     if image_name not in IMAGE_NAMES:
@@ -186,12 +190,6 @@ def _build_docker_image(
             f"recognized. CUDA version must be one of"
             f" {BASE_IMAGES.keys()}"
         )
-
-    # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9+
-    if image_name == "ray-ml" and py_version in {"py39", "py310"}:
-        print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
-        return
 
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
@@ -352,11 +350,40 @@ def build_or_pull_base_images(
 
 def prep_ray_ml():
     root_dir = _get_root_dir()
-    requirement_files = glob.glob(
-        f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True
-    )
-    for fl in requirement_files:
-        shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+
+    requirements_files = ["python/requirements.txt"]
+    ml_requirements_files = [
+        "python/requirements/ml/requirements_ml_docker.txt",
+        "python/requirements/ml/requirements_dl.txt",
+        "python/requirements/ml/requirements_tune.txt",
+        "python/requirements/ml/requirements_rllib.txt",
+        "python/requirements/ml/requirements_train.txt",
+        "python/requirements/ml/requirements_upstream.txt",
+    ]
+    # We don't need these in the ml docker image
+    ignore_requirements = [
+        "python/requirements/compat/requirements_legacy_compat.txt",
+        "python/requirements/compat/requirements_py36_compat.txt",
+    ]
+
+    files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
+    for file_on_disk in files_on_disk:
+        rel = os.path.relpath(file_on_disk, start=root_dir)
+        print(rel)
+        if not rel.startswith("python/requirements/ml"):
+            continue
+        elif rel not in ml_requirements_files and rel not in ignore_requirements:
+            raise RuntimeError(
+                f"A new requirements file was found in the repository, but it has "
+                f"not been added to `build-docker-images.py` "
+                f"(and the `ray-ml/Dockerfile`): {rel}"
+            )
+
+    for requirement_file in requirements_files + ml_requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray-ml/"),
+        )
 
 
 def _get_docker_creds() -> Tuple[str, str]:
@@ -445,18 +472,6 @@ def push_and_tag_images(
                     print(
                         "ML Docker image is not built for the following "
                         f"device type: {image_type}"
-                    )
-                    continue
-
-                # TODO(https://github.com/ray-project/ray/issues/16599):
-                # remove below after supporting ray-ml images with Python 3.9
-                if image_name in ["ray-ml"] and (
-                    PY_MATRIX[py_name].startswith("3.9")
-                    or PY_MATRIX[py_name].startswith("3.10")
-                ):
-                    print(
-                        f"{image_name} image is currently "
-                        f"unsupported with Python 3.9/3.10"
                     )
                     continue
 
@@ -603,7 +618,8 @@ if __name__ == "__main__":
         choices=list(PY_MATRIX.keys()),
         default="py37",
         nargs="*",
-        help="Which python versions to build. " "Must be in (py36, py37, py38, py39)",
+        help="Which python versions to build. "
+        "Must be in (py36, py37, py38, py39, py310)",
     )
     parser.add_argument(
         "--device-types",

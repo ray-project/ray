@@ -1,16 +1,19 @@
-(key-concepts)=
+(serve-key-concepts)=
 
 # Key Concepts
+
+(serve-key-concepts-deployment)=
 
 ## Deployment
 
 Deployments are the central concept in Ray Serve.
-They allow you to define and update your business logic or models that will handle incoming requests as well as how this is exposed over HTTP or in Python.
+A deployment contains business logic or an ML model to handle incoming requests and can be scaled up to run across a Ray cluster.
+At runtime, a deployment consists of a number of *replicas*, which are individual copies of the class or function that are started in separate Ray Actors (processes).
+The number of replicas can be scaled up or down (or even autoscaled) to match the incoming request load.
 
-A deployment is defined using {mod}`@serve.deployment <ray.serve.api.deployment>` on a Python class (or function for simple use cases).
-You can specify arguments to be passed to the constructor when you call `Deployment.deploy()`, shown below.
-
-A deployment consists of a number of *replicas*, which are individual copies of the function or class that are started in separate Ray Actors (processes).
+To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
+Then, `bind` the deployment with optional arguments to the constructor (see below).
+Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
 ```python
 @serve.deployment
@@ -19,94 +22,97 @@ class MyFirstDeployment:
   def __init__(self, msg):
       self.msg = msg
 
-  def __call__(self, request):
+  def __call__(self):
       return self.msg
 
-  def other_method(self, arg):
-      return self.msg
-
-MyFirstDeployment.deploy("Hello world!")
+my_first_deployment = MyFirstDeployment.bind("Hello world!")
+handle = serve.run(my_first_deployment)
+print(ray.get(handle.remote())) # "Hello world!"
 ```
 
-Deployments can be exposed in two ways: over HTTP or in Python via the {ref}`servehandle-api`.
-By default, HTTP requests will be forwarded to the `__call__` method of the class (or the function) and a `Starlette Request` object will be the sole argument.
-You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See {ref}`serve-fastapi-http` for details.
+(serve-key-concepts-query-deployment)=
 
-To serve multiple deployments defined by the same class, use the `name` option:
+## ServeHandle (composing deployments)
+
+Ray Serve enables flexible model composition and scaling by allowing multiple independent deployments to call into each other.
+When binding a deployment, you can include references to _other bound deployments_.
+Then, at runtime each of these arguments is converted to a {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` that can be used to query the deployment using a Python-native API.
+Below is a basic example where the `Driver` deployment can call into two downstream models.
 
 ```python
-MyFirstDeployment.options(name="hello_service").deploy("Hello!")
-MyFirstDeployment.options(name="hi_service").deploy("Hi!")
+@serve.deployment
+class Driver:
+    def __init__(self, model_a_handle, model_b_handle):
+        self._model_a_handle = model_a_handle
+        self._model_b_handle = model_b_handle
+
+    async def __call__(self, request):
+        ref_a = await self._model_a_handle.remote(request)
+        ref_b = await self._model_b_handle.remote(request)
+        return (await ref_a) + (await ref_b)
+
+
+model_a = ModelA.bind()
+model_b = ModelB.bind()
+
+# model_a and model_b will be passed to the Driver constructor as ServeHandles.
+driver = Driver.bind(model_a, model_b)
+
+# Deploys model_a, model_b, and driver.
+serve.run(driver)
 ```
 
-You can also list all available deployments and dynamically get references to them:
+(serve-key-concepts-ingress-deployment)=
 
-```python
->> serve.list_deployments()
-{'A': Deployment(name=A,version=None,route_prefix=/A)}
-{'MyFirstDeployment': Deployment(name=MyFirstDeployment,version=None,route_prefix=/MyFirstDeployment}
+## Ingress Deployment (HTTP handling)
 
-# Returns the same object as the original MyFirstDeployment object.
-# This can be used to redeploy, get a handle, etc.
-deployment = serve.get_deployment("MyFirstDeployment")
-```
+A Serve application can consist of multiple deployments that can be combined to perform model composition or complex business logic.
+However, there is always one "top-level" deployment, the one that will be passed to `serve.run` or `serve.build` to deploy the application.
+This deployment is called the "ingress deployment" because it serves as the entrypoint for all traffic to the application.
+Often, it will then route to other deployments or call into them using the `ServeHandle` API and compose the results before returning to the user.
 
-## HTTP Ingress
-By default, deployments are exposed over HTTP at `http://localhost:8000/<deployment_name>`.
-The HTTP path that the deployment is available at can be changed using the `route_prefix` option.
-All requests to `/{route_prefix}` and any subpaths will be routed to the deployment (using a longest-prefix match for overlapping route prefixes).
-
+The ingress deployment defines the HTTP handling logic for the application.
+By default, the `__call__` method of the class will be called and passed in a `Starlette` request object.
+The response will be serialized as JSON, but other `Starlette` response objects can also be returned directly.
 Here's an example:
 
 ```python
-@serve.deployment(name="http_deployment", route_prefix="/api")
-class HTTPDeployment:
-  def __call__(self, request):
-      return "Hello world!"
+@serve.deployment
+class MostBasicIngress:
+  async def __call__(self, request: starlette.requests.Request) -> str:
+      name = await request.json()["name"]
+      return f"Hello {name}"
 ```
 
-After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
+After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 ```python
 import requests
-print(requests.get("http://127.0.0.1:8000/api").text)
+print(requests.get("http://127.0.0.1:8000/", json={"name": "Corey"}).text) # Hello Corey!
 ```
 
-## ServeHandle
-
-We can also query the deployment using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+For more expressive HTTP handling, Serve also comes with a built-in integration with `FastAPI`.
+This allows you to use the full expressiveness of FastAPI to define more complex APIs:
 
 ```python
-# To get a handle from the same script, use the Deployment object directly:
-handle = HTTPDeployment.get_handle()
+from fastapi import FastAPI
 
-# To get a handle from a different script, reference it by name:
-handle = serve.get_deployment("http_deployment").get_handle()
+app = FastAPI()
 
-print(ray.get(handle.remote()))
+@serve.deployment
+@serve.ingress(app)
+class MostBasicIngress:
+  @app.get("/{name}")
+  async def say_hi(self, name: str) -> str:
+      return f"Hello {name}"
 ```
 
-As noted above, there are two ways to expose deployments. The first is by using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>`
-interface. This method allows you to access deployments within a Python script or code, making it convenient for a
-Python developer. And the second is by using the HTTP request, allowing access to deployments via a web client application.
-
-:::{note}
-  Let's look at a simple end-to-end example using both ways to expose and access deployments. Your output may
-  vary due to random nature of how the prediction is computed; however, the example illustrates two things:
-  1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
-  is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
-
-  ```{literalinclude} doc_code/create_deployment.py
-  :end-before: __serve_example_end__
-  :language: python
-  :start-after: __serve_example_begin__
-  ```
-:::
+(serve-key-concepts-deployment-graph)=
 
 ## Deployment Graph
 
-Building on top of the Deployment concept, Ray Serve provides a first-class API for composing models into a graph structure.
+Building on top of the deployment concept, Ray Serve also provides a first-class API for composing multiple models into a graph structure and orchestrating the calls to each deployment automatically.
 
 Here's a simple example combining a preprocess function and model.
 
@@ -114,8 +120,8 @@ Here's a simple example combining a preprocess function and model.
 ```
 
 ## What's Next?
-Now you have learned about the key concepts. You can dive into our [User Guides](user-guide) for more details into:
-- [Creating, updating, and deleting deployments](managing-deployments)
-- [Configuring HTTP ingress and integrating with FastAPI](http-guide)
-- [Composing deployments using ServeHandle](handle-guide)
-- [Building Deployment Graphs](deployment-graph)
+Now that you have learned the key concepts, you can dive into the [User Guide](user-guide):
+- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Configuring HTTP logic and integrating with FastAPI](http-guide)
+- [Development workflow for Serve applications](dev-workflow)
+- [Composing deployments to perform model composition](model_composition)

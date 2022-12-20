@@ -36,7 +36,30 @@ extern "C" {
 namespace ray {
 inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
                        const ray::rpc::SchedulingStrategy &rhs) {
-  return google::protobuf::util::MessageDifferencer::Equals(lhs, rhs);
+  if (lhs.scheduling_strategy_case() != rhs.scheduling_strategy_case()) {
+    return false;
+  }
+
+  switch (lhs.scheduling_strategy_case()) {
+  case ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy: {
+    return (lhs.node_affinity_scheduling_strategy().node_id() ==
+            rhs.node_affinity_scheduling_strategy().node_id()) &&
+           (lhs.node_affinity_scheduling_strategy().soft() ==
+            rhs.node_affinity_scheduling_strategy().soft());
+  }
+  case ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy: {
+    return (lhs.placement_group_scheduling_strategy().placement_group_id() ==
+            rhs.placement_group_scheduling_strategy().placement_group_id()) &&
+           (lhs.placement_group_scheduling_strategy().placement_group_bundle_index() ==
+            rhs.placement_group_scheduling_strategy().placement_group_bundle_index()) &&
+           (lhs.placement_group_scheduling_strategy()
+                .placement_group_capture_child_tasks() ==
+            rhs.placement_group_scheduling_strategy()
+                .placement_group_capture_child_tasks());
+  }
+  default:
+    return true;
+  }
 }
 
 typedef int SchedulingClass;
@@ -88,15 +111,19 @@ struct hash<ray::rpc::SchedulingStrategy> {
         ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
       hash ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
-      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
+      // soft returns a bool
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().soft());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
           scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
       hash ^= scheduling_strategy.placement_group_scheduling_strategy()
                   .placement_group_bundle_index();
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_capture_child_tasks();
+      // placement_group_capture_child_tasks returns a bool
+      hash ^=
+          static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
+                                  .placement_group_capture_child_tasks());
     }
     return hash;
   }
@@ -155,7 +182,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
-  TaskSpecification() {}
+  TaskSpecification() { ComputeResources(); }
 
   /// Construct from a protobuf message object.
   /// The input message will be copied/moved into this object.
@@ -209,6 +236,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t AttemptNumber() const;
 
+  bool IsRetry() const;
+
+  int32_t MaxRetries() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -220,6 +251,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
+
+  bool ReturnsDynamic() const;
+
+  std::vector<ObjectID> DynamicReturnIds() const;
+
+  void AddDynamicReturnId(const ObjectID &dynamic_return_id);
 
   const uint8_t *ArgData(size_t arg_index) const;
 
@@ -302,6 +339,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Whether this task is an actor task.
   bool IsActorTask() const;
 
+  // Returns the serialized exception allowlist for this task.
+  const std::string GetSerializedRetryExceptionAllowlist() const;
+
   // Methods specific to actor creation tasks.
 
   ActorID ActorCreationId() const;
@@ -361,6 +401,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool ExecuteOutOfOrder() const;
 
   bool IsSpreadSchedulingStrategy() const;
+
+  /// \return true if the task or actor is retriable.
+  bool IsRetriable() const;
 
  private:
   void ComputeResources();

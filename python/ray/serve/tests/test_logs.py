@@ -2,7 +2,7 @@ import time
 import pytest
 
 from ray import serve
-from ray.serve.deployment_state import (
+from ray.serve._private.deployment_state import (
     SLOW_STARTUP_WARNING_S,
     SLOW_STARTUP_WARNING_PERIOD_S,
 )
@@ -16,7 +16,7 @@ def test_slow_allocation_warning(serve_instance, capsys):
             pass
 
     num_replicas = 2
-    D.options(num_replicas=num_replicas).deploy(_blocking=False)
+    serve.run(D.options(num_replicas=num_replicas).bind(), _blocking=False)
 
     expected_warning = (
         f"Deployment '{D.name}' has "
@@ -49,7 +49,7 @@ def test_slow_initialization_warning(serve_instance, capsys):
             time.sleep(99999)
 
     num_replicas = 4
-    D.options(num_replicas=num_replicas).deploy(_blocking=False)
+    serve.run(D.options(num_replicas=num_replicas).bind(), _blocking=False)
 
     expected_warning = (
         f"Deployment '{D.name}' has "
@@ -78,9 +78,35 @@ def test_deployment_init_error_logging(serve_instance, capsys):
             0 / 0
 
     with pytest.raises(RuntimeError):
-        D.deploy()
+        serve.run(D.bind())
 
     captured = capsys.readouterr()
 
     assert "Exception in deployment 'D'" in captured.err
     assert "ZeroDivisionError" in captured.err
+
+
+def test_connect_serve_start_logging(serve_instance, capsys):
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+
+    @serve.deployment
+    class D:
+        def __init__(self):
+            pass
+
+    serve.run(D.options().bind(), _blocking=False)
+
+    expected_log = (
+        'Connecting to existing Serve app in namespace "serve"'
+        ". New http options will not be applied."
+    )
+
+    # wait long enough for the warning to be printed
+    # with a small grace period
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
+
+    captured = capsys.readouterr()
+
+    assert expected_log in captured.err

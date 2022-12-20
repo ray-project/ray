@@ -1,18 +1,17 @@
 import json
 import logging
 import os
-import warnings
 import traceback
 from numbers import Number
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ray.ml.checkpoint import Checkpoint
-from ray.tune.cloud import TrialCheckpoint
-from ray.util.debug import log_once
+from ray.air.checkpoint import Checkpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf, is_nan
+from ray.util import log_once
 
 try:
     import pandas as pd
@@ -30,15 +29,15 @@ from ray.tune.result import (
     CONFIG_PREFIX,
     TRAINING_ITERATION,
 )
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import (
-    find_newest_experiment_checkpoint,
-    load_trials_from_experiment_checkpoint,
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import (
+    _find_newest_experiment_checkpoint,
+    _load_trial_from_checkpoint,
 )
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +51,17 @@ class ExperimentAnalysis:
     To use this class, the experiment must be executed with the JsonLogger.
 
     Parameters:
-        experiment_checkpoint_path (str): Path to a json file or directory
+        experiment_checkpoint_path: Path to a json file or directory
             representing an experiment state, or a directory containing
             multiple experiment states (a run's ``local_dir``).
             Corresponds to Experiment.local_dir/Experiment.name/
             experiment_state.json
-        trials (list|None): List of trials that can be accessed via
+        trials: List of trials that can be accessed via
             `analysis.trials`.
-        default_metric (str): Default metric for comparing results. Can be
+        default_metric: Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
             functions.
-        default_mode (str): Default mode for comparing results. Has to be one
+        default_mode: Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
 
@@ -82,24 +81,13 @@ class ExperimentAnalysis:
         default_mode: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
     ):
-        experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
-
-        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
-
+        # Load the experiment checkpoints and their parent paths.
+        # This is important for when experiment folders have been
+        # relocated (e.g. from a ray cluster to local disk or GCS/S3)-
         self._experiment_states = []
-        for path in latest_checkpoint:
-            with open(path) as f:
-                _experiment_states = json.load(f, cls=TuneFunctionDecoder)
-                self._experiment_states.append(_experiment_states)
+        self._checkpoints_and_paths: List[Tuple[dict, os.PathLike]] = []
+        self._load_checkpoints(experiment_checkpoint_path)
 
-        self._checkpoints = []
-        for experiment_state in self._experiment_states:
-            if "checkpoints" not in experiment_state:
-                raise TuneError("Experiment state invalid; no checkpoints found.")
-            self._checkpoints += [
-                json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
-                for cp in experiment_state["checkpoints"]
-            ]
         self.trials = trials
 
         self._configs = {}
@@ -115,6 +103,8 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
+        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
+
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -123,49 +113,81 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._local_base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
-        )
         self._sync_config = sync_config
-
-        # If True, will return a legacy TrialCheckpoint class.
-        # If False, will just return a Checkpoint class.
-        self._legacy_checkpoint = True
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
         if not self._sync_config or not self._sync_config.upload_dir:
             return None
 
-        return local_path.replace(self._local_base_dir, self._sync_config.upload_dir)
+        return local_path.replace(
+            str(self._local_base_dir), self._sync_config.upload_dir
+        )
 
-    def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
-        if os.path.isdir(experiment_checkpoint_path):
-            # Case 1: Dir specified, find latest checkpoint.
-            latest_checkpoint = find_newest_experiment_checkpoint(
-                experiment_checkpoint_path
+    def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
+        experiment_checkpoint_path = Path(experiment_checkpoint_path).expanduser()
+        # Get the latest checkpoints from the checkpoint_path.
+        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
+        # Collect all checkpoints and their directory paths.
+        # These are used to infer the `local_dir` from the checkpoints
+        # in case the experiment folder had been moved from its original
+        # location (e.g. from a ray cluster to a GCS/S3 bucket or to local disk).
+        self._load_checkpoints_from_latest(latest_checkpoint)
+
+    def _load_checkpoints_from_latest(self, latest_checkpoint: List[str]) -> None:
+        # Collect all checkpoints and their directory paths.
+        for path in latest_checkpoint:
+            with open(path) as f:
+                experiment_state = json.load(f, cls=TuneFunctionDecoder)
+                self._experiment_states.append(experiment_state)
+
+            if "checkpoints" not in experiment_state:
+                raise TuneError("Experiment state invalid; no checkpoints found.")
+            self._checkpoints_and_paths += [
+                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
+                for cp in experiment_state["checkpoints"]
+            ]
+            self._checkpoints_and_paths = sorted(
+                self._checkpoints_and_paths, key=lambda tup: tup[0]["trial_id"]
             )
+
+    def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
+        # Case 1: Dir specified, find latest checkpoint.
+        if experiment_checkpoint_path.is_dir():
+            latest_checkpoint = _find_newest_experiment_checkpoint(
+                str(experiment_checkpoint_path)
+            )
+            # If no checkpoint in this folder the sub-directory is searched.
+            # In this case also multiple experiment folders could exist in
+            # the same root. In this case the length of `latest_checkpoint`
+            # will be greater than 1.
             if not latest_checkpoint:
                 latest_checkpoint = []
-                for fname in os.listdir(experiment_checkpoint_path):
-                    fname = os.path.join(experiment_checkpoint_path, fname)
-                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(fname)
+                for fname in experiment_checkpoint_path.iterdir():
+                    fname = experiment_checkpoint_path.joinpath(fname)
+                    latest_checkpoint_subdir = _find_newest_experiment_checkpoint(
+                        str(fname)
+                    )
                     if latest_checkpoint_subdir:
                         latest_checkpoint.append(latest_checkpoint_subdir)
             if not latest_checkpoint:
+                # This avoid nested experiment directories of the form
+                # `experiment_name1/experiment_name2/experiment_state.json`.
+                experiment_checkpoint_path = str(experiment_checkpoint_path)
                 raise ValueError(
                     f"The directory `{experiment_checkpoint_path}` does not "
-                    f"contain a Ray Tune experiment checkpoint."
+                    "contain a Ray Tune experiment checkpoint."
                 )
-        elif not os.path.isfile(experiment_checkpoint_path):
+        elif not experiment_checkpoint_path.is_file():
             # Case 2: File specified, but does not exist.
+            experiment_checkpoint_path = str(experiment_checkpoint_path)
             raise ValueError(
                 f"The file `{experiment_checkpoint_path}` does not "
                 f"exist and cannot be loaded for experiment analysis."
             )
         else:
             # Case 3: File specified, use as latest checkpoint.
-            latest_checkpoint = experiment_checkpoint_path
+            latest_checkpoint = str(experiment_checkpoint_path)
         if not isinstance(latest_checkpoint, list):
             latest_checkpoint = [latest_checkpoint]
         return latest_checkpoint
@@ -219,7 +241,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -297,16 +319,7 @@ class ExperimentAnalysis:
         return self.best_trial.last_result
 
     def _delimiter(self):
-        # Deprecate: 1.9  (default should become `/`)
-        delimiter = os.environ.get("TUNE_RESULT_DELIM", ".")
-        if delimiter == "." and log_once("delimiter_deprecation"):
-            warnings.warn(
-                "Dataframes will use '/' instead of '.' to delimit "
-                "nested result keys in future versions of Ray. For forward "
-                "compatibility, set the environment variable "
-                "TUNE_RESULT_DELIM='/'"
-            )
-        return delimiter
+        return os.environ.get("TUNE_RESULT_DELIM", "/")
 
     @property
     def best_result_df(self) -> DataFrame:
@@ -349,7 +362,11 @@ class ExperimentAnalysis:
 
     @property
     def trial_dataframes(self) -> Dict[str, DataFrame]:
-        """List of all dataframes of the trials."""
+        """List of all dataframes of the trials.
+
+        Each dataframe is indexed by iterations and contains reported
+        metrics.
+        """
         return self._trial_dataframes
 
     def dataframe(
@@ -419,18 +436,23 @@ class ExperimentAnalysis:
             )
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
-            checkpoints = trial.checkpoint_manager.best_checkpoints()
+            checkpoints = trial.get_trial_checkpoints()
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
             return [
-                (c.value, unflattened_lookup(metric, c.result)) for c in checkpoints
+                (c.dir_or_data, unflattened_lookup(metric, c.metrics))
+                for c in checkpoints
             ]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
     def get_best_checkpoint(
-        self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
-    ) -> Optional[Checkpoint]:
+        self,
+        trial: Trial,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        return_path: bool = False,
+    ) -> Optional[Union[Checkpoint, str]]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -441,9 +463,14 @@ class ExperimentAnalysis:
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
             mode: One of [min, max]. Defaults to ``self.default_mode``.
+            return_path: If True, only returns the path (and not the
+                ``Checkpoint`` object). If using Ray client, it is not
+                guaranteed that this path is available on the local
+                (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -465,23 +492,27 @@ class ExperimentAnalysis:
         best_path, best_metric = best_path_metrics[0]
         cloud_path = self._parse_cloud_path(best_path)
 
-        if self._legacy_checkpoint:
-            return TrialCheckpoint(local_path=best_path, cloud_path=cloud_path)
-
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
+            if return_path:
+                return cloud_path
             return Checkpoint.from_uri(cloud_path)
         elif os.path.exists(best_path):
+            if return_path:
+                return best_path
             return Checkpoint.from_directory(best_path)
         else:
-            logger.error(
-                f"No checkpoint locations for {trial} available on "
-                f"this node. To avoid this, you "
-                f"should enable checkpoint synchronization with the"
-                f"`sync_config` argument in Ray Tune. "
-                f"The checkpoint may be available on a different node - "
-                f"please check this location on worker nodes: {best_path}"
-            )
+            if log_once("checkpoint_not_available"):
+                logger.error(
+                    f"The requested checkpoint for trial {trial} is not available on "
+                    f"this node, most likely because you are using Ray client or "
+                    f"disabled checkpoint synchronization. To avoid this, enable "
+                    f"checkpoint synchronization to cloud storage by specifying a "
+                    f"`SyncConfig`. The checkpoint may be available on a different "
+                    f"node - please check this location on worker nodes: {best_path}"
+                )
+            if return_path:
+                return best_path
             return None
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
@@ -732,7 +763,7 @@ class ExperimentAnalysis:
         """Overrides the existing file type.
 
         Args:
-            file_type (str): Read results from json or csv files. Has to be one
+            file_type: Read results from json or csv files. Has to be one
                 of [None, json, csv]. Defaults to csv.
         """
         self._file_type = self._validate_filetype(file_type)
@@ -757,19 +788,21 @@ class ExperimentAnalysis:
 
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
-            _trial_paths = [t.logdir for t in self.trials]
+            # We do not need to set the relative path here
+            # Maybe assert that t.logdir is in local_base_path?
+            _trial_paths = [str(t.logdir) for t in self.trials]
         else:
             logger.info(
                 "No `self.trials`. Drawing logdirs from checkpoint "
                 "file. This may result in some information that is "
                 "out of sync, as checkpointing is periodic."
             )
-            _trial_paths = [checkpoint["logdir"] for checkpoint in self._checkpoints]
             self.trials = []
-            for experiment_state in self._experiment_states:
+            _trial_paths = []
+            for checkpoint, path in self._checkpoints_and_paths:
                 try:
-                    self.trials += load_trials_from_experiment_checkpoint(
-                        experiment_state, stub=True
+                    trial = _load_trial_from_checkpoint(
+                        checkpoint, stub=True, new_local_dir=str(path)
                     )
                 except Exception:
                     logger.warning(
@@ -779,6 +812,9 @@ class ExperimentAnalysis:
                         f"to all analysis methods. "
                         f"Observed error:\n{traceback.format_exc()}"
                     )
+                    continue
+                self.trials.append(trial)
+                _trial_paths.append(str(trial.logdir))
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -848,11 +884,5 @@ class ExperimentAnalysis:
         return state
 
 
-# Deprecated: Remove in Ray > 1.13
-@Deprecated
-class Analysis(ExperimentAnalysis):
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "The `Analysis` class is being "
-            "deprecated. Please use `ExperimentAnalysis` instead."
-        )
+def _decode_checkpoint_from_experiment_state(cp: Union[str, dict]) -> dict:
+    return json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp

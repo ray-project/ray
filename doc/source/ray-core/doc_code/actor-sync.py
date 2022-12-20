@@ -38,9 +38,9 @@ ray.get(tasks)
 
 # Output is:
 # ready...
-# get set..
+# set..
 
-# (pid=77366) go!
-# (pid=77372) go!
-# (pid=77367) go!
-# (pid=77358) go!
+# (wait_and_go pid=77366) go!
+# (wait_and_go pid=77372) go!
+# (wait_and_go pid=77367) go!
+# (wait_and_go pid=77358) go!

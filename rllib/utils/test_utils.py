@@ -1,23 +1,44 @@
 from collections import Counter
 import copy
-from gym.spaces import Box
 import logging
-import numpy as np
 import random
 import re
 import time
+import os
+import gym
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
+import pprint
+from gym.spaces import Box
 
 import ray
+from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
+
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer_config import TrainerConfig
+    from ray.rllib.algorithms import Algorithm, AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -34,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+    config: Optional["AlgorithmConfig"] = None,
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
@@ -43,34 +64,30 @@ def framework_iterator(
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tfe/tf.
+    as the correct eager/non-eager contexts for tf/tf2.
 
     Args:
-        config: An optional config dict or TrainerConfig object. This will be modified
+        config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=[tfe|tf2].
+            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
 
     Yields:
-        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is False: The current framework [tf2|tf|torch] used.
         If `session` is True: A tuple consisting of the current framework
         string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
-    if "tf2" in frameworks and "tfe" in frameworks:
-        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -82,19 +99,13 @@ def framework_iterator(
                 "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
-        elif fw == "tfe" and not eager_mode:
-            logger.warning(
-                "framework_iterator skipping tf-eager (could not "
-                "import `eager_mode` from tensorflow.python)!"
-            )
-            continue
         elif fw == "tf2" and tfv != 2:
             logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
             logger.warning("framework_iterator skipping JAX (not installed)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
+        assert fw in ["tf2", "tf", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -109,8 +120,8 @@ def framework_iterator(
             config.framework(fw)
 
         eager_ctx = None
-        # Enable eager mode for tf2 and tfe.
-        if fw in ["tf2", "tfe"]:
+        # Enable eager mode for tf2.
+        if fw == "tf2":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
@@ -119,7 +130,7 @@ def framework_iterator(
             assert not tf1.executing_eagerly()
 
         # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw in ["tf2", "tfe"] and with_eager_tracing:
+        if fw == "tf2" and with_eager_tracing:
             for tracing in [True, False]:
                 if isinstance(config, dict):
                     config["eager_tracing"] = tracing
@@ -161,17 +172,17 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     after the floating point. Uses assertions.
 
     Args:
-        x (any): The value to be compared (to the expectation: `y`). This
+        x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
-        y (any): The expected value to be compared to `x`. This must not
-            be a tf-Tensor, but may be a tfe/torch-Tensor.
-        decimals (int): The number of digits after the floating point up to
+        y: The expected value to be compared to `x`. This must not
+            be a tf-Tensor, but may be a tf/torch-Tensor.
+        decimals: The number of digits after the floating point up to
             which all numeric values have to match.
-        atol (float): Absolute tolerance of the difference between x and y
+        atol: Absolute tolerance of the difference between x and y
             (overrides `decimals` if given).
-        rtol (float): Relative tolerance of the difference between x and y
+        rtol: Relative tolerance of the difference between x and y
             (overrides `decimals` if given).
-        false (bool): Whether to check that x and y are NOT the same.
+        false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
     if isinstance(x, dict):
@@ -281,12 +292,12 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
 
 def check_compute_single_action(
-    trainer, include_state=False, include_prev_action_reward=False
+    algorithm, include_state=False, include_prev_action_reward=False
 ):
-    """Tests different combinations of args for trainer.compute_single_action.
+    """Tests different combinations of args for algorithm.compute_single_action.
 
     Args:
-        trainer: The Trainer object to test.
+        algorithm: The Algorithm object to test.
         include_state: Whether to include the initial state of the Policy's
             Model in the `compute_single_action` call.
         include_prev_action_reward: Whether to include the prev-action and
@@ -298,15 +309,15 @@ def check_compute_single_action(
     # Have to import this here to avoid circular dependency.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
-    # Some Trainers may not abide to the standard API.
+    # Some Algorithms may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
-        pol = trainer.get_policy(pid)
+        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pol = algorithm.get_policy(pid)
     except AttributeError:
-        pol = trainer.policy
+        pol = algorithm.policy
     # Get the policy's model.
     model = pol.model
 
@@ -316,7 +327,7 @@ def check_compute_single_action(
         what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
-        if what is trainer:
+        if what is algorithm:
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid
 
@@ -401,15 +412,15 @@ def check_compute_single_action(
         if clip is None:
             clip = what.config["clip_actions"]
 
-        # Test whether unsquash/clipping works on the Trainer's
+        # Test whether unsquash/clipping works on the Algorithm's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
-        if method_to_test == "single" and what == trainer:
+        if method_to_test == "single" and what == algorithm:
             if not action_space.contains(action) and (
                 clip or unsquash or not isinstance(action_space, Box)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     f"not in Env's action_space {action_space}"
                 )
             # We are operating in normalized space: Expect only smaller action
@@ -421,21 +432,21 @@ def check_compute_single_action(
                 and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     "should be in normalized space, but seems too large/small "
                     "for that!"
                 )
 
-    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
-    for what in [pol, trainer]:
-        if what is trainer:
+    for what in [pol, algorithm]:
+        if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers", None)
+            worker_set = getattr(algorithm, "workers", None)
             assert worker_set
-            if isinstance(worker_set, list):
-                obs_space = trainer.get_policy(pid).observation_space
+            if not worker_set.local_worker():
+                obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space, policy_id=pid
@@ -446,10 +457,17 @@ def check_compute_single_action(
 
         for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                for full_fetch in [False, True] if what is trainer else [False]:
+                for full_fetch in [False, True] if what is algorithm else [False]:
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test(
                                 what,
                                 method_to_test,
@@ -462,15 +480,59 @@ def check_compute_single_action(
                             )
 
 
-def check_learning_achieved(tune_results, min_reward, evaluation=False):
+def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
+    """Checks whether the given policy can infer actions from an env with connectors.
+
+    Args:
+        policy: The policy to check.
+        env_name: Name of the environment to check
+        max_steps: The maximum number of steps to run the environment for.
+
+    Raises:
+        ValueError: If the policy cannot infer actions from the environment.
+    """
+    # Avoids circular import
+    from ray.rllib.utils.policy import local_policy_inference
+
+    env = gym.make(env_name)
+
+    # Potentially wrap the env like we do in RolloutWorker
+    if is_atari(env):
+        env = wrap_deepmind(
+            env,
+            dim=policy.config["model"]["dim"],
+            framestack=policy.config["model"].get("framestack"),
+        )
+
+    obs = env.reset()
+    reward, done, info = 0.0, False, {}
+    ts = 0
+    while not done and ts < max_steps:
+        action_out = local_policy_inference(
+            policy,
+            env_id=0,
+            agent_id=0,
+            obs=obs,
+            reward=reward,
+            done=done,
+            info=info,
+        )
+        obs, reward, done, info = env.step(action_out[0][0])
+
+        ts += 1
+
+
+def check_learning_achieved(
+    tune_results: "tune.ResultGrid", min_reward, evaluation=False
+):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
     "episode_reward_mean" value and compares it to `min_reward`.
 
     Args:
-        tune_results: The tune.run returned results object.
-        min_reward (float): The min reward that must be reached.
+        tune_results: The tune.Tuner().fit() returned results object.
+        min_reward: The min reward that must be reached.
 
     Raises:
         ValueError: If `min_reward` not reached.
@@ -479,20 +541,71 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
     # (check if at least one trial achieved some learning)
     avg_rewards = [
         (
-            trial.last_result["episode_reward_mean"]
+            row["episode_reward_mean"]
             if not evaluation
-            else trial.last_result["evaluation"]["episode_reward_mean"]
+            else row["evaluation/episode_reward_mean"]
         )
-        for trial in tune_results.trials
+        for _, row in tune_results.get_dataframe().iterrows()
     ]
     best_avg_reward = max(avg_rewards)
     if best_avg_reward < min_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
-    print("ok")
+        raise ValueError(f"`stop-reward` of {min_reward} not reached!")
+    print(f"`stop-reward` of {min_reward} reached! ok")
 
 
-def check_train_results(train_results):
-    """Checks proper structure of a Trainer.train() returned dict.
+def check_off_policyness(
+    results: ResultDict,
+    upper_limit: float,
+    lower_limit: float = 0.0,
+) -> Optional[float]:
+    """Verifies that the off-policy'ness of some update is within some range.
+
+    Off-policy'ness is defined as the average (across n workers) diff
+    between the number of gradient updates performed on the policy used
+    for sampling vs the number of gradient updates that have been performed
+    on the trained policy (usually the one on the local worker).
+
+    Uses the published DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY metric inside
+    a training results dict and compares to the given bounds.
+
+    Note: Only works with single-agent results thus far.
+
+    Args:
+        results: The training results dict.
+        upper_limit: The upper limit to for the off_policy_ness value.
+        lower_limit: The lower limit to for the off_policy_ness value.
+
+    Returns:
+        The off-policy'ness value (described above).
+
+    Raises:
+        AssertionError: If the value is out of bounds.
+    """
+
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+
+    # Assert that the off-policy'ness is within the given bounds.
+    learner_info = results["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID not in learner_info:
+        return None
+    off_policy_ness = learner_info[DEFAULT_POLICY_ID][
+        DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY
+    ]
+    # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
+    # 1 rollout worker.
+    if not (lower_limit <= off_policy_ness <= upper_limit):
+        raise AssertionError(
+            f"`off_policy_ness` ({off_policy_ness}) is outside the given bounds "
+            f"({lower_limit} - {upper_limit})!"
+        )
+
+    return off_policy_ness
+
+
+def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
+    """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
         train_results: The train results dict to check.
@@ -504,7 +617,6 @@ def check_train_results(train_results):
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -537,7 +649,18 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    _, is_multi_agent = check_multi_agent(train_results["config"])
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict(train_results["config"]["multiagent"])
+        .is_multi_agent()
+    )
 
     # Check in particular the "info" dict.
     info = train_results["info"]
@@ -576,15 +699,21 @@ def check_train_results(train_results):
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
+    framework: Optional[str] = None,
     max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
 ) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
+        framework: The framework to use for running this test. If None,
+            run the test on all frameworks.
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
+        use_pass_criteria_as_stop: Configure the Trial so that it stops
+            as soon as pass criterias are met.
         smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
@@ -615,15 +744,18 @@ def run_learning_tests_from_yaml(
         return experiment["config"].get("evaluation_interval", None) is not None
 
     # Loop through all collected files and gather experiments.
-    # Augment all by `torch` framework.
+    # Set correct framework(s).
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            # If framework explicitly given, only test for that framework.
+            # If framework given as arg, use that framework.
+            if framework is not None:
+                frameworks = [framework]
+            # If framework given in config, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e:
+            elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support
@@ -635,24 +767,26 @@ def run_learning_tests_from_yaml(
             e["stop"] = e["stop"] if "stop" in e else {}
             e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
 
+            check_eval = should_check_eval(e)
+            episode_reward_key = (
+                "episode_reward_mean"
+                if not check_eval
+                else "evaluation/episode_reward_mean"
+            )
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 0sec for each(!) experiment/trial.
                 # This is such that if there are many experiments/trials
                 # in a test (e.g. rllib_learning_test), each one can at least
-                # create its trainer and run a first iteration.
+                # create its Algorithm and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
-                check_eval = should_check_eval(e)
-                episode_reward_key = (
-                    "episode_reward_mean"
-                    if not check_eval
-                    else "evaluation/episode_reward_mean"
-                )
-                # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
-                if min_reward is not None:
-                    e["stop"][episode_reward_key] = min_reward
+                if use_pass_criteria_as_stop:
+                    # We also stop early, once we reach the desired reward.
+                    min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
+                    if min_reward is not None:
+                        e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -664,7 +798,7 @@ def run_learning_tests_from_yaml(
                     ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get("episode_reward_mean", 0.0),
+                    "min_reward": ec["pass_criteria"].get(episode_reward_key, 0.0),
                     "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
                     / (ec["stop"].get("time_total_s", 1.0) or 1.0),
                     "time_total_s": ec["stop"].get("time_total_s"),
@@ -676,10 +810,6 @@ def run_learning_tests_from_yaml(
 
                 # One experiment to run.
                 experiments[k_] = ec
-
-    # Print out the actual config.
-    print("== Test config ==")
-    print(yaml.dump(experiments))
 
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
@@ -698,6 +828,10 @@ def run_learning_tests_from_yaml(
 
         print(f"Starting learning test iteration {i}...")
 
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments_to_run))
+
         # Run remaining experiments.
         trials = run_experiments(
             experiments_to_run,
@@ -713,6 +847,7 @@ def run_learning_tests_from_yaml(
                     "episode_reward_mean": "reward_mean",
                     "evaluation/episode_reward_mean": "eval_reward_mean",
                 },
+                parameter_columns=["framework"],
                 sort_by_metric=True,
                 max_report_frequency=30,
             ),
@@ -748,22 +883,24 @@ def run_learning_tests_from_yaml(
             # Experiment finished: Check reward achieved and timesteps done
             # (throughput).
             else:
+                # Use best_result's reward to check min_reward.
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["evaluation"]["episode_reward_mean"]
+                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["episode_reward_mean"]
+                            t.metric_analysis["episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 desired_reward = checks[experiment]["min_reward"]
 
+                # Use last_result["timesteps_total"] to check throughput.
                 timesteps_total = np.mean(
                     [t.last_result["timesteps_total"] for t in trials_for_experiment]
                 )
@@ -771,10 +908,13 @@ def run_learning_tests_from_yaml(
                     [t.last_result["time_total_s"] for t in trials_for_experiment]
                 )
 
-                # TODO(jungong) : track trainer and env throughput separately.
+                # TODO(jungong) : track training- and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
-                # TODO(jungong) : enable throughput check again after
-                #   TD3_HalfCheetahBulletEnv is fixed and verified.
+                # Throughput verification is not working. Many algorithm, e.g. TD3,
+                # achieves the learning goal, but fails the throughput check
+                # miserably.
+                # TODO(jungong): Figure out why.
+                #
                 # desired_throughput = checks[experiment]["min_throughput"]
                 desired_throughput = None
 
@@ -803,7 +943,11 @@ def run_learning_tests_from_yaml(
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
-                    print(" ... Successful: (mark ok).")
+                    print(
+                        " ... Successful: (mark ok). Actual "
+                        f"reward={episode_reward_mean}; "
+                        f"actual throughput={throughput}"
+                    )
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 
@@ -818,6 +962,7 @@ def run_learning_tests_from_yaml(
         "last_update": float(time.time()),
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
+        "not_passed": [k for k, exp in checks.items() if not exp["passed"]],
         "failures": {
             k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
         },
@@ -840,7 +985,7 @@ def check_same_batch(batch1, batch2) -> None:
         batch2: Batch to compare against batch1
     """
     # Avoids circular import
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
     assert type(batch1) == type(
         batch2
@@ -902,3 +1047,79 @@ def check_same_batch(batch1, batch2) -> None:
         ), f"MultiAgentBatches don't share the following information: \n{difference}."
     else:
         raise ValueError("Unsupported batch type " + str(type(batch1)))
+
+
+def check_reproducibilty(
+    algo_class: Type["Algorithm"],
+    algo_config: "AlgorithmConfig",
+    *,
+    fw_kwargs: Dict[str, Any],
+    training_iteration: int = 1,
+) -> None:
+    # TODO @kourosh: we can get rid of examples/deterministic_training.py once
+    # this is added to all algorithms
+    """Check if the algorithm is reproducible across different testing conditions:
+
+        frameworks: all input frameworks
+        num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_workers: 0 (only local workers) or
+                     4 ((1) local workers + (4) remote workers)
+        num_envs_per_worker: 2
+
+    Args:
+        algo_class: Algorithm class to test.
+        algo_config: Base config to use for the algorithm.
+        fw_kwargs: Framework iterator keyword arguments.
+        training_iteration: Number of training iterations to run.
+
+    Returns:
+        None
+
+    Raises:
+        It raises an AssertionError if the algorithm is not reproducible.
+    """
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+
+    stop_dict = {
+        "training_iteration": training_iteration,
+    }
+    # use 0 and 2 workers (for more that 4 workers we have to make sure the instance
+    # type in ci build has enough resources)
+    for num_workers in [0, 2]:
+        algo_config = (
+            algo_config.debugging(seed=42)
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
+        )
+
+        for fw in framework_iterator(algo_config, **fw_kwargs):
+            print(
+                f"Testing reproducibility of {algo_class.__name__}"
+                f" with {num_workers} workers on fw = {fw}"
+            )
+            print("/// config")
+            pprint.pprint(algo_config.to_dict())
+            # test tune.Tuner().fit() reproducibility
+            results1 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
+            results1 = results1.get_best_result().metrics
+
+            results2 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
+            results2 = results2.get_best_result().metrics
+
+            # Test rollout behavior.
+            check(results1["hist_stats"], results2["hist_stats"])
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            )

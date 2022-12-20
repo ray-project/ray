@@ -1,10 +1,3 @@
-# Make sure the driver versions are the same as cluster versions.
-# The cluster uses ray-ml Docker image.
-# ray-ml Docker image installs dependencies from ray/python/requirements/ml/ directory.
-# We constrain on these requirements file so that the same versions are installed.
--c ../../../python/requirements/ml/requirements_dl.txt
--c ./tune_constraints.txt
-
-torch
-torchvision
+torch==1.11.0
+torchvision==0.12.0
 pytorch-lightning

@@ -3,7 +3,7 @@ import json
 import logging
 import numpy as np
 import os
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 import time
 
 try:
@@ -11,13 +11,13 @@ try:
 except ImportError:
     smart_open = None
 
+from ray.air._internal.json import SafeFallbackEncoder
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
 from ray.rllib.utils.typing import FileType, SampleBatchType
-from ray.util.ml_utils.json import SafeFallbackEncoder
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -60,10 +60,7 @@ class JsonWriter(OutputWriter):
         else:
             path = os.path.abspath(os.path.expanduser(path))
             # Try to create local dirs if they don't exist
-            try:
-                os.makedirs(path)
-            except OSError:
-                pass  # already exists
+            os.makedirs(path, exist_ok=True)
             assert os.path.exists(path), "Failed to create {}".format(path)
             self.path_is_uri = False
         self.path = path

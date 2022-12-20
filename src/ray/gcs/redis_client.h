@@ -33,11 +33,13 @@ class RedisClientOptions {
   RedisClientOptions(const std::string &ip,
                      int port,
                      const std::string &password,
-                     bool enable_sharding_conn = true)
+                     bool enable_sharding_conn = false,
+                     bool enable_ssl = false)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        enable_sharding_conn_(enable_sharding_conn) {}
+        enable_sharding_conn_(enable_sharding_conn),
+        enable_ssl_(enable_ssl) {}
 
   // Redis server address
   std::string server_ip_;
@@ -47,7 +49,10 @@ class RedisClientOptions {
   std::string password_;
 
   // Whether we enable sharding for accessing data.
-  bool enable_sharding_conn_{true};
+  bool enable_sharding_conn_ = false;
+
+  // Whether to use tls/ssl for redis connection
+  bool enable_ssl_ = false;
 };
 
 /// \class RedisClient

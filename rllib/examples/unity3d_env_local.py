@@ -25,7 +25,8 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -93,7 +94,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -116,62 +117,67 @@ if __name__ == "__main__":
     # the mappings from individual agents to Policies.
     policies, policy_mapping_fn = Unity3DEnv.get_policy_configs_for_game(args.env)
 
-    config = {
-        "env": "unity3d",
-        "env_config": {
-            "file_name": args.file_name,
-            "episode_horizon": args.horizon,
-        },
+    config = (
+        PPOConfig()
+        .environment(
+            "unity3d",
+            env_config={
+                "file_name": args.file_name,
+                "episode_horizon": args.horizon,
+            },
+        )
+        .framework("tf" if args.env != "Pyramids" else "torch")
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
-        "num_workers": args.num_workers if args.file_name else 0,
-        # Other settings.
-        "lr": 0.0003,
-        "lambda": 0.95,
-        "gamma": 0.99,
-        "sgd_minibatch_size": 256,
-        "train_batch_size": 4000,
+        .rollouts(
+            num_rollout_workers=args.num_workers if args.file_name else 0,
+            no_done_at_end=True,
+            rollout_fragment_length=200,
+        )
+        .training(
+            lr=0.0003,
+            lambda_=0.95,
+            gamma=0.99,
+            sgd_minibatch_size=256,
+            train_batch_size=4000,
+            num_sgd_iter=20,
+            clip_param=0.2,
+            model={"fcnet_hiddens": [512, 512]},
+        )
+        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_sgd_iter": 20,
-        "rollout_fragment_length": 200,
-        "clip_param": 0.2,
-        # Multi-agent setup for the particular env.
-        "multiagent": {
-            "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
-        },
-        "model": {
-            "fcnet_hiddens": [512, 512],
-        },
-        "framework": "tf" if args.env != "Pyramids" else "torch",
-        "no_done_at_end": True,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     # Switch on Curiosity based exploration for Pyramids env
     # (not solvable otherwise).
     if args.env == "Pyramids":
-        config["exploration_config"] = {
-            "type": "Curiosity",
-            "eta": 0.1,
-            "lr": 0.001,
-            # No actual feature net: map directly from observations to feature
-            # vector (linearly).
-            "feature_net_config": {
-                "fcnet_hiddens": [],
-                "fcnet_activation": "relu",
-            },
-            "sub_exploration": {
-                "type": "StochasticSampling",
-            },
-            "forward_net_activation": "relu",
-            "inverse_net_activation": "relu",
-        }
+        config.exploration(
+            exploration_config={
+                "type": "Curiosity",
+                "eta": 0.1,
+                "lr": 0.001,
+                # No actual feature net: map directly from observations to feature
+                # vector (linearly).
+                "feature_net_config": {
+                    "fcnet_hiddens": [],
+                    "fcnet_activation": "relu",
+                },
+                "sub_exploration": {
+                    "type": "StochasticSampling",
+                },
+                "forward_net_activation": "relu",
+                "inverse_net_activation": "relu",
+            }
+        )
     elif args.env == "GridFoodCollector":
-        config["model"] = {
-            "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [256, [10, 10], 1]],
-        }
+        config.training(
+            model={
+                "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [256, [10, 10], 1]],
+            }
+        )
     elif args.env == "Sorter":
-        config["model"]["use_attention"] = True
+        config.training(model={"use_attention": True})
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -180,15 +186,18 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
+    results = tune.Tuner(
         "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=5,
-        checkpoint_at_end=True,
-        restore=args.from_checkpoint,
-    )
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=5,
+                checkpoint_at_end=True,
+            ),
+        ),
+    ).fit()
 
     # And check the results.
     if args.as_test:

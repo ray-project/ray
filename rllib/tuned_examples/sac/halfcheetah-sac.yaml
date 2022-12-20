@@ -7,8 +7,6 @@ halfcheetah_sac:
     config:
         # Works for both torch and tf.
         framework: tf
-        horizon: 1000
-        soft_horizon: false
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
@@ -22,10 +20,10 @@ halfcheetah_sac:
         rollout_fragment_length: 1
         train_batch_size: 256
         target_network_update_freq: 1
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          learning_starts: 10000
+        num_steps_sampled_before_learning_starts: 10000
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003
@@ -35,5 +33,5 @@ halfcheetah_sac:
         clip_actions: false
         normalize_actions: true
         evaluation_interval: 1
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5
 

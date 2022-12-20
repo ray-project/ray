@@ -13,15 +13,12 @@ public class LongPollNamespaceTest {
 
   @Test
   public void parseFromTest() {
-    String key = "LongPollNamespace.ROUTE_TABLE";
+    String key = "ROUTE_TABLE";
     LongPollNamespace longPollNamespace = LongPollNamespace.parseFrom(key);
     Assert.assertEquals(longPollNamespace, LongPollNamespace.ROUTE_TABLE);
 
-    String unknown = "LongPollNamespace.unknown";
-    try {
-      longPollNamespace = LongPollNamespace.parseFrom(unknown);
-      Assert.assertTrue(false, "Expect exception here!");
-    } catch (Exception e) {
-    }
+    String unknown = "unknown";
+    longPollNamespace = LongPollNamespace.parseFrom(unknown);
+    Assert.assertNull(longPollNamespace);
   }
 }

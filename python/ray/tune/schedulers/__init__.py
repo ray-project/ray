@@ -11,6 +11,7 @@ from ray.tune.schedulers.pbt import (
     PopulationBasedTrainingReplay,
 )
 from ray.tune.schedulers.resource_changing_scheduler import ResourceChangingScheduler
+from ray.util import PublicAPI
 
 
 def _pb2_importer():
@@ -39,6 +40,7 @@ SCHEDULER_IMPORT = {
 }
 
 
+@PublicAPI(stability="beta")
 def create_scheduler(
     scheduler,
     **kwargs,
@@ -48,7 +50,7 @@ def create_scheduler(
     This is useful for swapping between different schedulers.
 
     Args:
-        scheduler (str): The scheduler to use.
+        scheduler: The scheduler to use.
         **kwargs: Scheduler parameters.
             These keyword arguments will be passed to the initialization
             function of the chosen scheduler.

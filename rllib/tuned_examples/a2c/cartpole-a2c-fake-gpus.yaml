@@ -1,0 +1,16 @@
+cartpole-a2c-fake-gpus:
+    env: CartPole-v1
+    run: A2C
+    stop:
+        episode_reward_mean: 150
+        training_iteration: 200
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        train_batch_size: 20
+        rollout_fragment_length: auto
+        num_workers: 0
+        lr: 0.001
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true

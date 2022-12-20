@@ -17,14 +17,13 @@ import pathlib
 from pprint import pformat
 
 import ray
-from ray import tune
+from ray import air, tune
 
-from ray.rllib.agents.ppo import ppo
+from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-logging.basicConfig(level=logging.WARN)
-logger = logging.getLogger("ppotrain")
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -78,22 +77,25 @@ if __name__ == "__main__":
     tune.register_env("sumo_test_env", marlenvironment.env_creator)
 
     # Algorithm.
-    policy_class = ppo.PPOStaticGraphTFPolicy
-    config = ppo.DEFAULT_CONFIG
-    config["framework"] = "tf"
-    config["gamma"] = 0.99
-    config["lambda"] = 0.95
-    config["log_level"] = "WARN"
-    config["lr"] = 0.001
-    config["min_time_s_per_reporting"] = 5
-    config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    config["num_workers"] = args.num_workers
-    config["rollout_fragment_length"] = 200
-    config["sgd_minibatch_size"] = 256
-    config["train_batch_size"] = 4000
-
-    config["batch_mode"] = "complete_episodes"
-    config["no_done_at_end"] = True
+    policy_class = ppo.PPOTF1Policy
+    config = (
+        ppo.PPOConfig()
+        .framework("tf")
+        .rollouts(
+            batch_mode="complete_episodes",
+            no_done_at_end=True,
+            num_rollout_workers=args.num_workers,
+        )
+        .training(
+            gamma=0.99,
+            lambda_=0.95,
+            lr=0.001,
+            sgd_minibatch_size=256,
+            train_batch_size=4000,
+        )
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .reporting(min_time_s_per_iteration=5)
+    )
 
     # Load default Scenario configuration for the LEARNING ENVIRONMENT
     scenario_config = deepcopy(marlenvironment.DEFAULT_SCENARIO_CONFING)
@@ -133,7 +135,7 @@ if __name__ == "__main__":
     }
     marl_env = marlenvironment.SUMOTestMultiAgentEnv(env_config)
 
-    # Config for the PPO trainer from the MARLEnv
+    # Config for PPO from the MARLEnv.
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}
@@ -143,16 +145,14 @@ if __name__ == "__main__":
             marl_env.get_action_space(agent),
             agent_policy_params,
         )
-    config["multiagent"]["policies"] = policies
-    config["multiagent"][
-        "policy_mapping_fn"
-    ] = lambda agent_id, episode, **kwargs: agent_id
-    config["multiagent"]["policies_to_train"] = ["ppo_policy"]
+    config.multi_agent(
+        policies=policies,
+        policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: agent_id,
+        policies_to_train=["ppo_policy"],
+    )
+    config.environment("sumo_test_env", env_config=env_config)
 
-    config["env"] = "sumo_test_env"
-    config["env_config"] = env_config
-
-    logger.info("PPO Configuration: \n %s", pformat(config))
+    logger.info("PPO Configuration: \n %s", pformat(config.to_dict()))
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -161,14 +161,17 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
+    results = tune.Tuner(
         "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=10,
-        restore=args.from_checkpoint,
-    )
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=10,
+            ),
+        ),
+    ).fit()
 
     # And check the results.
     if args.as_test:

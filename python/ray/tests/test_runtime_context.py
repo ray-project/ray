@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from ray._private.test_utils import SignalActor
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -118,6 +119,34 @@ def test_current_actor(ray_start_regular):
     assert ray.get(ray.get(obj)) == "hello"
 
 
+def test_get_assigned_resources(ray_start_10_cpus):
+    @ray.remote
+    class Echo:
+        def check(self):
+            return ray.get_runtime_context().get_assigned_resources()
+
+    e = Echo.remote()
+    result = e.check.remote()
+    print(ray.get(result))
+    assert ray.get(result).get("CPU") is None
+    ray.kill(e)
+
+    e = Echo.options(num_cpus=4).remote()
+    result = e.check.remote()
+    assert ray.get(result)["CPU"] == 4.0
+    ray.kill(e)
+
+    @ray.remote
+    def check():
+        return ray.get_runtime_context().get_assigned_resources()
+
+    result = check.remote()
+    assert ray.get(result)["CPU"] == 1.0
+
+    result = check.options(num_cpus=2).remote()
+    assert ray.get(result)["CPU"] == 2.0
+
+
 def test_actor_stats_normal_task(ray_start_regular):
     # Because it works at the core worker level, this API works for tasks.
     @ray.remote
@@ -210,6 +239,64 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+def test_ids(ray_start_regular):
+    rtc = ray.get_runtime_context()
+    # node id
+    assert isinstance(rtc.get_node_id(), str)
+    assert rtc.get_node_id() == rtc.node_id.hex()
+    # job id
+    assert isinstance(rtc.get_job_id(), str)
+    assert rtc.get_job_id() == rtc.job_id.hex()
+    # placement group id
+    # Driver doesn't belong to any placement group.
+    assert rtc.get_placement_group_id() is None
+    pg = ray.util.placement_group(
+        name="bar",
+        strategy="PACK",
+        bundles=[
+            {"CPU": 1, "GPU": 0},
+        ],
+    )
+    ray.get(pg.ready())
+
+    @ray.remote
+    def foo_pg():
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_placement_group_id(), str)
+        assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
+
+    ray.get(
+        foo_pg.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
+    ray.util.remove_placement_group(pg)
+
+    # task id
+    assert rtc.get_task_id() is None
+
+    @ray.remote
+    def foo_task():
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_task_id(), str)
+        assert rtc.get_task_id() == rtc.task_id.hex()
+
+    ray.get(foo_task.remote())
+
+    # actor id
+    assert rtc.get_actor_id() is None
+
+    @ray.remote
+    class FooActor:
+        def foo(self):
+            rtc = ray.get_runtime_context()
+            assert isinstance(rtc.get_actor_id(), str)
+            assert rtc.get_actor_id() == rtc.actor_id.hex()
+
+    actor = FooActor.remote()
+    ray.get(actor.foo.remote())
+
+
 # get_runtime_context() can be called outside of Ray so it should not start
 # Ray automatically.
 def test_no_auto_init(shutdown_only):
@@ -218,7 +305,17 @@ def test_no_auto_init(shutdown_only):
     assert not ray.is_initialized()
 
 
+def test_errors_when_ray_not_initialized():
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_job_id()
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_node_id()
+
+
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

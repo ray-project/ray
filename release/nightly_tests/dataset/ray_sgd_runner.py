@@ -1,18 +1,20 @@
 # flake8: noqa
 import argparse
+import math
 import os
 import json
 import time
 
-import ray
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-from ray import train
-from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
 from torch.nn.parallel import DistributedDataParallel
+
+import ray
+from ray.air.config import DatasetConfig, ScalingConfig
+from ray.air import session
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 
 
 class Net(nn.Module):
@@ -137,12 +139,14 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     device = torch.device(
-        f"cuda:{train.local_rank()}" if use_gpu and torch.cuda.is_available() else "cpu"
+        f"cuda:{session.get_local_rank()}"
+        if use_gpu and torch.cuda.is_available()
+        else "cpu"
     )
 
-    train_dataset_pipeline = train.get_dataset_shard("train_dataset")
+    train_dataset_pipeline = session.get_dataset_shard("train")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = train.get_dataset_shard("test_dataset")
+    test_dataset = session.get_dataset_shard("test")
     test_torch_dataset = test_dataset.to_torch(
         label_column="label", batch_size=batch_size
     )
@@ -187,46 +191,20 @@ def train_func(config):
             f"epoch [{epoch + 1}]: testing accuracy: {test_num_correct} / {test_num_total} = {test_acc:.4f}"
         )
 
+        checkpoint = None
+        if epoch == num_epochs - 1:
+            checkpoint = TorchCheckpoint.from_model(net)
+
         # Record and log stats.
-        train.report(
-            train_acc=train_acc,
-            train_loss=train_running_loss,
-            test_acc=test_acc,
-            test_loss=test_running_loss,
+        session.report(
+            dict(
+                train_acc=train_acc,
+                train_loss=train_running_loss,
+                test_acc=test_acc,
+                test_loss=test_running_loss,
+            ),
+            checkpoint=checkpoint,
         )
-
-    if train.world_rank() == 0:
-        return net.module.cpu()
-    else:
-        return None
-
-
-def create_dataset_pipeline(files, epochs, num_windows):
-    if num_windows > 1:
-        file_splits = np.array_split(files, num_windows)
-
-        class Windower:
-            def __init__(self):
-                self.i = 0
-                self.iterations = epochs * num_windows
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                if self.i >= self.iterations:
-                    raise StopIteration()
-                split = file_splits[self.i % num_windows]
-                self.i += 1
-                return lambda: ray.data.read_parquet(list(split))
-
-        pipe = DatasetPipeline.from_iterable(Windower())
-        pipe = pipe.random_shuffle_each_window()
-    else:
-        ds = ray.data.read_parquet(files)
-        pipe = ds.repeat(epochs)
-        pipe = pipe.random_shuffle_each_window()
-    return pipe
 
 
 if __name__ == "__main__":
@@ -253,7 +231,6 @@ if __name__ == "__main__":
         "--use-gpu", action="store_true", default=False, help="Use GPU for training."
     )
     parser.add_argument("--num-epochs", default=4, type=int, help="number of epochs")
-    parser.add_argument("--num-windows", default=64, type=int, help="number of windows")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -261,7 +238,6 @@ if __name__ == "__main__":
     num_workers = args.num_workers
     use_gpu = args.use_gpu
     num_epochs = args.num_epochs
-    num_windows = args.num_windows
 
     BATCH_SIZE = 50000
     NUM_HIDDEN = 50
@@ -286,11 +262,8 @@ if __name__ == "__main__":
     if smoke_test:
         # Only read a single file.
         files = files[:1]
-        train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, 1)
-    else:
-        train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, num_windows)
 
-    datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
+    datasets = {"train": ray.data.read_parquet(files), "test": test_dataset}
 
     config = {
         "is_distributed": True,
@@ -307,18 +280,29 @@ if __name__ == "__main__":
     num_gpus = 1 if use_gpu else 0
     num_cpus = 0 if use_gpu else 1
 
-    trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker={"CPU": num_cpus, "GPU": num_gpus},
+    # each file is 2GBs
+    stream_window_size = 2 * 1024 * 1024 * 1024
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        datasets=datasets,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker={"CPU": num_cpus, "GPU": num_gpus},
+        ),
+        dataset_config={
+            "train": DatasetConfig(
+                use_stream_api=True,
+                stream_window_size=stream_window_size,
+                global_shuffle=True,
+            ),
+            "test": DatasetConfig(use_stream_api=False),
+        },
     )
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config=config, callbacks=[], dataset=datasets
-    )
-    model = results[0]
-    trainer.shutdown()
+    results = trainer.fit()
+    assert results.checkpoint
 
     end_time = time.time()
 

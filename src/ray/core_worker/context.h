@@ -18,9 +18,10 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-
+using json = nlohmann::json;
 namespace ray {
 namespace core {
 
@@ -42,10 +43,12 @@ class WorkerContext {
 
   bool ShouldCaptureChildTasksInPlacementGroup() const LOCKS_EXCLUDED(mutex_);
 
+  const std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
+      LOCKS_EXCLUDED(mutex_);
+
   const std::string &GetCurrentSerializedRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
-  std::shared_ptr<const rpc::RuntimeEnv> GetCurrentRuntimeEnv() const
-      LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
@@ -53,6 +56,8 @@ class WorkerContext {
   const TaskID &GetCurrentInternalTaskId() const;
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
+
+  void SetTaskDepth(int64_t depth) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
 
@@ -100,6 +105,7 @@ class WorkerContext {
   const WorkerType worker_type_;
   const WorkerID worker_id_;
   const JobID current_job_id_;
+  int64_t task_depth_ GUARDED_BY(mutex_) = 0;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;
@@ -109,9 +115,9 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_ GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
-  std::shared_ptr<rpc::RuntimeEnv> runtime_env_ GUARDED_BY(mutex_);
+  std::shared_ptr<json> runtime_env_ GUARDED_BY(mutex_);
   // The runtime env info.
-  rpc::RuntimeEnvInfo runtime_env_info_ GUARDED_BY(mutex_);
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
   // To protect access to mutable members;

@@ -25,7 +25,7 @@ class LinearFeatureBaseline:
         ll = len(path["rewards"])
         al = np.arange(ll).reshape(-1, 1) / 100.0
         return np.concatenate(
-            [o, o ** 2, al, al ** 2, al ** 3, np.ones((ll, 1))], axis=1
+            [o, o**2, al, al**2, al**3, np.ones((ll, 1))], axis=1
         )
 
     def fit(self, paths):
@@ -78,10 +78,10 @@ class MBMPOExploration(StochasticSampling):
         """Initializes a MBMPOExploration instance.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            framework (str): One of None, "tf", "torch".
+            action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
             model (ModelV2): The ModelV2 used by the owning Policy.
-            random_timesteps (int): The number of timesteps for which to act
+            random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps,
                 actual samples will be drawn to get exploration actions.
                 NOTE: For MB-MPO, only worker=0 will use this setting. All

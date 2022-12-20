@@ -161,19 +161,20 @@ def pad_batch_to_sequences_of_same_size(
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
-    max_seq_len: int,
+    seq_lens: TensorType,
     framework: str = "tf",
     time_major: bool = False,
 ):
     """Adds a time dimension to padded inputs.
 
     Args:
-        padded_inputs (TensorType): a padded batch of sequences. That is,
+        padded_inputs: a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        max_seq_len (int): The max. sequence length in padded_inputs.
-        framework (str): The framework string ("tf2", "tf", "tfe", "torch").
-        time_major (bool): Whether data should be returned in time-major (TxB)
+        seq_lens: A 1D tensor of sequence lengths, denoting the non-padded length
+            in timesteps of each rollout in the batch.
+        framework: The framework string ("tf2", "tf", "torch").
+        time_major: Whether data should be returned in time-major (TxB)
             format or not (BxT).
 
     Returns:
@@ -183,15 +184,16 @@ def add_time_dimension(
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
-        new_batch_size = padded_batch_size // max_seq_len
+        new_batch_size = tf.shape(seq_lens)[0]
+        time_size = padded_batch_size // new_batch_size
         new_shape = tf.concat(
             [
                 tf.expand_dims(new_batch_size, axis=0),
-                tf.expand_dims(max_seq_len, axis=0),
+                tf.expand_dims(time_size, axis=0),
                 tf.shape(padded_inputs)[1:],
             ],
             axis=0,
@@ -202,8 +204,9 @@ def add_time_dimension(
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
-        new_batch_size = padded_batch_size // max_seq_len
-        batch_major_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        new_batch_size = seq_lens.shape[0]
+        time_size = padded_batch_size // new_batch_size
+        batch_major_shape = (new_batch_size, time_size) + padded_inputs.shape[1:]
         padded_outputs = padded_inputs.view(batch_major_shape)
 
         if time_major:
@@ -231,30 +234,32 @@ def chop_into_sequences(
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
-        feature_columns (list): List of arrays containing features.
-        state_columns (list): List of arrays containing LSTM state values.
-        max_seq_len (int): Max length of sequences before truncation.
+        feature_columns: List of arrays containing features.
+        state_columns: List of arrays containing LSTM state values.
+        max_seq_len: Max length of sequences. Sequences longer than max_seq_len
+            will be split into subsequences that span the batch dimension
+            and sum to max_seq_len.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.
         agent_indices (List[AgentID]): List of agent ids for each step. Note
             that this has to be combined with episode_ids for uniqueness.
-        dynamic_max (bool): Whether to dynamically shrink the max seq len.
+        dynamic_max: Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
-        shuffle (bool): Whether to shuffle the sequence outputs.
+        shuffle: Whether to shuffle the sequence outputs.
         handle_nested_data: If True, assume that the data in
             `feature_columns` could be nested structures (of data).
             If False, assumes that all items in `feature_columns` are
             only np.ndarrays (no nested structured of np.ndarrays).
-        _extra_padding (int): Add extra padding to the end of sequences.
+        _extra_padding: Add extra padding to the end of sequences.
 
     Returns:
-        f_pad (list): Padded feature columns. These will be of shape
+        f_pad: Padded feature columns. These will be of shape
             [NUM_SEQUENCES * MAX_SEQ_LEN, ...].
-        s_init (list): Initial states for each sequence, of shape
+        s_init: Initial states for each sequence, of shape
             [NUM_SEQUENCES, ...].
-        seq_lens (list): List of sequence lengths, of shape [NUM_SEQUENCES].
+        seq_lens: List of sequence lengths, of shape [NUM_SEQUENCES].
 
     Examples:
         >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences
@@ -371,16 +376,16 @@ def timeslice_along_seq_lens_with_overlap(
     """Slices batch along `seq_lens` (each seq-len item produces one batch).
 
     Args:
-        sample_batch (SampleBatch): The SampleBatch to timeslice.
+        sample_batch: The SampleBatch to timeslice.
         seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
             at. If None, use `sample_batch[SampleBatch.SEQ_LENS]`.
-        zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
+        zero_pad_max_seq_len: If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
             additional timesteps gained via setting pre_overlap (see Example).
-        pre_overlap (int): If >0, will overlap each two consecutive slices by
+        pre_overlap: If >0, will overlap each two consecutive slices by
             this many timesteps (toward the left side). This will cause
             zero-padding at the very beginning of the batch.
-        zero_init_states (bool): Whether initial states should always be
+        zero_init_states: Whether initial states should always be
             zero'd. If False, will use the state_outs of the batch to
             populate state_in values.
 
@@ -405,6 +410,16 @@ def timeslice_along_seq_lens_with_overlap(
     """
     if seq_lens is None:
         seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
+    else:
+        if sample_batch.get(SampleBatch.SEQ_LENS) is not None and log_once(
+            "overriding_sequencing_information"
+        ):
+            logger.warning(
+                "Found sequencing information in a batch that will be "
+                "ignored when slicing. Ignore this warning if you know "
+                "what you are doing."
+            )
+
     if seq_lens is None:
         max_seq_len = zero_pad_max_seq_len - pre_overlap
         if log_once("no_sequence_lengths_available_for_time_slicing"):
@@ -420,6 +435,7 @@ def timeslice_along_seq_lens_with_overlap(
         seq_lens = [zero_pad_max_seq_len] * num_seq_lens + (
             [last_seq_len] if last_seq_len else []
         )
+
     assert (
         seq_lens is not None and len(seq_lens) > 0
     ), "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"

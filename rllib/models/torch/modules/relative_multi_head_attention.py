@@ -15,8 +15,8 @@ class RelativePositionEmbedding(nn.Module):
     matrix.
 
     Args:
-        seq_length (int): The max. sequence length (time axis).
-        out_dim (int): The number of nodes to go into the first Tranformer
+        seq_length: The max. sequence length (time axis).
+        out_dim: The number of nodes to go into the first Tranformer
             layer with.
 
     Returns:
@@ -62,13 +62,13 @@ class RelativeMultiHeadAttention(nn.Module):
 
         Args:
             in_dim (int):
-            out_dim (int): The output dimension of this module. Also known as
+            out_dim: The output dimension of this module. Also known as
                 "attention dim".
-            num_heads (int): The number of attention heads to use.
+            num_heads: The number of attention heads to use.
                 Denoted `H` in [2].
-            head_dim (int): The dimension of a single(!) attention head
+            head_dim: The dimension of a single(!) attention head
                 Denoted `D` in [2].
-            input_layernorm (bool): Whether to prepend a LayerNorm before
+            input_layernorm: Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Union[str, callable]): Optional activation
                 function or activation function specifier (str).
@@ -143,7 +143,7 @@ class RelativeMultiHeadAttention(nn.Module):
         score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d ** 0.5
+        score = score / d**0.5
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(torch.arange(Tau + 1, Tau + T + 1), dtype=score.dtype).to(

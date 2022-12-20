@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import workflow
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 
 
 def test_dag_to_workflow_execution(workflow_start_regular_shared):
@@ -28,7 +28,7 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         return f"{lf},{rt};{b}"
 
     with pytest.raises(TypeError):
-        workflow.create(begin.remote(1, 2, 3))
+        workflow.run_async(begin.remote(1, 2, 3))
 
     with InputNode() as dag_input:
         f = begin.bind(2, dag_input[1], a=dag_input.a)
@@ -36,28 +36,18 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         rt = right.bind(f, b=dag_input.b, pos=dag_input[0])
         b = end.bind(lf, rt, b=dag_input.b)
 
-    wf = workflow.create(b, 2, 3.14, a=10, b="ok")
-    assert len(list(wf._iter_workflows_in_dag())) == 4, "incorrect amount of steps"
-    assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
-
-
-def test_dag_to_workflow_options(workflow_start_regular_shared):
-    """This test if the workflow inherits DAG options."""
-
-    @ray.remote
-    def no_resource():
-        pass
-
-    # TODO(suquark): The current Ray DAG is buggy, it failed to return the
-    # "original" options, we need to override "num_returns" to pass workflow check.
-    dag = no_resource.options(num_gpus=100, num_returns=1).bind()
-
-    wf = workflow.create(dag)
-    assert wf.data.step_options.ray_options["num_gpus"] == 100
+    assert (
+        workflow.run(b, 2, 3.14, a=10, b="ok")
+        == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
+    )
 
 
 def test_dedupe_serialization_dag(workflow_start_regular_shared):
     from ray.workflow import serialization
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
 
     @ray.remote
     def identity(x):
@@ -80,20 +70,23 @@ def test_dedupe_serialization_dag(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
+    result_ref, result_list = workflow.run(gather.bind(single, double))
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
 
-    # One upload for the initial checkpoint, and one for the object ref after
-    # resuming.
-    assert get_num_uploads() == 2
+    # One upload for the initial checkpoint.
+    assert get_num_uploads() == 1
 
 
 def test_same_object_many_dags(workflow_start_regular_shared):
     """Ensure that when we dedupe uploads, we upload the object once per DAG,
     since different DAGs shouldn't look in each others object directories.
     """
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
 
     @ray.remote
     def f(a):
@@ -101,10 +94,10 @@ def test_same_object_many_dags(workflow_start_regular_shared):
 
     x = {0: ray.put(10)}
 
-    result1 = workflow.create(f.bind(x)).run()
-    result2 = workflow.create(f.bind(x)).run()
+    result1 = workflow.run(f.bind(x))
+    result2 = workflow.run(f.bind(x))
     with InputNode() as dag_input:
-        result3 = workflow.create(f.bind(dag_input.x), x=x).run()
+        result3 = workflow.run(f.bind(dag_input.x), x=x)
 
     assert ray.get(*result1) == 10
     assert ray.get(*result2) == 10
@@ -113,6 +106,10 @@ def test_same_object_many_dags(workflow_start_regular_shared):
 
 def test_dereference_object_refs(workflow_start_regular_shared):
     """Ensure that object refs are dereferenced like in ray tasks."""
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
 
     @ray.remote
     def f(obj_list):
@@ -133,7 +130,7 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     dag = f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)]))
 
     # Run with workflow and normal Ray engine.
-    workflow.create(dag).run()
+    workflow.run(dag)
     ray.get(dag.execute())
 
 
@@ -181,7 +178,7 @@ def test_dereference_dags(workflow_start_regular_shared):
     )
 
     # Run with workflow and normal Ray engine.
-    assert workflow.create(dag).run() == "ok"
+    assert workflow.run(dag) == "ok"
     assert ray.get(dag.execute()) == "ok"
 
 
@@ -206,7 +203,7 @@ def test_workflow_continuation(workflow_start_regular_shared):
 
     dag = f.bind()
     assert ray.get(dag.execute()) == 43
-    assert workflow.create(dag).run() == 43
+    assert workflow.run(dag) == 43
 
 
 if __name__ == "__main__":

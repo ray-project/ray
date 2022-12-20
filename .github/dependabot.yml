@@ -15,10 +15,20 @@ updates:
       # Use Pacific Standard Time.
       timezone: "America/Los_Angeles"
     commit-message:
-      prefix: "[tune]"
+      prefix: "[air]"
       include: "scope"
     # Only 5 upgrade PRs open at a time.
     open-pull-requests-limit: 5
+    reviewers:
+      - "ray-project/ray-tune"
+  # compat requirements should not be updated
+  - package-ecosystem: "pip"
+    directory: "/python/requirements/compat"
+    commit-message:
+      prefix: "[air/do-not-merge]"
+      include: "scope"
+    ignore: *
+    open-pull-requests-limit: 0
     reviewers:
       - "ray-project/ray-tune"
   # Data Requirements.

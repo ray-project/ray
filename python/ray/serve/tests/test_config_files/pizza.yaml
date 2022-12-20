@@ -1,0 +1,13 @@
+import_path: ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag
+
+deployments:
+
+  - name: Multiplier
+    user_config:
+      factor: 1
+
+  - name: Adder
+    ray_actor_options:
+      runtime_env:
+        env_vars:
+          override_increment: '1'

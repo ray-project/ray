@@ -1,4 +1,5 @@
-from collections import deque, OrderedDict
+from collections import OrderedDict, deque
+
 import numpy as np
 
 from ray.rllib.utils import force_list
@@ -161,7 +162,7 @@ class TensorFlowVariables:
         # Graph mode.
         return self.sess.run(self.variables)
 
-    def set_weights(self, new_weights):
+    def set_weights(self, new_weights: dict):
         """Sets the weights to new_weights.
 
         Note:
@@ -169,7 +170,7 @@ class TensorFlowVariables:
             variables you want to be set.
 
         Args:
-            new_weights (Dict): Dictionary mapping variable names to their
+            new_weights: Dictionary mapping variable names to their
                 weights.
         """
         if self.sess is None:
@@ -183,7 +184,7 @@ class TensorFlowVariables:
         """Sets weigths using exact or closest assignable variable name
 
         Args:
-            weights (Dict): Dictionary mapping variable names to their
+            weights: Dictionary mapping variable names to their
                 weights.
         Returns:
             Tuple[List, Dict]: assigned variables list, dict of

@@ -1,17 +1,32 @@
-import subprocess
-import sys
-import pytest
+import os
 import re
 import signal
+import subprocess
+import sys
 import time
-import os
+
+import pytest
 
 import ray
-
 from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
+
+
+def test_logger_config():
+    script = """
+import ray
+
+ray.init(num_cpus=1)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -44,10 +59,15 @@ def _hook(env):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_runtime_env_hook():
-    script = """
+@pytest.mark.parametrize("skip_hook", [True, False])
+def test_runtime_env_hook(skip_hook):
+    ray_init_snippet = "ray.init(_skip_env_hook=True)" if skip_hook else ""
+
+    script = f"""
 import ray
 import os
+
+{ray_init_snippet}
 
 @ray.remote
 def f():
@@ -61,7 +81,26 @@ print(ray.get(f.remote()))
     )
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
-    assert "HOOK_VALUE" in out_str
+    if skip_hook:
+        assert "HOOK_VALUE" not in out_str
+    else:
+        assert "HOOK_VALUE" in out_str
+
+
+def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_HOOK", "ray.tests.test_output._hook")
+    cluster, address = start_cluster
+    ray.init(address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("HOOK_KEY")
+
+    using_ray_client = address.startswith("ray://")
+    if using_ray_client:
+        assert ray.get(f.remote()) is None
+    else:
+        assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
 def test_autoscaler_infeasible():
@@ -88,7 +127,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock():
+def test_autoscaler_warn_deadlock(enable_syncer_test):
     script = """
 import ray
 import time
@@ -138,14 +177,15 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -165,32 +205,38 @@ module = __import__(module_name)
 
 # Define an actor that closes over this temporary module. This should
 # fail when it is unpickled.
-@ray.remote
+@ray.remote(max_restarts=0)
 class Foo:
     def __init__(self):
         self.x = module.temporary_python_file()
-
+    def ready(self):
+        pass
 a = Foo.remote()
-import time
-time.sleep(3)  # Wait for actor start.
+try:
+    ray.get(a.ready.remote())
+except Exception as e:
+    pass
+from time import sleep
+sleep(3)
 """
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
     err_str = proc.stderr.read().decode("ascii")
     print(out_str)
+    print("-----")
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The actor with name Foo failed to import" in err_str
 
 
 def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -260,7 +306,7 @@ ray.init(local_mode=True)
 
 # In local mode this generates an ERROR level log.
 ray._private.utils.push_error_to_driver(
-    ray.worker.global_worker, "type", "Hello there")
+    ray._private.worker.global_worker, "type", "Hello there")
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -401,20 +447,42 @@ ray.get(b.f.remote())
     assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
-def test_output():
-    # Use subprocess to execute the __main__ below.
-    outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
-    ).decode()
-    lines = outputs.split("\n")
+def test_output_local_ray():
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
     for line in lines:
         print(line)
+    lines = [line for line in lines if "The object store is using /tmp" not in line]
+    assert len(lines) == 1
+    line = lines[0]
+    print(line)
+    assert "Started a local Ray instance." in line
     if os.environ.get("RAY_MINIMAL") == "1":
-        # Without "View the Ray dashboard"
-        assert len(lines) == 1, lines
+        assert "View the dashboard" not in line
     else:
-        # With "View the Ray dashboard"
-        assert len(lines) == 2, lines
+        assert "View the dashboard" in line
+
+
+def test_output_ray_cluster(call_ray_start):
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
+    for line in lines:
+        print(line)
+    assert len(lines) == 2
+    assert "Connecting to existing Ray cluster at address:" in lines[0]
+    assert "Connected to Ray cluster." in lines[1]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in lines[1]
+    else:
+        assert "View the dashboard" in lines[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -450,7 +518,7 @@ ray.init(address="auto")
 
 run_experiments(
     {
-        "ppo": {
+        "PPO": {
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
@@ -556,27 +624,43 @@ time.sleep(5)
     assert actor_repr not in out
 
 
-def test_node_name_in_raylet_death():
+@pytest.mark.parametrize("pull_based", [True, False])
+def test_node_name_in_raylet_death(pull_based):
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
-import ray
 import time
 import os
 
-NUM_HEARTBEATS=10
-HEARTBEAT_PERIOD=500
 WAIT_BUFFER_SECONDS=5
 
-os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+if {pull_based}:
+    os.environ["RAY_pull_based_healthcheck"]="true"
+    os.environ["RAY_health_check_initial_delay_ms"]="0"
+    os.environ["RAY_health_check_period_ms"]="1000"
+    os.environ["RAY_health_check_timeout_ms"]="10"
+    os.environ["RAY_health_check_failure_threshold"]="2"
+    sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+        int(os.environ["RAY_health_check_failure_threshold"])
+    sleep_time += WAIT_BUFFER_SECONDS
+else:
+    NUM_HEARTBEATS=10
+    HEARTBEAT_PERIOD=500
+    os.environ["RAY_pull_based_healthcheck"]="false"
+    os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
+    os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+    sleep_time = NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS
+
+import ray
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
-ray.worker._global_node.kill_raylet()
-time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
+ray._private.worker._global_node.kill_raylet()
+
+time.sleep(sleep_time)
 ray.shutdown()
     """
     out = run_string_as_driver(script)
+    print(out)
     assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 
@@ -586,8 +670,11 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        if os.environ.get("PARALLEL_CI"):
+            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        else:
+            sys.exit(pytest.main(["-sv", __file__]))

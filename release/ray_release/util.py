@@ -4,14 +4,25 @@ import json
 import os
 import subprocess
 import time
-from typing import Dict, Any, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-
 from ray_release.logger import logger
 
-ANYSCALE_HOST = os.environ.get("ANYSCALE_HOST", "https://console.anyscale.com")
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+
+
+class DeferredEnvVar:
+    def __init__(self, var: str, default: Optional[str] = None):
+        self._var = var
+        self._default = default
+
+    def __str__(self):
+        return os.environ.get(self._var, self._default)
+
+
+ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 
 
 def deep_update(d, u) -> Dict:
@@ -31,7 +42,11 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 
 
 def url_exists(url: str) -> bool:
-    return requests.head(url, allow_redirects=True).status_code == 200
+    try:
+        return requests.head(url, allow_redirects=True).status_code == 200
+    except requests.exceptions.RequestException:
+        logger.exception(f"Failed to check url exists: {url}")
+        return False
 
 
 def resolve_url(url: str) -> str:
@@ -83,12 +98,14 @@ def anyscale_cluster_env_build_url(build_id: str) -> str:
 _anyscale_sdk = None
 
 
-def get_anyscale_sdk() -> AnyscaleSDK:
+def get_anyscale_sdk(use_cache: bool = True) -> "AnyscaleSDK":
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+
     global _anyscale_sdk
-    if _anyscale_sdk:
+    if use_cache and _anyscale_sdk:
         return _anyscale_sdk
 
-    _anyscale_sdk = AnyscaleSDK()
+    _anyscale_sdk = AnyscaleSDK(host=str(ANYSCALE_HOST))
     return _anyscale_sdk
 
 
@@ -119,8 +136,9 @@ def run_bash_script(bash_script: str) -> None:
 def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
 
+    # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
-        "pip install -U anyscale",
+        "pip install -U anyscale==0.5.51",
         shell=True,
         text=True,
     )

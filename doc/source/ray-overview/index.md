@@ -7,7 +7,7 @@
 
 This tutorial will give you a quick tour of Ray's features.
 To get started, we'll start by installing Ray.
-Most of the examples in this guide are based on Python, but we'll also show you how to user Ray Core in Java.
+Most of the examples in this guide are based on Python, but we'll also show you how to use Ray Core in Java.
 
 ````{panels}
 :container: text-center
@@ -34,11 +34,110 @@ To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/i
 Want to build Ray from source or with docker? Need more details? 
 Check out our detailed [installation guide](installation.rst).
 
+## Starting your first local Ray cluster
 
-## Ray ML Quick Start
+```{raw} html
+
+<div class="termynal" data-termynal>
+    <span data-ty="input">pip install ray</span>
+    <span data-ty="progress"></span>
+    <span data-ty>Successfully installed ray</span>
+    <span data-ty="input">python</span>
+    <span data-ty="input" data-ty-prompt=">>>">import ray; ray.init()</span>
+    <span data-ty>
+        ... INFO worker.py:1509 -- Started a local Ray instance.
+        View the dashboard at 127.0.0.1:8265
+        ...
+    </span>
+</div>
+
+```
+
+## Ray AI Runtime Quick Start
+
+To use Ray's AI Runtime install Ray with the optional extra `air` packages:
+
+```
+pip install "ray[air]"
+```
+
+`````{dropdown} Efficiently process your data into features.
+
+Load data into a ``Dataset``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
+```
+
+Preprocess your data with a ``Preprocessor``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_preprocess_start__
+    :end-before: __air_xgb_preprocess_end__
+```
+`````
+
+`````{dropdown} Scale out model training.
+
+This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
+
+```
+pip install xgboost_ray
+```
+
+Train a model with an ``XGBoostTrainer``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_train_start__
+    :end-before: __air_xgb_train_end__
+```
+`````
+
+`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
+
+Configure the parameters for tuning:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_tuner_start__
+    :end-before: __air_xgb_tuner_end__
+```
+
+Run hyperparameter tuning with Ray Tune to find the best model:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_tune_generic_end__
+    :end-before: __air_tune_generic_end__
+```
+`````
+
+`````{dropdown} Use the trained model for Batch prediction
+
+Use the trained model for batch prediction with a ``BatchPredictor``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_batchpred_start__
+    :end-before: __air_xgb_batchpred_end__
+```
+`````
+
+
+```{link-button} air
+:type: ref
+:text: Learn more about Ray AIR
+:classes: btn-outline-primary btn-block
+```
+
+## Ray Libraries Quick Start
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries. 
+Simply click on the dropdowns below to see examples of our most popular libraries.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
 :animate: fade-in-slide-down
@@ -102,7 +201,7 @@ This example shows how you can use Ray Train with PyTorch.
 
 First, set up your dataset and model.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_setup_begin__
 :end-before: __torch_setup_end__
@@ -110,7 +209,7 @@ First, set up your dataset and model.
 
 Now define your single-worker PyTorch training function.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_single_begin__
 :end-before: __torch_single_end__
@@ -118,7 +217,7 @@ Now define your single-worker PyTorch training function.
 
 This training function can be executed with:
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
@@ -132,7 +231,7 @@ easily setup your model & data for distributed training.
 This will automatically wrap your model with ``DistributedDataParallel``
 and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_distributed_begin__
 :end-before: __torch_distributed_end__
@@ -141,7 +240,7 @@ and place it on the right device, and add ``DistributedSampler`` to your DataLoa
 Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
 with 4 workers, and use it to run the new training function!
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
@@ -155,7 +254,7 @@ with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_ke
 
 First, set up your dataset and model.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_setup_begin__
 :end-before: __tf_setup_end__
@@ -163,7 +262,7 @@ First, set up your dataset and model.
 
 Now define your single-worker TensorFlow training function.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_single_begin__
 :end-before: __tf_single_end__
@@ -171,7 +270,7 @@ Now define your single-worker TensorFlow training function.
 
 This training function can be executed with:
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_single_run_begin__
 :end-before: __tf_single_run_end__
@@ -185,7 +284,7 @@ All you need to do is:
 2. Choose your TensorFlow distributed training strategy. In this example
    we use the ``MultiWorkerMirroredStrategy``.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_distributed_begin__
 :end-before: __tf_distributed_end__
@@ -194,7 +293,7 @@ All you need to do is:
 Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
 with 4 workers, and use it to run the new training function!
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_trainer_begin__
 :end-before: __tf_trainer_end__
@@ -508,7 +607,7 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-cloud
+```{link-button} cluster-index
 :type: ref
 :text: Learn more about launching Ray Clusters
 :classes: btn-outline-primary btn-block

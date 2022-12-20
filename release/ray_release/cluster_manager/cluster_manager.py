@@ -1,25 +1,33 @@
 import abc
 import time
-from typing import Dict, Any, Optional
-
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.anyscale_util import get_project_name
-from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
-from ray_release.config import DEFAULT_AUTOSUSPEND_MINS
+from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
+from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class ClusterManager(abc.ABC):
     def __init__(
-        self, test_name: str, project_id: str, sdk: Optional[AnyscaleSDK] = None
+        self,
+        test_name: str,
+        project_id: str,
+        sdk: Optional["AnyscaleSDK"] = None,
+        smoke_test: bool = False,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
         self.test_name = test_name
+        self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
 
-        self.cluster_name = f"{test_name}_{int(time.time())}"
+        self.cluster_name = (
+            f"{test_name}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
+        )
         self.cluster_id = None
 
         self.cluster_env = None
@@ -32,6 +40,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute_id = None
 
         self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
+        self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
@@ -43,6 +52,9 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
+        self.cluster_env["env_vars"][
+            "RAY_USAGE_STATS_EXTRA_TAGS"
+        ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
@@ -52,10 +64,17 @@ class ClusterManager(abc.ABC):
 
     def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
         self.cluster_compute = cluster_compute
+        self.cluster_compute.setdefault(
+            "idle_termination_minutes", self.autosuspend_minutes
+        )
+        self.cluster_compute.setdefault(
+            "maximum_uptime_minutes", self.maximum_uptime_minutes
+        )
+
         self.cluster_compute_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__compute__{self.test_name}__"
-            f"{dict_hash(cluster_compute)}"
+            f"{dict_hash(self.cluster_compute)}"
         )
 
     def build_configs(self, timeout: float = 30.0):

@@ -1,16 +1,16 @@
+(serve-user-guides)=
 # User Guides
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).
 
-This user guide will help you navigate the Ray Serve project and show you how achieve several tasks, for instance
-you will learn
-- [Create/Update/Delete Serve Deployments](managing-deployments)
+This user guide will help you navigate the Ray Serve project and show you how to achieve several key tasks:
+- [HTTP Handling](http-guide)
+- [Scaling and Resource Allocation](scaling-and-resource-allocation)
+- [Model Composition](serve-model-composition)
+- [Development Workflow](dev-workflow)
+- [Production Guide](serve-in-production)
+- [Performance Tuning](performance)
 - [Handling Dependencies](handling-dependencies)
-- [Configuring HTTP and Bring Your own FastAPI app](http-guide)
-- [Using HTTP Adapters](http-adapters)
-- [Composing Deployments](handle-guide)
-- [Serving ML Models](ml-models)
-- [Using Deployment Graph](deployment-graph)
-- [Deploying Ray Serve](deploying-serve)
-- [Debugging/Monitoring](monitoring)
-- [Performance Tunning](performance)
+- [Experimental Java API](managing-java-deployments)
+- [1.x to 2.x API Migration Guide](migration)
+- [Experimental gRPC Support](direct-ingress)

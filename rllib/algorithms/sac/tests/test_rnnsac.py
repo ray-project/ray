@@ -19,9 +19,10 @@ class TestRNNSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_rnnsac_compilation(self):
-        """Test whether a R2D2Trainer can be built on all frameworks."""
+        """Test whether RNNSAC can be built on all frameworks."""
         config = (
             sac.RNNSACConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .training(
                 # Wrap with an LSTM and use a very simple base-model.
@@ -46,19 +47,20 @@ class TestRNNSAC(unittest.TestCase):
                     "zero_init_states": True,
                 },
                 lr=5e-4,
+                num_steps_sampled_before_learning_starts=0,
             )
         )
         num_iterations = 1
 
         # Test building an RNNSAC agent in all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 print(results)
 
             check_compute_single_action(
-                trainer,
+                algo,
                 include_state=True,
                 include_prev_action_reward=True,
             )

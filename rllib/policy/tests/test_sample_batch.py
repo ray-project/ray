@@ -1,16 +1,25 @@
-import numpy as np
+import copy
+import functools
+import os
 import unittest
 
+import numpy as np
+import torch
+import tree
+
 import ray
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.repeated_values import RepeatedValues
+from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
 from ray.rllib.utils.compression import is_compressed
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 class TestSampleBatch(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -263,6 +272,43 @@ class TestSampleBatch(unittest.TestCase):
             },
         )
 
+    def test_split_by_episode(self):
+        s = SampleBatch(
+            {
+                "a": np.array([0, 1, 2, 3, 4, 5]),
+                "eps_id": np.array([0, 0, 0, 0, 1, 1]),
+                "dones": np.array([0, 0, 0, 1, 0, 1]),
+            }
+        )
+        true_split = [np.array([0, 1, 2, 3]), np.array([4, 5])]
+
+        # Check that splitting by EPS_ID works correctly
+        eps_split = [b["a"] for b in s.split_by_episode()]
+        check(true_split, eps_split)
+
+        # Check that splitting by EPS_ID works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="eps_id")]
+        check(true_split, eps_split)
+
+        # Check that splitting by DONES works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="dones")]
+        check(true_split, eps_split)
+
+        # Check that splitting by DONES works correctly
+        del s["eps_id"]
+        dones_split = [b["a"] for b in s.split_by_episode()]
+        check(true_split, dones_split)
+
+        # Check that splitting without the EPS_ID or DONES key raise an error
+        del s["dones"]
+        with self.assertRaises(KeyError):
+            s.split_by_episode()
+
+        # Check that splitting with DONES always False returns the whole batch
+        s["dones"] = np.array([0, 0, 0, 0, 0, 0])
+        batch_split = [b["a"] for b in s.split_by_episode()]
+        check(s["a"], batch_split[0])
+
     def test_copy(self):
         s = SampleBatch(
             {
@@ -311,6 +357,206 @@ class TestSampleBatch(unittest.TestCase):
         # Make sure, intercepted values are NOT the original ones (before the shuffle),
         # but have also been shuffled.
         check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
+
+    def test_to_device(self):
+        """Tests whether to_device works properly under different circumstances"""
+        torch, _ = try_import_torch()
+
+        # sample batch includes
+        #   a numpy array (a)
+        #   a nested stucture of dict, tuple and lists (b) of numpys and None
+        #   info dict
+        #   a nested structure that ends up with tensors and ints(c)
+        #   a tensor with float64 values (d)
+        #   a float64 tensor with possibly wrong device (depends on if cuda available)
+        #   repeated value object with np.array leaves (f)
+
+        cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+        cuda_if_possible = torch.device("cuda:0" if cuda_available else "cpu")
+        s = SampleBatch(
+            {
+                "a": np.array([1, 2]),
+                "b": {"c": (np.array([4, 5]), np.array([5, 6]))},
+                "c": {"d": torch.Tensor([1, 2]), "g": (torch.Tensor([3, 4]), 1)},
+                "d": torch.Tensor([1.0, 2.0]).double(),
+                "e": torch.Tensor([1.0, 2.0]).double().to(cuda_if_possible),
+                "f": RepeatedValues(np.array([[1, 2, 0, 0]]), lengths=[2], max_len=4),
+                SampleBatch.SEQ_LENS: np.array([2, 3, 1]),
+                "state_in_0": np.array([1.0, 3.0, 4.0]),
+                # INFO can have arbitrary elements, others need to conform in size
+                SampleBatch.INFOS: np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]),
+            }
+        )
+
+        # inplace operation for sample_batch
+        s.to_device(cuda_if_possible, framework="torch")
+
+        def _check_recursive_device_and_type(input_struct, target_device):
+            def get_mismatched_types(v):
+                if isinstance(v, torch.Tensor):
+                    if v.device.type != target_device.type:
+                        return (v.device, v.dtype)
+                    if v.is_floating_point() and v.dtype != torch.float32:
+                        return (v.device, v.dtype)
+
+            tree_checks = {}
+            for k, v in input_struct.items():
+                tree_checks[k] = tree.map_structure(get_mismatched_types, v)
+
+            self.assertTrue(
+                all(v is None for v in tree.flatten((tree_checks))),
+                f"the device type check dict: {tree_checks}",
+            )
+
+        # check if all tensors have the correct device and dtype
+        _check_recursive_device_and_type(s, cuda_if_possible)
+
+        # check repeated value
+        check(s["f"].lengths, [2])
+        check(s["f"].max_len, 4)
+        check(s["f"].values, torch.from_numpy(np.asarray([[1, 2, 0, 0]])))
+
+        # check infos
+        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]))
+
+        # check c/g/1
+        self.assertEqual(s["c"]["g"][1], torch.from_numpy(np.asarray(1)))
+
+        with self.assertRaises(NotImplementedError):
+            # should raise an error if framework is not torch
+            s.to_device(cuda_if_possible, framework="tf")
+
+    def test_count(self):
+        # Tests if counts are what we would expect from different batches
+
+        input_dicts_and_lengths = [
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                3,
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1, 2, 3]]),
+                        "b": np.array([[0, 0, 1]]),
+                        "c": np.array([[4, 5, 6]]),
+                    }
+                },
+                1,
+            ),
+            (
+                {
+                    SampleBatch.INFOS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                0,  # This should have a length of zero, since we can ignore INFO
+            ),
+            (
+                {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    SampleBatch.OBS: {
+                        "a": np.array([1, 2, 3]),
+                        "b": np.array([0, 0, 1]),
+                        "c": np.array([4, 5, 6]),
+                    },
+                },
+                3,  # This should have a length of three - we count from OBS
+            ),
+            (
+                {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                },
+                0,  # This should have a length of zero, we don't attempt to count
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                    SampleBatch.SEQ_LENS: np.array([[1], [2], [3]]),
+                },
+                6,  # This should have a length of six, since we don't try to infer
+                # from inputs but count by sequence lengths
+            ),
+            (
+                {
+                    SampleBatch.NEXT_OBS: {
+                        "a": {"b": np.array([[1], [2], [3]])},
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                },
+                3,  # Test if we properly support nesting
+            ),
+        ]
+
+        for input_dict, length in input_dicts_and_lengths:
+            self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
+            s = SampleBatch(input_dict)
+            self.assertEqual(s.count, length)
+
+    def test_interceptors(self):
+        # Tests whether interceptors work as intended
+
+        some_array = np.array([1, 2, 3])
+        batch = SampleBatch({SampleBatch.OBS: some_array})
+
+        device = torch.device("cpu")
+
+        self.assertTrue(batch[SampleBatch.OBS] is some_array)
+
+        batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=device)
+        )
+
+        self.assertTrue(
+            all(convert_to_torch_tensor(some_array) == batch[SampleBatch.OBS])
+        )
+
+        # This test requires a GPU, otherwise we can't test whether we are
+        # moving between devices
+        if not torch.cuda.is_available():
+            raise ValueError("This test can only fail if cuda is available.")
+
+        another_array = np.array([4, 5, 6])
+        another_batch = SampleBatch({SampleBatch.OBS: another_array})
+
+        another_device = torch.device("cuda")
+
+        self.assertTrue(another_batch[SampleBatch.OBS] is another_array)
+        another_batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=another_device)
+        )
+        check(another_batch[SampleBatch.OBS], another_array)
+        self.assertFalse(another_batch[SampleBatch.OBS] is another_array)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from numpy.random import RandomState
 import gym
 from ray.rllib.env import MultiAgentEnv
 
-from ray.rllib.contrib.sumo.utils import SUMOUtils, sumo_default_config
+from ray.rllib.examples.simulators.sumo.utils import SUMOUtils, sumo_default_config
 
 # """ Import SUMO library """
 if "SUMO_HOME" in os.environ:
@@ -315,12 +315,12 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
 
         Returns
         -------
-            obs (dict): New observations for each ready agent.
-            rewards (dict): Reward values for each ready agent. If the
+            obs: New observations for each ready agent.
+            rewards: Reward values for each ready agent. If the
                 episode is just started, the value will be None.
-            dones (dict): Done values for each ready agent. The special key
+            dones: Done values for each ready agent. The special key
                 "__all__" (required) is used to indicate env termination.
-            infos (dict): Optional info values for each agent id.
+            infos: Optional info values for each agent id.
         """
         self.resetted = False
         self.steps += 1

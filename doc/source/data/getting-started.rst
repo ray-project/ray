@@ -41,21 +41,26 @@ can be used to specify file locations. See more at :ref:`Creating Datasets <crea
    :end-before: __create_from_files_end__
 
 Once you have a Dataset (potentially after transformation), you can save it to local
-or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and
-``.write_parquet()``. See more at :ref:`Saving Datasets <saving_datasets>`.
+or remote storage in desired format using methods such as :meth:`~ray.data.Dataset.write_csv`,
+:meth:`~ray.data.Dataset.write_json`, and :meth:`~ray.data.Dataset.write_parquet`.
+See more at :ref:`Saving Datasets <saving_datasets>`.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
    :start-after: __save_dataset_begin__
    :end-before: __save_dataset_end__
 
+See the :ref:`Creating Datasets <creating_datasets>` and :ref:`Saving Datasets
+<saving_datasets>` guides for more details on how to create and save datasets.
+
 
 Transforming Datasets
 ---------------------
 
-Once you have a ``Dataset``, you can transform it by applying a user-defined function,
-which produces another ``Dataset``.
-Under the hood, the transformation is executed in parallel for performance at scale.
+Once you have a :class:`~ray.data.Dataset`, you can transform it by applying a
+:ref:`user-defined function <transform_datasets_writing_udfs>`, which produces another
+:class:`~ray.data.Dataset`. Under the hood, the transformation is executed in parallel
+for performance at scale.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
@@ -64,7 +69,9 @@ Under the hood, the transformation is executed in parallel for performance at sc
 
 .. tip::
 
-    Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`, :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`, which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but may be useful for development.
+    Datasets also provide the convenience transformation methods :meth:`~ray.data.Dataset.map`, 
+    :meth:`~ray.data.Dataset.flat_map`, and :meth:`~ray.data.Dataset.filter`, which are not 
+    vectorized (slower than :meth:`~ray.data.Dataset.map_batches`), but may be useful for development.
 
 These transformations are composable. You can further apply transformations on the
 output Dataset, forming a chain of transformations to express more complex logic.
@@ -76,12 +83,15 @@ actor pool of ``min`` to ``max`` actors to execute your transforms. This will ca
 the stateful setup at the actor creation time, which is particularly useful if the
 setup is expensive.
 
-Passing and accessing datasets
-------------------------------
+See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
+on transforming datasets.
+
+Accessing and exchanging datasets
+---------------------------------
 
 Datasets can be passed to Ray tasks or actors and accessed with
-:meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or
-:meth:`.iter_rows() <ray.data.Dataset.iter_rows>`.
+:meth:`~ray.data.Dataset.iter_batches` or
+:meth:`~ray.data.Dataset.iter_rows`.
 This does not incur a copy, since the blocks of the Dataset are passed by reference
 as Ray objects:
 
@@ -92,7 +102,7 @@ as Ray objects:
 
 Datasets can be split up into disjoint sub-datasets.
 Locality-aware splitting is supported if you pass in a list of actor handles to the
-:meth:`split() <ray.data.Dataset.split>` function along with the number of desired
+:meth:`~ray.data.Dataset.split` function along with the number of desired
 splits.
 This is a common pattern useful for loading and splitting data between distributed
 training actors:
@@ -101,3 +111,6 @@ training actors:
    :language: python
    :start-after: __dataset_split_begin__
    :end-before: __dataset_split_end__
+
+See the :ref:`Consuming Datasets guide <consuming_datasets>` for an in-depth guide
+on accessing and exchanging datasets.

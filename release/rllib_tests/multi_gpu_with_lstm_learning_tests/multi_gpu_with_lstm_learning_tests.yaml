@@ -11,6 +11,9 @@ a2c-stateless-cartpole:
     config:
         num_gpus: 2
         num_workers: 23
+        # Use a large train batch size to make sure mini batches work
+        # after split to 2 GPU towers.
+        train_batch_size: 200
         lr: 0.001
         # Test w/ LSTMs.
         model:
@@ -131,30 +134,31 @@ ppo-stateless-cartpole:
         # Double batch size (2 GPUs).
         train_batch_size: 8000
 
-r2d2-stateless-cartpole:
-    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
-    run: R2D2
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 150.0
-        timesteps_total: 65000
-    stop:
-        time_total_s: 800
-    config:
-        num_gpus: 2
-        num_workers: 0
-        # R2D2 settings.
-        burn_in: 20
-        zero_init_states: true
-        lr: 0.0005
-        # Give some more time to explore.
-        exploration_config:
-          epsilon_timesteps: 50000
-        model:
-            # Test w/ LSTMs.
-            use_lstm: true
-            lstm_cell_size: 64
-            # Use a very simple base-model.
-            fcnet_hiddens: [64]
-            fcnet_activation: linear
-            max_seq_len: 20
+# TODO (Kourosh): Activate these tests back when the new modeling stack is merged
+# r2d2-stateless-cartpole:
+#     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+#     run: R2D2
+#     # Minimum reward and total ts (in given time_total_s) to pass this test.
+#     pass_criteria:
+#         episode_reward_mean: 150.0
+#         timesteps_total: 65000
+#     stop:
+#         time_total_s: 800
+#     config:
+#         num_gpus: 2
+#         num_workers: 0
+#         # R2D2 settings.
+#         burn_in: 20
+#         zero_init_states: true
+#         lr: 0.0005
+#         # Give some more time to explore.
+#         exploration_config:
+#           epsilon_timesteps: 50000
+#         model:
+#             # Test w/ LSTMs.
+#             use_lstm: true
+#             lstm_cell_size: 64
+#             # Use a very simple base-model.
+#             fcnet_hiddens: [64]
+#             fcnet_activation: linear
+#             max_seq_len: 20

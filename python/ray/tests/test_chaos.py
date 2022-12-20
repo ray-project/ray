@@ -9,7 +9,7 @@ import time
 
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
@@ -246,6 +246,10 @@ def test_streaming_shuffle(set_kill_interval):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -59,38 +59,34 @@ auth:
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
 
-# Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
-head_node:
-    InstanceType: m4.16xlarge
-    ImageId: latest_dlami
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    ray.head.default:
+      node_config:
+        InstanceType: m4.16xlarge
+        ImageId: latest_dlami
 
-    # You can provision additional disk space with a conf as follows
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
+        # You can provision additional disk space with a conf as follows
+        BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                  VolumeSize: 100
 
-    # Additional options in the boto docs.
+    ray.worker.default:
+      node_config:
+        InstanceType: m4.16xlarge
+        ImageId: latest_dlami
 
-# Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
-worker_nodes:
-    InstanceType: m4.16xlarge
-    ImageId: latest_dlami
-
-    # Comment this in to use spot nodes.
-    # InstanceMarketOptions:
-    #     MarketType: spot
-    #     # Additional options can be found in the boto docs, e.g.
-    #     #   SpotOptions:
-    #     #       MaxPrice: MAX_HOURLY_PRICE
-    #
-    # Additional options in the boto docs.
+        # Comment this in to use spot nodes.
+        # InstanceMarketOptions:
+        #     MarketType: spot
+        #     # Additional options can be found in the boto docs, e.g.
+        #     #   SpotOptions:
+        #     #       MaxPrice: MAX_HOURLY_PRICE
+        #
+        # Additional options in the boto docs.
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

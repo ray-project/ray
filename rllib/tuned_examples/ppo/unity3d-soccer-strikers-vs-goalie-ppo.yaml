@@ -43,4 +43,4 @@ unity3d-soccer-strikers-vs-goalie-ppo:
         # If no executable is provided (use Unity3D editor), do not evaluate,
         # b/c the editor only allows one connection at a time.
         evaluation_interval: 0
-        evaluation_num_episodes: 1
+        evaluation_duration: 1

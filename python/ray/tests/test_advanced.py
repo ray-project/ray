@@ -1,21 +1,17 @@
 # coding: utf-8
 import json
 import logging
+import os
 import sys
 import time
 
-import os
 import numpy as np
 import pytest
 
-import ray.cluster_utils
-
 import ray._private.profiling as profiling
-from ray._private.test_utils import (
-    client_test_enabled,
-    RayTestTimeoutException,
-)
-from ray.exceptions import ReferenceCountingAssertionError
+import ray.cluster_utils
+from ray._private.test_utils import RayTestTimeoutException, client_test_enabled
+from ray.exceptions import ObjectFreedError
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -43,16 +39,16 @@ def test_internal_free(shutdown_only):
     # Free deletes from in-memory store.
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
-    ray.internal.free(obj_ref)
-    with pytest.raises(ReferenceCountingAssertionError):
+    ray._private.internal_api.free(obj_ref)
+    with pytest.raises(ObjectFreedError):
         ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()
     ray.get(big_id)
-    ray.internal.free(big_id)
+    ray._private.internal_api.free(big_id)
     time.sleep(1)  # wait for delete RPC to propagate
-    with pytest.raises(ReferenceCountingAssertionError):
+    with pytest.raises(ObjectFreedError):
         ray.get(big_id)
 
 
@@ -94,22 +90,22 @@ def test_caching_functions_to_run(shutdown_only):
     def f(worker_info):
         sys.path.append(1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
     def f(worker_info):
         sys.path.append(2)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
     def g(worker_info):
         sys.path.append(3)
 
-    ray.worker.global_worker.run_function_on_all_workers(g)
+    ray._private.worker.global_worker.run_function_on_all_workers(g)
 
     def f(worker_info):
         sys.path.append(4)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
     ray.init(num_cpus=1)
 
@@ -130,7 +126,7 @@ def test_caching_functions_to_run(shutdown_only):
         sys.path.pop()
         sys.path.pop()
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -138,7 +134,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
     @ray.remote
     def get_path1():
@@ -154,7 +150,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.pop(-1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
 
     # Create a second remote function to guarantee that when we call
     # get_path2.remote(), the second function to run will have been run on
@@ -262,7 +258,7 @@ def test_object_transfer_dump(ray_start_cluster_enabled):
 
     num_nodes = 3
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10 ** 9)
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -284,10 +280,10 @@ def test_object_transfer_dump(ray_start_cluster_enabled):
     # The profiling information only flushes once every second.
     time.sleep(1.1)
 
-    transfer_dump = ray.state.object_transfer_timeline()
+    transfer_dump = ray._private.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
-    assert len(transfer_dump) >= num_nodes ** 2
+    assert len(transfer_dump) >= num_nodes**2
     assert (
         len(
             {
@@ -390,4 +386,7 @@ def test_illegal_api_calls(ray_start_regular):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

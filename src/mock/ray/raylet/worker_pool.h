@@ -29,7 +29,7 @@ class MockWorkerPoolInterface : public WorkerPoolInterface {
               (override));
   MOCK_METHOD(const std::vector<std::shared_ptr<WorkerInterface>>,
               GetAllRegisteredWorkers,
-              (bool filter_dead_workers),
+              (bool filter_dead_workers, bool filter_io_workers),
               (override));
 };
 

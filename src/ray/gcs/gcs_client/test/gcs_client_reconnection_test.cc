@@ -68,14 +68,14 @@ class GcsClientReconnectionTest : public ::testing::Test {
     auto channel =
         grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
                             grpc::InsecureChannelCredentials());
-    std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-        rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+    auto stub = grpc::health::v1::Health::NewStub(channel);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);
-    const rpc::CheckAliveRequest request;
-    rpc::CheckAliveReply reply;
-    auto status = stub->CheckAlive(&context, request, &reply);
-    if (!status.ok()) {
+    ::grpc::health::v1::HealthCheckRequest request;
+    ::grpc::health::v1::HealthCheckResponse reply;
+    auto status = stub->Check(&context, request, &reply);
+    if (!status.ok() ||
+        reply.status() != ::grpc::health::v1::HealthCheckResponse::SERVING) {
       RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                        << status.error_message();
       return false;
@@ -324,6 +324,32 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   // Resume GCS server and it should unblock
   StartGCS();
   ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
+}
+
+TEST_F(GcsClientReconnectionTest, Timeout) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_max_request_queued_max_bytes": 10,
+  "gcs_server_request_timeout_seconds": 3
+}
+  )");
+  StartGCS();
+  auto client = CreateGCSClient();
+  bool added = false;
+  ASSERT_TRUE(client->InternalKV().Put("", "A", "B", false, added).ok());
+  ASSERT_TRUE(added);
+
+  ShutdownGCS();
+
+  std::vector<std::string> values;
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).IsTimedOut());
+  ASSERT_TRUE(values.empty());
+  StartGCS();
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).ok());
+  ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
 
 int main(int argc, char **argv) {

@@ -11,10 +11,11 @@ import gym
 import os
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray import air, tune
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -22,7 +23,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -87,7 +88,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
 class TaskSettingCallback(DefaultCallbacks):
     """Custom callback to verify, we can set the task on each remote sub-env."""
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         """Curriculum learning as seen in Ray docs"""
         if result["episode_reward_mean"] > 0.0:
             phase = 0
@@ -96,33 +97,37 @@ class TaskSettingCallback(DefaultCallbacks):
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        trainer.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.
-        "env": NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv,
+        .environment(NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv)
+        .framework(args.framework)
         # Set up our own callbacks.
-        "callbacks": TaskSettingCallback,
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # How many RolloutWorkers (each with n environment copies:
-        # `num_envs_per_worker`)?
-        "num_workers": args.num_workers,
-        # This setting should not really matter as it does not affect the
-        # number of GPUs reserved for each worker.
-        "num_envs_per_worker": args.num_envs_per_worker,
+        .callbacks(TaskSettingCallback)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            # How many RolloutWorkers (each with n environment copies:
+            # `num_envs_per_worker`)?
+            num_rollout_workers=args.num_workers,
+            # This setting should not really matter as it does not affect the
+            # number of GPUs reserved for each worker.
+            num_envs_per_worker=args.num_envs_per_worker,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -130,7 +135,11 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

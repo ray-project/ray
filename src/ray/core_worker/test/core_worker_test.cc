@@ -560,6 +560,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               RandomTaskId(),
                               address,
                               num_returns,
+                              false,
                               resources,
                               resources,
                               "",
@@ -960,6 +961,96 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   resources.emplace("resource1", 1);
   TestActorFailure(resources);
 }
+
+TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars) {
+  json child;
+  auto parent = std::make_shared<json>();
+  // child {"a": "b"}, parent {}, expected {"a": "b"}
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
+  // child {}, parent {"a": "b"}, expected {"a": "b"}
+  (*parent) = R"({"env_vars": {"a": "b"}})"_json;
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
+  // child {"a": "b"}, parent {"a": "d"}, expected {"a": "b"}
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"a": "d"}})"_json;
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
+  // child {"a": "b"}, parent {"c": "d"}, expected {"a": "b", "c": "d"}
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"c": "d"}})"_json;
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b", "c": "d"}})"_json);
+  child.clear();
+  parent->clear();
+  // child {"a": "b"}, parent {"a": "e", "c": "d"}, expected {"a": "b", "c": "d"}
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"a": "e", "c": "d"}})"_json;
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b", "c": "d"}})"_json);
+  child.clear();
+  parent->clear();
+}
+
+TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"py_modules": ["s3://456"]})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, *parent);
+}
+
+TEST(TestOverrideRuntimeEnv, TestOverridePyModules) {
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"py_modules": ["s3://123"]})"_json;
+  (*parent) = R"({"py_modules": ["s3://456", "s3://789"]})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, child);
+}
+
+TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit) {
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"working_dir": "uri://abc"})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, *parent);
+}
+
+TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride) {
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"working_dir": "uri://abc"})"_json;
+  (*parent) = R"({"working_dir": "uri://def"})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, child);
+}
+
+TEST(TestOverrideRuntimeEnv, TestCondaInherit) {
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"conda": {"dependencies": ["pytorch", "torchvision", "pip"]}})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, *parent);
+}
+
+TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"conda": {"dependencies": ["pytorch", "torchvision", "pip"]}})"_json;
+  (*parent) = R"({"conda": {"dependencies": ["requests"]}})"_json;
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result, child);
+}
+
 }  // namespace core
 }  // namespace ray
 

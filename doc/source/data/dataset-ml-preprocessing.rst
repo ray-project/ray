@@ -24,7 +24,7 @@ ML pipeline completely within Ray without requiring data to be materialized to e
    :width: 650px
    :align: center
 
-See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the
+See below for information on how to use Datasets as the
 last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more
 Datasets ML use cases and benchmarks.
 
@@ -46,7 +46,11 @@ Many common preprocessing transformations, such as:
 - dropping nulls
 - one-hot encoding
 
-can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.map_batches()``; this will execute these transformations in parallel over the ``Dataset`` blocks, and allows you to apply vectorized Pandas operations to the block columns within the UDF.
+can be efficiently applied to a :class:`~ray.data.Dataset` using
+:ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) and
+:meth:`~ray.data.Dataset.map_batches`; this will execute these transformations in
+parallel over the :class:`~ray.data.Dataset` blocks, and allows you to apply vectorized
+Pandas operations to the block columns within the UDF.
 
 .. code-block:: python
 
@@ -70,6 +74,8 @@ can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.m
     # batch_format="pandas" tells Datasets to provide the transformer with blocks
     # represented as Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
+
+.. _datasets-groupbys:
 
 Group-bys and aggregations
 ==========================
@@ -105,7 +111,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     ds.mean(["B", "C"])
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1730.32it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 231.41it/s]
-    # -> {'mean(B)': 9.0, 'mean(C)': 13.5} 
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5}
 
     # Multiple global aggregations on multiple columns.
     from ray.data.aggregate import Mean, Std
@@ -200,3 +206,21 @@ Randomly shuffling data is an important part of training machine learning models
     # -> DatasetPipeline(num_windows=10, num_stages=2)
 
 See the `large-scale ML ingest example <examples/big_data_ingestion.html>`__ for an end-to-end example of per-epoch shuffled data loading for distributed training.
+
+Random block order
+~~~~~~~~~~~~~~~~~~
+
+For a low-cost way to perform a pseudo global shuffle that does not require loading the full Dataset into memory,
+you can randomize the order of the *blocks* with :meth:`Dataset.randomize_block_order <ray.data.Dataset.randomize_block_order>`.
+
+.. code-block:: python
+
+    import ray
+
+    ds = ray.data.range(12).repartition(4)
+    print(ds.take())
+    # -> [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+    random_ds = ds.randomize_block_order(seed=0)
+    print(random_ds.take())
+    # -> [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]

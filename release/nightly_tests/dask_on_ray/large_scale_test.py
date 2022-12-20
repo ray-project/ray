@@ -1,22 +1,23 @@
 """
 @author jennakwon06
 """
-from copy import copy, deepcopy
-
-import time
-import random
 import argparse
-import ray
-import logging
-import os
-from typing import List, Tuple
-import numpy as np
-import dask.array
-import xarray
-from ray.util.dask import ray_dask_get
-from ray._private.test_utils import monitor_memory_usage
-import math
 import json
+import logging
+import math
+import os
+import random
+import time
+from copy import copy, deepcopy
+from typing import List, Tuple
+
+import dask.array
+import numpy as np
+import xarray
+
+import ray
+from ray._private.test_utils import monitor_memory_usage
+from ray.util.dask import ray_dask_get
 
 """
 We simulate a real-life usecase where we process a time-series
@@ -274,7 +275,7 @@ class TransformRoutines:
         )
 
         spectrogram = np.abs(spectrogram)
-        spectrogram = 10 * np.log10(spectrogram ** 2)
+        spectrogram = 10 * np.log10(spectrogram**2)
         return spectrogram
 
     @staticmethod
@@ -461,7 +462,10 @@ def main():
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
     print(f"Peak memory usage per processes:\n {usage}")
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    try:
+        print(ray._private.internal_api.memory_summary(stats_only=True))
+    except Exception as e:
+        print(f"Warning: query memory summary failed: {e}")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
             json.dumps(

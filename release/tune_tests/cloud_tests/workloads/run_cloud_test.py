@@ -45,7 +45,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune.trial_runner import find_newest_experiment_checkpoint
+from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -80,7 +80,7 @@ class TrialStub:
         local_dir: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
-        logdir: str,
+        relative_logdir: str,
         *args,
         **kwargs,
     ):
@@ -91,7 +91,7 @@ class TrialStub:
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
-        self.logdir = logdir
+        self.relative_logdir = relative_logdir
 
         self.local_experiment_dir = None
 
@@ -99,15 +99,15 @@ class TrialStub:
 
     @property
     def hostname(self):
-        return self.last_result["hostname"]
+        return self.last_result.get("hostname")
 
     @property
     def node_ip(self):
-        return self.last_result["node_ip"]
+        return self.last_result.get("node_ip")
 
     @property
     def dirname(self):
-        return os.path.basename(self.logdir)
+        return os.path.basename(self.relative_logdir)
 
     @property
     def was_on_driver_node(self):
@@ -308,6 +308,7 @@ def run_tune_script_for_time(
     indicator_file: str,
     no_syncer: bool,
     upload_dir: Optional[str],
+    run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
@@ -318,7 +319,9 @@ def run_tune_script_for_time(
     )
     try:
         # Wait until indicator file exists
-        wait_for_run_or_raise(process, indicator_file=indicator_file, timeout=30)
+        wait_for_run_or_raise(
+            process, indicator_file=indicator_file, timeout=run_start_timeout
+        )
         # Stop experiment (with checkpoint) after some time
         send_signal_after_wait(process, signal=signal.SIGUSR1, wait=run_time)
         # Wait until process gracefully terminated
@@ -337,6 +340,7 @@ def run_resume_flow(
     upload_dir: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
+    run_start_timeout: int = 30,
     before_experiments_callback: Optional[Callable[[], None]] = None,
     between_experiments_callback: Optional[Callable[[], None]] = None,
     after_experiments_callback: Optional[Callable[[], None]] = None,
@@ -372,6 +376,7 @@ def run_resume_flow(
         indicator_file=indicator_file,
         no_syncer=no_syncer,
         upload_dir=upload_dir,
+        run_start_timeout=run_start_timeout,
     )
 
     # Before we restart, run a couple of checks
@@ -539,7 +544,7 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
 def load_experiment_checkpoint_from_state_file(
     experiment_dir: str,
 ) -> ExperimentStateCheckpoint:
-    newest_ckpt_path = find_newest_experiment_checkpoint(experiment_dir)
+    newest_ckpt_path = _find_newest_experiment_checkpoint(experiment_dir)
     with open(newest_ckpt_path, "r") as f:
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
@@ -635,16 +640,19 @@ def load_trial_checkpoint_data(
             continue
 
         json_path = os.path.join(cp_full_dir, "checkpoint.json")
+        meta_path = os.path.join(cp_full_dir, ".tune_metadata")
+
         if os.path.exists(json_path):
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
-        else:
-            meta_path = os.path.join(
-                cp_full_dir, f"checkpoint-{checkpoint_num}.tune_metadata"
-            )
+        elif os.path.exists(meta_path):
             with open(meta_path, "rb") as f:
                 checkpoint_meta = pickle.load(f)
                 checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}
+        else:
+            # If neither file exists, this means the checkpoint got only synced half,
+            # so we should skip it
+            continue
         checkpoints.append((cp_dir, checkpoint_data))
 
     return TrialCheckpointData(
@@ -1152,6 +1160,8 @@ def test_durable_upload(bucket: str):
 
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
 
+    run_start_timeout = 600 if "rllib" in os.environ["TUNE_TRAINABLE"] else 30
+
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
@@ -1159,6 +1169,7 @@ def test_durable_upload(bucket: str):
         upload_dir=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
+        run_start_timeout=run_start_timeout,
         before_experiments_callback=before_experiments,
         between_experiments_callback=between_experiments,
         after_experiments_callback=after_experiments,

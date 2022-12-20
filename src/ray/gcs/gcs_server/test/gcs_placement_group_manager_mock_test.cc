@@ -21,6 +21,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "ray/util/counter_map.h"
 #include "ray/gcs/test/gcs_test_util.h"
 // clang-format on
 
@@ -38,7 +39,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
     resource_manager_ = std::make_shared<MockGcsResourceManager>(
-        io_context_, nullptr, cluster_resource_manager_, NodeID::FromRandom());
+        io_context_, cluster_resource_manager_, NodeID::FromRandom());
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,
@@ -46,6 +47,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
                                                    gcs_table_storage_,
                                                    *resource_manager_,
                                                    [](auto &) { return ""; });
+    counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
@@ -54,6 +56,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
+  std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
   instrumented_io_context io_context_;
 };
 
@@ -62,7 +65,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   //   When return with reschedule, it should be given with the highest pri
   auto req =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg = std::make_shared<GcsPlacementGroup>(req, "");
+  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;
@@ -89,7 +92,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   //   When return with a failure, exp backoff should work
   auto req =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg = std::make_shared<GcsPlacementGroup>(req, "");
+  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;
@@ -144,10 +147,10 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   //   Fail one and make sure it's scheduled later
   auto req1 =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "");
+  auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_);
   auto req2 =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "");
+  auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_);
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;

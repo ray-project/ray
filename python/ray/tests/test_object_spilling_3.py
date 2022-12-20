@@ -1,19 +1,20 @@
 import json
-import re
 import platform
-import sys
-import zlib
-import shutil
-import time
-from collections import defaultdict
 import random
+import re
+import shutil
+import sys
+import time
+import zlib
+from collections import defaultdict
 
 import numpy as np
 import pytest
+
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
@@ -54,7 +55,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     num_files = defaultdict(int)
     for temp_dir in temp_dirs:
-        temp_folder = temp_dir / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+        temp_folder = temp_dir / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
         for path in temp_folder.iterdir():
             num_files[str(temp_folder)] += 1
 
@@ -85,7 +86,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
 def _check_spilled(num_objects_spilled=0):
     def ok():
-        s = ray.internal.internal_api.memory_summary(stats_only=True)
+        s = ray._private.internal_api.memory_summary(stats_only=True)
         if num_objects_spilled == 0:
             return "Spilled " not in s
 
@@ -319,5 +320,52 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
+def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _system_config=config, object_store_memory=10**8)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    @ray.remote
+    def put():
+        return np.zeros(10**5, dtype=np.uint8)
+
+    @ray.remote
+    def check(x):
+        return
+
+    ref = put.remote()
+    for _ in range(4):
+        ray.get(check.remote(ref))
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    # All reconstruction attempts used up. The object's value should now be an
+    # error in the local store.
+    # Force object spilling and check that it can complete.
+    xs = []
+    for _ in range(20):
+        xs.append(ray.put(np.zeros(10**7, dtype=np.uint8)))
+    for x in xs:
+        ray.get(x, timeout=10)
+
+    with pytest.raises(ray.exceptions.ObjectLostError):
+        ray.get(ref)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

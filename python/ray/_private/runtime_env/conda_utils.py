@@ -23,18 +23,20 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
     if not _WIN32 and ("CONDA_EXE" in os.environ or RAY_CONDA_HOME in os.environ):
         conda_path = get_conda_bin_executable("conda")
         activate_conda_env = [
-            ". {}/../etc/profile.d/conda.sh".format(os.path.dirname(conda_path))
+            ".",
+            f"{os.path.dirname(conda_path)}/../etc/profile.d/conda.sh",
+            "&&",
         ]
-        activate_conda_env += ["conda activate {} 1>&2".format(conda_env_name)]
+        activate_conda_env += ["conda", "activate", conda_env_name]
 
     else:
         activate_path = get_conda_bin_executable("activate")
         if not _WIN32:
             # Use bash command syntax
-            return ["source %s %s 1>&2" % (activate_path, conda_env_name)]
+            activate_conda_env = ["source", activate_path, conda_env_name]
         else:
-            return ["conda activate %s" % (conda_env_name)]
-    return activate_conda_env
+            activate_conda_env = ["conda", "activate", conda_env_name]
+    return activate_conda_env + ["1>&2", "&&"]
 
 
 def get_conda_bin_executable(executable_name: str) -> str:
@@ -90,8 +92,8 @@ def create_conda_env_if_needed(
     Given a conda YAML, creates a conda environment containing the required
     dependencies if such a conda environment doesn't already exist.
     Args:
-        conda_yaml_file (str): The path to a conda `environment.yml` file.
-        prefix (str): Directory to install the environment into via
+        conda_yaml_file: The path to a conda `environment.yml` file.
+        prefix: Directory to install the environment into via
             the `--prefix` option to conda create.  This also becomes the name
             of the conda env; i.e. it can be passed into `conda activate` and
             `conda remove`

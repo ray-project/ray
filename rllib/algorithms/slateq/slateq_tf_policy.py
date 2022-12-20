@@ -8,17 +8,16 @@ from typing import Dict
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
-from ray.rllib.algorithms.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.algorithms.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_mixins import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ def build_slateq_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> SlateQTFModel:
     """Build models for the SlateQTFPolicy.
 
@@ -36,7 +35,7 @@ def build_slateq_model(
         policy: The policy, which will use the model for optimization.
         obs_space: The policy's observation space.
         action_space: The policy's action space.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
 
     Returns:
         The slate-Q specific Q-model instance.
@@ -329,7 +328,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors after SlateQTorchPolicy loss initialization.
 
@@ -339,13 +338,13 @@ def setup_late_mixins(
         action_space: The Policy's action space.
         config: The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def rmsprop_optimizer(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],

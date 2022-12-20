@@ -1,5 +1,4 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
-env_vars: {"RAY_gcs_server_rpc_server_thread_num": "8"}
 debian_packages: []
 
 python:

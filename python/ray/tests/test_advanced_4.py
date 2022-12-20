@@ -1,10 +1,17 @@
-import pytest
-import ray
+import mock
 import subprocess
 import sys
 
+import pytest
+
+import ray
 from ray._private.gcs_utils import check_health
-from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
+from ray._private.test_utils import (
+    Semaphore,
+    client_test_enabled,
+    wait_for_condition,
+    get_gcs_memory_used,
+)
 from ray.experimental.internal_kv import _internal_kv_list
 
 
@@ -41,7 +48,7 @@ def test_ray_memory(shutdown_only):
 
 def test_jemalloc_env_var_propagate():
     """Test `propagate_jemalloc_env_var`"""
-    gcs_ptype = ray.ray_constants.PROCESS_TYPE_GCS_SERVER
+    gcs_ptype = ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER
     """
     If the shared library path is not specified,
     it should return an empty dict.
@@ -54,7 +61,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=None,
         jemalloc_conf="a,b,c",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -66,7 +73,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -76,7 +83,7 @@ def test_jemalloc_env_var_propagate():
         ray._private.services.propagate_jemalloc_env_var(
             jemalloc_path=library_path,
             jemalloc_conf="",
-            jemalloc_comps="ray.ray_constants.PROCESS_TYPE_GCS_SERVER,",
+            jemalloc_comps="ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER,",
             process_type=gcs_ptype,
         )
 
@@ -85,7 +92,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_RAYLET],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_RAYLET],
         process_type=gcs_ptype,
     )
     """
@@ -97,7 +104,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -109,6 +116,15 @@ def test_check_health(shutdown_only):
     conn = ray.init()
     addr = conn.address_info["address"]
     assert check_health(addr)
+
+
+def test_check_health_version_check(shutdown_only):
+    with mock.patch("ray.__version__", "FOO-VERSION"):
+        conn = ray.init()
+        addr = conn.address_info["address"]
+        assert check_health(addr, skip_version_check=True)
+        with pytest.raises(RuntimeError):
+            check_health(addr)
 
 
 def test_back_pressure(shutdown_only_with_initialization_check):
@@ -171,21 +187,8 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
-def get_gcs_memory_used():
-    import psutil
-
-    m = sum(
-        [
-            process.memory_info().rss
-            for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
-        ]
-    )
-    return m
-
-
 def function_entry_num(job_id):
-    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
     return (
         len(
@@ -240,7 +243,7 @@ def test_function_table_gc(call_ray_start):
     # It's not working on win32.
     if sys.platform != "win32":
         assert get_gcs_memory_used() > 500 * 1024 * 1024
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     assert function_entry_num(job_id) > 0
     ray.shutdown()
 
@@ -264,7 +267,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is a detached actor, the function won't be deleted.
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
     ray.init(address="auto", namespace="b")
@@ -277,13 +280,17 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is not a detached actor, it'll be deleted when the job finishes.
     a = Actor.remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
     ray.init(address="auto", namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

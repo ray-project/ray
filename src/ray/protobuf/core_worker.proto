@@ -108,6 +108,12 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Dynamically created objects. These are objects whose refs were allocated
+  // by the task at run time instead of by the task caller at f.remote() time.
+  // We need to notify the task caller that they own these objects. The
+  // language-level ObjectRefs should be returned inside one of the statically
+  // allocated return objects.
+  repeated ReturnObject dynamic_return_objects = 2;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
@@ -125,8 +131,12 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
-  // Whether the result contains an application-level error (exception).
-  bool is_application_level_error = 5;
+  // Whether the result contains a retryable application-level error.
+  bool is_retryable_error = 5;
+  // Whether the result contains an application-level error.
+  bool is_application_error = 6;
+  // Whether the task was cancelled before it started running (i.e. while queued).
+  bool was_cancelled_before_running = 7;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -137,8 +147,7 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {
-}
+message DirectActorCallArgWaitCompleteReply {}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -180,8 +189,7 @@ message WaitForActorOutOfScopeRequest {
   bytes actor_id = 2;
 }
 
-message WaitForActorOutOfScopeReply {
-}
+message WaitForActorOutOfScopeReply {}
 
 message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
@@ -189,8 +197,7 @@ message UpdateObjectLocationBatchRequest {
   repeated ObjectLocationUpdate object_location_updates = 3;
 }
 
-message UpdateObjectLocationBatchReply {
-}
+message UpdateObjectLocationBatchReply {}
 
 enum ObjectPlasmaLocationUpdate {
   // Object is added to plasma store.
@@ -213,6 +220,11 @@ message ObjectLocationUpdate {
   optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
   // When it's set, it contains where the object is spilled to.
   optional ObjectSpilledLocationUpdate spilled_location_update = 3;
+  // When it's set, this means that it was a dynamically created ObjectID, so
+  // we need to notify the owner of the outer ObjectID, which should be owned
+  // by the same worker. If the outer ObjectID is still in scope, then the
+  // owner can add the dynamically created ObjectID to its ref count.
+  optional bytes generator_id = 4;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -234,8 +246,7 @@ message KillActorRequest {
   ActorDeathCause death_cause = 4;
 }
 
-message KillActorReply {
-}
+message KillActorReply {}
 
 message CancelTaskRequest {
   // ID of task that should be killed.
@@ -262,8 +273,7 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {
-}
+message RemoteCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -274,6 +284,9 @@ message GetCoreWorkerStatsRequest {
   // Whether to include task information. This could be large since it
   // includes metadata for all live tasks.
   bool include_task_info = 3;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 4;
 }
 
 message GetCoreWorkerStatsReply {
@@ -292,6 +305,8 @@ message GetCoreWorkerStatsReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 3;
+  // Length of the number of tasks without truncation.
+  int64 tasks_total = 4;
 }
 
 message LocalGCRequest {
@@ -299,15 +314,13 @@ message LocalGCRequest {
   bool triggered_by_global_gc = 1;
 }
 
-message LocalGCReply {
-}
+message LocalGCReply {}
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
 }
 
-message PlasmaObjectReadyReply {
-}
+message PlasmaObjectReadyReply {}
 
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
@@ -335,11 +348,9 @@ message DeleteSpilledObjectsRequest {
   repeated string spilled_objects_url = 1;
 }
 
-message DeleteSpilledObjectsReply {
-}
+message DeleteSpilledObjectsReply {}
 
-message ExitRequest {
-}
+message ExitRequest {}
 
 message ExitReply {
   /// Whether or not exit succeeds. If the core worker owns any object, the request fails.

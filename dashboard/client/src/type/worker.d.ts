@@ -1,12 +1,26 @@
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
 export type CoreWorkerStats = {
   ipAddress: string;
   port: string;
   actorId: string;
-  usedResources: { [key: string]: number };
+  usedResources: { [key: string]: ResourceAllocations };
   numExecutedTasks: number;
+  numPendingTasks: number;
   workerId: string;
   actorTitle: string;
   jobId: string;
+  numObjectRefsInScope: number;
+  numInPlasma: number;
+  numLocalObjects: number;
+  usedObjectStoreMemory: string;
 };
 
 export type Worker = {

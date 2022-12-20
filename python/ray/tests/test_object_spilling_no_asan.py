@@ -1,8 +1,9 @@
-import numpy as np
-import platform
-import pytest
 import os
+import platform
 import sys
+
+import numpy as np
+import pytest
 
 import ray
 
@@ -34,7 +35,9 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
     # about 10 objects.
     xs = [ray.put(np.zeros(object_size // 8)) for _ in range(300)]  # noqa: F841
 
-    spill_dir = os.path.join(temp_folder, ray.ray_constants.DEFAULT_OBJECT_PREFIX)
+    spill_dir = os.path.join(
+        temp_folder, ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+    )
     under_min, over_min = 0, 0
     for filename in os.listdir(spill_dir):
         size = os.stat(os.path.join(spill_dir, filename)).st_size
@@ -47,4 +50,7 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

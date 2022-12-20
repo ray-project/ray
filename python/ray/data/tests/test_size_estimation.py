@@ -4,8 +4,8 @@ import uuid
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.arrow_block import ArrowBlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000
@@ -161,7 +161,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         ray.data.range(200000, parallelism=1).map(
             lambda _: uuid.uuid4().hex
         ).write_parquet(path)
-        return ray.data.read_parquet(path)
+        return ray.data.read_parquet(path, parallelism=200)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -185,32 +185,36 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         assert 20000 < x < 25000, (x, nrow)
 
 
-def test_split_map(ray_start_regular_shared):
+@pytest.mark.parametrize("use_actors", [False, True])
+def test_split_map(ray_start_regular_shared, use_actors):
+    kwargs = {}
+    if use_actors:
+        kwargs = {"compute": "actors"}
     # Simple block
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
-    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
-    nblocks = len(ds1.map(lambda x: x).get_internal_block_refs())
+    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE, **kwargs)
+    nblocks = len(ds1.map(lambda x: x, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds1.map(lambda x: x).get_internal_block_refs())
-    assert 4 < nblocks < 7, nblocks
+    nblocks = len(ds1.map(lambda x: x, **kwargs).get_internal_block_refs())
+    assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Arrow block
     ctx.target_max_block_size = 20_000_000
-    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds2.map(lambda x: x).get_internal_block_refs())
+    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
+    nblocks = len(ds2.map(lambda x: x, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map(lambda x: x).get_internal_block_refs())
-    assert 4 < nblocks < 7, nblocks
+    nblocks = len(ds2.map(lambda x: x, **kwargs).get_internal_block_refs())
+    assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
     ctx.target_max_block_size = 1_000_000
     ctx.block_splitting_enabled = False
-    ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds3.map(lambda x: x).get_internal_block_refs())
+    ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
+    nblocks = len(ds3.map(lambda x: x, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
 
 

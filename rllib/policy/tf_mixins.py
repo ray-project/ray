@@ -1,24 +1,28 @@
-import gym
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
+
+import numpy as np
+
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
@@ -125,12 +129,12 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in Trainers to update the KL coefficient after each
+    This is used in Algorithms to update the KL coefficient after each
     learning step based on `config.kl_target` and the measured KL value
     (from the train_batch).
     """
 
-    def __init__(self, config):
+    def __init__(self, config: AlgorithmConfigDict):
         # The current KL value (as python float).
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
@@ -182,18 +186,83 @@ class KLCoeffMixin:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
 
     @override(Policy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff_val
         return state
 
     @override(Policy)
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
         # Call super's set_state with rest of the state dict.
         super().set_state(state)
+
+
+class TargetNetworkMixin:
+    """Assign the `update_target` method to the policy.
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(self):
+
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
+
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            assert len(model_vars) == len(target_model_vars), (
+                model_vars,
+                target_model_vars,
+            )
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target)
+                )
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
+
+        # Hard initial update.
+        self._do_update = update_target_fn
+        # TODO: The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+
+    @property
+    def q_func_vars(self):
+        if not hasattr(self, "_q_func_vars"):
+            self._q_func_vars = self.model.variables()
+        return self._q_func_vars
+
+    @property
+    def target_q_func_vars(self):
+        if not hasattr(self, "_target_q_func_vars"):
+            self._target_q_func_vars = self.target_model.variables()
+        return self._target_q_func_vars
+
+    # Support both hard and soft sync.
+    def update_target(self, tau: int = None) -> None:
+        self._do_update(np.float32(tau or self.config.get("tau", 1.0)))
+
+    @override(TFPolicy)
+    def variables(self) -> List[TensorType]:
+        return self.model.variables()
+
+    def set_weights(self, weights):
+        if isinstance(self, TFPolicy):
+            TFPolicy.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicyV2):  # Handle TF2V2 policies.
+            EagerTFPolicyV2.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
+            EagerTFPolicy.set_weights(self, weights)
+        self.update_target(self.config.get("tau", 1.0))
 
 
 class ValueNetworkMixin:
@@ -277,50 +346,24 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
-class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
+class GradStatsMixin:
+    def __init__(self):
+        pass
 
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
-    """
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        # We have support for more than one loss (list of lists of grads).
+        if self.config.get("_tf_policy_handles_more_than_one_loss"):
+            grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+        # Old case: We have a single list of grads (only one loss term and
+        # optimizer).
+        else:
+            grad_gnorm = tf.linalg.global_norm(grads)
 
-    def __init__(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
-    ):
-        @make_tf_callable(self.get_session())
-        def do_update():
-            # update_target_fn will be called periodically to copy Q network to
-            # target Q network
-            update_target_expr = []
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
-                self.q_func_vars,
-                self.target_q_func_vars,
-            )
-            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
-                update_target_expr.append(var_target.assign(var))
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        self.update_target = do_update
-
-    @property
-    def q_func_vars(self):
-        if not hasattr(self, "_q_func_vars"):
-            self._q_func_vars = self.model.variables()
-        return self._q_func_vars
-
-    @property
-    def target_q_func_vars(self):
-        if not hasattr(self, "_target_q_func_vars"):
-            self._target_q_func_vars = self.target_model.variables()
-        return self._target_q_func_vars
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
+        return {
+            "grad_gnorm": grad_gnorm,
+        }
 
 
 # TODO: find a better place for this util, since it's not technically MixIns.
@@ -335,14 +378,19 @@ def compute_gradients(
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.
-    if policy.config["grad_clip"] is not None:
+    if policy.config.get("grad_clip") is not None:
         # Defuse inf gradients (due to super large losses).
         grads = [g for (g, v) in grads_and_vars]
         grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
         # If the global_norm is inf -> All grads will be NaN. Stabilize this
         # here by setting them to 0.0. This will simply ignore destructive loss
         # calculations.
-        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+        policy.grads = []
+        for g in grads:
+            if g is not None:
+                policy.grads.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
+            else:
+                policy.grads.append(None)
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:

@@ -18,7 +18,7 @@ and thus allowing git bisect to properly analyze and find the faulty commit.
 Run as follows using a simple command line config
 (must run 1M timesteps in 2min):
 $ python debug_learning_failure_git_bisect.py --config '{...}'
-    --env CartPole-v0 --run PPO --stop-time=120 --stop-timesteps=1000000
+    --env CartPole-v1 --run PPO --stop-time=120 --stop-timesteps=1000000
 
 With a yaml file (must reach 180.0 reward in 100 training iterations):
 $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
@@ -42,7 +42,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default=None,
     help="The DL framework specifier.",
 )
@@ -203,11 +203,16 @@ if __name__ == "__main__":
     # Run the training experiment.
     importlib.invalidate_caches()
     import ray
+    from ray import air
     from ray import tune
 
     ray.init()
 
-    results = tune.run(run, stop=stop, config=config)
+    results = tune.Tuner(
+        run,
+        run_config=air.RunConfig(stop=stop),
+        param_space=config,
+    ).fit()
     last_results = [t.last_result for t in results.trials]
 
     # Criterion is to have reached some min reward within given

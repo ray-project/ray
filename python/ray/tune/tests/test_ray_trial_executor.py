@@ -7,25 +7,43 @@ import unittest
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
-from ray.tune.ray_trial_executor import (
+from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.tune.utils.placement_groups import (
+from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     _PlacementGroupManager,
 )
 from unittest.mock import patch
+
+
+class _HangingTrainable(tune.Trainable):
+    def setup(self, config):
+        pass
+
+    def save_checkpoint(self, checkpoint_dir: str):
+        return None
+
+    def load_checkpoint(self, checkpoint):
+        pass
+
+    def step(self):
+        return {"metric": 4}
+
+    def stop(self):
+        time.sleep(20)
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
@@ -45,7 +63,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
+    @patch.object(ray.tune.execution.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
@@ -121,9 +139,9 @@ class RayTrialExecutorTest(unittest.TestCase):
             trial.update_last_result(training_result)
 
     def _simulate_saving(self, trial):
-        checkpoint = self.trial_executor.save(trial, _TuneCheckpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(trial, CheckpointStorage.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
-        self.assertEqual(trial.checkpoint.value, None)
+        self.assertEqual(trial.checkpoint.dir_or_data, None)
         event = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
@@ -190,7 +208,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, _TuneCheckpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage_mode, CheckpointStorage.MEMORY)
 
         # Resume
         self._simulate_starting_trial(trial)
@@ -209,6 +227,54 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("asdf", resources=Resources(1, 0))
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.ERROR, trial.status)
+
+    def testTrialHangingCleanup(self):
+        register_trainable("hanging", _HangingTrainable)
+        trial = Trial("hanging")
+
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
+        os.environ["TUNE_GET_EXECUTOR_EVENT_WAIT_S"] = "30"
+
+        self.trial_executor = RayTrialExecutor()
+
+        os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
+        os.environ.pop("TUNE_GET_EXECUTOR_EVENT_WAIT_S")
+
+        # Schedule trial PG
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.PG_READY
+
+        # Start trial
+        self.trial_executor.start_trial(trial)
+
+        # Kick off future
+        self.trial_executor.continue_training(trial)
+
+        # Wait for result
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.TRAINING_RESULT
+
+        # Kick of new training future to have something in-flight
+        self.trial_executor.get_next_executor_event([trial], next_trial_exists=True)
+
+        # Stop trial (time it)
+        start_time = time.time()
+        self.trial_executor.stop_trial(trial)
+        self.trial_executor.on_step_end([trial])
+        time.sleep(2)
+        self.trial_executor.on_step_end([trial])
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT
+        end_time = time.time() - start_time
+
+        # Should not wait until end of hang
+        assert 0 < end_time < 10
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
@@ -310,6 +376,11 @@ class RayTrialExecutorTest(unittest.TestCase):
                 time.sleep(4)
                 print("Cleanup done")
 
+        # Disable force cleanup
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
+        self.trial_executor = RayTrialExecutor()
+        os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
+
         # First check if the trials terminate gracefully by default
         trials = self.generate_trials(
             {
@@ -341,12 +412,13 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = trials[0]
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
         self.trial_executor = RayTrialExecutor()
-        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
+        os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
         self._simulate_starting_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         # This should be enough time for `trial._default_result_or_future`
         # to return. Otherwise, PID won't show up in `trial.last_result`,
         # which is asserted down below.
+        print("Fetching last result", trial.last_result)
         time.sleep(2)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)
@@ -377,7 +449,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def process_trial_save(self, trial, checkpoint_value):
         """Simulates trial runner save."""
         checkpoint = trial.saving_to
-        checkpoint.value = checkpoint_value
+        checkpoint.dir_or_data = checkpoint_value
         trial.on_checkpoint(checkpoint)
 
 
@@ -498,7 +570,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         executor = RayTrialExecutor(reuse_actors=True)
         executor._pg_manager = pgm
-        executor.set_max_pending_trials(1)
+        executor.setup(max_pending_trials=1)
 
         def train(config):
             yield 1
@@ -547,6 +619,15 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
 
+    def testEmptyPlacementGroupFactory(self):
+        # Empty bundles
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([])
+
+        # Empty head, empty workers
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([{}])
+
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):
@@ -558,6 +639,9 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         _register_all()  # re-register the evicted objects
 
     def testTrialCleanup(self):
+        self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
+
+    def testTrialHangingCleanup(self):
         self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
 
 

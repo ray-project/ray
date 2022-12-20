@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     ray.init(address="auto")
 
-    total_cpus_per_node = [node["Resources"]["CPU"] for node in ray.nodes()]
+    total_cpus_per_node = [node["Resources"].get("CPU", 0) for node in ray.nodes()]
     num_nodes = len(total_cpus_per_node)
     total_cpus = sum(total_cpus_per_node)
 

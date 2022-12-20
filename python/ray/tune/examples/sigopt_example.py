@@ -7,9 +7,11 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 import time
 
-from ray import tune
+from ray import air, tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch
+from ray.tune.search.sigopt.sigopt_search import load_sigopt_key
 
 
 def evaluate(step, width, height):
@@ -24,7 +26,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluate(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -37,6 +39,8 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
     args, _ = parser.parse_known_args()
+
+    load_sigopt_key()
 
     if "SIGOPT_KEY" not in os.environ:
         if args.smoke_test:
@@ -67,16 +71,21 @@ if __name__ == "__main__":
         mode="min",
     )
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="my_exp",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=4 if args.smoke_test else 100,
-        config={"steps": 10},
+        run_config=air.RunConfig(
+            name="my_exp",
+        ),
+        tune_config=tune.TuneConfig(
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=4 if args.smoke_test else 100,
+        ),
+        param_space={"steps": 10},
     )
+    results = tuner.fit()
 
     print(
         "Best hyperparameters found were: ",
-        analysis.get_best_config("mean_loss", "min"),
+        results.get_best_result("mean_loss", "min").config,
     )

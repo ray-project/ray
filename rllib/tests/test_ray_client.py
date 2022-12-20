@@ -4,8 +4,9 @@ import unittest
 
 import pytest
 import ray
+from ray import air
 from ray import tune
-from ray.rllib.agents import ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -29,10 +30,13 @@ class TestRayClient(unittest.TestCase):
                 "num_workers": 0,
                 "framework": "tf",
             }
-            resources = ppo.PPOTrainer.default_resource_request(config)
+            resources = ppo.PPO.default_resource_request(config)
             from ray.rllib.examples.custom_train_fn import my_train_fn
 
-            tune.run(my_train_fn, resources_per_trial=resources, config=config)
+            tune.Tuner(
+                tune.with_resources(my_train_fn, resources),
+                param_space=config,
+            ).fit()
 
     def test_cartpole_lstm(self):
         with ray_start_client_server():
@@ -46,25 +50,30 @@ class TestRayClient(unittest.TestCase):
                 "training_iteration": 3,
             }
 
-            tune.run("PPO", config=config, stop=stop, verbose=2)
+            tune.Tuner(
+                "PPO",
+                param_space=config,
+                run_config=air.RunConfig(stop=stop, verbose=2),
+            ).fit()
 
     def test_custom_experiment(self):
 
         with ray_start_client_server(ray_init_kwargs={"num_cpus": 3}):
             assert ray.util.client.ray.is_connected()
 
-            config = ppo.DEFAULT_CONFIG.copy()
+            config = ppo.PPOConfig().environment("CartPole-v1")
             # Special flag signalling `experiment` how many iters to do.
+            config = config.to_dict()
             config["train-iterations"] = 2
-            config["env"] = "CartPole-v0"
 
             from ray.rllib.examples.custom_experiment import experiment
 
-            tune.run(
-                experiment,
-                config=config,
-                resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
-            )
+            tune.Tuner(
+                tune.with_resources(
+                    experiment, ppo.PPO.default_resource_request(config)
+                ),
+                param_space=config,
+            ).fit()
 
 
 if __name__ == "__main__":

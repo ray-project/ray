@@ -1,4 +1,4 @@
-from ray import tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
@@ -11,11 +11,15 @@ if __name__ == "__main__":
 
     register_env("waterworld", lambda _: PettingZooEnv(waterworld_v3.env()))
 
-    tune.run(
+    tune.Tuner(
         "APEX_DDPG",
-        stop={"episodes_total": 60000},
-        checkpoint_freq=10,
-        config={
+        run_config=air.RunConfig(
+            stop={"episodes_total": 60000},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=10,
+            ),
+        ),
+        param_space={
             # Enviroment specific.
             "env": "waterworld",
             # General
@@ -23,10 +27,10 @@ if __name__ == "__main__":
             "num_workers": 2,
             "num_envs_per_worker": 8,
             "replay_buffer_config": {
-                "learning_starts": 1000,
                 "capacity": int(1e5),
                 "prioritized_replay_alpha": 0.5,
             },
+            "num_steps_sampled_before_learning_starts": 1000,
             "compress_observations": True,
             "rollout_fragment_length": 20,
             "train_batch_size": 512,
@@ -34,7 +38,7 @@ if __name__ == "__main__":
             "n_step": 3,
             "lr": 0.0001,
             "target_network_update_freq": 50000,
-            "min_sample_timesteps_per_reporting": 25000,
+            "min_sample_timesteps_per_iteration": 25000,
             # Method specific.
             "multiagent": {
                 # We only have one policy (calling it "shared").
@@ -43,8 +47,8 @@ if __name__ == "__main__":
                 "policies": {"shared_policy"},
                 # Always use "shared" policy.
                 "policy_mapping_fn": (
-                    lambda agent_id, episode, **kwargs: "shared_policy"
+                    lambda agent_id, episode, worker, **kwargs: "shared_policy"
                 ),
             },
         },
-    )
+    ).fit()

@@ -76,12 +76,6 @@ using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
-// TODO(SongGuyang): Make a common task execution function used for both local mode and
-// cluster mode.
-std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
-  return std::make_unique<ObjectID>();
-};
-
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
@@ -102,41 +96,48 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (RayIntentionalSystemExitException &e) {
+    RAY_LOG(ERROR) << "Ray intentional system exit while executing function(" << func_name
+                   << ").";
     return std::make_pair(ray::Status::IntentionalSystemExit(""), nullptr);
-  } catch (RayException &e) {
-    return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
-  } catch (msgpack::type_error &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("invalid arguments: ") + e.what()), nullptr);
-  } catch (const std::invalid_argument &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
-        nullptr);
   } catch (const std::exception &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
-        nullptr);
+#ifdef _WIN32
+    auto exception_name = std::string(typeid(e).name());
+#else
+    auto exception_name =
+        std::string(abi::__cxa_demangle(typeid(e).name(), nullptr, nullptr, nullptr));
+#endif
+    std::string err_msg = "An exception was thrown while executing function(" +
+                          func_name + "): " + exception_name + ": " + e.what();
+    RAY_LOG(ERROR) << err_msg;
+    return std::make_pair(ray::Status::Invalid(err_msg), nullptr);
   } catch (...) {
+    RAY_LOG(ERROR) << "An unknown exception was thrown while executing function("
+                   << func_name << ").";
     return std::make_pair(ray::Status::UnknownError(std::string("unknown exception")),
                           nullptr);
   }
 }
 
 Status TaskExecutor::ExecuteTask(
+    const rpc::Address &caller_address,
     ray::TaskType task_type,
     const std::string task_name,
     const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
-    const std::vector<ObjectID> &return_ids,
     const std::string &debugger_breakpoint,
-    std::vector<std::shared_ptr<ray::RayObject>> *results,
+    const std::string &serialized_retry_exception_allowlist,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-    bool *is_application_level_error,
+    bool *is_retryable_error,
+    bool *is_application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-    const std::string name_of_concurrency_group_to_execute) {
-  RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
+    const std::string name_of_concurrency_group_to_execute,
+    bool is_reattempt) {
+  RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
+                 << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
   RAY_CHECK(function_descriptor->Type() ==
@@ -144,6 +145,11 @@ Status TaskExecutor::ExecuteTask(
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string func_name = typed_descriptor->FunctionName();
   bool cross_lang = !typed_descriptor->Caller().empty();
+  // TODO(Clark): Support retrying application-level errors for C++.
+  // TODO(Clark): Support exception allowlist for retrying application-level
+  // errors for C++.
+  *is_retryable_error = false;
+  *is_application_error = false;
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
@@ -192,6 +198,7 @@ Status TaskExecutor::ExecuteTask(
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
     meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
+    *is_application_error = true;
 
     msgpack::sbuffer buf;
     if (cross_lang) {
@@ -207,11 +214,10 @@ Status TaskExecutor::ExecuteTask(
     data = std::make_shared<msgpack::sbuffer>(std::move(buf));
   }
 
-  results->resize(return_ids.size(), nullptr);
   if (task_type != ray::TaskType::ACTOR_CREATION_TASK) {
     size_t data_size = data->size();
-    auto &result_id = return_ids[0];
-    auto result_ptr = &(*results)[0];
+    auto &result_id = (*returns)[0].first;
+    auto result_ptr = &(*returns)[0].second;
     int64_t task_output_inlined_bytes = 0;
 
     if (cross_lang && meta_buffer == nullptr) {
@@ -248,7 +254,10 @@ Status TaskExecutor::ExecuteTask(
       }
     }
 
-    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+        result_id,
+        result,
+        /*generator_id=*/ObjectID::Nil()));
   } else {
     if (!status.ok()) {
       return ray::Status::CreationTaskError("");

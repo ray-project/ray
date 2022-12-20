@@ -2,20 +2,24 @@ from typing import Dict
 import logging
 import numpy as np
 
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.util.timer import _Timer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
+    merge_dicts_with_warning,
 )
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    StorageUnit,
+)
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.utils.timer import TimerStat
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -36,37 +40,35 @@ class MultiAgentPrioritizedReplayBuffer(
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_mode: str = "independent",
+        replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
+        underlying_buffer_config: dict = None,
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        underlying_buffer_config: dict = None,
         **kwargs
     ):
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            num_shards: The number of buffer shards that exist in total
-                (including this one).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
                 If they are stored in episodes, replay_sequence_length is
                 ignored.
-            learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
-                return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
-            prioritized_replay_alpha: Alpha parameter for a prioritized
-                replay buffer. Use 0.0 for no prioritization.
-            prioritized_replay_beta: Beta parameter for a prioritized
-                replay buffer.
-            prioritized_replay_eps: Epsilon parameter for a prioritized
-                replay buffer.
+            num_shards: The number of buffer shards that exist in total
+                (including this one).
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
@@ -88,7 +90,13 @@ class MultiAgentPrioritizedReplayBuffer(
                 "capacity": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
-            **kwargs: Forward compatibility kwargs.
+            prioritized_replay_alpha: Alpha parameter for a prioritized
+                replay buffer. Use 0.0 for no prioritization.
+            prioritized_replay_beta: Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps: Epsilon parameter for a prioritized
+                replay buffer.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         if "replay_mode" in kwargs and (
             kwargs["replay_mode"] == "lockstep"
@@ -121,19 +129,19 @@ class MultiAgentPrioritizedReplayBuffer(
         shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            shard_capacity,
-            storage_unit,
-            **kwargs,
-            underlying_buffer_config=prioritized_replay_buffer_config,
-            learning_starts=learning_starts,
+            capacity=shard_capacity,
+            storage_unit=storage_unit,
+            replay_sequence_override=replay_sequence_override,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            **kwargs,
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps
-        self.update_priorities_timer = TimerStat()
+        self.update_priorities_timer = _Timer()
 
     @DeveloperAPI
     @override(MultiAgentReplayBuffer)
@@ -150,30 +158,55 @@ class MultiAgentPrioritizedReplayBuffer(
             policy_id: ID of the policy that corresponds to the underlying
             buffer
             batch: SampleBatch to add to the underlying buffer
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
+        # Merge kwargs, overwriting standard call arguments
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
+
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-        elif self._storage_unit is StorageUnit.SEQUENCES:
+        elif self.storage_unit is StorageUnit.SEQUENCES:
             timeslices = timeslice_along_seq_lens_with_overlap(
                 sample_batch=batch,
+                seq_lens=batch.get(SampleBatch.SEQ_LENS)
+                if self.replay_sequence_override
+                else None,
                 zero_pad_max_seq_len=self.replay_sequence_length,
                 pre_overlap=self.replay_burn_in,
                 zero_init_states=self.replay_zero_init_states,
             )
-        else:
+        elif self.storage_unit == StorageUnit.EPISODES:
+            timeslices = []
+            for eps in batch.split_by_episode():
+                if (
+                    eps.get(SampleBatch.T)[0] == 0
+                    and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                ):
+                    # Only add full episodes to the buffer
+                    timeslices.append(eps)
+                else:
+                    if log_once("only_full_episodes"):
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
+        elif self.storage_unit == StorageUnit.FRAGMENTS:
             timeslices = [batch]
+        else:
+            raise ValueError("Unknown `storage_unit={}`".format(self.storage_unit))
 
-        for time_slice in timeslices:
+        for slice in timeslices:
             # If SampleBatch has prio-replay weights, average
             # over these to use as a weight for the entire
             # sequence.
             if self.replay_mode is ReplayMode.INDEPENDENT:
-                if "weights" in time_slice and len(time_slice["weights"]):
-                    weight = np.mean(time_slice["weights"])
+                if "weights" in slice and len(slice["weights"]):
+                    weight = np.mean(slice["weights"])
                 else:
                     weight = None
 
@@ -198,7 +231,7 @@ class MultiAgentPrioritizedReplayBuffer(
                         )
 
                 kwargs = {**kwargs, "weight": None}
-            self.replay_buffers[policy_id].add(time_slice, **kwargs)
+            self.replay_buffers[policy_id].add(slice, **kwargs)
 
     @DeveloperAPI
     @override(PrioritizedReplayBuffer)
@@ -226,7 +259,7 @@ class MultiAgentPrioritizedReplayBuffer(
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug (bool): If True, stats of underlying replay buffers will
+            debug: If True, stats of underlying replay buffers will
             be fetched with debug=True.
 
         Returns:

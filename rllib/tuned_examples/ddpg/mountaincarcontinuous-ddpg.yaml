@@ -25,7 +25,7 @@ mountaincarcontinuous-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
 
         target_network_update_freq: 0
         tau: 0.01
@@ -38,6 +38,7 @@ mountaincarcontinuous-ddpg:
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 0.000001
           worker_side_prioritization: false
+        num_steps_sampled_before_learning_starts: 1000
         clip_rewards: False
 
         # === Optimization ===
@@ -46,7 +47,6 @@ mountaincarcontinuous-ddpg:
         use_huber: False
         huber_threshold: 1.0
         l2_reg: 0.00001
-        learning_starts: 1000
         rollout_fragment_length: 1
         train_batch_size: 64
 
@@ -56,4 +56,4 @@ mountaincarcontinuous-ddpg:
 
         # === Evaluation ===
         evaluation_interval: 5
-        evaluation_num_episodes: 10
+        evaluation_duration: 10

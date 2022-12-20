@@ -34,6 +34,7 @@ enum class SchedulingType {
   BUNDLE_SPREAD = 5,
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
+  AFFINITY_WITH_BUNDLE = 8
 };
 
 // Options that controls the scheduling behavior.
@@ -76,41 +77,64 @@ struct SchedulingOptions {
     return scheduling_options;
   }
 
+  // construct option for affinity with bundle scheduling policy.
+  static SchedulingOptions AffinityWithBundle(const BundleID &bundle_id) {
+    auto scheduling_context =
+        std::make_unique<AffinityWithBundleSchedulingContext>(bundle_id);
+    return SchedulingOptions(
+        SchedulingType::AFFINITY_WITH_BUNDLE,
+        /*spread_threshold*/ 0,
+        /*avoid_local_node*/ false,
+        /*require_node_available*/ true,
+        /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
+        /*max_cpu_fraction_per_node*/ 0,
+        std::move(scheduling_context));
+  }
+
+  /*
+   * Bundle scheduling options.
+   */
+
   // construct option for soft pack scheduling policy.
-  static SchedulingOptions BundlePack() {
+  static SchedulingOptions BundlePack(double max_cpu_fraction_per_node = 1.0) {
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false);
+                             /*avoid_gpu_nodes*/ false,
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
   }
 
   // construct option for strict spread scheduling policy.
-  static SchedulingOptions BundleSpread() {
+  static SchedulingOptions BundleSpread(double max_cpu_fraction_per_node = 1.0) {
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false);
+                             /*avoid_gpu_nodes*/ false,
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
   }
 
   // construct option for strict pack scheduling policy.
-  static SchedulingOptions BundleStrictPack() {
+  static SchedulingOptions BundleStrictPack(double max_cpu_fraction_per_node = 1.0) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false);
+                             /*avoid_gpu_nodes*/ false,
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
   }
 
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleStrictSpread(
+      double max_cpu_fraction_per_node = 1.0,
       std::unique_ptr<SchedulingContext> scheduling_context = nullptr) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node,
                              /*scheduling_context*/ std::move(scheduling_context));
   }
 
@@ -119,6 +143,12 @@ struct SchedulingOptions {
   bool avoid_local_node;
   bool require_node_available;
   bool avoid_gpu_nodes;
+  // Maximum reservable CPU fraction per node. It is applied across multiple
+  // bundles, individually. E.g., when you have 2 bundles {CPU: 4} from 2 different
+  // scheduilng request, and there's one node with {CPU: 8}, only 1 bundle from 1 request
+  // can be scheduled on this node. This is only used for bundle scheduling policies
+  // (bundle pack, spread).
+  double max_cpu_fraction_per_node;
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
@@ -129,12 +159,14 @@ struct SchedulingOptions {
                     bool avoid_local_node,
                     bool require_node_available,
                     bool avoid_gpu_nodes,
+                    double max_cpu_fraction_per_node = 1.0,
                     std::shared_ptr<SchedulingContext> scheduling_context = nullptr)
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
         require_node_available(require_node_available),
         avoid_gpu_nodes(avoid_gpu_nodes),
+        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         scheduling_context(std::move(scheduling_context)) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;

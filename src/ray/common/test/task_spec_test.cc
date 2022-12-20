@@ -100,6 +100,29 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
               TaskSpecification::GetSchedulingClass(descriptor9));
 }
 
+TEST(TaskSpecTest, TestActorSchedulingClass) {
+  // This test ensures that an actor's lease request's scheduling class is
+  // determined by the placement resources, not the regular resources.
+
+  const std::unordered_map<std::string, double> one_cpu = {{"CPU", 1}};
+
+  rpc::TaskSpec actor_task_spec_proto;
+  actor_task_spec_proto.set_type(TaskType::ACTOR_CREATION_TASK);
+  actor_task_spec_proto.mutable_required_placement_resources()->insert(one_cpu.begin(),
+                                                                       one_cpu.end());
+
+  TaskSpecification actor_task(actor_task_spec_proto);
+
+  rpc::TaskSpec regular_task_spec_proto;
+  regular_task_spec_proto.set_type(TaskType::NORMAL_TASK);
+  regular_task_spec_proto.mutable_required_resources()->insert(one_cpu.begin(),
+                                                               one_cpu.end());
+
+  TaskSpecification regular_task(regular_task_spec_proto);
+
+  ASSERT_EQ(regular_task.GetSchedulingClass(), actor_task.GetSchedulingClass());
+}
+
 TEST(TaskSpecTest, TestTaskSpecification) {
   rpc::SchedulingStrategy scheduling_strategy;
   NodeID node_id = NodeID::FromRandom();

@@ -1,7 +1,7 @@
 """This is the module that is in charge of Ray usage report (telemetry) APIs.
 
-NOTE: Ray's usage report is currently "off by default".
-      But we are planning to make it opt-in by default.
+NOTE: Ray's usage report is currently "on by default".
+      One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
 https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
@@ -41,30 +41,32 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import os
-import uuid
-import sys
+import glob
 import json
 import logging
+import threading
+import os
+import re
+import sys
 import time
+import uuid
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import requests
 import yaml
 
-from dataclasses import dataclass, asdict
-from typing import Optional, List
-from pathlib import Path
-from enum import Enum, auto
-
 import ray
-import requests
-
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_initialized,
-)
+from ray._private import gcs_utils
+from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
+from ray.core.generated import usage_pb2
 
 logger = logging.getLogger(__name__)
+TagKey = usage_pb2.TagKey
 
 #################
 # Internal APIs #
@@ -136,6 +138,14 @@ class UsageStatsToReport:
     total_failed: int
     #: The sequence number of the report.
     seq_number: int
+    #: The extra tags to report when specified by an
+    #  environment variable RAY_USAGE_STATS_EXTRA_TAGS
+    extra_usage_tags: Optional[Dict[str, str]]
+    #: The number of alive nodes when the report is generated.
+    total_num_nodes: Optional[int]
+    #: The total number of running jobs excluding internal ones
+    #  when the report is generated.
+    total_num_running_jobs: Optional[int]
 
 
 @dataclass(init=True)
@@ -160,45 +170,167 @@ class UsageStatsEnabledness(Enum):
 
 
 _recorded_library_usages = set()
+_recorded_library_usages_lock = threading.Lock()
+_recorded_extra_usage_tags = dict()
+_recorded_extra_usage_tags_lock = threading.Lock()
+
+
+# NOTE: Do not change the write / read protocol. That will cause
+# version incompatibility issues.
+class LibUsageRecorder:
+    """A class to put/get the library usage to the ray tmp folder.
+
+    See https://github.com/ray-project/ray/pull/25842 for more details.
+    """
+
+    def __init__(self, temp_dir_path: str):
+        self._lib_usage_dir = Path(temp_dir_path)
+        self._lib_usage_prefix = "_ray_lib_usage-"
+        self._lib_usage_filename_match = re.compile(
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
+        )
+
+    def put_lib_usage(self, lib_name: str):
+        """Put the library usage to the ray tmp folder."""
+        lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
+        lib_usage_file.touch(exist_ok=True)
+
+    def read_lib_usages(self) -> List[str]:
+        """Read a list of library usages from the ray tmp folder."""
+        # For checking if the file exists, it is okay to have a minor chance of
+        # having race condition.
+        lib_usages = []
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            if file_path.exists():
+                lib_usages.append(self._get_lib_usage_from_filename(file_path.name))
+        return lib_usages
+
+    def delete_lib_usages(self):
+        """Delete all usage files. Test only"""
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            file_path.unlink()
+
+    def _lib_usage_filename(self, lib_name: str) -> str:
+        return f"{self._lib_usage_prefix}{lib_name}.txt"
+
+    def _get_lib_usage_from_filename(self, filename: str) -> str:
+        return self._lib_usage_filename_match.match(filename).group(1)
 
 
 def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
-            "",
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}".encode(),
+            b"",
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
 
+    # Record the library usage to the temp (e.g., /tmp/ray) folder.
+    # Note that although we always write this file, it is not
+    # reported when the usage stats is disabled.
+    if ray._private.worker.global_worker.mode == ray.SCRIPT_MODE:
+        try:
+            lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
+            lib_usage_recorder.put_lib_usage(library_usage)
+        except Exception as e:
+            logger.debug(f"Failed to write a library usage to the home folder, {e}")
+
+
+def record_extra_usage_tag(key: TagKey, value: str):
+    """Record extra kv usage tag.
+
+    If the key already exists, the value will be overwritten.
+
+    To record an extra tag, first add the key to the TagKey enum and
+    then call this function.
+    It will make a synchronous call to the internal kv store if the tag is updated.
+    """
+    key = TagKey.Name(key).lower()
+    with _recorded_extra_usage_tags_lock:
+        if _recorded_extra_usage_tags.get(key) == value:
+            return
+        _recorded_extra_usage_tags[key] = value
+
+    if not _internal_kv_initialized():
+        # This happens if the record is before ray.init
+        return
+
+    _put_extra_usage_tag(key, value)
+
+
+def _put_extra_usage_tag(key: str, value: str):
+    assert _internal_kv_initialized()
+    try:
+        _internal_kv_put(
+            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode(),
+            value.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
+        )
+    except Exception as e:
+        logger.debug(f"Failed to put extra usage tag, {e}")
+
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    if library_usage in _recorded_library_usages:
-        return
-    _recorded_library_usages.add(library_usage)
+    if "-" in library_usage:
+        # - is not permitted since it should be used as a separator
+        # of the lib usage file name. See LibUsageRecorder.
+        raise ValueError("The library name contains a char - which is not permitted.")
+
+    with _recorded_library_usages_lock:
+        if library_usage in _recorded_library_usages:
+            return
+        _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    # Only report lib usage for driver / ray client / workers. Otherwise,
+    # it can be reported if the library is imported from
+    # e.g., API server.
+    if (
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray._private.worker.global_worker.mode == ray.WORKER_MODE
+        or ray.util.client.ray.is_connected()
+    ):
         _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
-    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+    # NOTE: When the lib is imported from a worker, ray should
+    # always be initialized, so there's no need to register the
+    # pre init hook.
+    if not (
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.util.client.ray.is_connected()
+    ):
         return
+
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
 
-ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
+def _put_pre_init_extra_usage_tags():
+    assert _internal_kv_initialized()
+    for k, v in _recorded_extra_usage_tags.items():
+        _put_extra_usage_tag(k, v)
+
+
+def put_pre_init_usage_stats():
+    _put_pre_init_library_usages()
+    _put_pre_init_extra_usage_tags()
+
+
+ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
 def _usage_stats_report_url():
@@ -254,6 +386,10 @@ def _usage_stats_enabledness() -> UsageStatsEnabledness:
     return UsageStatsEnabledness.ENABLED_BY_DEFAULT
 
 
+def is_nightly_wheel() -> bool:
+    return ray.__commit__ != "{{RAY_COMMIT_SHA}}" and "dev" in ray.__version__
+
+
 def usage_stats_enabled() -> bool:
     return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
@@ -286,18 +422,23 @@ def _generate_cluster_metadata():
     return metadata
 
 
-def show_usage_stats_prompt() -> None:
+def show_usage_stats_prompt(cli: bool) -> None:
     if not usage_stats_prompt_enabled():
         return
 
     from ray.autoscaler._private.cli_logger import cli_logger
 
+    prompt_print = cli_logger.print if cli else print
+
     usage_stats_enabledness = _usage_stats_enabledness()
     if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
-        cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+        prompt_print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
     elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
-
-        if cli_logger.interactive:
+        if not cli:
+            prompt_print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE
+            )
+        elif cli_logger.interactive:
             enabled = cli_logger.confirm(
                 False,
                 usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
@@ -313,16 +454,20 @@ def show_usage_stats_prompt() -> None:
                     f"Failed to persist usage stats choice for future clusters: {e}"
                 )
             if enabled:
-                cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+                prompt_print(usage_constant.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE)
             else:
-                cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+                prompt_print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
         else:
-            cli_logger.print(
-                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
+            prompt_print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_CLI_MESSAGE,
             )
     else:
         assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
-        cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+        prompt_print(
+            usage_constant.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE
+            if cli
+            else usage_constant.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE
+        )
 
 
 def set_usage_stats_enabled_via_config(enabled) -> None:
@@ -361,71 +506,144 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client, num_retries) -> None:
+def put_cluster_metadata(gcs_client) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation PUT.
-        num_retries (int): Max number of times to retry if PUT fails.
+        gcs_client: The GCS client to perform KV operation PUT.
 
     Raises:
         gRPC exceptions if PUT fails.
     """
     metadata = _generate_cluster_metadata()
-    ray._private.utils.internal_kv_put_with_retry(
-        gcs_client,
+    gcs_client.internal_kv_put(
         usage_constant.CLUSTER_METADATA_KEY,
         json.dumps(metadata).encode(),
+        overwrite=True,
         namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        num_retries=num_retries,
     )
     return metadata
 
 
-def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
+def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
+    """Return the total number of running jobs in the cluster excluding internal ones"""
+    try:
+        result = gcs_client.get_all_job_info()
+        total_num_running_jobs = 0
+        for job in result.job_info_list:
+            if not job.is_dead and not job.config.ray_namespace.startswith(
+                "_ray_internal"
+            ):
+                total_num_running_jobs += 1
+        return total_num_running_jobs
+    except Exception as e:
+        logger.info(f"Faile to query number of running jobs in the cluster: {e}")
+        return None
+
+
+def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
+    """Return the total number of alive nodes in the cluster"""
+    try:
+        result = gcs_client.get_all_node_info(timeout=timeout)
+        total_num_nodes = 0
+        for node in result.node_info_list:
+            if node.state == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+                total_num_nodes += 1
+        return total_num_nodes
+    except Exception as e:
+        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        return None
+
+
+def get_library_usages_to_report(gcs_client) -> List[str]:
     try:
         result = []
-        library_usages = ray._private.utils.internal_kv_list_with_retry(
-            gcs_client,
-            usage_constant.LIBRARY_USAGE_PREFIX,
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
-            num_retries=num_retries,
+        library_usages = gcs_client.internal_kv_keys(
+            usage_constant.LIBRARY_USAGE_PREFIX.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
         for library_usage in library_usages:
             library_usage = library_usage.decode("utf-8")
             result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+
+        try:
+            historical_lib_usages = LibUsageRecorder(
+                ray._private.utils.get_ray_temp_dir()
+            ).read_lib_usages()
+            for library_usage in historical_lib_usages:
+                if library_usage not in result:
+                    result.append(library_usage)
+        except Exception as e:
+            logger.info(f"Failed to read historical library usage {e}")
         return result
     except Exception as e:
         logger.info(f"Failed to get library usages to report {e}")
         return []
 
 
-def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
+def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
+    """Get the extra usage tags from env var and gcs kv store.
+
+    The env var should be given this way; key=value;key=value.
+    If parsing is failed, it will return the empty data.
+
+    Returns:
+        Extra usage tags as kv pairs.
+    """
+    extra_usage_tags = dict()
+
+    extra_usage_tags_env_var = os.getenv("RAY_USAGE_STATS_EXTRA_TAGS", None)
+    if extra_usage_tags_env_var:
+        try:
+            kvs = extra_usage_tags_env_var.strip(";").split(";")
+            for kv in kvs:
+                k, v = kv.split("=")
+                extra_usage_tags[k] = v
+        except Exception as e:
+            logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
+
+    valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
+    try:
+        keys = gcs_client.internal_kv_keys(
+            usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
+        )
+        for key in keys:
+            value = gcs_client.internal_kv_get(
+                key, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
+            )
+            key = key.decode("utf-8")
+            key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            assert key in valid_tag_keys
+            extra_usage_tags[key] = value.decode("utf-8")
+    except Exception as e:
+        logger.info(f"Failed to get extra usage tags from kv store {e}")
+    return extra_usage_tags
+
+
+def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation GET.
-        num_retries (int): Max number of times to retry if GET fails.
+        gcs_client: The GCS client to perform KV operation GET.
 
     Returns:
         The current cluster status or empty if it fails to get that information.
     """
     try:
-        cluster_status = ray._private.utils.internal_kv_get_with_retry(
-            gcs_client,
-            ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+        cluster_status = gcs_client.internal_kv_get(
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(),
             namespace=None,
-            num_retries=num_retries,
         )
         if not cluster_status:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2 ** 30
+        to_GiB = 1 / 2**30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
@@ -451,11 +669,13 @@ def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToRepo
         return ClusterStatusToReport()
 
 
-def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToReport:
+def get_cluster_config_to_report(
+    cluster_config_file_path: str,
+) -> ClusterConfigToReport:
     """Get the static cluster (autoscaler) config used to launch this cluster.
 
     Params:
-        cluster_config_file_path (str): The file path to the cluster config file.
+        cluster_config_file_path: The file path to the cluster config file.
 
     Returns:
         The cluster (autoscaler) config or empty if it fails to get that information.
@@ -519,15 +739,21 @@ def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToRep
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            result.cloud_provider = "kubernetes"
+        # Check if we're on Kubernetes
+        if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
+            # Check if we're using KubeRay >= 0.4.0.
+            if usage_constant.KUBERAY_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERAY
+            # Else, we're on Kubernetes but not in either of the above categories.
+            else:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client, num_retries) -> dict:
+def get_cluster_metadata(gcs_client) -> dict:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -535,8 +761,7 @@ def get_cluster_metadata(gcs_client, num_retries) -> dict:
     This will return None if `put_cluster_metadata` was never called.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation GET.
-        num_retries (int): Max number of times to retry if GET fails.
+        gcs_client: The GCS client to perform KV operation GET.
 
     Returns:
         The cluster metadata in a dictinoary.
@@ -545,47 +770,41 @@ def get_cluster_metadata(gcs_client, num_retries) -> dict:
         RuntimeError if it fails to obtain cluster metadata from GCS.
     """
     return json.loads(
-        ray._private.utils.internal_kv_get_with_retry(
-            gcs_client,
+        gcs_client.internal_kv_get(
             usage_constant.CLUSTER_METADATA_KEY,
             namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-            num_retries=num_retries,
-        )
+        ).decode("utf-8")
     )
 
 
 def generate_report_data(
-    cluster_metadata: dict,
     cluster_config_to_report: ClusterConfigToReport,
     total_success: int,
     total_failed: int,
     seq_number: int,
+    gcs_address: str,
 ) -> UsageStatsToReport:
     """Generate the report data.
 
     Params:
-        cluster_metadata (dict): The cluster metadata of the system generated by
-            `_generate_cluster_metadata`.
-        cluster_config_to_report (ClusterConfigToReport): The cluster (autoscaler)
+        cluster_config_to_report: The cluster (autoscaler)
             config generated by `get_cluster_config_to_report`.
-        total_success(int): The total number of successful report
+        total_success: The total number of successful report
             for the lifetime of the cluster.
-        total_failed(int): The total number of failed report
+        total_failed: The total number of failed report
             for the lifetime of the cluster.
-        seq_number(int): The sequence number that's incremented whenever
+        seq_number: The sequence number that's incremented whenever
             a new report is sent.
+        gcs_address: the address of gcs to get data to report.
 
     Returns:
         UsageStats
     """
-    cluster_status_to_report = get_cluster_status_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-        num_retries=20,
-    )
-    library_usages = get_library_usages_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-        num_retries=20,
-    )
+    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+
+    cluster_metadata = get_cluster_metadata(gcs_client)
+    cluster_status_to_report = get_cluster_status_to_report(gcs_client)
+
     data = UsageStatsToReport(
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
@@ -605,10 +824,13 @@ def generate_report_data(
         total_num_gpus=cluster_status_to_report.total_num_gpus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
-        library_usages=library_usages,
+        library_usages=get_library_usages_to_report(gcs_client),
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
+        extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
+        total_num_nodes=get_total_num_nodes_to_report(gcs_client),
+        total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
     )
     return data
 
@@ -620,8 +842,8 @@ def generate_write_data(
     """Generate the report data.
 
     Params:
-        usage_stats (UsageStatsToReport): The usage stats that were reported.
-        error(str): The error message of failed reports.
+        usage_stats: The usage stats that were reported.
+        error: The error message of failed reports.
 
     Returns:
         UsageStatsToWrite
@@ -645,8 +867,8 @@ class UsageReportClient:
         """Write the usage data to the directory.
 
         Params:
-            data (dict): Data to report
-            dir_path (Path): The path to the directory to write usage data.
+            data: Data to report
+            dir_path: The path to the directory to write usage data.
         """
         # Atomically update the file.
         dir_path = Path(dir_path)
@@ -664,8 +886,8 @@ class UsageReportClient:
         """Report the usage data to the usage server.
 
         Params:
-            url (str): The URL to update resource usage.
-            data (dict): Data to report.
+            url: The URL to update resource usage.
+            data: Data to report.
 
         Raises:
             requests.HTTPError if requests fails.

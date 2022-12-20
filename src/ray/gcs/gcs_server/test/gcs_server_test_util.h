@@ -72,6 +72,15 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    void GetTaskFailureCause(
+        const TaskID &task_id,
+        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+        override {
+      ray::rpc::GetTaskFailureCauseReply reply;
+      callback(Status::OK(), reply);
+      num_get_task_failure_causes += 1;
+    }
+
     std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
 
     void ReportWorkerBacklog(
@@ -211,8 +220,8 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to PrepareBundleResources.
-    bool GrantPrepareBundleResources(bool success = true) {
-      Status status = Status::OK();
+    bool GrantPrepareBundleResources(bool success = true,
+                                     const Status &status = Status::OK()) {
       rpc::PrepareBundleResourcesReply reply;
       reply.set_success(success);
       if (lease_callbacks.size() == 0) {
@@ -226,8 +235,8 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to CommitBundleResources.
-    bool GrantCommitBundleResources(bool success = true) {
-      Status status = Status::OK();
+    bool GrantCommitBundleResources(bool success = true,
+                                    const Status &status = Status::OK()) {
       rpc::CommitBundleResourcesReply reply;
       if (commit_callbacks.size() == 0) {
         return false;
@@ -257,6 +266,7 @@ struct GcsServerMocker {
     void PinObjectIDs(
         const rpc::Address &caller_address,
         const std::vector<ObjectID> &object_ids,
+        const ObjectID &generator_id,
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
@@ -267,10 +277,6 @@ struct GcsServerMocker {
 
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
-
-    void GetGcsServerAddress(
-        const ray::rpc::ClientCallback<ray::rpc::GetGcsServerAddressReply> &callback)
-        override {}
 
     /// ResourceUsageInterface
     void RequestResourceReport(
@@ -301,6 +307,7 @@ struct GcsServerMocker {
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
     int num_release_unused_workers = 0;
+    int num_get_task_failure_causes = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
@@ -347,6 +354,12 @@ struct GcsServerMocker {
   class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
+
+    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
+
+   protected:
+    friend class GcsPlacementGroupSchedulerTest;
+    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:

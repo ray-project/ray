@@ -1,12 +1,10 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -14,39 +12,40 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPGTrainer can be built.
+    """Defines a configuration class from which a DDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="Pendulum-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="Pendulum-v1") # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
         >>> print(config.lr) # doctest: +SKIP
         0.0004
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="Pendulum-v1")
+        >>> config = config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPGTrainer)
+        super().__init__(algo_class=algo_class or DDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -71,9 +70,6 @@ class DDPGConfig(SimpleQConfig):
         self.use_huber = False
         self.huber_threshold = 1.0
         self.l2_reg = 1e-6
-
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of SimpleQ's default values with DDPG-specific values.
         # .exploration()
@@ -111,8 +107,6 @@ class DDPGConfig(SimpleQConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1500,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
@@ -121,36 +115,43 @@ class DDPGConfig(SimpleQConfig):
         self.grad_clip = None
         self.train_batch_size = 256
         self.target_network_update_freq = 0
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
-        self.rollout_fragment_length = 1
+        self.rollout_fragment_length = "auto"
         self.compress_observations = False
+
+        # __sphinx_doc_end__
+        # fmt: on
 
         # Deprecated.
         self.worker_side_prioritization = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
-        twin_q: Optional[bool] = None,
-        policy_delay: Optional[int] = None,
-        smooth_target_policy: Optional[bool] = None,
-        target_noise: Optional[bool] = None,
-        target_noise_clip: Optional[float] = None,
-        use_state_preprocessor: Optional[bool] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        n_step: Optional[int] = None,
-        critic_lr: Optional[float] = None,
-        actor_lr: Optional[float] = None,
-        tau: Optional[float] = None,
-        use_huber: Optional[bool] = None,
-        huber_threshold: Optional[float] = None,
-        l2_reg: Optional[float] = None,
-        training_intensity: Optional[float] = None,
+        twin_q: Optional[bool] = NotProvided,
+        policy_delay: Optional[int] = NotProvided,
+        smooth_target_policy: Optional[bool] = NotProvided,
+        target_noise: Optional[bool] = NotProvided,
+        target_noise_clip: Optional[float] = NotProvided,
+        use_state_preprocessor: Optional[bool] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        use_huber: Optional[bool] = NotProvided,
+        huber_threshold: Optional[float] = NotProvided,
+        l2_reg: Optional[float] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -205,93 +206,112 @@ class DDPGConfig(SimpleQConfig):
                     -> natural value = 250 / 1 = 250.0
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
 
         Returns:
             This updated DDPGConfig object.
         """
         super().training(**kwargs)
 
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if policy_delay is not None:
+        if policy_delay is not NotProvided:
             self.policy_delay = policy_delay
-        if smooth_target_policy is not None:
+        if smooth_target_policy is not NotProvided:
             self.smooth_target_policy = smooth_target_policy
-        if target_noise is not None:
+        if target_noise is not NotProvided:
             self.target_noise = target_noise
-        if target_noise_clip is not None:
+        if target_noise_clip is not NotProvided:
             self.target_noise_clip = target_noise_clip
-        if use_state_preprocessor is not None:
+        if use_state_preprocessor is not NotProvided:
             self.use_state_preprocessor = use_state_preprocessor
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if critic_lr is not None:
+        if critic_lr is not NotProvided:
             self.critic_lr = critic_lr
-        if actor_lr is not None:
+        if actor_lr is not NotProvided:
             self.actor_lr = actor_lr
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if use_huber is not None:
+        if use_huber is not NotProvided:
             self.use_huber = use_huber
-        if huber_threshold is not None:
+        if huber_threshold is not NotProvided:
             self.huber_threshold = huber_threshold
-        if l2_reg is not None:
+        if l2_reg is not NotProvided:
             self.l2_reg = l2_reg
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
 
         return self
 
+    @override(SimpleQConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
 
-class DDPGTrainer(SimpleQTrainer):
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            not self.in_evaluation
+            and self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
+        if self.grad_clip is not None and self.grad_clip <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try seting "
+                    "config.training(batch_mode='complete_episodes')."
+                )
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
+
+
+class DDPG(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
-    # TODO make this return a TrainerConfig
-    def get_default_config(cls) -> TrainerConfigDict:
-        return DDPGConfig().to_dict()
+    @override(SimpleQ)
+    # TODO make this return a AlgorithmConfig
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPGConfig()
 
-    @override(SimpleQTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @classmethod
+    @override(SimpleQ)
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
             return DDPGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF1Policy
+
+            return DDPGTF1Policy
         else:
-            return DDPGTFPolicy
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
 
-    @override(SimpleQTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["model"]["custom_model"]:
-            logger.warning(
-                "Setting use_state_preprocessor=True since a custom model "
-                "was specified."
-            )
-            config["use_state_preprocessor"] = True
-
-        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-            raise ValueError("`grad_clip` value must be > 0.0!")
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting "
-                    "batch_mode=complete_episodes."
-                )
-                config["batch_mode"] = "complete_episodes"
+            return DDPGTF2Policy
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg.DDPGConfig instead!
@@ -302,7 +322,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.ddpg::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddpg.ddpg.DDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

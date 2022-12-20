@@ -6,16 +6,7 @@ Tune Internals
 RayTrialExecutor
 ----------------
 
-.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
-    :show-inheritance:
-    :members:
-
-.. _trialexecutor-docstring:
-
-TrialExecutor
--------------
-
-.. autoclass:: ray.tune.trial_executor.TrialExecutor
+.. autoclass:: ray.tune.execution.ray_trial_executor.RayTrialExecutor
     :members:
 
 .. _trialrunner-docstring:
@@ -23,14 +14,14 @@ TrialExecutor
 TrialRunner
 -----------
 
-.. autoclass:: ray.tune.trial_runner.TrialRunner
+.. autoclass:: ray.tune.execution.trial_runner.TrialRunner
 
 .. _trial-docstring:
 
 Trial
 -----
 
-.. autoclass:: ray.tune.trial.Trial
+.. autoclass:: ray.tune.experiment.trial.Trial
 
 .. _tune-callbacks-docs:
 
@@ -46,7 +37,7 @@ Callbacks
 PlacementGroupFactory
 ---------------------
 
-.. autoclass:: ray.tune.utils.placement_groups.PlacementGroupFactory
+.. autoclass:: ray.tune.execution.placement_groups.PlacementGroupFactory
 
 
 

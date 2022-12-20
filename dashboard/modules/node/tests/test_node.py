@@ -10,19 +10,13 @@ import ray
 import threading
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
-from ray.dashboard.modules.node.node_consts import (
-    LOG_PRUNE_THREASHOLD,
-    MAX_LOGS_TO_CACHE,
-)
+from ray.dashboard.modules.node.node_consts import UPDATE_NODES_INTERVAL_SECONDS
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
-    wait_until_succeeded_without_exception,
 )
-
-from unittest import mock
 
 
 logger = logging.getLogger(__name__)
@@ -109,10 +103,10 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             detail = detail["data"]["detail"]
             assert detail["hostname"] == hostname
             assert detail["raylet"]["state"] == "ALIVE"
+            assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
             assert len(detail["actors"]) == 2, detail["actors"]
-            assert len(detail["raylet"]["viewData"]) > 0
 
             actor_worker_pids = set()
             for worker in detail["workers"]:
@@ -131,101 +125,10 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "raylet" in summary["cmdline"][0]
             assert "workers" not in summary
             assert "actors" not in summary
-            assert "viewData" not in summary["raylet"]
             assert "objectStoreAvailableMemory" in summary["raylet"]
             assert "objectStoreUsedMemory" in summary["raylet"]
             break
         except Exception as ex:
-            last_ex = ex
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                ex_stack = (
-                    traceback.format_exception(
-                        type(last_ex), last_ex, last_ex.__traceback__
-                    )
-                    if last_ex
-                    else []
-                )
-                ex_stack = "".join(ex_stack)
-                raise Exception(f"Timed out while testing, {ex_stack}")
-
-
-def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-
-    @ray.remote
-    class ActorWithObjs:
-        def __init__(self):
-            self.obj_ref = ray.put([1, 2, 3])
-
-        def get_obj(self):
-            return ray.get(self.obj_ref)
-
-    my_obj = ray.put([1, 2, 3] * 100)  # noqa
-    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
-    results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
-    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.get(webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
-    resp.raise_for_status()
-
-    def check_mem_table():
-        resp = requests.get(f"{webui_url}/memory/memory_table")
-        resp_data = resp.json()
-        assert resp_data["result"]
-        latest_memory_table = resp_data["data"]["memoryTable"]
-        summary = latest_memory_table["summary"]
-        # 1 ref per handle and per object the actor has a ref to
-        assert summary["totalActorHandles"] == len(actors) * 2
-        # 1 ref for my_obj. 2 refs for self.obj_ref for each actor.
-        assert summary["totalLocalRefCount"] == 3
-
-    assert wait_until_succeeded_without_exception(
-        check_mem_table, (AssertionError,), timeout_ms=10000
-    )
-
-
-def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-
-    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-
-    @ray.remote
-    class ActorWithObjs:
-        def __init__(self):
-            print("I also log a line")
-            self.obj_ref = ray.put([1, 2, 3])
-
-        def get_obj(self):
-            return ray.get(self.obj_ref)
-
-    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
-    timeout_seconds = 20
-    start_time = time.time()
-    last_ex = None
-
-    def check_node_details():
-        resp = requests.get(f"{webui_url}/nodes?view=details")
-        resp_json = resp.json()
-        resp_data = resp_json["data"]
-        clients = resp_data["clients"]
-        node = clients[0]
-        assert len(clients) == 1
-        assert len(node.get("actors")) == 2
-        # Workers information should be in the detailed payload
-        assert "workers" in node
-        assert "logCount" in node
-        # Two lines printed by ActorWithObjs
-        assert node["logCount"] >= 2
-        print(node["workers"])
-        assert len(node["workers"]) == 2
-        assert node["workers"][0]["logCount"] == 1
-
-    while True:
-        time.sleep(1)
-        try:
-            check_node_details()
-            break
-        except (AssertionError, KeyError, IndexError) as ex:
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
@@ -327,203 +230,30 @@ def test_multi_node_churn(
         time.sleep(2)
 
 
-@pytest.fixture
-def disable_dashboard_log_info(request):
-    if request.param is False:
-        env_var_value = "0"
-    else:
-        env_var_value = "1"
-
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_DISABLE_DASHBOARD_LOG_INFO": env_var_value,
-        },
-    ):
-        yield request.param
-
-
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
 )
-@pytest.mark.parametrize("disable_dashboard_log_info", [False, True], indirect=True)
-def test_logs(
-    enable_test_module,
-    disable_aiohttp_cache,
-    disable_dashboard_log_info,
-    ray_start_cluster_head,
-):
-    cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    node_ip = nodes[0]["NodeManagerAddress"]
-
-    @ray.remote
-    class LoggingActor:
-        def go(self, n):
-            i = 0
-            while i < n:
-                print(f"On number {i}")
-                i += 1
-
-        def get_pid(self):
-            return os.getpid()
-
-    la = LoggingActor.remote()
-    la2 = LoggingActor.remote()
-    la_pid = str(ray.get(la.get_pid.remote()))
-    la2_pid = str(ray.get(la2.get_pid.remote()))
-    ray.get(la.go.remote(4))
-    ray.get(la2.go.remote(1))
-
-    def check_logs():
-        node_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip}
-        )
-        node_logs_response.raise_for_status()
-        node_logs = node_logs_response.json()
-        assert node_logs["result"]
-        assert type(node_logs["data"]["logs"]) is dict
-
-        if disable_dashboard_log_info:
-            assert node_logs["data"]["logs"] == {}
-            return
-
-        assert all(pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid))
-        assert len(node_logs["data"]["logs"][la2_pid]) == 1
-
-        actor_one_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip, "pid": str(la_pid)}
-        )
-        actor_one_logs_response.raise_for_status()
-        actor_one_logs = actor_one_logs_response.json()
-        assert actor_one_logs["result"]
-        assert type(actor_one_logs["data"]["logs"]) is dict
-        assert len(actor_one_logs["data"]["logs"][la_pid]) == 4
-
-    assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=1000
-    )
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_logs_clean_up(
+def test_frequent_node_update(
     enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
 ):
-    """Check if logs from the dead pids are GC'ed."""
-    cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
+    cluster: Cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url)
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    node_ip = nodes[0]["NodeManagerAddress"]
 
-    @ray.remote
-    class LoggingActor:
-        def go(self, n):
-            i = 0
-            while i < n:
-                print(f"On number {i}")
-                i += 1
+    def verify():
+        response = requests.get(webui_url + "/internal/node_module")
+        response.raise_for_status()
+        result = response.json()
+        data = result["data"]
+        head_node_registration_time = data["headNodeRegistrationTimeS"]
+        # If the head node is not registered, it is None.
+        assert head_node_registration_time is not None
+        # Head node should be registered before the node update interval
+        # because we do frequent until the head node is registered.
+        return head_node_registration_time < UPDATE_NODES_INTERVAL_SECONDS
 
-        def get_pid(self):
-            return os.getpid()
-
-    la = LoggingActor.remote()
-    la_pid = str(ray.get(la.get_pid.remote()))
-    ray.get(la.go.remote(1))
-
-    def check_logs():
-        node_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip}
-        )
-        node_logs_response.raise_for_status()
-        node_logs = node_logs_response.json()
-        assert node_logs["result"]
-        assert la_pid in node_logs["data"]["logs"]
-
-    assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=1000
-    )
-    ray.kill(la)
-
-    def check_logs_not_exist():
-        node_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip}
-        )
-        node_logs_response.raise_for_status()
-        node_logs = node_logs_response.json()
-        assert node_logs["result"]
-        assert la_pid not in node_logs["data"]["logs"]
-
-    assert wait_until_succeeded_without_exception(
-        check_logs_not_exist, (AssertionError,), timeout_ms=10000
-    )
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_logs_max_count(
-    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
-):
-    """Test that each Ray worker cannot cache more than 1000 logs at a time."""
-    cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    node_ip = nodes[0]["NodeManagerAddress"]
-
-    @ray.remote
-    class LoggingActor:
-        def go(self, n):
-            i = 0
-            while i < n:
-                print(f"On number {i}")
-                i += 1
-
-        def get_pid(self):
-            return os.getpid()
-
-    la = LoggingActor.remote()
-    la_pid = str(ray.get(la.get_pid.remote()))
-    ray.get(la.go.remote(MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD))
-
-    def check_logs():
-        node_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip}
-        )
-        node_logs_response.raise_for_status()
-        node_logs = node_logs_response.json()
-        assert node_logs["result"]
-        assert type(node_logs["data"]["logs"]) is dict
-        assert la_pid in node_logs["data"]["logs"]
-        log_lengths = len(node_logs["data"]["logs"][la_pid])
-        assert log_lengths >= MAX_LOGS_TO_CACHE
-        assert log_lengths <= MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD
-
-        actor_one_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip, "pid": str(la_pid)}
-        )
-        actor_one_logs_response.raise_for_status()
-        actor_one_logs = actor_one_logs_response.json()
-        assert actor_one_logs["result"]
-        assert type(actor_one_logs["data"]["logs"]) is dict
-        log_lengths = len(actor_one_logs["data"]["logs"][la_pid])
-        assert log_lengths >= MAX_LOGS_TO_CACHE
-        assert log_lengths <= MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD
-
-    assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=10000
-    )
+    wait_for_condition(verify, timeout=15)
 
 
 if __name__ == "__main__":

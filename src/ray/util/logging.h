@@ -85,8 +85,10 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// This function returns the current call stack information.
-std::string GetCallTrace();
+class StackTrace {
+  /// This dumps the current stack trace information.
+  friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);
+};
 
 enum class RayLogLevel {
   TRACE = -2,
@@ -186,6 +188,21 @@ enum class RayLogLevel {
       RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
+#define RAY_LOG_EVERY_MS_OR(level, ms, otherLevel)                                       \
+  constexpr std::chrono::milliseconds RAY_LOG_TIME_PERIOD(ms);                           \
+  static std::atomic<int64_t> RAY_LOG_PREVIOUS_TIME_RAW;                                 \
+  const auto RAY_LOG_CURRENT_TIME = std::chrono::steady_clock::now().time_since_epoch(); \
+  const decltype(RAY_LOG_CURRENT_TIME) RAY_LOG_PREVIOUS_TIME(                            \
+      RAY_LOG_PREVIOUS_TIME_RAW.load(std::memory_order_relaxed));                        \
+  const auto RAY_LOG_TIME_DELTA = RAY_LOG_CURRENT_TIME - RAY_LOG_PREVIOUS_TIME;          \
+  if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
+    RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
+                                    std::memory_order_relaxed);                          \
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&               \
+                           RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD                      \
+                       ? ray::RayLogLevel::level                                         \
+                       : ray::RayLogLevel::otherLevel)
+
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration
 // which hide the implementation into logging.cc file.
@@ -271,6 +288,10 @@ class RayLog : public RayLogBase {
   /// worker.
   static void InstallFailureSignalHandler(const char *argv0,
                                           bool call_previous_handler = false);
+
+  /// Install the terminate handler to output call stack when std::terminate() is called
+  /// (e.g. unhandled exception).
+  static void InstallTerminateHandler();
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();

@@ -21,7 +21,7 @@ def env_creator(config):
     return env
 
 
-tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v0"))
+tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v1"))
 
 tune.register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 
@@ -36,60 +36,56 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
         ray.shutdown()
 
     def test_remote_worker_env(self):
-        config = pg.DEFAULT_CONFIG.copy()
-        config["remote_worker_envs"] = True
-        config["num_envs_per_worker"] = 4
+        config = pg.PGConfig().rollouts(remote_worker_envs=True, num_envs_per_worker=4)
 
         # Simple string env definition (gym.make(...)).
-        config["env"] = "CartPole-v0"
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        config.environment("CartPole-v1")
+        algo = config.build()
+        print(algo.train())
+        algo.stop()
 
         # Using tune.register.
-        config["env"] = "cartpole"
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        config.environment("cartpole")
+        algo = config.build()
+        print(algo.train())
+        algo.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23
-        # config["env"] = RandomEnv
-        # trainer = pg.PGTrainer(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # config.environment(RandomEnv)
+        # algo = config.build()
+        # print(algo.train())
+        # algo.stop()
 
         # Using class directly: Sub-class of gym.Env,
         # which implements its own API.
         # This doesn't work anymore as of gym==0.23
-        # config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
-        # trainer = pg.PGTrainer(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # config.environment(NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv)
+        # algo = config.build()
+        # print(algo.train())
+        # algo.stop()
 
     def test_remote_worker_env_multi_agent(self):
-        config = pg.DEFAULT_CONFIG.copy()
-        config["remote_worker_envs"] = True
-        config["num_envs_per_worker"] = 4
+        config = pg.PGConfig().rollouts(remote_worker_envs=True, num_envs_per_worker=4)
 
         # Full classpath provided.
-        config["env"] = "ray.rllib.examples.env.random_env.RandomMultiAgentEnv"
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        config.environment("ray.rllib.examples.env.random_env.RandomMultiAgentEnv")
+        algo = config.build()
+        print(algo.train())
+        algo.stop()
 
         # Using tune.register.
-        config["env"] = "pistonball"
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        config.environment("pistonball")
+        algo = config.build()
+        print(algo.train())
+        algo.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23.
-        # config["env"] = RandomMultiAgentEnv
-        # trainer = pg.PGTrainer(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # config.environment(RandomMultiAgentEnv)
+        # algo = config.build()
+        # print(algo.train())
+        # algo.stop()
 
 
 if __name__ == "__main__":

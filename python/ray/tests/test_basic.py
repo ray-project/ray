@@ -8,15 +8,14 @@ import time
 import numpy as np
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
+    SignalActor,
     client_test_enabled,
     get_error_message,
-    SignalActor,
     run_string_as_driver,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +120,86 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
-def test_omp_threads_set(shutdown_only):
-    ray.init(num_cpus=1)
-    # Should have been auto set by ray init.
-    assert os.environ["OMP_NUM_THREADS"] == "1"
+def test_omp_threads_set(ray_start_cluster, monkeypatch):
+    import os
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("OMP_NUM_THREADS")
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            return os.environ.get("OMP_NUM_THREADS")
+
+    ###########################
+    # Test basic tasks
+    ###########################
+    # Test override to num_cpus if OMP_NUM_THREADS not set
+    assert ray.get(f.options(num_cpus=2).remote()) == "2"
+
+    # Test override to default cpu number if OMP_NUM_THREADS not set
+    assert ray.get(f.remote()) == "1"
+
+    # Test set to 1 for fractional CPU
+    assert ray.get(f.options(num_cpus=0.25).remote()) == "1"
+
+    ###########################
+    # Test not overriding env_variables
+    ###########################
+    from ray.runtime_env import RuntimeEnv
+
+    assert (
+        ray.get(
+            f.options(
+                runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+            ).remote()
+        )
+        == "2"
+    )
+    assert (
+        ray.get(
+            f.options(
+                num_cpus=1, runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+            ).remote()
+        )
+        == "2"
+    )
+
+    ###########################
+    # Test actor tasks
+    ###########################
+    # Test actor tasks set OMP_NUM_THREADS correctly in a similar way.
+    assert ray.get(Actor.remote().f.remote()) == "1"
+    assert ray.get(Actor.options(num_cpus=2).remote().f.remote()) == "2"
+    assert ray.get(Actor.options(num_cpus=0.25).remote().f.remote()) == "1"
+
+    ###########################
+    # Test setting and restoring of the environ after tasks run
+    ###########################
+    @ray.remote
+    def g():
+        return os.getpid(), os.environ.get("OMP_NUM_THREADS")
+
+    # Set to 1
+    pid1, omp_num_threads = ray.get(g.remote())
+    assert omp_num_threads == "1"
+    # Set to 2
+    pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
+    assert pid1 == pid2
+    assert omp_num_threads == "2"
+
+    ###########################
+    # Test not setting the value with environ already set to 1 in env
+    ###########################
+    with monkeypatch.context() as m:
+        m.setenv("OMP_NUM_THREADS", "1")
+        cluster.add_node(num_cpus=4)
+    assert ray.get(f.options(num_cpus=4).remote()) == "1"
 
 
 def test_submit_api(shutdown_only):
@@ -204,23 +279,37 @@ def test_invalid_arguments():
     )
 
     # Type check
-    for keyword in ("num_returns", "max_retries", "max_calls"):
+    for keyword in ("max_retries", "max_calls"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
             ray.remote(**{keyword: np.random.uniform(0, 1)})(f)
+    num_returns_template = (
+        "The type of keyword 'num_returns' "
+        + f"must be {(int, str, type(None))}, but received type {float}"
+    )
+    with pytest.raises(TypeError, match=re.escape(num_returns_template)):
+        ray.remote(**{"num_returns": np.random.uniform(0, 1)})(f)
 
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
             ray.remote(**{keyword: np.random.uniform(0, 1)})(A)
 
     # Value check for non-negative finite values
-    for keyword in ("num_returns", "max_calls"):
-        for v in (np.random.randint(-100, -2), -1):
-            with pytest.raises(
-                ValueError,
-                match=f"The keyword '{keyword}' only accepts None, "
-                f"0 or a positive integer",
-            ):
-                ray.remote(**{keyword: v})(f)
+    for v in (np.random.randint(-100, -2), -1):
+        keyword = "max_calls"
+        with pytest.raises(
+            ValueError,
+            match=f"The keyword '{keyword}' only accepts None, "
+            f"0 or a positive integer",
+        ):
+            ray.remote(**{keyword: v})(f)
+
+        keyword = "num_returns"
+        with pytest.raises(
+            ValueError,
+            match=f"The keyword '{keyword}' only accepts None, "
+            'a non-negative integer, or "dynamic"',
+        ):
+            ray.remote(**{keyword: v})(f)
 
     # Value check for non-negative and infinite values
     template2 = (
@@ -249,6 +338,7 @@ def test_invalid_arguments():
 def test_options():
     """General test of option keywords in Ray."""
     import re
+
     from ray._private import ray_option_utils
 
     def f():
@@ -346,6 +436,7 @@ def test_options():
 
     assert foo._default_options == {
         "_metadata": {"namespace": {"a": 1, "b": 2}},
+        "max_calls": 1,
         "num_gpus": 2,
     }
 
@@ -406,13 +497,13 @@ def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
     for i in range(100):
-        value_before = i * 10 ** 6
+        value_before = i * 10**6
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
-        value_before = i * 10 ** 6 * 1.0
+        value_before = i * 10**6 * 1.0
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
@@ -469,7 +560,7 @@ def test_function_descriptor():
 def test_ray_options(shutdown_only):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
-    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2 ** 20, resources={"custom1": 1})
+    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo(expected_resources):
         # Possibly wait until the available resources have been updated
         # (there might be a delay due to heartbeats)
@@ -497,7 +588,7 @@ def test_ray_options(shutdown_only):
     expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
     memory_available_with_options = ray.get(
         foo.options(
-            num_cpus=3, num_gpus=4, memory=50 * 2 ** 20, resources={"custom1": 0.5}
+            num_cpus=3, num_gpus=4, memory=50 * 2**20, resources={"custom1": 0.5}
         ).remote(expected_resources_with_options)
     )
 
@@ -559,8 +650,9 @@ def test_nested_functions(ray_start_shared_local_modes):
 
     assert ray.get(f.remote()) == (1, 2)
 
-    # Test a remote function that recursively calls itself.
 
+def test_recursive_remote_call(ray_start_shared_local_modes):
+    # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
         if n == 0:
@@ -908,8 +1000,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
 
-    if ray.worker.global_worker.mode != ray.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
+    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
+        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
             assert "Test function 1 intentionally failed." in msg.error_message
@@ -961,4 +1053,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import (
     List,
     Optional,
@@ -167,7 +168,10 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         expanded_paths = []
         file_infos = []
         for path in paths:
-            file_info = filesystem.get_file_info(path)
+            try:
+                file_info = filesystem.get_file_info(path)
+            except OSError as e:
+                _handle_read_os_error(e, path)
             if file_info.type == FileType.Directory:
                 paths, file_infos_ = _expand_directory(path, filesystem)
                 expanded_paths.extend(paths)
@@ -248,6 +252,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
     def prefetch_file_metadata(
         self,
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        **ray_remote_args,
     ) -> Optional[List[Any]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
@@ -313,6 +318,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     def prefetch_file_metadata(
         self,
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
@@ -321,6 +327,41 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         )
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces)
+            return _fetch_metadata_remotely(pieces, **ray_remote_args)
         else:
             return _fetch_metadata(pieces)
+
+
+def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
+    # NOTE: this is not comprehensive yet, and should be extended as more errors arise.
+    # NOTE: The latter patterns are raised in Arrow 10+, while the former is raised in
+    # Arrow < 10.
+    aws_error_pattern = (
+        r"^(?:(.*)AWS Error \[code \d+\]: No response body\.(.*))|"
+        r"(?:(.*)AWS Error UNKNOWN \(HTTP status 400\) during HeadObject operation: "
+        r"No response body\.(.*))|"
+        r"(?:(.*)AWS Error ACCESS_DENIED during HeadObject operation: No response "
+        r"body\.(.*))$"
+    )
+    if re.match(aws_error_pattern, str(error)):
+        # Specially handle AWS error when reading files, to give a clearer error
+        # message to avoid confusing users. The real issue is most likely that the AWS
+        # S3 file credentials have not been properly configured yet.
+        if isinstance(paths, str):
+            # Quote to highlight single file path in error message for better
+            # readability. List of file paths will be shown up as ['foo', 'boo'],
+            # so only quote single file path here.
+            paths = f'"{paths}"'
+        raise OSError(
+            (
+                f"Failing to read AWS S3 file(s): {paths}. "
+                "Please check that file exists and has properly configured access. "
+                "You can also run AWS CLI command to get more detailed error message "
+                "(e.g., aws s3 ls <file-name>). "
+                "See https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html "  # noqa
+                "and https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
+                "for more information."
+            )
+        )
+    else:
+        raise error

@@ -53,6 +53,7 @@ class PinObjectsInterface {
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   virtual ~PinObjectsInterface(){};
@@ -104,6 +105,10 @@ class WorkerLeaseInterface {
   virtual void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+
+  virtual void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -185,9 +190,6 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
-  virtual void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
-
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
 
@@ -260,6 +262,7 @@ class RayletClient : public RayletClientInterface {
   /// this will be populated with the current job config.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
+  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -273,7 +276,8 @@ class RayletClient : public RayletClientInterface {
                NodeID *raylet_id,
                int *port,
                std::string *serialized_job_config,
-               StartupToken startup_token);
+               StartupToken startup_token,
+               const std::string &entrypoint);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -411,6 +415,11 @@ class RayletClient : public RayletClientInterface {
                            bool disconnect_worker,
                            bool worker_exiting) override;
 
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override;
+
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
@@ -451,6 +460,7 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(
@@ -460,9 +470,6 @@ class RayletClient : public RayletClientInterface {
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
-
-  void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

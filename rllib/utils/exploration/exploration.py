@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, TensorType
-from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -33,7 +33,7 @@ class Exploration:
         action_space: Space,
         *,
         framework: str,
-        policy_config: TrainerConfigDict,
+        policy_config: AlgorithmConfigDict,
         model: ModelV2,
         num_workers: int,
         worker_index: int
@@ -217,6 +217,6 @@ class Exploration:
         """
         pass
 
-    @Deprecated(new="get_state", error=False)
+    @Deprecated(new="get_state", error=True)
     def get_info(self, sess: Optional["tf.Session"] = None):
-        return self.get_state(sess)
+        pass

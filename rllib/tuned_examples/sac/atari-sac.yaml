@@ -34,13 +34,13 @@ atari-sac-tf-and-torch:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 1000000
           # How many steps of the model to sample before learning starts.
-          learning_starts: 100000
           # If True prioritized replay buffer will be used.
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 1e-6
+        num_steps_sampled_before_learning_starts: 100000
         train_batch_size: 64
-        min_sample_timesteps_per_reporting: 4
+        min_sample_timesteps_per_iteration: 4
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless. We use 100k here for the longer Atari
         # runs (DQN style: filling up the buffer a bit before learning).
@@ -50,4 +50,4 @@ atari-sac-tf-and-torch:
             entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 1
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5

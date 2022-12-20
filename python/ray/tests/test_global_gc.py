@@ -4,13 +4,12 @@ import logging
 import weakref
 
 import numpy as np
-
 import pytest
 
 import ray
 import ray.cluster_utils
+from ray._private.internal_api import global_gc
 from ray._private.test_utils import wait_for_condition
-from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +216,10 @@ def test_global_gc_actors(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

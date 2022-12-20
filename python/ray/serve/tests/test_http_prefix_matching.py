@@ -1,7 +1,7 @@
 import pytest
 
-from ray.serve.common import EndpointInfo
-from ray.serve.http_proxy import LongestPrefixRouter
+from ray.serve._private.common import EndpointInfo
+from ray.serve._private.http_proxy import LongestPrefixRouter
 
 
 @pytest.fixture

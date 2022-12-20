@@ -1,14 +1,14 @@
-from collections import defaultdict
+import logging
 import threading
 import traceback
+from collections import defaultdict
 
 import grpc
 
 import ray
-from ray import ray_constants
-from ray import cloudpickle as pickle
 import ray._private.profiling as profiling
-import logging
+from ray import cloudpickle as pickle
+from ray._private import ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,6 @@ class ImportThread:
     Attributes:
         worker: the worker object in this process.
         mode: worker mode
-        redis_client: the redis client used to query exports.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
         imported_collision_identifiers: This is a dictionary mapping collision

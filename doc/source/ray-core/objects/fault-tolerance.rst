@@ -1,3 +1,5 @@
+.. _object-fault-tolerance:
+
 Fault Tolerance
 ===============
 

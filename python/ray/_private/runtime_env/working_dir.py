@@ -1,25 +1,28 @@
 import logging
 import os
-from typing import Any, Dict, Optional
 from pathlib import Path
-import asyncio
+from typing import Any, Dict, List, Optional
 
-from ray.experimental.internal_kv import _internal_kv_initialized
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
+    Protocol,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
-    upload_package_to_gcs,
     parse_uri,
-    Protocol,
     upload_package_if_needed,
+    upload_package_to_gcs,
 )
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
+
+_WIN32 = os.name == "nt"
 
 
 def upload_working_dir_if_needed(
@@ -68,18 +71,28 @@ def upload_working_dir_if_needed(
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        try:
+            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                f"Failed to upload package {package_path} to the Ray cluster: {e}"
+            ) from e
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
-        upload_package_if_needed(
-            working_dir_uri,
-            scratch_dir,
-            working_dir,
-            include_parent_dir=False,
-            excludes=excludes,
-            logger=logger,
-        )
+        try:
+            upload_package_if_needed(
+                working_dir_uri,
+                scratch_dir,
+                working_dir,
+                include_parent_dir=False,
+                excludes=excludes,
+                logger=logger,
+            )
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                f"Failed to upload working_dir {working_dir} to the Ray cluster: {e}"
+            ) from e
     else:
         upload_fn(working_dir, excludes=excludes)
 
@@ -103,11 +116,14 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     context.env_vars["PYTHONPATH"] = python_path
 
 
-class WorkingDirManager:
-    def __init__(self, resources_dir: str):
+class WorkingDirPlugin(RuntimeEnvPlugin):
+
+    name = "working_dir"
+
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -123,38 +139,36 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
-            return working_dir_uri
-        return None
+            return [working_dir_uri]
+        return []
 
     async def create(
         self,
-        uri: str,
+        uri: Optional[str],
         runtime_env: dict,
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            local_dir = download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
-            )
-            return get_directory_size_bytes(local_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        local_dir = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+        )
+        return get_directory_size_bytes(local_dir)
 
     def modify_context(
-        self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self,
+        uris: List[str],
+        runtime_env_dict: Dict,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
     ):
-        if uri is None:
+        if not uris:
             return
 
+        # WorkingDirPlugin uses a single URI.
+        uri = uris[0]
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(
@@ -163,5 +177,9 @@ class WorkingDirManager:
                 "downloading or unpacking the working_dir."
             )
 
-        context.command_prefix += [f"cd {local_dir}"]
+        if not _WIN32:
+            context.command_prefix += ["cd", str(local_dir), "&&"]
+        else:
+            # Include '/d' incase temp folder is on different drive than Ray install.
+            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)

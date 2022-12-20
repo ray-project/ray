@@ -1,5 +1,4 @@
 from concurrent import futures
-import asyncio
 import contextlib
 import os
 import threading
@@ -14,6 +13,7 @@ from typing import Any, Callable, Optional
 from unittest.mock import patch
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
@@ -165,7 +165,17 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(request, context, "ListNamedActors")
 
     def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
-        return self._call_inner_function(request, context, "ClusterInfo")
+        # Cluster info is currently used for health checks and isn't retried, so
+        # don't inject errors.
+        # TODO(ckw): update ClusterInfo so that retries are only skipped for PING
+        try:
+            return self.stub.ClusterInfo(
+                request, metadata=context.invocation_metadata()
+            )
+        except grpc.RpcError as e:
+            context.set_code(e.code())
+            context.set_details(e.details())
+            raise
 
     def Terminate(self, req, context=None):
         return self._call_inner_function(req, context, "Terminate")
@@ -401,8 +411,7 @@ def test_disconnects_during_large_async_get():
         async def get_large_result():
             return await large_result.remote()
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(get_large_result())
+        result = get_or_create_event_loop().run_until_complete(get_large_result())
         assert result.shape == (1024, 1024, 128)
 
 
@@ -578,4 +587,7 @@ def test_client_reconnect_grace_period():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

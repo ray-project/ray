@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <csignal>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,7 +66,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     }
   }
 
-  void HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
@@ -93,12 +94,12 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
  private:
   Options options_;
-  pid_t agent_pid_ = 0;
-  int agent_port_ = 0;
+  pid_t reported_agent_id_ = 0;
+  int reported_agent_port_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string agent_ip_address_;
+  std::string reported_agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
@@ -112,7 +113,7 @@ class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler
   explicit DefaultAgentManagerServiceHandler(std::shared_ptr<AgentManager> &delegate)
       : delegate_(delegate) {}
 
-  void HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override {
     RAY_CHECK(delegate_ != nullptr);

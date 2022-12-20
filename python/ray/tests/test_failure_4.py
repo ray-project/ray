@@ -1,32 +1,33 @@
+import subprocess
 import sys
 import time
 
-import ray
-
-import pytest
 import grpc
-from grpc._channel import _InactiveRpcError
 import numpy as np
 import psutil
-import subprocess
+import pytest
+from grpc._channel import _InactiveRpcError
 
-import ray.ray_constants as ray_constants
-
-from ray.cluster_utils import Cluster, cluster_not_supported
+import ray
+import ray._private.ray_constants as ray_constants
+import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
 from ray._private.test_utils import (
-    init_error_pubsub,
+    SignalActor,
     get_error_message,
+    init_error_pubsub,
     run_string_as_driver,
     wait_for_condition,
+    kill_raylet,
 )
-from ray._private.test_utils import SignalActor
+from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.core.generated import (
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+)
 from ray.exceptions import LocalRayletDiedError
-import ray.experimental.internal_kv as internal_kv
 
 
 def search_raylet(cluster):
@@ -106,6 +107,52 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+class CountError(Exception):
+    pass
+
+
+def test_retry_application_level_error_exception_filter(ray_start_regular):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    @ray.remote(max_retries=1, retry_exceptions=[CountError])
+    def func(counter):
+        if counter is None:
+            raise ValueError()
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise CountError()
+        else:
+            return 2
+
+    # Exception that doesn't satisfy the predicate should cause the task to immediately
+    # fail.
+    r0 = func.remote(None)
+    with pytest.raises(ValueError):
+        ray.get(r0)
+
+    # Test against exceptions (CountError) that do satisfy the predicate.
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 2
+
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(CountError):
+        ray.get(r2)
+
+    counter3 = Counter.remote()
+    r3 = func.options(retry_exceptions=False).remote(counter3)
+    with pytest.raises(CountError):
+        ray.get(r3)
+
+
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
@@ -131,7 +178,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(removing_node, allow_graceful=True)
-    errors = get_error_message(p, 1, timeout=2)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=2)
     assert len(errors) == 0
     # There is no connection error to a dead node.
     errors = get_error_message(p, 1, timeout=2)
@@ -269,8 +316,18 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
             "_system_config": {
                 "num_heartbeats_timeout": 10,
                 "raylet_heartbeat_period_milliseconds": 100,
+                "pull_based_healthcheck": False,
             },
-        }
+        },
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 100,
+                "health_check_failure_threshold": 10,
+                "pull_based_healthcheck": True,
+            },
+        },
     ],
     indirect=True,
 )
@@ -313,7 +370,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
             assert not graceful
 
     """
-    Kill the first worker non-gracefully.
+    Kill the first worker ungracefully.
     """
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)
@@ -562,7 +619,7 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     # This function requires obj1 and obj2.
     @ray.remote
     def func(obj1, obj2):
-        return ray.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # This function should be scheduled to node2. As node2 has both objects.
     assert ray.get(func.remote(obj1, obj2)) == node2.unique_id
@@ -608,5 +665,30 @@ def test_actor_task_fast_fail(ray_start_cluster):
     ray.get(actor.ping.remote())
 
 
+def test_task_crash_after_raylet_dead_throws_node_died_error():
+    @ray.remote(max_retries=0)
+    def sleeper():
+        import os
+
+        time.sleep(3)
+        os.kill(os.getpid(), 9)
+
+    with ray.init():
+        ref = sleeper.remote()
+
+        raylet = ray.nodes()[0]
+        kill_raylet(raylet)
+
+        with pytest.raises(ray.exceptions.NodeDiedError) as error:
+            ray.get(ref)
+        message = str(error)
+        assert raylet["NodeManagerAddress"] in message
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

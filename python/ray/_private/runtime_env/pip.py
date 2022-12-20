@@ -1,21 +1,19 @@
 import asyncio
-import os
-import sys
+import hashlib
 import json
 import logging
-import hashlib
+import os
 import shutil
-
-from typing import Optional, List, Dict, Tuple
+import sys
+import tempfile
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
-from ray._private.utils import (
-    get_directory_size_bytes,
-    try_to_create_directory,
-)
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -60,12 +58,14 @@ class _PathHelper:
             return os.path.join(virtualenv_path, "bin", "python")
 
     @classmethod
-    def get_virtualenv_activate_command(cls, target_dir: str) -> str:
+    def get_virtualenv_activate_command(cls, target_dir: str) -> List[str]:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         if _WIN32:
-            return "%s 1>&2" % (os.path.join(virtualenv_path, "Scripts", "activate"))
+            cmd = [os.path.join(virtualenv_path, "Scripts", "activate.bat")]
+
         else:
-            return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
+            cmd = ["source", os.path.join(virtualenv_path, "bin/activate")]
+        return cmd + ["1>&2", "&&"]
 
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
@@ -170,20 +170,37 @@ class PipProcessor:
         """
 
         async def _get_ray_version_and_path() -> Tuple[str, str]:
-            check_ray_cmd = [
-                python,
-                "-c",
-                "import ray; print(ray.__version__, ray.__path__[0])",
-            ]
-            if _WIN32:
-                env = os.environ.copy()
-            else:
-                env = {}
-            output = await check_output_cmd(
-                check_ray_cmd, logger=logger, cwd=cwd, env=env
-            )
-            # print after import ray may have [0m endings, so we strip them by *_
-            ray_version, ray_path, *_ = [s.strip() for s in output.split()]
+            with tempfile.TemporaryDirectory(
+                prefix="check_ray_version_tempfile"
+            ) as tmp_dir:
+                ray_version_path = os.path.join(tmp_dir, "ray_version.txt")
+                check_ray_cmd = [
+                    python,
+                    "-c",
+                    """
+import ray
+with open(r"{ray_version_path}", "wt") as f:
+    f.write(ray.__version__)
+    f.write(" ")
+    f.write(ray.__path__[0])
+                    """.format(
+                        ray_version_path=ray_version_path
+                    ),
+                ]
+                if _WIN32:
+                    env = os.environ.copy()
+                else:
+                    env = {}
+                output = await check_output_cmd(
+                    check_ray_cmd, logger=logger, cwd=cwd, env=env
+                )
+                logger.info(
+                    f"try to write ray version information in: {ray_version_path}"
+                )
+                with open(ray_version_path, "rt") as f:
+                    output = f.read()
+                # print after import ray may have [0m endings, so we strip them by *_
+                ray_version, ray_path, *_ = [s.strip() for s in output.split()]
             return ray_version, ray_path
 
         version, path = await _get_ray_version_and_path()
@@ -366,7 +383,9 @@ class PipProcessor:
         return self._run().__await__()
 
 
-class PipManager:
+class PipPlugin(RuntimeEnvPlugin):
+    name = "pip"
+
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
@@ -384,12 +403,12 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
-        """Return the pip URI from the RuntimeEnv if it exists, else None."""
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        """Return the pip URI from the RuntimeEnv if it exists, else return []."""
         pip_uri = runtime_env.pip_uri()
-        if pip_uri != "":
-            return pip_uri
-        return None
+        if pip_uri:
+            return [pip_uri]
+        return []
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -399,7 +418,7 @@ class PipManager:
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
-                "PipManager can only delete URIs with protocol "
+                "PipPlugin can only delete URIs with protocol "
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
@@ -455,13 +474,15 @@ class PipManager:
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ):
         if not runtime_env.has_pip():
             return
+        # PipPlugin only uses a single URI.
+        uri = uris[0]
         # Update py_executable.
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
@@ -474,6 +495,6 @@ class PipManager:
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
-        context.command_prefix += [
-            _PathHelper.get_virtualenv_activate_command(target_dir)
-        ]
+        context.command_prefix += _PathHelper.get_virtualenv_activate_command(
+            target_dir
+        )

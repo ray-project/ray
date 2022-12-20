@@ -98,32 +98,13 @@ public class GcsClient {
               data.getRayletSocketName(),
               data.getState() == GcsNodeInfo.GcsNodeState.ALIVE,
               new HashMap<>());
+      if (nodeInfo.isAlive) {
+        nodeInfo.resources.putAll(data.getResourcesTotalMap());
+      }
       nodes.put(nodeId, nodeInfo);
     }
 
-    // Fill resources.
-    for (Map.Entry<UniqueId, NodeInfo> node : nodes.entrySet()) {
-      if (node.getValue().isAlive) {
-        node.getValue().resources.putAll(getResourcesForClient(node.getKey()));
-      }
-    }
-
     return new ArrayList<>(nodes.values());
-  }
-
-  private Map<String, Double> getResourcesForClient(UniqueId clientId) {
-    byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
-    Gcs.ResourceMap resourceMap;
-    try {
-      resourceMap = Gcs.ResourceMap.parseFrom(resourceMapBytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException("Received invalid protobuf data from GCS.");
-    }
-    HashMap<String, Double> resources = new HashMap<>();
-    for (Map.Entry<String, Gcs.ResourceTableData> entry : resourceMap.getItemsMap().entrySet()) {
-      resources.put(entry.getKey(), entry.getValue().getResourceCapacity());
-    }
-    return resources;
   }
 
   /** If the actor exists in GCS. */

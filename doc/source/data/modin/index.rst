@@ -45,7 +45,7 @@ will be able to connect to and use the Ray cluster.
 Modin with the Ray Client
 -------------------------
 
-When using Modin with the :ref:`Ray Client <ray-client>`, it is important to ensure that the
+When using Modin with the :ref:`Ray Client <ray-client-ref>`, it is important to ensure that the
 cluster has all dependencies installed.
 
 .. code-block:: python

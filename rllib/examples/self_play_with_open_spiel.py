@@ -26,9 +26,9 @@ from open_spiel.python.rl_environment import Environment
 import sys
 
 import ray
-from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.ppo import PPOTrainer
+from ray import air, tune
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
@@ -37,7 +37,7 @@ from ray.tune import CLIReporter, register_env
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -48,7 +48,7 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.",
+    "Algorithm state.",
 )
 parser.add_argument(
     "--env", type=str, default="connect_four", choices=["markov_soccer", "connect_four"]
@@ -106,7 +106,7 @@ class SelfPlayCallback(DefaultCallbacks):
         # 2=2nd main policy snapshot, etc..
         self.current_opponent = 0
 
-    def on_train_result(self, *, trainer, result, **kwargs):
+    def on_train_result(self, *, algorithm, result, **kwargs):
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -120,7 +120,7 @@ class SelfPlayCallback(DefaultCallbacks):
                 won += 1
         win_rate = won / len(main_rew)
         result["win_rate"] = win_rate
-        print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
+        print(f"Iter={algorithm.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
         # policy.
@@ -144,20 +144,20 @@ class SelfPlayCallback(DefaultCallbacks):
                     )
                 )
 
-            new_policy = trainer.add_policy(
+            new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
-                policy_cls=type(trainer.get_policy("main")),
+                policy_cls=type(algorithm.get_policy("main")),
                 policy_mapping_fn=policy_mapping_fn,
             )
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
             # remain fixed.
-            main_state = trainer.get_policy("main").get_state()
+            main_state = algorithm.get_policy("main").get_state()
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
-            trainer.workers.sync_weights()
+            algorithm.workers.sync_weights()
         else:
             print("not good enough; will keep learning ...")
 
@@ -176,20 +176,19 @@ if __name__ == "__main__":
         # (start player) and sometimes agent1 (player to move 2nd).
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
-    config = {
-        "env": "open_spiel_env",
-        "callbacks": SelfPlayCallback,
-        "model": {
-            "fcnet_hiddens": [512, 512],
-        },
-        "num_sgd_iter": 20,
-        "num_envs_per_worker": 5,
-        "multiagent": {
+    config = (
+        PPOConfig()
+        .environment("open_spiel_env")
+        .framework(args.framework)
+        .callbacks(SelfPlayCallback)
+        .rollouts(num_envs_per_worker=5, num_rollout_workers=args.num_workers)
+        .training(num_sgd_iter=20, model={"fcnet_hiddens": [512, 512]})
+        .multi_agent(
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
             # will then play (instead of "random"). This is done in the
             # custom callback defined above (`SelfPlayCallback`).
-            "policies": {
+            policies={
                 # Our main policy, we'd like to optimize.
                 "main": PolicySpec(),
                 # An initial random opponent to play against.
@@ -199,15 +198,13 @@ if __name__ == "__main__":
             # to the opponent ("random" at first). Make sure (via episode_id)
             # that "main" always plays against "random" (and not against
             # another "main").
-            "policy_mapping_fn": policy_mapping_fn,
+            policy_mapping_fn=policy_mapping_fn,
             # Always just train the "main" policy.
-            "policies_to_train": ["main"],
-        },
-        "num_workers": args.num_workers,
+            policies_to_train=["main"],
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "timesteps_total": args.stop_timesteps,
@@ -217,39 +214,44 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
-        results = tune.run(
+        results = tune.Tuner(
             "PPO",
-            config=config,
-            stop=stop,
-            checkpoint_at_end=True,
-            checkpoint_freq=10,
-            verbose=2,
-            progress_reporter=CLIReporter(
-                metric_columns={
-                    "training_iteration": "iter",
-                    "time_total_s": "time_total_s",
-                    "timesteps_total": "ts",
-                    "episodes_this_iter": "train_episodes",
-                    "policy_reward_mean/main": "reward",
-                    "win_rate": "win_rate",
-                    "league_size": "league_size",
-                },
-                sort_by_metric=True,
+            param_space=config,
+            run_config=air.RunConfig(
+                stop=stop,
+                verbose=2,
+                progress_reporter=CLIReporter(
+                    metric_columns={
+                        "training_iteration": "iter",
+                        "time_total_s": "time_total_s",
+                        "timesteps_total": "ts",
+                        "episodes_this_iter": "train_episodes",
+                        "policy_reward_mean/main": "reward",
+                        "win_rate": "win_rate",
+                        "league_size": "league_size",
+                    },
+                    sort_by_metric=True,
+                ),
+                checkpoint_config=air.CheckpointConfig(
+                    checkpoint_at_end=True,
+                    checkpoint_frequency=10,
+                ),
             ),
-        )
+        ).fit()
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0
-        trainer = PPOTrainer(config=dict(config, **{"explore": False}))
+        config.explore = False
+        algo = config.build()
         if args.from_checkpoint:
-            trainer.restore(args.from_checkpoint)
+            algo.restore(args.from_checkpoint)
         else:
-            checkpoint = results.get_last_checkpoint()
+            checkpoint = results.get_best_result().checkpoint
             if not checkpoint:
                 raise ValueError("No last checkpoint found in results!")
-            trainer.restore(checkpoint)
+            algo.restore(checkpoint)
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
@@ -265,7 +267,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(obs, policy_id="main")
+                    action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]
@@ -287,5 +289,7 @@ if __name__ == "__main__":
             human_player = 1 - human_player
 
             num_episodes += 1
+
+        algo.stop()
 
     ray.shutdown()

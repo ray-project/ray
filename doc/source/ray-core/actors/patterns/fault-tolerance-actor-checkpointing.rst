@@ -77,7 +77,7 @@ You can also achieve the same result just using regular Ray actors and some cust
             futures = [
                    w.perform_task.remote(
                        *args, **kwargs) for w in self.workers]
-                output = []
+            output = []
             unfinished = futures
             try:
                 while len(unfinished) > 0:

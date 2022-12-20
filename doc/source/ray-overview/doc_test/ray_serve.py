@@ -1,10 +1,9 @@
-# TODO: actually use this to predict something
-import ray
-from ray import serve
-
 from fastapi import FastAPI
 from transformers import pipeline
 
+# TODO: actually use this to predict something
+import ray
+from ray import serve
 
 app = FastAPI()
 

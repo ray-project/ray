@@ -6,8 +6,8 @@ import argparse
 import os
 
 import ray
-from ray import tune
-from ray.rllib.algorithms.pg import PGTrainer
+from ray import air, tune
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )
@@ -15,7 +15,7 @@ from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -29,16 +29,20 @@ def main(debug, stop_iters=200, framework="tf"):
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, framework)
-    tune_analysis = tune.run(
-        PGTrainer,
-        config=rllib_config,
-        stop=stop_config,
-        checkpoint_freq=0,
-        checkpoint_at_end=True,
-        name="PG_IPD",
+    tuner = tune.Tuner(
+        PG,
+        param_space=rllib_config,
+        run_config=air.RunConfig(
+            name="PG_IPD",
+            stop=stop_config,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=0,
+                checkpoint_at_end=True,
+            ),
+        ),
     )
+    tuner.fit()
     ray.shutdown()
-    return tune_analysis
 
 
 def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
@@ -70,7 +74,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
                     {},
                 ),
             },
-            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
+            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
         },
         "seed": tune.grid_search(seeds),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

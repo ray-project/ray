@@ -27,9 +27,13 @@ GcsHeartbeatManager::GcsHeartbeatManager(
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
+      gcs_failover_worker_reconnect_timeout_(
+          RayConfig::instance().gcs_failover_worker_reconnect_timeout()),
       periodical_runner_(io_service) {
   RAY_LOG(INFO) << "GcsHeartbeatManager start, num_heartbeats_timeout="
-                << num_heartbeats_timeout_;
+                << num_heartbeats_timeout_ << ", initial_num_heartbeats_timeout="
+                << gcs_failover_worker_reconnect_timeout_;
+
   io_service_thread_.reset(new std::thread([this] {
     SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
@@ -41,7 +45,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
 void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      heartbeats_.emplace(item.first, num_heartbeats_timeout_);
+      AddNodeInternal(item.second, gcs_failover_worker_reconnect_timeout_);
     }
   }
 }
@@ -67,14 +71,34 @@ void GcsHeartbeatManager::Stop() {
   }
 }
 
-void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
+void GcsHeartbeatManager::RemoveNode(const NodeID &node_id) {
+  io_service_.dispatch(
+      [this, node_id] {
+        node_map_.left.erase(node_id);
+        heartbeats_.erase(node_id);
+      },
+      "GcsHeartbeatManager::RemoveNode");
+}
+
+void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
+  AddNodeInternal(node_info, num_heartbeats_timeout_);
+}
+
+void GcsHeartbeatManager::AddNodeInternal(const rpc::GcsNodeInfo &node_info,
+                                          int64_t heartbeats_counts) {
+  auto node_id = NodeID::FromBinary(node_info.node_id());
+  auto node_addr = node_info.node_manager_address() + ":" +
+                   std::to_string(node_info.node_manager_port());
   io_service_.post(
-      [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); },
+      [this, node_id, node_addr, heartbeats_counts] {
+        node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
+        heartbeats_.emplace(node_id, heartbeats_counts);
+      },
       "GcsHeartbeatManager.AddNode");
 }
 
 void GcsHeartbeatManager::HandleReportHeartbeat(
-    const rpc::ReportHeartbeatRequest &request,
+    rpc::ReportHeartbeatRequest request,
     rpc::ReportHeartbeatReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
@@ -90,24 +114,19 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
-                                           rpc::CheckAliveReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_ray_version(kRayVersion);
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
 void GcsHeartbeatManager::DetectDeadNodes() {
-  for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
-    auto current = it++;
-    current->second = current->second - 1;
-    if (current->second == 0) {
-      auto node_id = current->first;
-      RAY_LOG(WARNING) << "Node timed out: " << node_id;
-      heartbeats_.erase(current);
-      if (on_node_death_callback_) {
-        on_node_death_callback_(node_id);
-      }
+  std::vector<NodeID> dead_nodes;
+  for (auto &current : heartbeats_) {
+    current.second = current.second - 1;
+    if (current.second == 0) {
+      RAY_LOG(WARNING) << "Node timed out: " << current.first;
+      dead_nodes.push_back(current.first);
+    }
+  }
+  for (const auto &node_id : dead_nodes) {
+    RemoveNode(node_id);
+    if (on_node_death_callback_) {
+      on_node_death_callback_(node_id);
     }
   }
 }

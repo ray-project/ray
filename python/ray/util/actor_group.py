@@ -5,6 +5,8 @@ from typing import List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
 from ray.actor import ActorHandle
+from ray.util.annotations import Deprecated
+from ray._private.utils import get_ray_doc_version
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")
@@ -49,6 +51,13 @@ class ActorGroupMethod:
         ]
 
 
+@Deprecated(
+    message="For stateless/task processing, use ray.util.multiprocessing, see details "
+    f"in https://docs.ray.io/en/{get_ray_doc_version()}/ray-more-libs/multiprocessing.html. "  # noqa: E501
+    "For stateful/actor processing such as batch prediction, use "
+    "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
+    f"https://docs.ray.io/en/{get_ray_doc_version()}/data/api/dataset.html#ray.data.Dataset.map_batches."  # noqa: E501
+)
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
 
@@ -60,12 +69,12 @@ class ActorGroup:
     cluster will automatically scale up if autoscaling is enabled.
 
     Args:
-        actor_cls (Type): The class to use as the remote actors.
-        num_actors (int): The number of the provided Ray actors to
+        actor_cls: The class to use as the remote actors.
+        num_actors: The number of the provided Ray actors to
             launch. Defaults to 1.
-        num_cpus_per_actor (float): The number of CPUs to reserve for each
+        num_cpus_per_actor: The number of CPUs to reserve for each
             actor. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_actor (float): The number of GPUs to reserve for each
+        num_gpus_per_actor: The number of GPUs to reserve for each
             actor. Fractional values are allowed. Defaults to 0.
         resources_per_actor (Optional[Dict[str, float]]):
             Dictionary specifying the resources that will be
@@ -86,6 +95,7 @@ class ActorGroup:
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
     ):
+        ray._private.usage.usage_lib.record_library_usage("util.ActorGroup")
 
         if num_actors <= 0:
             raise ValueError(
@@ -152,7 +162,7 @@ class ActorGroup:
         """Shutdown all the actors in this actor group.
 
         Args:
-            patience_s (float): Attempt a graceful shutdown
+            patience_s: Attempt a graceful shutdown
                 of the actors for this many seconds. Fallback to force kill
                 if graceful shutdown is not complete after this time. If
                 this is less than or equal to 0, immediately force kill all
@@ -191,7 +201,7 @@ class ActorGroup:
         """Adds ``num_actors`` to this ActorGroup.
 
         Args:
-            num_actors (int): The number of actors to add.
+            num_actors: The number of actors to add.
         """
         new_actors = []
         new_actor_metadata = []

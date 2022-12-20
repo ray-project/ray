@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -18,7 +18,7 @@ class LocalModeTest(unittest.TestCase):
         cf["num_workers"] = 2
 
         for _ in framework_iterator(cf):
-            agent = PGTrainer(cf, "CartPole-v0")
+            agent = PG(cf, "CartPole-v1")
             print(agent.train())
             agent.stop()
 

@@ -1,4 +1,4 @@
-from ray import tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
@@ -14,11 +14,15 @@ if __name__ == "__main__":
     env = env_creator({})
     register_env("waterworld", env_creator)
 
-    tune.run(
+    tune.Tuner(
         "APEX_DDPG",
-        stop={"episodes_total": 60000},
-        checkpoint_freq=10,
-        config={
+        run_config=air.RunConfig(
+            stop={"episodes_total": 60000},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=10,
+            ),
+        ),
+        param_space={
             # Enviroment specific
             "env": "waterworld",
             # General
@@ -27,7 +31,9 @@ if __name__ == "__main__":
             # Method specific
             "multiagent": {
                 "policies": set(env.agents),
-                "policy_mapping_fn": (lambda agent_id, episode, **kwargs: agent_id),
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, worker, **kwargs: agent_id
+                ),
             },
         },
-    )
+    ).fit()

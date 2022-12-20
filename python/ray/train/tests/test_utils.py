@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ray.train.utils import construct_path
+from ray.train._internal.utils import construct_path
 
 
 def test_construct_path():

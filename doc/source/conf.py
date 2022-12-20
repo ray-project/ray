@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 from datetime import datetime
+
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
@@ -23,6 +24,13 @@ import ray
 
 # -- General configuration ------------------------------------------------
 
+# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
+# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
+# cross-reference to the Python function “filter”. The default is None, which doesn’t
+# reassign the default role.
+
+default_role = "py:obj"
+
 extensions = [
     "sphinx_panels",
     "sphinx.ext.autodoc",
@@ -38,9 +46,11 @@ extensions = [
     "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
+    "sphinx.ext.autosummary",
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib.redoc",
 ]
 
 myst_enable_extensions = [
@@ -71,6 +81,14 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
+# This pattern matches:
+# - Python Repl prompts (">>> ") and it's continuation ("... ")
+# - Bash prompts ("$ ")
+# - IPython prompts ("In []: ", "In [999]: ") and it's continuations
+#   ("  ...: ", "     : ")
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_prompt_is_regexp = True
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -89,12 +107,12 @@ versionwarning_messages = {
     #     "This document is for the latest pip release. "
     #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
     # ),
-    "master": (
-        "<b>Got questions?</b> Join "
-        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
-        "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."
-    ),
+    # "master": (
+    #     "<b>Got questions?</b> Join "
+    #     f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+    #     "for Q&A on all things Ray, as well as to share and learn use cases "
+    #     "and best practices with the Ray community."
+    # ),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -166,9 +184,12 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    "https://speakerdeck.com/*",  # forbidden for bots
     r"https://huggingface.co/*",  # seems to be flaky
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
+    r"http://localhost[:/].*",  # Ignore localhost links
+    r"^http:/$",  # Ignore incomplete links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -187,12 +208,13 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
-    "show_navbar_depth": 0,
+    "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
         "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
+    "announcement": "<div class='topnav'></div>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -204,10 +226,6 @@ html_title = f"Ray {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
-
-# The name of an image file (relative to this directory) to place at the top
-# of the sidebar.
-html_logo = "images/ray_logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -260,6 +278,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
+
 
 # Add a render priority for doctest
 nb_render_priority = {
@@ -286,6 +307,8 @@ def setup(app):
     app.add_css_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
     )
+    # https://github.com/ines/termynal
+    app.add_css_file("css/termynal.css")
 
     # Custom JS
     app.add_js_file(
@@ -294,8 +317,15 @@ def setup(app):
     )
     app.add_js_file("js/docsearch.js", defer="defer")
 
-    # Custom docstring processor
-    app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
+    # https://github.com/medmunds/rate-the-docs for allowing users
+    # to give thumbs up / down and feedback on existing docs pages.
+    app.add_js_file("js/rate-the-docs.es.min.js")
+
+    # https://github.com/ines/termynal
+    app.add_js_file("js/termynal.js", defer="defer")
+    app.add_js_file("js/custom.js", defer="defer")
+
+    app.add_js_file("js/top-navigation.js", defer="defer")
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
@@ -303,3 +333,23 @@ def setup(app):
     app.connect("builder-inited", github_docs.write_new_docs)
     # Restore original file content after build
     app.connect("build-finished", github_docs.write_original_docs)
+
+    # Hook into the logger used by linkcheck to display a summary at the end.
+    linkcheck_summarizer = LinkcheckSummarizer()
+    app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
+    app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Create galleries on the fly
+    app.connect("builder-inited", build_gallery)
+
+
+redoc = [
+    {
+        "name": "Ray Jobs API",
+        "page": "cluster/running-applications/job-submission/api",
+        "spec": "cluster/running-applications/job-submission/openapi.yml",
+        "embed": True,
+    },
+]
+
+redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"

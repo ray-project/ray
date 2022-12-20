@@ -16,7 +16,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray torch torchvision
+    $ pip install "ray[tune]" torch torchvision
 
 Setting Up a Pytorch Model to Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,7 +63,7 @@ Below, we define a function that trains the Pytorch model for multiple epochs.
 This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood,
 so we need to communicate the performance of the model back to Tune (which is on the main Python process).
 
-To do this, we call :ref:`tune.report <tune-function-docstring>` in our training function,
+To do this, we call :ref:`session.report <tune-function-docstring>` in our training function,
 which sends the performance value back to Tune. Since the function is executed on the separate process,
 make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 
@@ -72,7 +72,7 @@ make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
 
-Let's run one trial by calling :ref:`tune.run <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
+Let's run one trial by calling :ref:`Tuner.fit <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
 from a uniform distribution for learning rate and momentum.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
@@ -80,7 +80,7 @@ from a uniform distribution for learning rate and momentum.
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
-``tune.run`` returns an :ref:`ExperimentAnalysis object <tune-analysis-docs>`.
+``Tuner.fit`` returns an :ref:`ResultGrid object <tune-analysis-docs>`.
 You can use this to plot the performance of this trial.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py

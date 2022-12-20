@@ -16,6 +16,7 @@ Notes: This test seems to be somewhat flaky. This might be due to
 race conditions in handling dead actors. This is likely a problem of
 the xgboost_ray implementation and not of this test.
 """
+import os
 import warnings
 from unittest.mock import patch
 
@@ -24,7 +25,7 @@ import ray
 from xgboost_ray import RayParams
 from xgboost_ray.main import _train as unmocked_train
 
-from ray.util.xgboost.release_test_util import (
+from release_test_util import (
     train_ray,
     FailureState,
     FailureInjection,
@@ -32,7 +33,8 @@ from ray.util.xgboost.release_test_util import (
 )
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
+
     from xgboost_ray.main import logger
 
     logger.setLevel(10)

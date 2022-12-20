@@ -20,14 +20,12 @@ import logging
 import math
 import os
 import random
-from typing import Dict, Any
+from typing import Any, Dict
 
 import datasets
-import ray
 import transformers
 from accelerate import Accelerator
 from datasets import load_dataset, load_metric
-from ray.train import Trainer
 from torch.utils.data.dataloader import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
@@ -43,6 +41,11 @@ from transformers import (
     set_seed,
 )
 from transformers.utils.versions import require_version
+
+import ray
+from ray.air import session
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -228,10 +231,14 @@ def parse_args():
 
 
 def train_func(config: Dict[str, Any]):
+    # Accelerator reads from this environment variable for GPU placement.
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+
     args = config["args"]
     # Initialize the accelerator. We will let the accelerator handle device
     # placement for us in this example.
-    accelerator = Accelerator()
+    accelerator = Accelerator(cpu=not args.use_gpu)
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -604,13 +611,19 @@ def main():
     if args.start_local or args.address or args.num_workers > 1 or args.use_gpu:
         if args.start_local:
             # Start a local Ray runtime.
-            ray.init(num_cpus=args.num_workers)
+            ray.init(num_cpus=args.num_workers + 2)
         else:
             # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
-        trainer = Trainer("torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
-        trainer.start()
-        trainer.run(train_func, config)
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config=config,
+            scaling_config=ScalingConfig(
+                num_workers=args.num_workers, use_gpu=args.use_gpu
+            ),
+        )
+        results = trainer.fit()
+        print(results.metrics)
     else:
         # Run training locally.
         train_func(config)

@@ -5,30 +5,30 @@ import logging
 import os
 import threading
 import time
-import uuid
 from collections import defaultdict
 from datetime import datetime
+from numbers import Number
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any
-from typing import Optional
+from typing import Dict, List, Union, Type, Callable, Any, Optional, Sequence
 
 import numpy as np
 import psutil
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri
-from ray.util.ml_utils.dict import (  # noqa: F401
+from ray.air.checkpoint import Checkpoint
+from ray.air._internal.remote_storage import delete_at_uri
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.air._internal.json import SafeFallbackEncoder  # noqa
+from ray.air._internal.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
+)
+from ray._private.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
     flatten_dict,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
-)
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 START_OF_TIME = time.time()
 
 
+@DeveloperAPI
 class UtilMonitor(Thread):
     """Class for system usage utilization monitoring.
 
@@ -54,7 +55,7 @@ class UtilMonitor(Thread):
     pinging for information every x seconds in a separate thread.
 
     Requires psutil and GPUtil to be installed. Can be enabled with
-    tune.run(config={"log_sys_usage": True}).
+    Tuner(param_space={"log_sys_usage": True}).
     """
 
     def __init__(self, start=True, delay=0.7):
@@ -121,20 +122,44 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
+@DeveloperAPI
 def retry_fn(
     fn: Callable[[], Any],
-    exception_type: Type[Exception],
+    exception_type: Union[Type[Exception], Sequence[Type[Exception]]] = Exception,
     num_retries: int = 3,
     sleep_time: int = 1,
-):
-    for i in range(num_retries):
+    timeout: Optional[Number] = None,
+) -> bool:
+    errored = threading.Event()
+
+    def _try_fn():
         try:
             fn()
         except exception_type as e:
             logger.warning(e)
-            time.sleep(sleep_time)
-        else:
-            break
+            errored.set()
+
+    for i in range(num_retries):
+        errored.clear()
+
+        proc = threading.Thread(target=_try_fn)
+        proc.daemon = True
+        proc.start()
+        proc.join(timeout=timeout)
+
+        if proc.is_alive():
+            logger.debug(
+                f"Process timed out (try {i+1}/{num_retries}): "
+                f"{getattr(fn, '__name__', None)}"
+            )
+        elif not errored.is_set():
+            return True
+
+        # Timed out, sleep and try again
+        time.sleep(sleep_time)
+
+    # Timed out, so return False
+    return False
 
 
 @ray.remote
@@ -143,10 +168,12 @@ def _serialize_checkpoint(checkpoint_path) -> bytes:
     return checkpoint.to_bytes()
 
 
-def get_checkpoint_from_remote_node(
+def _get_checkpoint_from_remote_node(
     checkpoint_path: str, node_ip: str, timeout: float = 300.0
 ) -> Optional[Checkpoint]:
-    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+    if not any(
+        node["NodeManagerAddress"] == node_ip and node["Alive"] for node in ray.nodes()
+    ):
         logger.warning(
             f"Could not fetch checkpoint with path {checkpoint_path} from "
             f"node with IP {node_ip} because the node is not available "
@@ -154,7 +181,9 @@ def get_checkpoint_from_remote_node(
         )
         return None
     fut = _serialize_checkpoint.options(
-        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+        resources={f"node:{node_ip}": 0.01},
+        num_cpus=0,
+        scheduling_strategy="DEFAULT",
     ).remote(checkpoint_path)
     try:
         checkpoint_data = ray.get(fut, timeout=timeout)
@@ -167,10 +196,11 @@ def get_checkpoint_from_remote_node(
     return Checkpoint.from_bytes(checkpoint_data)
 
 
-def delete_external_checkpoint(checkpoint_uri: str):
+def _delete_external_checkpoint(checkpoint_uri: str):
     delete_at_uri(checkpoint_uri)
 
 
+@DeveloperAPI
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
@@ -214,6 +244,7 @@ class warn_if_slow:
             logger.warning(self.message.format(name=self.name, duration=duration))
 
 
+@DeveloperAPI
 class Tee(object):
     def __init__(self, stream1, stream2):
         self.stream1 = stream1
@@ -262,6 +293,7 @@ class Tee(object):
         raise NotImplementedError
 
 
+@DeveloperAPI
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -282,12 +314,13 @@ def _from_pinnable(obj):
     return obj[0]
 
 
+@DeveloperAPI
 def diagnose_serialization(trainable: Callable):
     """Utility for detecting why your trainable function isn't serializing.
 
     Args:
         trainable: The trainable object passed to
-            tune.run(trainable). Currently only supports
+            tune.Tuner(trainable). Currently only supports
             Function API.
 
     Returns:
@@ -316,13 +349,13 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, check_serializability
+    from ray.tune.registry import register_trainable, _check_serializability
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():
             msg = None
             try:
-                check_serializability(var_name, variable)
+                _check_serializability(var_name, variable)
                 status = "PASSED"
             except Exception as e:
                 status = "FAILED"
@@ -377,10 +410,10 @@ def diagnose_serialization(trainable: Callable):
         return failure_set
 
 
-def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name: str):
+def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name: str):
     """Atomically saves the state object to the checkpoint directory.
 
-    This is automatically used by tune.run during a Tune job.
+    This is automatically used by Tuner().fit during a Tune job.
 
     Args:
         state: Object state to be serialized.
@@ -397,7 +430,7 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name:
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
-def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
+def _load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> Optional[Dict]:
     """Returns the most recently modified checkpoint.
 
     Assumes files are saved with an ordered name, most likely by
@@ -422,6 +455,7 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
+@PublicAPI(stability="beta")
 def wait_for_gpu(
     gpu_id: Optional[Union[int, str]] = None,
     target_util: float = 0.01,
@@ -458,7 +492,15 @@ def wait_for_gpu(
             tune.util.wait_for_gpu()
             train()
 
-        tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
+        tuner = tune.Tuner(
+            tune.with_resources(
+                tune_func,
+                resources={"gpu": 1}
+            ),
+            tune_config=tune.TuneConfig(num_samples=10)
+        )
+        tuner.fit()
+
     """
     GPUtil = _import_gputil()
 
@@ -514,6 +556,7 @@ def wait_for_gpu(
     raise RuntimeError("GPU memory was not freed.")
 
 
+@DeveloperAPI
 def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
@@ -561,7 +604,7 @@ def validate_save_restore(
     return True
 
 
-def detect_checkpoint_function(train_func, abort=False, partial=False):
+def _detect_checkpoint_function(train_func, abort=False, partial=False):
     """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
     func_sig = inspect.signature(train_func)
     validated = True
@@ -585,7 +628,7 @@ def detect_checkpoint_function(train_func, abort=False, partial=False):
     return validated
 
 
-def detect_reporter(func):
+def _detect_reporter(func):
     """Use reporter if any arg has "reporter" and args = 2"""
     func_sig = inspect.signature(func)
     use_reporter = True
@@ -597,7 +640,7 @@ def detect_reporter(func):
     return use_reporter
 
 
-def detect_config_single(func):
+def _detect_config_single(func):
     """Check if func({}) works."""
     func_sig = inspect.signature(func)
     use_config_single = True
@@ -609,33 +652,7 @@ def detect_config_single(func):
     return use_config_single
 
 
-def create_logdir(dirname: str, local_dir: str):
-    """Create an empty logdir with name `dirname` in `local_dir`.
-
-    If `local_dir`/`dirname` already exists, a unique string is appended
-    to the dirname.
-
-    Args:
-        dirname: Dirname to create in `local_dir`
-        local_dir: Root directory for the log dir
-
-    Returns:
-        full path to the newly created logdir.
-    """
-    local_dir = os.path.expanduser(local_dir)
-    logdir = os.path.join(local_dir, dirname)
-    if os.path.exists(logdir):
-        old_dirname = dirname
-        dirname += "_" + uuid.uuid4().hex[:4]
-        logger.info(
-            f"Creating a new dirname {dirname} because "
-            f"trial dirname '{old_dirname}' already exists."
-        )
-        logdir = os.path.join(local_dir, dirname)
-    os.makedirs(logdir, exist_ok=True)
-    return logdir
-
-
+@PublicAPI()
 def validate_warmstart(
     parameter_names: List[str],
     points_to_evaluate: List[Union[List, Dict]],

@@ -1,25 +1,23 @@
 import json
 import logging
-import yaml
-import os
+import asyncio
 import aiohttp.web
 
 import ray
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
-from ray.ray_constants import (
-    GLOBAL_GRPC_OPTIONS,
-    DEBUG_AUTOSCALING_STATUS,
-    DEBUG_AUTOSCALING_STATUS_LEGACY,
-    DEBUG_AUTOSCALING_ERROR,
-)
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
+import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+    GLOBAL_GRPC_OPTIONS,
+)
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
@@ -40,6 +38,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         gcs_address = dashboard_head.gcs_address
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:
@@ -56,86 +55,37 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
-    @routes.get("/api/launch_profiling")
-    async def launch_profiling(self, req) -> aiohttp.web.Response:
-        ip = req.query["ip"]
-        pid = int(req.query["pid"])
-        duration = int(req.query["duration"])
-        reporter_stub = self._stubs[ip]
-        reply = await reporter_stub.GetProfilingStats(
-            reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration)
-        )
-        profiling_info = (
-            json.loads(reply.profiling_stats)
-            if reply.profiling_stats
-            else reply.std_out
-        )
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Profiling success.", profiling_info=profiling_info
-        )
-
-    @routes.get("/api/ray_config")
-    async def get_ray_config(self, req) -> aiohttp.web.Response:
-        if self._ray_config is None:
-            try:
-                config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
-                with open(config_path) as f:
-                    cfg = yaml.safe_load(f)
-            except yaml.YAMLError:
-                return dashboard_optional_utils.rest_response(
-                    success=False,
-                    message=f"No config found at {config_path}.",
-                )
-            except FileNotFoundError:
-                return dashboard_optional_utils.rest_response(
-                    success=False, message="Invalid config, could not load YAML."
-                )
-
-            payload = {
-                "min_workers": cfg.get("min_workers", "unspecified"),
-                "max_workers": cfg.get("max_workers", "unspecified"),
-            }
-
-            try:
-                payload["head_type"] = cfg["head_node"]["InstanceType"]
-            except KeyError:
-                payload["head_type"] = "unknown"
-
-            try:
-                payload["worker_type"] = cfg["worker_nodes"]["InstanceType"]
-            except KeyError:
-                payload["worker_type"] = "unknown"
-
-            self._ray_config = payload
-
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetched ray config.",
-            **self._ray_config,
-        )
-
     @routes.get("/api/cluster_status")
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
 
         Currently contains two fields:
-            autoscaling_status (str): a status message from the autoscaler.
-            autoscaling_error (str): an error message from the autoscaler if
+            autoscaling_status (str)-- a status message from the autoscaler.
+            autoscaling_error (str)-- an error message from the autoscaler if
                 anything has gone wrong during autoscaling.
 
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
         """
 
-        assert ray.experimental.internal_kv._internal_kv_initialized()
-        legacy_status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS_LEGACY)
-        formatted_status_string = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+        (legacy_status, formatted_status_string, error) = await asyncio.gather(
+            *[
+                self._gcs_aio_client.internal_kv_get(
+                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
+                )
+                for key in [
+                    DEBUG_AUTOSCALING_STATUS_LEGACY,
+                    DEBUG_AUTOSCALING_STATUS,
+                    DEBUG_AUTOSCALING_ERROR,
+                ]
+            ]
+        )
+
         formatted_status = (
             json.loads(formatted_status_string.decode())
             if formatted_status_string
             else {}
         )
-        error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
         return dashboard_optional_utils.rest_response(
             success=True,
             message="Got cluster status.",
@@ -143,6 +93,68 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             autoscaling_error=error.decode() if error else None,
             cluster_status=formatted_status if formatted_status else None,
         )
+
+    @routes.get("/worker/traceback")
+    async def get_traceback(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending stack trace request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
+        )
+        reply = await reporter_stub.GetTraceback(
+            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+        )
+        if reply.success:
+            logger.info("Returning stack trace, size {}".format(len(reply.output)))
+            return aiohttp.web.Response(text=reply.output)
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+    @routes.get("/worker/cpu_profile")
+    async def cpu_profile(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        duration = int(req.query.get("duration", 5))
+        if duration > 60:
+            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        format = req.query.get("format", "flamegraph")
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending CPU profiling request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
+        )
+        reply = await reporter_stub.CpuProfiling(
+            reporter_pb2.CpuProfilingRequest(
+                pid=pid, duration=duration, format=format, native=native
+            )
+        )
+        if reply.success:
+            logger.info(
+                "Returning profiling response, size {}".format(len(reply.output))
+            )
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "image/svg+xml"
+                    if format == "flamegraph"
+                    else "text/plain"
+                },
+            )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     async def run(self, server):
         # Need daemon True to avoid dashboard hangs at exit.

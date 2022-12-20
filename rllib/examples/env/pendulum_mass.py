@@ -18,7 +18,7 @@ class PendulumMassEnv(PendulumEnv, EzPickle, TaskSettableEnv):
     def set_task(self, task):
         """
         Args:
-            task (float): Task of the meta-learning environment (here: mass of
+            task: Task of the meta-learning environment (here: mass of
                 the pendulum).
         """
         # self.m is the mass property of the pendulum.

@@ -1,14 +1,9 @@
-from typing import Dict, List, Union
-
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.utils.typing import (
-    TensorType,
-)
 
 torch, nn = try_import_torch()
 
@@ -78,7 +73,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
-    This is used by Trainers to update the KL coefficient
+    This is used by Algorithms to update the KL coefficient
     after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """
@@ -99,14 +94,14 @@ class KLCoeffMixin:
         return self.kl_coeff
 
     @override(TorchPolicy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff
         return state
 
     @override(TorchPolicy)
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
         # Call super's set_state with rest of the state dict.
@@ -156,7 +151,7 @@ class ValueNetworkMixin:
             state_batches (List[TensorType]): List of state tensors (empty for
                 non-RNNs).
             model (ModelV2): The Model object of the Policy.
-            action_dist (TorchDistributionWrapper): The instantiated distribution
+            action_dist: The instantiated distribution
                 object, resulting from the model's outputs and the given
                 distribution class.
 
@@ -173,22 +168,33 @@ class ValueNetworkMixin:
 
 
 class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTorchPolicy
+    """Mixin class adding a method for (soft) target net(s) synchronizations.
 
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
+    - Adds the `update_target` method to the policy.
+      Calling `update_target` updates all target Q-networks' weights from their
+      respective "main" Q-metworks, based on tau (smooth, partial updating).
     """
 
     def __init__(self):
         # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target()
+        tau = self.config.get("tau", 1.0)
+        self.update_target(tau=tau)
 
-    def update_target(self):
+    def update_target(self, tau=None):
         # Update_target_fn will be called periodically to copy Q network to
-        # target Q networks.
-        state_dict = self.model.state_dict()
+        # target Q network, using (soft) tau-synching.
+        tau = tau or self.config.get("tau", 1.0)
+        model_state_dict = self.model.state_dict()
+        # Support partial (soft) synching.
+        # If tau == 1.0: Full sync from Q-model to target Q-model.
+        target_state_dict = next(iter(self.target_models.values())).state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
+
         for target in self.target_models.values():
-            target.load_state_dict(state_dict)
+            target.load_state_dict(model_state_dict)
 
     @override(TorchPolicy)
     def set_weights(self, weights):

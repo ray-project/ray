@@ -117,6 +117,38 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
+inline std::string GenerateUUIDV4() {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> dis(0, 15);
+  static std::uniform_int_distribution<> dis2(8, 11);
+
+  std::stringstream ss;
+  int i;
+  ss << std::hex;
+  for (i = 0; i < 8; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 4; i++) {
+    ss << dis(gen);
+  }
+  ss << "-4";
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  ss << dis2(gen);
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 12; i++) {
+    ss << dis(gen);
+  };
+  return ss.str();
+}
+
 /// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
 /// \param cmdline The command-line to split.
@@ -338,5 +370,10 @@ bool IsRayletFailed(const std::string &raylet_pid);
 
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
+
+/// \param value the value to be formatted to string
+/// \param precision the precision to format the value to
+/// \return the foramtted value
+std::string FormatFloat(float value, int32_t precision);
 
 }  // namespace ray

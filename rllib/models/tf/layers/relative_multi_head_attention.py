@@ -24,13 +24,13 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         """Initializes a RelativeMultiHeadAttention keras Layer object.
 
         Args:
-            out_dim (int): The output dimensions of the multi-head attention
+            out_dim: The output dimensions of the multi-head attention
                 unit.
-            num_heads (int): The number of attention heads to use.
+            num_heads: The number of attention heads to use.
                 Denoted `H` in [2].
-            head_dim (int): The dimension of a single(!) attention head within
+            head_dim: The dimension of a single(!) attention head within
                 a multi-head attention unit. Denoted as `d` in [3].
-            input_layernorm (bool): Whether to prepend a LayerNorm before
+            input_layernorm: Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Optional[tf.nn.activation]): Optional tf.nn
                 activation function. Should be relu for GTrXL.
@@ -102,7 +102,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d ** 0.5
+        score = score / d**0.5
 
         # Causal mask of the same length as the sequence.
         mask = tf.sequence_mask(tf.range(Tau + 1, Tau + T + 1), dtype=score.dtype)

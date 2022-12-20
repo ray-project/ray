@@ -5,10 +5,6 @@ from pkg_resources import Requirement
 import ray
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Pip option not supported on Windows.",
-)
 def test_runtime_env_with_pip_config(start_cluster):
 
     pip_versions = [
@@ -39,10 +35,6 @@ def test_runtime_env_with_pip_config(start_cluster):
         )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Pip option not supported on Windows.",
-)
 def test_runtime_env_with_conflict_pip_version(start_cluster):
     pip_version = "<19,>19"
 
@@ -62,10 +54,6 @@ def test_runtime_env_with_conflict_pip_version(start_cluster):
     assert f"No matching distribution found for pip{pip_version}" in str(error.value)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Pip option not supported on Windows.",
-)
 def test_runtime_env_cache_with_pip_check(start_cluster):
 
     # moto require requests>=2.5
@@ -103,4 +91,9 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

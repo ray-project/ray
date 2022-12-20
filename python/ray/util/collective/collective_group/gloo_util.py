@@ -1,6 +1,15 @@
 """Code to wrap some GLOO API calls."""
-import numpy
 import asyncio
+import time
+from typing import List
+
+import numpy
+
+import ray
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
+from ray.util.collective.types import ReduceOp, torch_available
+from ray.util.queue import _QueueActor
 
 try:
     import pygloo
@@ -9,14 +18,6 @@ except ImportError:
         "Can not import pygloo. Please run 'pip install pygloo' to install pygloo."
     )
 
-import time
-
-import ray
-from ray.util.collective.types import ReduceOp, torch_available
-from ray.util.queue import _QueueActor
-
-import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_utils import GcsClient
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
@@ -83,8 +84,8 @@ def create_gloo_context(rank, world_size):
     """Create a GLOO context using GLOO APIs.
 
     Args:
-        rank (int): the rank of this process.
-        world_size (int): the number of processes of this collective group.
+        rank: the rank of this process.
+        world_size: the number of processes of this collective group.
 
     Returns:
         context (pygloo.Context): a GLOO context.
@@ -97,7 +98,7 @@ def get_gloo_reduce_op(reduce_op):
     """Map the reduce op to GLOO reduce op type.
 
     Args:
-        reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
+        reduce_op: ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
 
     Returns:
         (pygloo.ReduceOp): the mapped GLOO reduce op.
@@ -271,7 +272,7 @@ class RayInternalKvStore:
     def __init__(self, group_name: str):
         self._group_name = group_name
         self._job_id = ray.get_runtime_context().job_id
-        gcs_address = ray.worker._global_node.gcs_address
+        gcs_address = ray._private.worker._global_node.gcs_address
         self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=10)
         internal_kv._initialize_internal_kv(self._gcs_client)
 
@@ -285,7 +286,18 @@ class RayInternalKvStore:
         ret = internal_kv._internal_kv_get(key)
         return ret
 
-    def wait(self, keys: list):
+    def delete(self, key: str) -> int:
+        key = self.__concat_key_with_prefixes(key)
+        ret = internal_kv._internal_kv_del(key)
+        return ret
+
+    def del_keys(self, keys: List[str]) -> List[int]:
+        results = []
+        for key in keys:
+            results.append(self.delete(key))
+        return results
+
+    def wait(self, keys: List[str]):
         while True:
             all_exist = True
             for key in keys:

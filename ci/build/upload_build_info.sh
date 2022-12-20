@@ -3,18 +3,17 @@
 # Cause the script to exit if a single command fails.
 set -ex
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"
 
-# Cleanup old entries, this is needed in macOS shared environment.
-if [[ "${OSTYPE}" = darwin* ]]; then
-  if [[ -n "${BUILDKITE-}" ]]; then
-    echo "Cleanup old entries in macOS"
-    rm -rf /tmp/bazel_event_logs
-  fi
-fi
+cleanup() {
+  # Cleanup the directory because macOS file system is shared between builds.
+  rm -rf /tmp/bazel_event_logs
+}
+trap cleanup EXIT
+
 mkdir -p /tmp/bazel_event_logs
 
 ./ci/build/get_build_info.py > /tmp/bazel_event_logs/metadata.json
@@ -35,11 +34,8 @@ if [[ -z "${BUILDKITE-}" ]]; then
 
     aws s3 cp --recursive /tmp/bazel_event_logs "${DST}"
 else
-    if [[ "${OSTYPE}" = darwin* ]]; then
-        echo "Using Buildkite Artifact Store on macOS"
-    else
-        # Codepath for Buildkite
-        pip install -q docker aws_requests_auth boto3
-        python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
-    fi
+    # Codepath for Buildkite
+    # Keep cryptography/openssl in sync with `requirements_test.txt`
+    pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
+    python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
 fi

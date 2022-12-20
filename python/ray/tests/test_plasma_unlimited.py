@@ -193,6 +193,8 @@ def test_fallback_allocation_failure(shutdown_only):
         _temp_dir="/dev/shm",
         _system_config={
             "object_spilling_config": json.dumps(file_system_config),
+            # set local fs capacity to 100% so it never errors with out of disk.
+            "local_fs_capacity_threshold": 1,
         },
     )
     shm_size = shutil.disk_usage("/dev/shm").total
@@ -203,7 +205,7 @@ def test_fallback_allocation_failure(shutdown_only):
         print("Start put", i)
         try:
             refs.append(ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
-        except ray.exceptions.ObjectStoreFullError:
+        except ray.exceptions.OutOfDiskError:
             num_exceptions = num_exceptions + 1
     assert num_exceptions > 0
 
@@ -237,7 +239,7 @@ def test_fallback_allocation_failure(shutdown_only):
 )
 def test_plasma_allocate(shutdown_only):
     address = ray.init(
-        object_store_memory=300 * 1024 ** 2,
+        object_store_memory=300 * 1024**2,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
@@ -245,7 +247,7 @@ def test_plasma_allocate(shutdown_only):
         _temp_dir="/tmp/for_test_plasma_allocate",
     )
     res = []
-    data = np.random.randint(low=0, high=256, size=(90 * 1024 ** 2,), dtype=np.uint8)
+    data = np.random.randint(low=0, high=256, size=(90 * 1024**2,), dtype=np.uint8)
     for _ in range(3):
         res.append(ray.put(data))
     # keep reference for second and third object, force evict first object
@@ -327,4 +329,7 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

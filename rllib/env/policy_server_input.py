@@ -35,24 +35,27 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
     Examples:
         >>> import gym
-        >>> from ray.rllib.algorithms.pg import PGTrainer
+        >>> from ray.rllib.algorithms.pg import PGConfig
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
         >>> addr, port = ... # doctest: +SKIP
-        >>> pg = PGTrainer( # doctest: +SKIP
-        ...     env="CartPole-v0", config={ # doctest: +SKIP
-        ...         "input": lambda io_ctx: # doctest: +SKIP
-        ...             PolicyServerInput(io_ctx, addr, port), # doctest: +SKIP
-        ...         # Run just 1 server, in the trainer.
-        ...         "num_workers": 0,   # doctest: +SKIP
-        ...     } # doctest: +SKIP
+        >>> config = ( # doctest: +SKIP
+        ...     PGConfig()
+        ...     .environment("CartPole-v1")
+        ...     .offline_data(
+        ...         input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
+        ...     )
+        ...     # Run just 1 server (in the Algorithm's WorkerSet).
+        ...     .rollouts(num_rollout_workers=0)
+        ... )
+        >>> pg = config.build() # doctest: +SKIP
         >>> while True: # doctest: +SKIP
         >>>     pg.train() # doctest: +SKIP
 
         >>> client = PolicyClient( # doctest: +SKIP
         ...     "localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()  # doctest: +SKIP
-        >>> env = gym.make("CartPole-v0")
+        >>> env = gym.make("CartPole-v1")
         >>> obs = env.reset()
         >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
         >>> reward = env.step(action)[0] # doctest: +SKIP
@@ -75,9 +78,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         server using rllib.env.PolicyClient.
 
         Args:
-            ioctx (IOContext): IOContext provided by RLlib.
-            address (str): Server addr (e.g., "localhost").
-            port (int): Server port (e.g., 9900).
+            ioctx: IOContext provided by RLlib.
+            address: Server addr (e.g., "localhost").
+            port: Server port (e.g., 9900).
         """
 
         self.rollout_worker = ioctx.worker

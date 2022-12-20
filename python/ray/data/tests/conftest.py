@@ -4,15 +4,20 @@ import posixpath
 import pytest
 import pyarrow as pa
 import pandas as pd
+import numpy as np
 
 import ray
 
 from ray.data.block import BlockAccessor
 from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="function")
@@ -65,6 +70,11 @@ def s3_path_with_special_chars(tmp_path, data_dir_with_special_chars):
 
 
 @pytest.fixture(scope="function")
+def s3_path_with_anonymous_crendential(tmp_path, data_dir):
+    yield "s3://" + "anonymous@" + posixpath.join(tmp_path, data_dir).lstrip("/")
+
+
+@pytest.fixture(scope="function")
 def s3_fs(aws_credentials, s3_server, s3_path):
     yield from _s3_fs(aws_credentials, s3_server, s3_path)
 
@@ -79,14 +89,33 @@ def s3_fs_with_special_chars(aws_credentials, s3_server, s3_path_with_special_ch
     yield from _s3_fs(aws_credentials, s3_server, s3_path_with_special_chars)
 
 
+@pytest.fixture(scope="function")
+def s3_fs_with_anonymous_crendential(
+    aws_credentials, s3_server, s3_path_with_anonymous_crendential
+):
+    yield from _s3_fs(aws_credentials, s3_server, s3_path_with_anonymous_crendential)
+
+
 def _s3_fs(aws_credentials, s3_server, s3_path):
+    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
 
+    kwargs = aws_credentials.copy()
+
+    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+        kwargs["allow_bucket_creation"] = True
+        kwargs["allow_bucket_deletion"] = True
+
     fs = pa.fs.S3FileSystem(
-        region="us-west-2", endpoint_override=s3_server, **aws_credentials
+        region="us-west-2",
+        endpoint_override=s3_server,
+        **kwargs,
     )
     if s3_path.startswith("s3://"):
-        s3_path = s3_path[len("s3://") :]
+        if "@" in s3_path:
+            s3_path = s3_path.split("@")[-1]
+        else:
+            s3_path = s3_path[len("s3://") :]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs
@@ -229,3 +258,133 @@ def assert_base_partitioned_ds():
         ), f"{actual_sorted_values} != {sorted_values}"
 
     yield _assert_base_partitioned_ds
+
+
+@pytest.fixture(params=[True, False])
+def use_push_based_shuffle(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.use_push_based_shuffle
+    ctx.use_push_based_shuffle = request.param
+    yield request.param
+    ctx.use_push_based_shuffle = original
+
+
+@pytest.fixture(params=[True, False])
+def enable_automatic_tensor_extension_cast(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = request.param
+    yield request.param
+    ctx.enable_tensor_extension_casting = original
+
+
+@pytest.fixture(params=[True, False])
+def enable_auto_log_stats(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_auto_log_stats
+    ctx.enable_auto_log_stats = request.param
+    yield request.param
+    ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(params=[True])
+def enable_dynamic_block_splitting(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.block_splitting_enabled
+    ctx.block_splitting_enabled = request.param
+    yield request.param
+    ctx.block_splitting_enabled = original
+
+
+@pytest.fixture(params=[1024])
+def target_max_block_size(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield request.param
+    ctx.target_max_block_size = original
+
+
+# ===== Pandas dataset formats =====
+@pytest.fixture(scope="function")
+def ds_pandas_single_column_format(ray_start_regular_shared):
+    in_df = pd.DataFrame({"column_1": [1, 2, 3, 4]})
+    yield ray.data.from_pandas(in_df)
+
+
+@pytest.fixture(scope="function")
+def ds_pandas_multi_column_format(ray_start_regular_shared):
+    in_df = pd.DataFrame({"column_1": [1, 2, 3, 4], "column_2": [1, -1, 1, -1]})
+    yield ray.data.from_pandas(in_df)
+
+
+@pytest.fixture(scope="function")
+def ds_pandas_list_multi_column_format(ray_start_regular_shared):
+    in_df = pd.DataFrame({"column_1": [1], "column_2": [1]})
+    yield ray.data.from_pandas([in_df] * 4)
+
+
+# ===== Arrow dataset formats =====
+@pytest.fixture(scope="function")
+def ds_arrow_single_column_format(ray_start_regular_shared):
+    yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
+
+
+@pytest.fixture(scope="function")
+def ds_arrow_single_column_tensor_format(ray_start_regular_shared):
+    yield ray.data.from_arrow(
+        pa.table(
+            {
+                TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
+                    np.arange(16).reshape((4, 2, 2))
+                )
+            }
+        )
+    )
+
+
+@pytest.fixture(scope="function")
+def ds_arrow_multi_column_format(ray_start_regular_shared):
+    yield ray.data.from_arrow(
+        pa.table(
+            {
+                "column_1": [1, 2, 3, 4],
+                "column_2": [1, -1, 1, -1],
+            }
+        )
+    )
+
+
+@pytest.fixture(scope="function")
+def ds_list_arrow_multi_column_format(ray_start_regular_shared):
+    yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
+
+
+# ===== Numpy dataset formats =====
+@pytest.fixture(scope="function")
+def ds_numpy_single_column_tensor_format(ray_start_regular_shared):
+    yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))
+
+
+@pytest.fixture(scope="function")
+def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
+    yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
+
+
+@pytest.fixture(params=["5.0.0"])
+def unsupported_pyarrow_version(request):
+    orig_version = pa.__version__
+    pa.__version__ = request.param
+    # Unset pyarrow version cache.
+    import ray._private.utils as utils
+
+    utils._PYARROW_VERSION = None
+    yield request.param
+    pa.__version__ = orig_version
+
+
+@pytest.fixture
+def disable_pyarrow_version_check():
+    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
+    yield
+    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]

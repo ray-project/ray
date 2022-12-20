@@ -1,12 +1,14 @@
 from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 
 import ray
 from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import (
+    Preprocessor,
+    TupleFlatteningPreprocessor,
+)
 from ray.rllib.models.tf.tf_action_dist import (
     MultiActionDistribution,
     TFActionDistribution,
@@ -14,7 +16,8 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -73,49 +76,104 @@ class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_custom_preprocessor(self):
-        ray.init(object_store_memory=1000 * 1024 * 1024)
-        ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
-        ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
-        env = gym.make("CartPole-v0")
-        p1 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "foo"})
-        self.assertEqual(str(type(p1)), str(CustomPreprocessor))
-        p2 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "bar"})
-        self.assertEqual(str(type(p2)), str(CustomPreprocessor2))
-        p3 = ModelCatalog.get_preprocessor(env)
-        self.assertEqual(type(p3), NoPreprocessor)
-
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
-            obs_space = Box(0, 1, shape=(3,), dtype=np.float32)
-            p1 = ModelCatalog.get_model_v2(
-                obs_space=obs_space,
-                action_space=Discrete(5),
-                num_outputs=5,
-                model_config={},
-                framework=fw,
-            )
-            self.assertTrue("FullyConnectedNetwork" in type(p1).__name__)
-            # Do a test forward pass.
-            obs = np.array([obs_space.sample()])
-            if fw == "torch":
-                obs = torch.from_numpy(obs)
-            out, state_outs = p1({"obs": obs})
-            self.assertTrue(out.shape == (1, 5))
-            self.assertTrue(state_outs == [])
+        # Build test cases
+        flat_input_case = {
+            "obs_space": Box(0, 1, shape=(3,), dtype=np.float32),
+            "action_space": Box(0, 1, shape=(4,)),
+            "num_outputs": 4,
+            "expected_model": "FullyConnectedNetwork",
+        }
+        img_input_case = {
+            "obs_space": Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+            "action_space": Discrete(5),
+            "num_outputs": 5,
+            "expected_model": "VisionNetwork",
+        }
+        complex_obs_space = Tuple(
+            [
+                Box(0, 1, shape=(3,), dtype=np.float32),
+                Box(0, 1, shape=(4,), dtype=np.float32),
+                Discrete(3),
+            ]
+        )
+        obs_prep = TupleFlatteningPreprocessor(complex_obs_space)
+        flat_complex_input_case = {
+            "obs_space": obs_prep.observation_space,
+            "action_space": Box(0, 1, shape=(5,)),
+            "num_outputs": 5,
+            "expected_model": "FullyConnectedNetwork",
+        }
+        nested_complex_input_case = {
+            "obs_space": Tuple(
+                [
+                    Box(0, 1, shape=(3,), dtype=np.float32),
+                    Discrete(3),
+                    Tuple(
+                        [
+                            Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                            Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                        ]
+                    ),
+                ]
+            ),
+            "action_space": Box(0, 1, shape=(7,)),
+            "num_outputs": 7,
+            "expected_model": "ComplexInputNetwork",
+        }
 
-            # No Conv2Ds for JAX yet.
-            if fw != "jax":
-                p2 = ModelCatalog.get_model_v2(
-                    obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                    action_space=Discrete(5),
-                    num_outputs=5,
-                    model_config={},
+        # Define which tests to run per framework
+        test_suite = {
+            "tf": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "tf2": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "torch": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "jax": [
+                flat_input_case,
+            ],
+        }
+
+        for fw, test_cases in test_suite.items():
+            for test in test_cases:
+                model_config = {}
+                if test["expected_model"] == "ComplexInputNetwork":
+                    model_config["fcnet_hiddens"] = [256, 256]
+                m = ModelCatalog.get_model_v2(
+                    obs_space=test["obs_space"],
+                    action_space=test["action_space"],
+                    num_outputs=test["num_outputs"],
+                    model_config=model_config,
                     framework=fw,
                 )
-                self.assertTrue("VisionNetwork" in type(p2).__name__)
+                self.assertTrue(test["expected_model"] in type(m).__name__)
+                # Do a test forward pass.
+                batch_size = 16
+                obs = get_dummy_batch_for_space(
+                    test["obs_space"],
+                    batch_size=batch_size,
+                    fill_value="random",
+                )
+                if fw == "torch":
+                    obs = convert_to_torch_tensor(obs)
+                out, state_outs = m({"obs": obs})
+                self.assertTrue(out.shape == (batch_size, test["num_outputs"]))
+                self.assertTrue(state_outs == [])
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)

@@ -1,3 +1,5 @@
+.. _core-key-concepts:
+
 Key Concepts
 ============
 
@@ -34,6 +36,6 @@ See the :ref:`User Guide for Placement Groups <ray-placement-group-doc-ref>`.
 Environment Dependencies
 ------------------------
 
-When Ray executes tasks and actors on remote machines, their environment dependencies (e.g., Python packages, local files, environment variables) must be available for the code to run. To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <ref-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
+When Ray executes tasks and actors on remote machines, their environment dependencies (e.g., Python packages, local files, environment variables) must be available for the code to run. To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <vm-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments <runtime-environments>` to install them on the fly.
 
 See the :ref:`User Guide for Environment Dependencies <handling_dependencies>`.

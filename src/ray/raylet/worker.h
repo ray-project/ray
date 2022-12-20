@@ -71,6 +71,7 @@ class WorkerInterface {
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
+  virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
   virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
@@ -106,6 +107,9 @@ class WorkerInterface {
 
   /// Return True if the worker is available for scheduling a task or actor.
   virtual bool IsAvailableForScheduling() const = 0;
+
+  /// Time when the last task was assigned to this worker.
+  virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -168,6 +172,9 @@ class Worker : public WorkerInterface {
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
+  // Creates the debug string for the ID of the task or actor depending on which is
+  // running.
+  const std::string GetTaskOrActorIdAsDebugString() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
@@ -204,7 +211,14 @@ class Worker : public WorkerInterface {
 
   RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const RayTask &assigned_task) {
+    assigned_task_ = assigned_task;
+    task_assign_time_ = std::chrono::steady_clock::now();
+  };
+
+  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const {
+    return task_assign_time_;
+  };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -283,6 +297,8 @@ class Worker : public WorkerInterface {
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
+  /// Time when the last task was assigned to this worker.
+  std::chrono::steady_clock::time_point task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

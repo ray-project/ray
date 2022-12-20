@@ -167,6 +167,13 @@ message PinObjectIDsRequest {
   Address owner_address = 1;
   // ObjectIDs to pin.
   repeated bytes object_ids = 2;
+  // For object IDs that were generated dynamically during task execution. The
+  // owner learns of these ObjectRefs at task execution time instead of at
+  // ray.put() or f.remote() time. This is the outer ObjectID that the
+  // dynamically generated ObjectRefs are stored inside. We need this information
+  // so that we can notify the owner about the nested ObjectRefs, in case the
+  // owner does not know about them yet.
+  optional bytes generator_id = 3;
 }
 
 message PinObjectIDsReply {
@@ -216,10 +223,7 @@ message ObjectStoreStats {
 
 message GetNodeStatsReply {
   repeated CoreWorkerStats core_workers_stats = 1;
-  repeated ViewData view_data = 2;
   uint32 num_workers = 3;
-  repeated TaskSpec infeasible_tasks = 4;
-  repeated TaskSpec ready_tasks = 5;
   ObjectStoreStats store_stats = 6;
 }
 
@@ -293,15 +297,11 @@ message UpdateResourceUsageRequest {
 message UpdateResourceUsageReply {
 }
 
-message GetGcsServerAddressRequest {
+message GetTasksInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
 }
-
-message GetGcsServerAddressReply {
-  string ip = 1;
-  int32 port = 2;
-}
-
-message GetTasksInfoRequest {}
 
 message GetTasksInfoReply {
   repeated TaskInfoEntry owned_task_info_entries = 1;
@@ -309,12 +309,24 @@ message GetTasksInfoReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+  // NOTE: we don't truncate running_task_ids because it is usually small.
+  // However, there are edge cases it can be very large (e.g., when the
+  // async actor tasks are used, it can have up to 1000 running tasks per
+  // actor). We should handle this better.
 }
 
-message GetObjectsInfoRequest {}
+message GetObjectsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
 
 message GetObjectsInfoReply {
   repeated CoreWorkerStats core_workers_stats = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
 }
 
 message GetResourceLoadRequest {}
@@ -326,6 +338,14 @@ message GetResourceLoadReply {
 message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
+
+message GetTaskFailureCauseRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskFailureCauseReply {
+  optional RayErrorInfo failure_cause = 1;
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
@@ -386,10 +406,11 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
-  // Get gcs server address.
-  rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
   // [State API] Get the all task information of the node.
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
+  // Gets the task execution result. May contain a result if
+  // the task completed in error.
+  rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
 }

@@ -8,11 +8,12 @@ python:
     - pytest
     - xgboost_ray
     - petastorm
+    - modin==0.12.1
   conda_packages: []
 
 post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip install -U xgboost xgboost_ray petastorm  # Install latest releases
+  - pip3 install -U --force-reinstall --no-deps xgboost xgboost_ray petastorm  # Avoid caching
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true

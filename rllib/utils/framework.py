@@ -239,7 +239,7 @@ def get_variable(
         A framework-specific variable (tf.Variable, torch.tensor, or
         python primitive).
     """
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         import tensorflow as tf
 
         dtype = dtype or getattr(
@@ -279,55 +279,7 @@ def get_variable(
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
     new="rllib/models/utils.py::get_activation_fn",
-    error=False,
+    error=True,
 )
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
-    """Returns a framework specific activation function, given a name string.
-
-    Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
-            "linear" or None.
-        framework (str): One of "tf" or "torch".
-
-    Returns:
-        A framework-specific activtion function. e.g. tf.nn.tanh or
-            torch.nn.ReLU. None if name in ["linear", None].
-
-    Raises:
-        ValueError: If name is an unknown activation function.
-    """
-    if framework == "torch":
-        if name in ["linear", None]:
-            return None
-        if name in ["swish", "silu"]:
-            from ray.rllib.utils.torch_utils import Swish
-
-            return Swish
-        _, nn = try_import_torch()
-        if name == "relu":
-            return nn.ReLU
-        elif name == "tanh":
-            return nn.Tanh
-    elif framework == "jax":
-        if name in ["linear", None]:
-            return None
-        jax, flax = try_import_jax()
-        if name == "swish":
-            return jax.nn.swish
-        if name == "relu":
-            return jax.nn.relu
-        elif name == "tanh":
-            return jax.nn.hard_tanh
-    else:
-        if name in ["linear", None]:
-            return None
-        if name == "swish":
-            name = "silu"
-        tf1, tf, tfv = try_import_tf()
-        fn = getattr(tf.nn, name, None)
-        if fn is not None:
-            return fn
-
-    raise ValueError(
-        "Unknown activation ({}) for framework={}!".format(name, framework)
-    )
+    pass

@@ -1,9 +1,10 @@
-from collections import defaultdict
 import multiprocessing
-import numpy as np
-import pytest
 import time
 import warnings
+from collections import defaultdict
+
+import numpy as np
+import pytest
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -12,7 +13,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if (
     multiprocessing.cpu_count() < 40
-    or ray._private.utils.get_system_memory() < 50 * 10 ** 9
+    or ray._private.utils.get_system_memory() < 50 * 10**9
 ):
     warnings.warn("This test must be run on large machines.")
 
@@ -20,7 +21,7 @@ if (
 def create_cluster(num_nodes):
     cluster = Cluster()
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 100}, object_store_memory=10 ** 9)
+        cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
 
     ray.init(address=cluster.address)
     return cluster
@@ -106,7 +107,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.state.object_transfer_timeline()
+    transfer_events = ray._private.state.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
@@ -189,7 +190,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
     # TODO(Sang): Re-enable it after event is introduced.
-    # transfer_events = ray.state.object_transfer_timeline()
+    # transfer_events = ray._private.state.object_transfer_timeline()
 
     # # Make sure that each object was transferred a reasonable number of times. # noqa
     # for x_id in object_refs:
@@ -282,18 +283,18 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 #     successfuly pull the remote object.
 def test_pull_request_retry(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2 ** 20)
-    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2 ** 20)
+    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     @ray.remote
     def put():
-        return np.zeros(64 * 2 ** 20, dtype=np.int8)
+        return np.zeros(64 * 2**20, dtype=np.int8)
 
     @ray.remote(num_cpus=0, num_gpus=1)
     def driver():
-        local_ref = ray.put(np.zeros(64 * 2 ** 20, dtype=np.int8))
+        local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
 
         remote_ref = put.remote()
 
@@ -621,13 +622,24 @@ def test_pull_bundle_deadlock(ray_start_cluster):
     assert ray.get(object_c) == "c"
 
 
-def test_object_directory_failure(ray_start_cluster):
+@pytest.mark.parametrize("pull_based", [True, False])
+def test_object_directory_failure(pull_based, ray_start_cluster):
     cluster = ray_start_cluster
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 500,
-        "object_timeout_milliseconds": 200,
-    }
+    if pull_based:
+        config = {
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 500,
+            "health_check_failure_threshold": 10,
+            "object_timeout_milliseconds": 200,
+            "pull_based_healthcheck": True,
+        }
+    else:
+        config = {
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 500,
+            "object_timeout_milliseconds": 200,
+            "pull_based_healthcheck": False,
+        }
     # Add a head node.
     cluster.add_node(_system_config=config)
     ray.init(address=cluster.address)
@@ -640,7 +652,7 @@ def test_object_directory_failure(ray_start_cluster):
     # Add a node to be removed
     index_killing_node = num_nodes
     node_to_kill = cluster.add_node(
-        resources={str(index_killing_node): 100}, object_store_memory=10 ** 9
+        resources={str(index_killing_node): 100}, object_store_memory=10**9
     )
 
     @ray.remote
@@ -663,12 +675,12 @@ def test_object_directory_failure(ray_start_cluster):
     def task(x):
         pass
 
+    cluster.remove_node(node_to_kill, allow_graceful=False)
     tasks = []
     repeat = 3
     for i in range(num_nodes):
         for _ in range(repeat):
             tasks.append(task.options(resources={str(i): 1}).remote(obj))
-    cluster.remove_node(node_to_kill, allow_graceful=False)
 
     for t in tasks:
         with pytest.raises(ray.exceptions.RayTaskError):
@@ -727,7 +739,10 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+    import os
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

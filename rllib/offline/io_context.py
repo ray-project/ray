@@ -2,9 +2,9 @@ import os
 from typing import Optional, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import TrainerConfigDict
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.evaluation.sampler import SamplerInput
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -21,7 +21,7 @@ class IOContext:
     def __init__(
         self,
         log_dir: Optional[str] = None,
-        config: Optional[TrainerConfigDict] = None,
+        config: Optional["AlgorithmConfig"] = None,
         worker_index: int = 0,
         worker: Optional["RolloutWorker"] = None,
     ):
@@ -29,14 +29,22 @@ class IOContext:
 
         Args:
             log_dir: The logging directory to read from/write to.
-            config: The Trainer's main config dict.
-            worker_index (int): When there are multiple workers created, this
+            config: The (main) AlgorithmConfig object.
+            worker_index: When there are multiple workers created, this
                 uniquely identifies the current worker. 0 for the local
                 worker, >0 for any of the remote workers.
             worker: The RolloutWorker object reference.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         self.log_dir = log_dir or os.getcwd()
-        self.config = config or {}
+        # In case no config is provided, use the default one, but set
+        # `actions_in_input_normalized=True` if we don't have a worker.
+        # Not having a worker and/or a config should only be the case in some test
+        # cases, though.
+        self.config = config or AlgorithmConfig().offline_data(
+            actions_in_input_normalized=worker is None
+        ).training(train_batch_size=1)
         self.worker_index = worker_index
         self.worker = worker
 

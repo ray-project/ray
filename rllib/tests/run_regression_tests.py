@@ -25,21 +25,24 @@ import yaml
 import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
+from ray.rllib.common import SupportedFileType
+from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.deprecation import deprecation_warning
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["jax", "tf2", "tf", "tfe", "torch"],
+    choices=["jax", "tf2", "tf", "torch"],
     default="tf",
     help="The deep learning framework to use.",
 )
 parser.add_argument(
-    "--yaml-dir",
+    "--dir",
     type=str,
     required=True,
-    help="The directory in which to find all yamls to test.",
+    help="The directory or file in which to find all tests.",
 )
-parser.add_argument("--num-cpus", type=int, default=6)
+parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -55,43 +58,54 @@ parser.add_argument(
         "is particularly useful for timed tests."
     ),
 )
-# Obsoleted arg, use --framework=torch instead.
-parser.add_argument(
-    "--torch", action="store_true", help="Runs all tests with PyTorch enabled."
-)
+
+# Obsoleted arg, use --dir instead.
+parser.add_argument("--yaml-dir", type=str, default="")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    if args.yaml_dir != "":
+        deprecation_warning(old="--yaml-dir", new="--dir", error=False)
+        args.dir = args.yaml_dir
+
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
     rllib_dir = Path(__file__).parent.parent
-    print("rllib dir={}".format(rllib_dir))
+    print(f"rllib dir={rllib_dir}")
 
-    abs_yaml_path = os.path.join(rllib_dir, args.yaml_dir)
+    abs_path = os.path.join(rllib_dir, args.dir)
     # Single file given.
-    if os.path.isfile(abs_yaml_path):
-        yaml_files = [abs_yaml_path]
-    # Given path/file does not exist.
-    elif not os.path.isdir(abs_yaml_path):
-        raise ValueError("yaml-dir ({}) not found!".format(args.yaml_dir))
+    if os.path.isfile(abs_path):
+        files = [abs_path]
     # Path given -> Get all yaml files in there via rglob.
+    elif os.path.isdir(abs_path):
+        files = []
+        for type_ in ["yaml", "yml", "py"]:
+            files += list(rllib_dir.rglob(args.dir + f"/*.{type_}"))
+        files = sorted(map(lambda path: str(path.absolute()), files), reverse=True)
+    # Given path/file does not exist.
     else:
-        yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
-        yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files), reverse=True
-        )
+        raise ValueError(f"--dir ({args.dir}) not found!")
 
     print("Will run the following regression tests:")
-    for yaml_file in yaml_files:
-        print("->", yaml_file)
+    for file in files:
+        print("->", file)
 
     # Loop through all collected files.
-    for yaml_file in yaml_files:
-        experiments = yaml.safe_load(open(yaml_file).read())
+    for file in files:
+        # For python files, need to make sure, we only deliver the module name into the
+        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        if file.endswith(".py"):
+            if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
+                continue
+            experiments = load_experiments_from_file(file, SupportedFileType.python)
+        else:
+            experiments = load_experiments_from_file(file, SupportedFileType.yaml)
+
         assert (
             len(experiments) == 1
-        ), "Error, can only run a single experiment per yaml file!"
+        ), "Error, can only run a single experiment per file!"
 
         exp = list(experiments.values())[0]
         exp["config"]["framework"] = args.framework
@@ -108,7 +122,13 @@ if __name__ == "__main__":
             continue
 
         # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        if args.framework in ["tf2", "tfe"] and not args.local_mode:
+        # Ignore this if the yaml explicitly tells us to disable eager tracing
+        if (
+            args.framework == "tf2"
+            and not args.local_mode
+            and not exp["config"].get("eager_tracing") is False
+        ):
+
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.

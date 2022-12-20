@@ -1,36 +1,33 @@
 import dis
 import hashlib
-import os
 import importlib
 import inspect
 import json
 import logging
+import os
 import sys
-import time
-from typing import Optional
 import threading
+import time
 import traceback
-from collections import (
-    namedtuple,
-    defaultdict,
-)
+from collections import defaultdict, namedtuple
+from typing import Optional
 
 import ray
 import ray._private.profiling as profiling
-from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray._raylet import PythonFunctionDescriptor, JobID
+from ray._private import ray_constants
+from ray._private.inspect_util import (
+    is_class_method,
+    is_function_or_method,
+    is_static_method,
+)
+from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
     format_error_message,
 )
-from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray.util.inspect import (
-    is_function_or_method,
-    is_class_method,
-    is_static_method,
-)
+from ray._raylet import JobID, PythonFunctionDescriptor
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -371,7 +368,7 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, job_id: str, timeout=10):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
@@ -381,7 +378,7 @@ class FunctionActorManager:
         Args:
             function_descriptor : The FunctionDescriptor of the function that
                 we want to execute.
-            job_id (str): The ID of the job to push the error message to
+            job_id: The ID of the job to push the error message to
                 if this times out.
         """
         start_time = time.time()
@@ -646,16 +643,18 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(self, method_name, method, actor_imported):
+    def _make_actor_method_executor(
+        self, method_name: str, method, actor_imported: bool
+    ):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
         Args:
-            method_name (str): The name of the actor method.
-            method (instancemethod): The actor method to wrap. This should be a
+            method_name: The name of the actor method.
+            method: The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
                 instance of the actor as the first argument.
-            actor_imported (bool): Whether the actor has been imported.
+            actor_imported: Whether the actor has been imported.
                 Checkpointing operations will not be run if this is set to
                 False.
         Returns:

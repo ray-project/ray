@@ -106,16 +106,20 @@ jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_lifetime;
 jfieldID java_actor_creation_options_max_restarts;
+jfieldID java_actor_creation_options_max_task_retries;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
 jfieldID java_actor_creation_options_serialized_runtime_env;
+jfieldID java_actor_creation_options_namespace;
 jfieldID java_actor_creation_options_max_pending_calls;
+jfieldID java_actor_creation_options_is_async;
 
 jclass java_actor_lifetime_class;
-jobject STATUS_DETACHED;
+int DETACHED_LIFETIME_ORDINAL_VALUE;
+jmethodID java_actor_lifetime_ordinal;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -145,7 +149,6 @@ jfieldID java_concurrency_group_impl_name;
 jfieldID java_concurrency_group_impl_max_concurrency;
 
 jclass java_native_task_executor_class;
-jmethodID java_native_task_executor_on_worker_shutdown;
 
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
@@ -348,6 +351,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       "Lio/ray/api/options/ActorLifetime;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
+  java_actor_creation_options_max_task_retries =
+      env->GetFieldID(java_actor_creation_options_class, "maxTaskRetries", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/util/List;");
   java_actor_creation_options_max_concurrency =
@@ -362,14 +367,22 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
   java_actor_creation_options_serialized_runtime_env = env->GetFieldID(
       java_actor_creation_options_class, "serializedRuntimeEnv", "Ljava/lang/String;");
+  java_actor_creation_options_namespace = env->GetFieldID(
+      java_actor_creation_options_class, "namespace", "Ljava/lang/String;");
   java_actor_creation_options_max_pending_calls =
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
+  java_actor_creation_options_is_async =
+      env->GetFieldID(java_actor_creation_options_class, "isAsync", "Z");
 
   java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
+  java_actor_lifetime_ordinal =
+      env->GetMethodID(java_actor_lifetime_class, "ordinal", "()I");
   jfieldID java_actor_lifetime_detached_field = env->GetStaticFieldID(
       java_actor_lifetime_class, "DETACHED", "Lio/ray/api/options/ActorLifetime;");
-  STATUS_DETACHED = env->GetStaticObjectField(java_actor_lifetime_class,
-                                              java_actor_lifetime_detached_field);
+  jobject status_detached = env->GetStaticObjectField(java_actor_lifetime_class,
+                                                      java_actor_lifetime_detached_field);
+  DETACHED_LIFETIME_ORDINAL_VALUE =
+      env->CallIntMethod(status_detached, java_actor_lifetime_ordinal);
 
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
@@ -407,8 +420,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
   java_native_task_executor_class =
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
-  java_native_task_executor_on_worker_shutdown =
-      env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
 
   java_object_ref_impl_class = LoadClass(env, "io/ray/runtime/object/ObjectRefImpl");
   java_object_ref_impl_class_on_memory_store_object_allocated = env->GetStaticMethodID(

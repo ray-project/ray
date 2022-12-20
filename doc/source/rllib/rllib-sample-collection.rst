@@ -29,7 +29,7 @@ This is done using a dict that maps strings (column names) to `ViewRequirement` 
 
 
 The exact behavior for a single such rollout and the number of environment transitions therein
-are determined by the following Trainer config keys:
+are determined by the following ``AlgorithmConfig.rollout(..)`` args:
 
 **batch_mode [truncate_episodes|complete_episodes]**:
     *truncated_episodes (default value)*:
@@ -64,8 +64,14 @@ of each episode (arrow heads). This way, RLlib makes sure that the
 `Policy.postprocess_trajectory()` method never sees data from more than one episode.
 
 
-**multiagent.count_steps_by [env_steps|agent_steps]**:
-    Within the Trainer's ``multiagent`` config dict, you can set the unit, by which RLlib will count a) rollout fragment lengths as well as b) the size of the final train_batch (see below). The two supported values are:
+**no_done_at_end [bool]**:
+  Never set ``done=True``, at the end of an episode (or when any artificial time-limit horizon is reached, e.g. when using the ``gym.wrappers.TimeLimit`` wrapper).
+
+
+... as well as ``AlgorithmConfig.multi_agent(count_steps_by=..)``:
+
+**count_steps_by [env_steps|agent_steps]**:
+    Within the Algorithm's ``multiagent`` config dict, you can set the unit, by which RLlib will count a) rollout fragment lengths as well as b) the size of the final train_batch (see below). The two supported values are:
 
     *env_steps (default)*:
      Each call to ``[Env].step()`` is counted as one. It does not
@@ -77,26 +83,7 @@ of each episode (arrow heads). This way, RLlib makes sure that the
      always step at the same time, a single env step corresponds to N agent steps.
      Note that in the single-agent case, ``env_steps`` and ``agent_steps`` are the same thing.
 
-**horizon [int]**:
-  Some environments are limited by default in the number of maximum timesteps
-  an episode can last. This limit is called the "horizon" of an episode.
-  For example, for CartPole-v0, the maximum number of steps per episode is 200 by default.
-  You can overwrite this setting, however, by using the ``horizon`` config.
-  If provided, RLlib will first try to increase the environment's built-in horizon
-  setting (e.g. openAI gym Envs have a ``spec.max_episode_steps`` property), if the user
-  provided horizon is larger than this env-specific setting. In either case, no episode
-  is allowed to exceed the given ``horizon`` number of timesteps (RLlib will
-  artificially terminate an episode if this limit is hit).
 
-**soft_horizon [bool]**:
-  False by default. If set to True, the environment will
-  a) not be reset when reaching ``horizon`` and b) no ``done=True`` will be set
-  in the trajectory data sent to the postprocessors and training (``done`` will remain
-  False at the horizon).
-
-**no_done_at_end [bool]**:
-  Never set ``done=True``, at the end of an episode or when any
-  artificial horizon is reached.
 
 To trigger a single rollout, RLlib calls ``RolloutWorker.sample()``, which returns
 a SampleBatch or MultiAgentBatch object representing all the data collected during that
@@ -109,7 +96,7 @@ RLlib's default ``SampleCollector`` class is the ``SimpleListCollector``, which 
 to lists, then builds SampleBatches from these and sends them to the downstream processing functions.
 It thereby tries to avoid collecting duplicate data separately (OBS and NEXT_OBS use the same underlying list).
 If you want to implement your own collection logic and data structures, you can sub-class ``SampleCollector``
-and specify that new class under the Trainer's "sample_collector" config key.
+and specify that new class under the Algorithm's "sample_collector" config key.
 
 Let's now look at how the Policy's Model lets the RolloutWorker and its SampleCollector
 know, what data in the ongoing episode/trajectory to use for the different required method calls
@@ -311,7 +298,7 @@ make these modifications to your batches in your postprocessing function:
         # Modify view_requirements in the Policy object.
         action_space = Discrete(2)
         rollout_worker = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             policy_config=ppo.DEFAULT_CONFIG,
             policy_spec=ppo.PPOTorchPolicy,
         )

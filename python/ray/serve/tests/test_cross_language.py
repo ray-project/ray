@@ -1,12 +1,14 @@
+import pytest
+
 import ray
 from ray.job_config import JobConfig
 from ray import serve
 from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve.utils import msgpack_serialize
-from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
+from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
 from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
 
 
+@pytest.mark.skip(reason="TIMEOUT, see https://github.com/ray-project/ray/issues/26513")
 def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     ray.init(
         num_cpus=8,
@@ -22,7 +24,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     config.deployment_language = JAVA
     config.is_cross_language = True
 
-    replica_config = ReplicaConfig(
+    replica_config = ReplicaConfig.create(
         "io.ray.serve.util.ExampleEchoDeployment",
         init_args=["my_prefix "],
     )
@@ -50,9 +52,13 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
             endpoint="endpoint",
             call_method="call",
         ).SerializeToString(),
-        RequestWrapper(body=msgpack_serialize("hello")).SerializeToString(),
+        ["hello"],
     )
     assert ray.get(out) == "my_prefix hello"
+
+    handle = serve.get_deployment("my_java").get_handle()
+    handle_out = handle.remote("hello handle")
+    assert ray.get(handle_out) == "my_prefix hello handle"
 
     ray.get(controller.delete_deployment.remote(deployment_name))
     client._wait_for_deployment_deleted(deployment_name)

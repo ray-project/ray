@@ -34,18 +34,21 @@ using ContextCase = rpc::ActorDeathCause::ContextCase;
 /// \param timestamp The UNIX timestamp of corresponding to this event.
 /// \param driver_ip_address IP address of the driver that started this job.
 /// \param driver_pid Process ID of the driver running this job.
+/// \param entrypoint The entrypoint name of the
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id,
     bool is_dead,
     const std::string &driver_ip_address,
     int64_t driver_pid,
+    const std::string &entrypoint,
     const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
+  job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;
   return job_info_ptr;
 }
@@ -198,10 +201,19 @@ inline std::string GenErrorMessageFromDeathCause(
     return death_cause.runtime_env_failed_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     return death_cause.actor_unschedulable_context().error_message();
-  } else {
-    RAY_CHECK(death_cause.context_case() == ContextCase::kActorDiedErrorContext);
+  } else if (death_cause.context_case() == ContextCase::kActorDiedErrorContext) {
     return death_cause.actor_died_error_context().error_message();
+  } else {
+    RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
+    return "Death cause not recorded.";
   }
+}
+
+inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
+  std::stringstream ss;
+  ss << "Error type " << error_info.error_type() << " exception string "
+     << error_info.error_message();
+  return ss.str();
 }
 
 }  // namespace gcs

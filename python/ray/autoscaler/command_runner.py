@@ -1,6 +1,9 @@
-from typing import Any, List, Tuple, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class CommandRunnerInterface:
     """Interface to run commands on a remote cluster node.
 
@@ -14,12 +17,12 @@ class CommandRunnerInterface:
 
     def run(
         self,
-        cmd: str = None,
+        cmd: Optional[str] = None,
         timeout: int = 120,
         exit_on_fail: bool = False,
         port_forward: List[Tuple[int, int]] = None,
         with_output: bool = False,
-        environment_variables: Dict[str, object] = None,
+        environment_variables: Optional[Dict[str, object]] = None,
         run_env: str = "auto",
         ssh_options_override_ssh_key: str = "",
         shutdown_after_run: bool = False,
@@ -30,19 +33,19 @@ class CommandRunnerInterface:
             dumpable to send them over HTTP requests.
 
         Args:
-            cmd (str): The command to run.
-            timeout (int): The command timeout in seconds.
-            exit_on_fail (bool): Whether to sys exit on failure.
-            port_forward (list): List of (local, remote) ports to forward, or
+            cmd: The command to run.
+            timeout: The command timeout in seconds.
+            exit_on_fail: Whether to sys exit on failure.
+            port_forward: List of (local, remote) ports to forward, or
                 a single tuple.
-            with_output (bool): Whether to return output.
+            with_output: Whether to return output.
             environment_variables (Dict[str, str | int | Dict[str, str]):
                 Environment variables that `cmd` should be run with.
-            run_env (str): Options: docker/host/auto. Used in
+            run_env: Options: docker/host/auto. Used in
                 DockerCommandRunner to determine the run environment.
-            ssh_options_override_ssh_key (str): if provided, overwrites
+            ssh_options_override_ssh_key: if provided, overwrites
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
-            shutdown_after_run (bool): if provided, shutdowns down the machine
+            shutdown_after_run: if provided, shutdowns down the machine
             after executing the command with `sudo shutdown -h now`.
         """
         raise NotImplementedError
@@ -53,8 +56,8 @@ class CommandRunnerInterface:
         """Rsync files up to the cluster node.
 
         Args:
-            source (str): The (local) source directory or file.
-            target (str): The (remote) destination path.
+            source: The (local) source directory or file.
+            target: The (remote) destination path.
         """
         raise NotImplementedError
 
@@ -64,8 +67,8 @@ class CommandRunnerInterface:
         """Rsync files down from the cluster node.
 
         Args:
-            source (str): The (remote) source directory or file.
-            target (str): The (local) destination path.
+            source: The (remote) source directory or file.
+            target: The (local) destination path.
         """
         raise NotImplementedError
 
@@ -79,11 +82,11 @@ class CommandRunnerInterface:
         """Used to run extra initialization commands.
 
         Args:
-            as_head (bool): Run as head image or worker.
-            file_mounts (dict): Files to copy to the head and worker nodes.
-            sync_run_yet (bool): Whether sync has been run yet.
+            as_head: Run as head image or worker.
+            file_mounts: Files to copy to the head and worker nodes.
+            sync_run_yet: Whether sync has been run yet.
 
         Returns:
-            optional (bool): Whether initialization is necessary.
+            optional: Whether initialization is necessary.
         """
         pass

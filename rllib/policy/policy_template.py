@@ -24,7 +24,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, AlgorithmConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode  # noqa
@@ -45,7 +45,7 @@ def build_policy_class(
             Union[TensorType, List[TensorType]],
         ]
     ],
-    get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
+    get_default_config: Optional[Callable[[], AlgorithmConfigDict]] = None,
     stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
     postprocess_fn: Optional[
         Callable[
@@ -76,22 +76,26 @@ def build_policy_class(
     # TODO: (sven) Replace "fetches" with "process".
     extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
     optimizer_fn: Optional[
-        Callable[[Policy, TrainerConfigDict], "torch.optim.Optimizer"]
+        Callable[[Policy, AlgorithmConfigDict], "torch.optim.Optimizer"]
     ] = None,
     validate_spaces: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     after_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     _after_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     action_sampler_fn: Optional[
         Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
@@ -104,12 +108,12 @@ def build_policy_class(
     ] = None,
     make_model: Optional[
         Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], ModelV2
         ]
     ] = None,
     make_model_and_action_dist: Optional[
         Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
             Tuple[ModelV2, Type[TorchDistributionWrapper]],
         ]
     ] = None,
@@ -127,15 +131,15 @@ def build_policy_class(
     Supports frameworks JAX and PyTorch.
 
     Args:
-        name (str): name of the policy (e.g., "PPOTorchPolicy")
-        framework (str): Either "jax" or "torch".
+        name: name of the policy (e.g., "PPOTorchPolicy")
+        framework: Either "jax" or "torch".
         loss_fn (Optional[Callable[[Policy, ModelV2,
             Type[TorchDistributionWrapper], SampleBatch], Union[TensorType,
             List[TensorType]]]]): Callable that returns a loss tensor.
-        get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
+        get_default_config (Optional[Callable[[None], AlgorithmConfigDict]]):
             Optional callable that returns the default config to merge with any
             overrides. If None, uses only(!) the user-provided
-            PartialTrainerConfigDict as dict for this Policy.
+            PartialAlgorithmConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
             Optional[Dict[Any, SampleBatch]], Optional["Episode"]],
             SampleBatch]]): Optional callable for post-processing experience
@@ -161,27 +165,27 @@ def build_policy_class(
             extra tensors from the policy after loss evaluation. If None,
             will call the `TorchPolicy.extra_compute_grad_fetches()` method
             instead.
-        optimizer_fn (Optional[Callable[[Policy, TrainerConfigDict],
+        optimizer_fn (Optional[Callable[[Policy, AlgorithmConfigDict],
             "torch.optim.Optimizer"]]): Optional callable that returns a
             torch optimizer given the policy and config. If None, will call
             the `TorchPolicy.optimizer()` method instead (which returns a
             torch Adam optimizer).
         validate_spaces (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable that takes the
+            AlgorithmConfigDict], None]]): Optional callable that takes the
             Policy, observation_space, action_space, and config to check for
             correctness. If None, no spaces checking will be done.
         before_init (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable to run at the
+            AlgorithmConfigDict], None]]): Optional callable to run at the
             beginning of `Policy.__init__` that takes the same arguments as
             the Policy constructor. If None, this step will be skipped.
         before_loss_init (Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
+            gym.spaces.Space, AlgorithmConfigDict], None]]): Optional callable to
             run prior to loss init. If None, this step will be skipped.
         after_init (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): DEPRECATED: Use `before_loss_init`
+            AlgorithmConfigDict], None]]): DEPRECATED: Use `before_loss_init`
             instead.
         _after_loss_init (Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
+            gym.spaces.Space, AlgorithmConfigDict], None]]): Optional callable to
             run after the loss init. If None, this step will be skipped.
             This will be deprecated at some point and renamed into `after_init`
             to match `build_tf_policy()` behavior.
@@ -202,14 +206,14 @@ def build_policy_class(
             `action_sampler_fn` or compute actions by calling self.model,
             then sampling from the parameterized action distribution.
         make_model (Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional callable
+            gym.spaces.Space, AlgorithmConfigDict], ModelV2]]): Optional callable
             that takes the same arguments as Policy.__init__ and returns a
             model instance. The distribution class will be determined
             automatically. Note: Only one of `make_model` or
             `make_model_and_action_dist` should be provided. If both are None,
             a default Model will be created.
         make_model_and_action_dist (Optional[Callable[[Policy,
-            gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
+            gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
             Tuple[ModelV2, Type[TorchDistributionWrapper]]]]): Optional
             callable that takes the same arguments as Policy.__init__ and
             returns a tuple of model instance and torch action distribution

@@ -29,4 +29,4 @@ if __name__ == "__main__":
     order_data = extract.bind()
     order_summary = transform.bind(order_data)
     etl = load.bind(order_summary)
-    print(workflow.create(etl).run())
+    print(workflow.run(etl))

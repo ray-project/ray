@@ -80,8 +80,9 @@ class ConvNet(nn.Module):
 # __pytorch_optuna_start__
 # 1. Wrap your PyTorch model in an objective function.
 import torch
-from ray import tune
-from ray.tune.suggest.optuna import OptunaSearch
+from ray import tune, air
+from ray.air import session
+from ray.tune.search.optuna import OptunaSearch
 
 
 # 1. Wrap a PyTorch model in an objective function.
@@ -95,7 +96,7 @@ def objective(config):
     while True:
         train(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
-        tune.report(mean_accuracy=acc)  # Report to Tune
+        session.report({"mean_accuracy": acc})  # Report to Tune
 
 
 # 2. Define a search space and initialize the search algorithm.
@@ -103,13 +104,18 @@ search_space = {"lr": tune.loguniform(1e-4, 1e-2), "momentum": tune.uniform(0.1,
 algo = OptunaSearch()
 
 # 3. Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
-analysis = tune.run(
+tuner = tune.Tuner(
     objective,
-    metric="mean_accuracy",
-    mode="max",
-    search_alg=algo,
-    stop={"training_iteration": 5},
-    config=search_space,
+    tune_config=tune.TuneConfig(
+        metric="mean_accuracy",
+        mode="max",
+        search_alg=algo,
+    ),
+    run_config=air.RunConfig(
+        stop={"training_iteration": 5},
+    ),
+    param_space=search_space,
 )
-print("Best config is:", analysis.best_config)
+results = tuner.fit()
+print("Best config is:", results.get_best_result().config)
 # __pytorch_optuna_end__

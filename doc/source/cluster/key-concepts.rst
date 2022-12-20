@@ -1,107 +1,85 @@
-.. include:: we_are_hiring.rst
-
-.. _cluster-key-concepts:
-
 Key Concepts
 ============
 
-Cluster
--------
+.. _cluster-key-concepts:
 
-A Ray cluster is a set of one or more nodes that are running Ray and share the
-same :ref:`head node<cluster-node-types>`.
+This page introduces key concepts for Ray clusters:
 
-.. _cluster-node-types:
+.. contents::
+    :local:
 
-Node types
-----------
+Ray Cluster
+-----------
+A Ray cluster consists of a single :ref:`head node <cluster-head-node>`
+and any number of connected :ref:`worker nodes <cluster-worker-nodes>`:
 
-A Ray cluster consists of a :ref:`head node<cluster-head-node>` and a set of
-:ref:`worker nodes<cluster-worker-node>`.
-
-.. image:: ray-cluster.jpg
+.. figure:: images/ray-cluster.svg
     :align: center
     :width: 600px
+    
+    *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
+    facilitate distributed scheduling and memory management. The head node runs
+    additional control processes (highlighted in blue).*
+
+The number of worker nodes may be *autoscaled* with application demand as specified
+by your Ray cluster configuration. The head node runs the :ref:`autoscaler <cluster-autoscaler>`.
+
+.. note::
+    Ray nodes are implemented as pods when :ref:`running on Kubernetes <kuberay-index>`.
+
+Users can submit jobs for execution on the Ray cluster, or can interactively use the
+cluster by connecting to the head node and running `ray.init`. See
+:ref:`Ray Jobs <jobs-quickstart>` for more information.
 
 .. _cluster-head-node:
 
-Head node
-~~~~~~~~~
+Head Node
+---------
+Every Ray cluster has one node which is designated as the *head node* of the cluster.
+The head node is identical to other worker nodes, except that it also runs singleton processes responsible for cluster management such as the
+:ref:`autoscaler <cluster-autoscaler>` and the Ray driver processes
+:ref:`which run Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
+tasks and actors on the head node just like any other worker node, which is not desired in large-scale clusters.
+See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-scale clusters.
 
-The head node is the first node started by the
-:ref:`Ray cluster launcher<cluster-launcher>` when trying to launch a Ray
-cluster. Among other things, the head node holds the :ref:`Global Control Store
-(GCS)<memory>` and runs the :ref:`autoscaler<cluster-autoscaler>`. Once the head
-node is started, it will be responsible for launching any additional
-:ref:`worker nodes<cluster-worker-node>`. The head node itself will also execute
-tasks and actors to utilize its capacity.
+.. _cluster-worker-nodes:
 
-.. _cluster-worker-node:
-
-Worker node
-~~~~~~~~~~~
-
-A worker node is any node in the Ray cluster that is not functioning as head node.
-Therefore, worker nodes are simply responsible for executing tasks and actors.
-When a worker node is launched, it will be given the address of the head node to
-form a cluster.
-
-.. _cluster-launcher:
-
-Cluster launcher
-----------------
-
-The cluster launcher is a process responsible for bootstrapping the Ray cluster
-by launching the :ref:`head node<cluster-head-node>`. For more information on how
-to use the cluster launcher, refer to
-:ref:`cluster launcher CLI commands documentation<cluster-commands>` and the
-corresponding :ref:`documentation for the configuration file<cluster-config>`.
+Worker Node
+------------
+*Worker nodes* do not run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <memory>`.
 
 .. _cluster-autoscaler:
 
-Autoscaler
-----------
+Autoscaling
+-----------
 
-The autoscaler is a process that runs on the :ref:`head node<cluster-head-node>`
-and is responsible for adding or removing :ref:`worker nodes<cluster-worker-node>`
-to meet the needs of the Ray workload while matching the specification in the
-:ref:`cluster config file<cluster-config>`. In particular, if the resource
-demands of the Ray workload exceed the current capacity of the cluster, the
-autoscaler will try to add nodes. Conversely, if a node is idle for long enough,
-the autoscaler will remove it from the cluster. To learn more about autoscaling,
-refer to the :ref:`Ray cluster deployment guide<deployment-guide-autoscaler>`.
+The *Ray autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
+When the resource demands of the Ray workload exceed the
+current capacity of the cluster, the autoscaler will try to increase the number of worker nodes. When worker nodes
+sit idle, the autoscaler will remove worker nodes from the cluster.
 
-Ray Client
-----------
-The Ray Client is an API that connects a Python script to a remote Ray cluster.
-To learn more about the Ray Client, you can refer to the :ref:`documentation<ray-client>`.
+It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
+To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
-Job submission
---------------
 
-Ray Job submission is a mechanism to submit locally developed and tested applications
-to a remote Ray cluster. It simplifies the experience of packaging, deploying,
-and managing a Ray application. To learn more about Ray jobs, refer to the
-:ref:`documentation<ray-job-submission-api-ref>`.
+.. _cluster-clients-and-jobs:
 
-Cloud clusters
---------------
+Ray Jobs
+--------
 
-If you’re using AWS, Azure, GCP or Aliyun, you can use the
-:ref:`Ray cluster launcher<cluster-launcher>` to launch cloud clusters, which
-greatly simplifies the cluster setup process.
+A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
+The worker that runs the Python script is known as the *driver* of the job. 
 
-Cluster managers
-----------------
+There are three ways to run a Ray job on a Ray cluster:
 
-You can simplify the process of managing Ray clusters using a number of popular
-cluster managers including :ref:`Kubernetes<ray-k8s-deploy>`,
-:ref:`YARN<ray-yarn-deploy>`, :ref:`Slurm<ray-slurm-deploy>` and :ref:`LSF<ray-LSF-deploy>`.
+1. (Recommended) Submit the job using the :ref:`Ray Jobs API <jobs-overview>`.
+2. Run the driver script directly on any node of the Ray cluster, for interactive development.
+3. Use :ref:`Ray Client <ray-client-ref>` to connect remotely to the cluster within a driver script.
 
-Kubernetes (K8s) operator
--------------------------
+For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
 
-Deployments of Ray on Kubernetes are managed by the Ray Kubernetes Operator. The
-Ray Operator makes it easy to deploy clusters of Ray pods within a Kubernetes
-cluster. To learn more about the K8s operator, refer to
-the :ref:`documentation<ray-operator>`.
+.. figure:: images/ray-job-diagram.svg
+    :align: center
+    :width: 650px
+    
+    *Three ways of running a job on a Ray cluster.*

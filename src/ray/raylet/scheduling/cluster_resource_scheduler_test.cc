@@ -73,6 +73,15 @@ ResourceRequest CreateResourceRequest(
   return request;
 }
 
+ResourceRequest CreateResourceRequest(
+    const std::unordered_map<std::string, double> &resource_map) {
+  ResourceRequest request;
+  for (auto &entry : resource_map) {
+    request.Set(ResourceID(entry.first), entry.second);
+  }
+  return request;
+}
+
 NodeResources CreateNodeResources(
     const absl::flat_hash_map<ResourceID, double> &resource_map) {
   return NodeResources(CreateResourceRequest(resource_map));
@@ -1520,6 +1529,65 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(instance_serialized_string, expected_instance_serialized_string);
+}
+
+TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
+  auto node_1 = NodeID::FromRandom();
+  auto node_2 = NodeID::FromRandom();
+  auto pg_1 = PlacementGroupID::Of(JobID::FromInt(1));
+  BundleID bundle_1 = std::make_pair(pg_1, 0);
+  BundleID bundle_2 = std::make_pair(pg_1, 1);
+  BundleID bundle_3 = std::make_pair(pg_1, 2);
+  ResourceRequest bundle_resource_request =
+      CreateResourceRequest(AddPlacementGroupConstraint(
+          {{"CPU", 1}, {"memory", 100}}, bundle_1.first, bundle_1.second));
+  NodeResources node_resources = NodeResources(bundle_resource_request);
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(node_1.Binary()), node_resources, is_node_available_fn_);
+  ResourceRequest bundle_resource_request_2 =
+      CreateResourceRequest(AddPlacementGroupConstraint(
+          {{"CPU", 1}, {"memory", 100}}, bundle_2.first, bundle_2.second));
+  NodeResources node_resources_2 = NodeResources(bundle_resource_request_2);
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      scheduling::NodeID(node_2.Binary()), node_resources_2);
+  resource_scheduler.GetClusterResourceManager()
+      .GetBundleLocationIndex()
+      .AddOrUpdateBundleLocation(bundle_1, node_1);
+  resource_scheduler.GetClusterResourceManager()
+      .GetBundleLocationIndex()
+      .AddOrUpdateBundleLocation(bundle_2, node_2);
+
+  auto test_schedule = [&resource_scheduler](
+                           const std::unordered_map<std::string, double> &resources,
+                           const BundleID bundle_id,
+                           const scheduling::NodeID &except_node_id) {
+    int64_t violations;
+    bool is_infeasible;
+    ResourceRequest resource_request = CreateResourceRequest(
+        AddPlacementGroupConstraint(resources, bundle_id.first, bundle_id.second));
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_placement_group_scheduling_strategy()
+        ->set_placement_group_id(bundle_id.first.Binary());
+    scheduling_strategy.mutable_placement_group_scheduling_strategy()
+        ->set_placement_group_bundle_index(bundle_id.second);
+    ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                        scheduling_strategy,
+                                                        true,
+                                                        false,
+                                                        &violations,
+                                                        &is_infeasible),
+              except_node_id);
+  };
+
+  test_schedule(
+      {{"CPU", 1}, {"memory", 100}}, bundle_1, scheduling::NodeID(node_1.Binary()));
+
+  test_schedule(
+      {{"CPU", 1}, {"memory", 100}}, bundle_2, scheduling::NodeID(node_2.Binary()));
+
+  test_schedule({{"CPU", 1}, {"memory", 100}}, bundle_3, scheduling::NodeID::Nil());
+
+  test_schedule({{"CPU", 2}}, bundle_1, scheduling::NodeID::Nil());
 }
 
 }  // namespace ray

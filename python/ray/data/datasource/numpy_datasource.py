@@ -1,14 +1,18 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 import numpy as np
 
-if TYPE_CHECKING:
-    import pyarrow
-
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from typing import Optional
+
+from ray.data.block import Block
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 @PublicAPI
@@ -25,19 +29,28 @@ class NumpyDatasource(FileBasedDatasource):
 
     """
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
-        from ray.data.extensions import TensorArray
-        import pyarrow as pa
+    _COLUMN_NAME = "data"
+    _FILE_EXTENSION = "npy"
 
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
         buf = BytesIO()
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return pa.Table.from_pydict(
-            {"value": TensorArray(np.load(buf, allow_pickle=True))}
-        )
+        return BlockAccessor.batch_to_block(np.load(buf, allow_pickle=True))
+
+    def _convert_block_to_tabular_block(
+        self, block: Block, column_name: Optional[str] = None
+    ) -> "pyarrow.Table":
+        if column_name is None:
+            column_name = self._COLUMN_NAME
+
+        column_names = block.column_names
+        assert column_names[0] == TENSOR_COLUMN_NAME
+        column_names[0] = column_name
+        return block.rename_columns(column_names)
 
     def _write_block(
         self,
@@ -49,6 +62,3 @@ class NumpyDatasource(FileBasedDatasource):
     ):
         value = block.to_numpy(column)
         np.save(f, value)
-
-    def _file_format(self):
-        return "npy"

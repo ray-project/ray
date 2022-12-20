@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+                "env": {
+					"type": "string"
+				},
 				"legacy": {
 					"$ref": "#/definitions/Legacy"
 				},
@@ -36,6 +39,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				},
@@ -183,6 +187,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+                "env": {
+					"type": "string"
+				},
                 "driver_setup": {
 					"type": "string"
 				},
@@ -201,6 +208,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				}

@@ -11,10 +11,10 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        object_store_memory=int(0.5 * 10 ** 9),
+        object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         # _num_redis_shards=num_redis_shards,
-        _redis_max_memory=10 ** 8,
+        _redis_max_memory=10**8,
     )
 
     yield None
@@ -64,7 +64,7 @@ def test_submitting_many_actors_to_one(ray_start_sharded):
 
 def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
-        x = np.zeros(10 ** n)
+        x = np.zeros(10**n)
 
         for _ in range(100):
             ray.put(x)
@@ -81,7 +81,7 @@ def test_getting_many_objects(ray_start_sharded):
     def f():
         return 1
 
-    n = 10 ** 4  # TODO(pcm): replace by 10 ** 5 once this is faster.
+    n = 10**4  # TODO(pcm): replace by 10 ** 5 once this is faster.
     lst = ray.get([f.remote() for _ in range(n)])
     assert lst == n * [1]
 
@@ -90,6 +90,10 @@ def test_getting_many_objects(ray_start_sharded):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

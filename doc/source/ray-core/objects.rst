@@ -69,16 +69,16 @@ If the current node's object store does not contain the object, the object is do
       # You can also set a timeout to return early from a ``get``
       # that's blocking for too long.
       from ray.exceptions import GetTimeoutError
+      # ``GetTimeoutError`` is a subclass of ``TimeoutError``.
 
       @ray.remote
-
       def long_running_function():
           time.sleep(8)
 
       obj_ref = long_running_function.remote()
       try:
           ray.get(obj_ref, timeout=4)
-      except GetTimeoutError:
+      except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
           print("`get` timed out.")
 
 .. tabbed:: Java
@@ -180,6 +180,5 @@ More about Ray Objects
     :maxdepth: 1
 
     objects/serialization.rst
-    objects/memory-management.rst
     objects/object-spilling.rst
     objects/fault-tolerance.rst

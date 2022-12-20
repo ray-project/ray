@@ -22,10 +22,10 @@ from ray.rllib.algorithms.sac.sac_tf_policy import (
     validate_spaces,
     ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin,
     ComputeTDErrorMixin,
-    TargetNetworkMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -35,7 +35,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -299,7 +299,7 @@ class ActorCriticOptimizerMixin(SACActorCriticOptimizerMixin):
         super().__init__(config)
         if config["lagrangian"]:
             # Eager mode.
-            if config["framework"] in ["tf2", "tfe"]:
+            if config["framework"] == "tf2":
                 self._alpha_prime_optimizer = tf.keras.optimizers.Adam(
                     learning_rate=config["optimization"]["critic_learning_rate"]
                 )
@@ -314,17 +314,17 @@ def setup_early_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors before Policy's initialization.
 
     Adds the necessary optimizers to the given Policy.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     policy.cur_iter = 0
     ActorCriticOptimizerMixin.__init__(policy, config)
@@ -354,7 +354,7 @@ def compute_gradients_fn(
     if policy.config["lagrangian"]:
         # Eager: Use GradientTape (which is a property of the `optimizer`
         # object (an OptimizerWrapper): see rllib/policy/eager_tf_policy.py).
-        if policy.config["framework"] in ["tf2", "tfe"]:
+        if policy.config["framework"] == "tf2":
             tape = optimizer.tape
             log_alpha_prime = [policy.model.log_alpha_prime]
             alpha_prime_grads_and_vars = list(
@@ -391,7 +391,7 @@ def apply_gradients_fn(policy, optimizer, grads_and_vars):
 
     if policy.config["lagrangian"]:
         # Eager mode -> Just apply and return None.
-        if policy.config["framework"] in ["tf2", "tfe"]:
+        if policy.config["framework"] == "tf2":
             policy._alpha_prime_optimizer.apply_gradients(
                 policy._alpha_prime_grads_and_vars
             )

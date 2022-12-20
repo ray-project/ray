@@ -1,16 +1,14 @@
 import os
 import time
+from typing import TYPE_CHECKING, Dict, Tuple
 
-from typing import Dict, Tuple, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ray.job_submission import JobSubmissionClient, JobStatus  # noqa: F401
-
-from ray_release.logger import logger
-from ray_release.util import ANYSCALE_HOST
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
-from ray_release.util import exponential_backoff_retry
+from ray_release.logger import logger
+from ray_release.util import ANYSCALE_HOST, exponential_backoff_retry
+
+if TYPE_CHECKING:
+    from ray.job_submission import JobStatus, JobSubmissionClient  # noqa: F401
 
 
 class JobManager:
@@ -36,7 +34,7 @@ class JobManager:
         command_id = self.counter
         env = os.environ.copy()
         env["RAY_ADDRESS"] = self.cluster_manager.get_cluster_address()
-        env.setdefault("ANYSCALE_HOST", ANYSCALE_HOST)
+        env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
 
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")

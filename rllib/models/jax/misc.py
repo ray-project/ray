@@ -1,7 +1,8 @@
 import time
 from typing import Callable, Optional
 
-from ray.rllib.utils.framework import get_activation_fn, try_import_jax
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_jax
 
 jax, flax = try_import_jax()
 nn = np = None
@@ -26,12 +27,12 @@ class SlimFC:
         """Initializes a SlimFC instance.
 
         Args:
-            in_size (int): The input size of the input data that will be passed
+            in_size: The input size of the input data that will be passed
                 into this layer.
-            out_size (int): The number of nodes in this FC layer.
+            out_size: The number of nodes in this FC layer.
             initializer (flax.:
-            activation_fn (str): An activation string specifier, e.g. "relu".
-            use_bias (bool): Whether to add biases to the dot product or not.
+            activation_fn: An activation string specifier, e.g. "relu".
+            use_bias: Whether to add biases to the dot product or not.
             #bias_init (float):
             prng_key (Optional[jax.random.PRNGKey]): An optional PRNG key to
                 use for initialization. If None, create a new random one.

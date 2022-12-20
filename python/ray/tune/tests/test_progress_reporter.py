@@ -1,23 +1,27 @@
-import pytest
 import collections
 import os
+import regex as re
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.trial import Trial
-from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
     ProgressReporter,
     _fair_filter_trials,
-    best_trial_str,
-    detect_reporter,
-    trial_progress_str,
-    time_passed_str,
+    _best_trial_str,
+    _detect_reporter,
+    _time_passed_str,
+    _trial_progress_str,
+    TuneReporterBase,
+    _max_len,
 )
+from ray.tune.result import AUTO_RESULT_KEYS
+from ray.tune.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -68,7 +72,7 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
-from ray.tune.trial import _Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -220,6 +224,17 @@ EXPECTED_SORT_RESULT_ASC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMI
 +--------------+------------+-------+-----+------------+
 ... 1 more trials not shown (1 TERMINATED)"""
 
+EXPECTED_NESTED_SORT_RESULT = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+-------------------+
+|   Trial name | status     | loc   |   a |   nested/metric_2 |
+|--------------+------------+-------+-----+-------------------|
+|        00004 | RUNNING    | here  |   4 |                   |
+|        00003 | PENDING    | here  |   3 |                   |
+|        00001 | TERMINATED | here  |   1 |               0.2 |
+|        00000 | TERMINATED | here  |   0 |               0.3 |
++--------------+------------+-------+-----+-------------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
 EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
 |   Trial name | status     | loc   |   a |   metric_1 |
@@ -239,19 +254,27 @@ VERBOSE_TRIAL_NORM_1 = (
     "with parameters={'do': 'complete'}. This trial completed.\n"
 )
 
-VERBOSE_TRIAL_NORM_2 = """
-Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
-Trial train_xxxxx_00001 completed. Last result: _metric=6
-"""
+# NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic.
+# `"Trial train_xxxxx_00001 reported..."` and `"Trial train_xxxxx_00001 completed..."`
+# are printed in separate calls. Sometimes, a status update is printed between the
+# calls. For more information, see #29693.
+VERBOSE_TRIAL_NORM_2_PATTERN = (
+    r"Trial train_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\.\n"
+    r"(?s).*"
+    r"Trial train_xxxxx_00001 completed\. Last result: _metric=6\n"
+)
 
-VERBOSE_TRIAL_NORM_3 = """
-Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
-"""
+VERBOSE_TRIAL_NORM_3 = (
+    "Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
+)
 
 VERBOSE_TRIAL_NORM_4 = (
     "Trial train_xxxxx_00002 reported acc=8 "
     "with parameters={'do': 'twice'}. This trial completed.\n"
 )
+
+VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_xxxxx_00001"
+VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_xxxxx_00001 completed."
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
 | Trial name        | status   | loc               | do       |
@@ -262,7 +285,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import _Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -428,21 +451,21 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # One metric, two parameters
-        prog1 = trial_progress_str(
+        prog1 = _trial_progress_str(
             trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3, force_table=True
         )
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 
         # No metric, all parameters
-        prog2 = trial_progress_str(
+        prog2 = _trial_progress_str(
             trials, [], None, fmt="psql", max_rows=None, force_table=True
         )
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
         # Two metrics, one parameter, all with custom representation
-        prog3 = trial_progress_str(
+        prog3 = _trial_progress_str(
             trials,
             {"nested/sub": "NestSub", "metric_2": "Metric 2"},
             {"a": "A"},
@@ -454,7 +477,7 @@ class ProgressReporterTest(unittest.TestCase):
         assert prog3 == EXPECTED_RESULT_3
 
         # Current best trial
-        best1 = best_trial_str(trials[1], "metric_1")
+        best1 = _best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
 
     def testBestTrialStr(self):
@@ -462,13 +485,33 @@ class ProgressReporterTest(unittest.TestCase):
         config = {"nested": {"conf": "nested_value"}, "toplevel": "toplevel_value"}
 
         trial = Trial("", config=config, stub=True)
-        trial.last_result = {"metric": 1, "config": config}
+        trial.last_result = {"metric": 1, "config": config, "nested": {"metric": 2}}
 
-        result = best_trial_str(trial, "metric")
+        result = _best_trial_str(trial, "metric")
         self.assertIn("nested_value", result)
 
-        result = best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
+        result = _best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
         self.assertIn("nested_value", result)
+
+        # Test that this works with a nested metric
+        result = _best_trial_str(
+            trial, "nested/metric", parameter_columns=["nested/conf"]
+        )
+        self.assertIn("nested_value", result)
+
+    def testBestTrialZero(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": 7, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
 
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
@@ -483,12 +526,12 @@ class ProgressReporterTest(unittest.TestCase):
 
         # Local timezone output can be tricky, so we don't check the
         # day and the hour in this test.
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 01:31:22.00)", output)
 
         time_now += 2 * 60 * 60 * 24  # plus two days
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 2 days, 01:31:22.00)", output)
 
@@ -541,8 +584,11 @@ class ProgressReporterTest(unittest.TestCase):
             trials.append(t)
         # Set `metric_1` for terminated trails
         trials[0].last_result["metric_1"] = 0.3
+        trials[0].last_result["nested"] = {"metric_2": 0.3}
         trials[1].last_result["metric_1"] = 0.2
+        trials[1].last_result["nested"] = {"metric_2": 0.2}
         trials[2].last_result["metric_1"] = 0.4
+        trials[2].last_result["nested"] = {"metric_2": 0.4}
 
         class TestReporter(CLIReporter):
             def __init__(self, *args, **kwargs):
@@ -557,7 +603,6 @@ class ProgressReporterTest(unittest.TestCase):
         # Default reporter
         reporter1 = TestReporter(max_progress_rows=4, mode="max", metric="metric_1")
         reporter1.report(trials, done=False)
-        print(reporter1._output)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter1._output
 
         # Sort by metric (asc)
@@ -572,7 +617,6 @@ class ProgressReporterTest(unittest.TestCase):
             max_progress_rows=4, mode="max", metric="metric_1", sort_by_metric=True
         )
         reporter3.report(trials, done=False)
-        print(reporter3._output)
         assert EXPECTED_SORT_RESULT_DESC in reporter3._output
 
         # Sort by metric when mode is None
@@ -586,6 +630,25 @@ class ProgressReporterTest(unittest.TestCase):
         reporter5 = TestReporter(max_progress_rows=4, mode="max", sort_by_metric=True)
         reporter5.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
+
+        # Sort by metric when metric is passed using
+        # reporter.setup (called from tune.run)
+        # calling repoter.set_search_properties
+        reporter6 = TestReporter(max_progress_rows=4, sort_by_metric=True)
+        reporter6.set_search_properties(metric="metric_1", mode="max")
+        reporter6.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_DESC in reporter6._output
+
+        # Sort by nested metric (asc)
+        reporter7 = TestReporter(
+            max_progress_rows=4,
+            mode="min",
+            metric="nested/metric_2",
+            sort_by_metric=True,
+            metric_columns=["nested/metric_2"],
+        )
+        reporter7.report(trials, done=False)
+        assert EXPECTED_NESTED_SORT_RESULT in reporter7._output
 
     def testEndToEndReporting(self):
         try:
@@ -614,7 +677,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertNotIn(VERBOSE_EXP_OUT_1, output)
                 self.assertNotIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -630,7 +693,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -646,7 +709,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNotNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -662,10 +725,13 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
+                # Check that we don't print duplicate results at the end
+                self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)
+                self.assertIn(VERBOSE_TRIAL_WITH_ONCE_COMPLETED, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -676,12 +742,12 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testReporterDetection(self):
         """Test if correct reporter is returned from ``detect_reporter()``"""
-        reporter = detect_reporter()
+        reporter = _detect_reporter()
         self.assertTrue(isinstance(reporter, CLIReporter))
         self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
 
         with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
-            reporter = detect_reporter()
+            reporter = _detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
@@ -709,10 +775,25 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
-        progress_str = trial_progress_str(
+        progress_str = _trial_progress_str(
             trials, metric_columns=["some_metric"], force_table=True
         )
         assert any(len(row) <= 90 for row in progress_str.split("\n"))
+
+
+def test_max_len():
+    assert (
+        _max_len("some_long_string/even_longer", max_len=28)
+        == "some_long_string/even_longer"
+    )
+    assert _max_len("some_long_string/even_longer", max_len=15) == ".../even_longer"
+
+    assert (
+        _max_len(
+            "19_character_string/19_character_string/too_long", max_len=20, wrap=True
+        )
+        == "...r_string/19_chara\ncter_string/too_long"
+    )
 
 
 if __name__ == "__main__":

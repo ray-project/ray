@@ -2,7 +2,6 @@ import json
 import logging
 from pathlib import Path
 from threading import RLock
-from uuid import uuid4
 
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
@@ -10,21 +9,20 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_USER_NODE_TYPE,
-)
 from ray.autoscaler._private._azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,
 )
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 VM_NAME_MAX_LEN = 64
-VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
 azure_logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -70,8 +68,11 @@ class AzureNodeProvider(NodeProvider):
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
+        # add cluster name filter to only get nodes from this cluster
+        cluster_tag_filters = {**tag_filters, TAG_RAY_CLUSTER_NAME: self.cluster_name}
+
         def match_tags(vm):
-            for k, v in tag_filters.items():
+            for k, v in cluster_tag_filters.items():
                 if vm.tags.get(k) != v:
                     return False
             return True
@@ -221,8 +222,9 @@ class AzureNodeProvider(NodeProvider):
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
         name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
-        unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
-        vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
+        vm_name = "{name}-{id}".format(
+            name=name_tag, id=self.provider_config["unique_id"]
+        )
         use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
         template_params = node_config["azure_arm_parameters"].copy()
@@ -230,6 +232,9 @@ class AzureNodeProvider(NodeProvider):
         template_params["provisionPublicIp"] = not use_internal_ips
         template_params["vmTags"] = config_tags
         template_params["vmCount"] = count
+        template_params["msi"] = self.provider_config["msi"]
+        template_params["nsg"] = self.provider_config["nsg"]
+        template_params["subnet"] = self.provider_config["subnet"]
 
         parameters = {
             "properties": {

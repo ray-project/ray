@@ -27,6 +27,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
@@ -55,6 +56,7 @@ class PlasmaStore {
  public:
   PlasmaStore(instrumented_io_context &main_service,
               IAllocator &allocator,
+              ray::FileSystemMonitor &fs_monitor,
               const std::string &socket_name,
               uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
@@ -220,14 +222,14 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  void RecordMetrics() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   void PrintAndRecordDebugDump() const LOCKS_EXCLUDED(mutex_);
 
   std::string GetDebugDump() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
  private:
   friend class GetRequestQueue;
+
+  void ScheduleRecordMetrics() const LOCKS_EXCLUDED(mutex_);
 
   // A reference to the asio io context.
   instrumented_io_context &io_context_;
@@ -248,6 +250,9 @@ class PlasmaStore {
 
   /// The allocator that allocates mmaped memory.
   IAllocator &allocator_ GUARDED_BY(mutex_);
+
+  /// Monitor the disk utilization.
+  ray::FileSystemMonitor &fs_monitor_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is
@@ -275,6 +280,9 @@ class PlasmaStore {
 
   /// Timer for printing debug information.
   mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_ GUARDED_BY(mutex_);
+
+  /// Timer for recording object store metrics.
+  mutable std::shared_ptr<boost::asio::deadline_timer> metric_timer_ GUARDED_BY(mutex_);
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ GUARDED_BY(mutex_);

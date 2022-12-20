@@ -124,6 +124,8 @@ class ClusterResourceScheduler {
     return *cluster_resource_manager_;
   }
 
+  bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
+
  private:
   void Init(const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
@@ -189,6 +191,8 @@ class ClusterResourceScheduler {
       int64_t *violations,
       bool *is_infeasible);
 
+  /// Judging whether it affinity with placement group bundle
+  bool IsAffinityWithBundleSchedule(const rpc::SchedulingStrategy &scheduling_strategy);
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Callback to check if node is available.
@@ -226,6 +230,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
+  FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
 };
 
 }  // end namespace ray

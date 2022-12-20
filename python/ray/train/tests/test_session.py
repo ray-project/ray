@@ -1,26 +1,30 @@
 import time
+import warnings
 
 import pytest
 
 import ray
-from ray.train.accelerator import Accelerator
-from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train.session import (
+from ray.air._internal.util import StartTraceback
+from ray.air.checkpoint import Checkpoint
+from ray.train._internal.accelerator import Accelerator
+from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
+from ray.train._internal.session import (
     init_session,
     shutdown_session,
     get_session,
-    world_rank,
-    local_rank,
-    report,
-    save_checkpoint,
     TrainingResultType,
-    load_checkpoint,
-    get_dataset_shard,
-    world_size,
     get_accelerator,
     set_accelerator,
-    SessionMisuseError,
 )
+from ray.air.session import (
+    get_checkpoint,
+    get_world_rank,
+    get_local_rank,
+    report,
+    get_dataset_shard,
+    get_world_size,
+)
+from ray.train.error import SessionMisuseError
 
 
 @pytest.fixture(scope="function")
@@ -28,7 +32,14 @@ def session():
     def f():
         return 1
 
-    init_session(training_func=f, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=f,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     yield get_session()
     shutdown_session()
 
@@ -44,24 +55,24 @@ def test_shutdown(session):
 
 
 def test_world_rank(session):
-    assert world_rank() == 0
+    assert get_world_rank() == 0
     shutdown_session()
     # Make sure default to 0.
-    assert world_rank() == 0
+    assert get_world_rank() == 0
 
 
 def test_local_rank(session):
-    assert local_rank() == 0
+    assert get_local_rank() == 0
     shutdown_session()
     # Make sure default to 0.
-    assert local_rank() == 0
+    assert get_local_rank() == 0
 
 
 def test_world_size(session):
-    assert world_size() == 1
+    assert get_world_size() == 1
     shutdown_session()
     # Make sure default to 1.
-    assert world_size() == 1
+    assert get_world_size() == 1
 
 
 def test_train(session):
@@ -70,12 +81,14 @@ def test_train(session):
     assert output == 1
 
 
-def test_get_dataset_shard():
+def test_get_dataset_shard(shutdown_only):
     dataset = ray.data.from_items([1, 2, 3])
     init_session(
         training_func=lambda: 1,
         world_rank=0,
         local_rank=0,
+        node_rank=0,
+        local_world_size=1,
         world_size=1,
         dataset_shard=dataset,
     )
@@ -86,9 +99,16 @@ def test_get_dataset_shard():
 def test_report():
     def train_func():
         for i in range(2):
-            report(loss=i)
+            report(dict(loss=i))
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     assert session.get_next().data["loss"] == 0
@@ -102,12 +122,18 @@ def test_report_fail():
             report(i)
         return 1
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
-    assert session.get_next() is None
-    with pytest.raises(TypeError):
-        session.finish()
+    with pytest.raises(StartTraceback):
+        session.get_next()
     shutdown_session()
 
 
@@ -116,31 +142,42 @@ def test_report_after_finish(session):
     session.pause_reporting()
     session.finish()
     for _ in range(2):
-        report(loss=1)
+        report(dict(loss=1))
     assert session.get_next() is None
+    shutdown_session()
 
 
 def test_no_start(session):
     with pytest.raises(RuntimeError):
         session.get_next()
+    shutdown_session()
 
 
 def test_checkpoint():
     def train_func():
         for i in range(2):
-            save_checkpoint(epoch=i)
+            report({}, checkpoint=Checkpoint.from_dict(dict(epoch=i)))
 
     def validate_zero(expected):
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data["epoch"] == expected
+        assert next.data.to_dict()["epoch"] == expected
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     validate_zero(0)
+    session.get_next()  # handle report
     validate_zero(1)
+    session.get_next()
     session.finish()
     shutdown_session()
 
@@ -148,35 +185,49 @@ def test_checkpoint():
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data == {}
+        assert not next.data
 
-    init_session(training_func=train_func, world_rank=1, local_rank=1, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=1,
+        local_rank=1,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     validate_nonzero()
+    session.get_next()  # handle report
     validate_nonzero()
+    session.get_next()
     session.finish()
     shutdown_session()
 
 
 def test_encode_data():
     def train_func():
-        save_checkpoint(epoch=0)
-        report(epoch=1)
+        report(dict(epoch=0), checkpoint=Checkpoint.from_dict(dict(epoch=0)))
 
     def encode_checkpoint(checkpoint):
-        checkpoint.update({"encoded": True})
-        return checkpoint
+        data = checkpoint.to_dict()
+        data["encoded"] = True
+        return checkpoint.from_dict(data)
 
     def validate_encoded(result_type: TrainingResultType):
         next = session.get_next()
         assert next.type is result_type
-        assert next.data["encoded"] is True
+        data = next.data
+        if isinstance(data, Checkpoint):
+            data = data.to_dict()
+        assert data["encoded"] is True
 
     init_session(
         training_func=train_func,
         world_rank=0,
         local_rank=0,
+        node_rank=0,
+        local_world_size=1,
         world_size=1,
         encode_data_fn=encode_checkpoint,
     )
@@ -185,8 +236,7 @@ def test_encode_data():
     session.start()
     # Validate checkpoint is encoded.
     validate_encoded(TrainingResultType.CHECKPOINT)
-    # Validate report is encoded.
-    validate_encoded(TrainingResultType.REPORT)
+    session.get_next()
     session.finish()
     shutdown_session()
 
@@ -194,14 +244,22 @@ def test_encode_data():
 def test_load_checkpoint_after_save():
     def train_func():
         for i in range(2):
-            save_checkpoint(epoch=i)
-            checkpoint = load_checkpoint()
-            assert checkpoint["epoch"] == i
+            report(dict(epoch=i), checkpoint=Checkpoint.from_dict(dict(epoch=i)))
+            checkpoint = get_checkpoint()
+            assert checkpoint.to_dict()["epoch"] == i
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     for i in range(2):
+        session.get_next()
         session.get_next()
     session.finish()
     shutdown_session()
@@ -215,7 +273,14 @@ def test_locking():
 
         _thread.interrupt_main()
 
-    init_session(training_func=train_1, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_1,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     with pytest.raises(KeyboardInterrupt):
         session.start()
@@ -223,10 +288,17 @@ def test_locking():
 
     def train_2():
         for i in range(2):
-            report(loss=i)
+            report(dict(loss=i))
         train_1()
 
-    init_session(training_func=train_2, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_2,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     time.sleep(3)
@@ -247,14 +319,29 @@ def reset_log_once_with_str(str_to_append=None):
     ray.util.debug.reset_log_once(key)
 
 
-@pytest.mark.parametrize(
-    "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard]
-)
+@pytest.mark.parametrize("fn", [get_checkpoint, get_dataset_shard])
 def test_warn(fn):
-    """Checks if calling train functions outside of session raises warning."""
+    """Checks if calling session functions outside of session raises warning."""
 
-    with pytest.warns(UserWarning) as record:
-        fn()
+    with warnings.catch_warnings(record=True) as record:
+        # Ignore Deprecation warnings.
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        assert not fn()
+
+    assert fn.__name__ in record[0].message.args[0]
+
+    reset_log_once_with_str(fn.__name__)
+
+
+def test_warn_report():
+    """Checks if calling session.report function outside of session raises warning."""
+
+    fn = report
+
+    with warnings.catch_warnings(record=True) as record:
+        # Ignore Deprecation warnings.
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        assert not fn(dict())
 
     assert fn.__name__ in record[0].message.args[0]
 
@@ -264,16 +351,18 @@ def test_warn(fn):
 def test_warn_once():
     """Checks if session misuse warning is only shown once per function."""
 
-    with pytest.warns(UserWarning) as record:
-        assert not load_checkpoint()
-        assert not load_checkpoint()
-        assert not save_checkpoint(x=2)
-        assert not report(x=2)
-        assert not report(x=3)
+    with warnings.catch_warnings(record=True) as record:
+        # Ignore Deprecation warnings.
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        assert not get_checkpoint()
+        assert not get_checkpoint()
+        assert not report(dict(x=2))
+        assert not report(dict(x=2))
+        assert not get_dataset_shard()
         assert not get_dataset_shard()
 
     # Should only warn once.
-    assert len(record) == 4
+    assert len(record) == 3
 
 
 class FakeAccelerator(Accelerator):
@@ -306,6 +395,25 @@ def test_set_accelerator_raises_error_outside_session():
     accelerator = FakeAccelerator()
     with pytest.raises(SessionMisuseError):
         set_accelerator(accelerator)
+
+
+def test_application_error_raised():
+    def f():
+        raise ValueError
+
+    init_session(
+        training_func=f,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
+    session = get_session()
+    session.start()
+    with pytest.raises(StartTraceback):
+        session.get_next()
+    shutdown_session()
 
 
 if __name__ == "__main__":

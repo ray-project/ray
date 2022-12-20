@@ -8,8 +8,8 @@ import sys
 import weakref
 
 import numpy as np
-from numpy import log
 import pytest
+from numpy import log
 
 import ray
 import ray.cluster_utils
@@ -44,8 +44,8 @@ def test_simple_serialization(ray_start_regular):
         "a",
         string.printable,
         "\u262F",
-        u"hello world",
-        u"\xff\xfe\x9c\x001\x000\x00",
+        "hello world",
+        "\xff\xfe\x9c\x001\x000\x00",
         None,
         True,
         False,
@@ -152,7 +152,7 @@ def test_complex_serialization(ray_start_regular):
         else:
             assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
-    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    long_extras = [0, np.array([["hi", "hi"], [1.3, 1]])]
 
     PRIMITIVE_OBJECTS = [
         0,
@@ -165,8 +165,8 @@ def test_complex_serialization(ray_start_regular):
         "a",
         string.printable,
         "\u262F",
-        u"hello world",
-        u"\xff\xfe\x9c\x001\x000\x00",
+        "hello world",
+        "\xff\xfe\x9c\x001\x000\x00",
         None,
         True,
         False,
@@ -299,7 +299,7 @@ def test_complex_serialization(ray_start_regular):
         assert_equal(obj, ray.get(ray.put(obj)))
 
     # Test StringIO serialization
-    s = io.StringIO(u"Hello, world!\n")
+    s = io.StringIO("Hello, world!\n")
     s.seek(0)
     line = s.readline()
     s.seek(0)
@@ -333,6 +333,7 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
 
 def test_inspect_serialization(enable_pickle_debug):
     import threading
+
     from ray.cloudpickle import dumps_debug
 
     lock = threading.Lock()
@@ -547,7 +548,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads, dumps
+    from ray.cloudpickle import CloudPickler, dumps, loads
 
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
@@ -655,7 +656,7 @@ def test_serialization_before_init(shutdown_only):
     works after initialization."""
     # make sure ray is shutdown
     ray.shutdown()
-    assert ray.worker.global_worker.current_job_id.is_nil()
+    assert ray._private.worker.global_worker.current_job_id.is_nil()
 
     import threading
 
@@ -681,6 +682,10 @@ def test_serialization_before_init(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

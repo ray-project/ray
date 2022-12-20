@@ -1,13 +1,14 @@
 import importlib.util
-from collections import namedtuple
 import logging
 import os
 import re
 import subprocess
 import sys
+from collections import namedtuple
+from typing import Optional
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 try:
     import GPUtil
@@ -89,17 +90,12 @@ class ResourceSpec(
         """
         assert self.resolved()
 
-        memory_units = ray_constants.to_memory_units(self.memory, round_up=False)
-        object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory, round_up=False
-        )
-
         resources = dict(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
-            memory=memory_units,
-            object_store_memory=object_store_memory_units,
+            memory=int(self.memory),
+            object_store_memory=int(self.object_store_memory),
         )
 
         resources = {
@@ -138,12 +134,12 @@ class ResourceSpec(
 
         return resources
 
-    def resolve(self, is_head, node_ip_address=None):
+    def resolve(self, is_head: bool, node_ip_address: Optional[str] = None):
         """Returns a copy with values filled out with system defaults.
 
         Args:
-            is_head (bool): Whether this is the head node.
-            node_ip_address (str): The IP address of the node that we are on.
+            is_head: Whether this is the head node.
+            node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
         """
 
@@ -157,7 +153,8 @@ class ResourceSpec(
             node_ip_address = ray.util.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
-        # queryable with ray.state.node_ids() and ray.state.current_node_id().
+        # queryable with ray._private.state.node_ids() and
+        # ray._private.state.current_node_id().
         resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         num_cpus = self.num_cpus
@@ -181,10 +178,7 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            if (
-                sys.platform.startswith("linux")
-                and importlib.util.find_spec("GPUtil") is not None
-            ):
+            if importlib.util.find_spec("GPUtil") is not None:
                 gpu_types = _get_gpu_types_gputil()
             else:
                 info_string = _get_gpu_info_string()
@@ -274,21 +268,19 @@ class ResourceSpec(
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): Use a better mechanism for Windows.
+    TODO(rkn): Only detects NVidia GPUs (except when using WMIC on windows)
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
-    if sys.platform.startswith("linux"):
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            result = len(gpu_list)
-        else:
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                result = len(os.listdir(proc_gpus_path))
+    if importlib.util.find_spec("GPUtil"):
+        gpu_list = GPUtil.getGPUs()
+        result = len(gpu_list)
+    elif sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
@@ -311,12 +303,12 @@ def _get_gpu_types_gputil():
     return {}
 
 
-def _constraints_from_gpu_info(info_str):
+def _constraints_from_gpu_info(info_str: str):
     """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
     gpu model type.
 
         Args:
-            info_str (str): The contents of the file.
+            info_str: The contents of the file.
 
         Returns:
             (str) The full model name.
@@ -343,8 +335,7 @@ def _constraints_from_gpu_info(info_str):
 def _get_gpu_info_string():
     """Get the gpu type for this machine.
 
-    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
-    gpu type.
+    TODO: Detects maximum one NVidia gpu type on linux
 
     Returns:
         (str) The gpu's model name.

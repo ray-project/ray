@@ -1,189 +1,132 @@
 import pytest
 
-import ray
-from ray.train import Trainer
+from ray.air.config import ScalingConfig
+from ray.train.constants import TRAINING_ITERATION
+
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
-    HorovodTrainClass,
 )
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.tensorflow_quick_start import (
+from ray.train.examples.tf.tensorflow_quick_start import (
     train_func as tf_quick_start_train_func,
 )
-from ray.train.examples.torch_quick_start import (
+from ray.train.examples.pytorch.torch_quick_start import (
     train_func as torch_quick_start_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.train_linear_example import train_func as linear_train_func
-from ray.train.tests.test_trainer import KillCallback
-
-
-@pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.train.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
+from ray.train.horovod.horovod_trainer import HorovodTrainer
+from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch.torch_trainer import TorchTrainer
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
-def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
+def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
     num_workers = num_workers
     epochs = 3
 
-    trainer = Trainer("tensorflow", num_workers=num_workers)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
-    trainer.shutdown()
+    trainer = TensorflowTrainer(
+        tensorflow_mnist_train_func,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+    )
+    results = trainer.fit()
 
-    assert len(results) == num_workers
-    result = results[0]
+    result = results.metrics
 
-    loss = result["loss"]
+    assert result[TRAINING_ITERATION] == epochs
+
+    loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == epochs
     assert loss[-1] < loss[0]
 
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
 
-
-def test_tf_non_distributed(ray_start_2_cpus):
+def test_tf_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
-    trainer = Trainer(backend="torch", num_workers=1)
-    trainer.start()
-    trainer.run(tf_quick_start_train_func)
-    trainer.shutdown()
-
-
-def test_tensorflow_mnist_fail(ray_start_2_cpus):
-    """Tests if tensorflow example works even with worker failure."""
-    epochs = 3
-
-    trainer = Trainer("tensorflow", num_workers=2)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    kill_callback = KillCallback(fail_on=0, trainer=trainer)
-    results = trainer.run(
-        tensorflow_mnist_train_func, config, callbacks=[kill_callback]
+    trainer = TensorflowTrainer(
+        tf_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)
     )
-    trainer.shutdown()
-
-    assert len(results) == 2
-    result = results[0]
-
-    loss = result["loss"]
-    assert len(loss) == epochs
-    assert loss[-1] < loss[0]
-
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
+    trainer.fit()
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
-def test_torch_linear(ray_start_2_cpus, num_workers):
+def test_torch_linear(ray_start_4_cpus, num_workers):
     num_workers = num_workers
     epochs = 3
 
-    trainer = Trainer("torch", num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(linear_train_func, config)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        linear_train_func,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+    )
+    results = trainer.fit()
 
-    assert len(results) == num_workers
+    result = results.metrics
+    assert result[TRAINING_ITERATION] == epochs
 
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1]["loss"] < result[0]["loss"]
+    loss = list(results.metrics_dataframe["loss"])
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
 
 
-def test_torch_linear_failure(ray_start_2_cpus):
+def test_torch_fashion_mnist(ray_start_4_cpus):
     num_workers = 2
     epochs = 3
 
-    trainer = Trainer("torch", num_workers=num_workers)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
-    trainer.start()
-    kill_callback = KillCallback(fail_on=1, trainer=trainer)
-    results = trainer.run(linear_train_func, config, callbacks=[kill_callback])
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1]["loss"] < result[0]["loss"]
-
-
-def test_torch_fashion_mnist(ray_start_2_cpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("torch", num_workers=num_workers)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(fashion_mnist_train_func, config)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        fashion_mnist_train_func,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+    )
+    results = trainer.fit()
 
-    assert len(results) == num_workers
+    result = results.metrics
+    assert result[TRAINING_ITERATION] == epochs
 
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1] < result[0]
+    loss = list(results.metrics_dataframe["loss"])
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
 
 
-def test_torch_non_distributed(ray_start_2_cpus):
+def test_torch_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without torch DDP."""
 
-    trainer = Trainer(backend="torch", num_workers=1)
-    trainer.start()
-    trainer.run(torch_quick_start_train_func)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        torch_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)
+    )
+    trainer.fit()
 
 
-def test_horovod_torch_mnist(ray_start_2_cpus):
+def test_horovod_torch_mnist(ray_start_4_cpus):
     num_workers = 2
     num_epochs = 2
-    trainer = Trainer("horovod", num_workers)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    trainer = HorovodTrainer(
+        horovod_torch_train_func,
+        train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
-    trainer.shutdown()
+    results = trainer.fit()
+    result = results.metrics
+    assert result[TRAINING_ITERATION] == num_workers
 
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
-
-
-def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
-    num_workers = 2
-    num_epochs = 2
-    trainer = Trainer("horovod", num_workers)
-    workers = trainer.to_worker_group(
-        HorovodTrainClass, config={"num_epochs": num_epochs, "lr": 1e-3}
-    )
-    results = []
-    for epoch in range(num_epochs):
-        results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
-    trainer.shutdown()
-
-    assert len(results) == num_epochs
-    for i in range(num_workers):
-        assert results[num_epochs - 1][i] < results[0][i]
+    loss = list(results.metrics_dataframe["loss"])
+    assert len(loss) == num_epochs
+    assert loss[-1] < loss[0]
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

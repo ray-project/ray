@@ -4,18 +4,17 @@ from typing import Dict
 
 import gym
 import numpy as np
+
 import ray
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
+from ray.rllib.algorithms.simple_q.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import get_categorical_class_with_temperature
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import (
-    LearningRateSchedule,
-    TargetNetworkMixin,
-)
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
@@ -23,16 +22,14 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.tf_utils import (
     huber_loss,
+    l2_loss,
     make_tf_callable,
     minimize_and_clip,
     reduce_mean_ignore_inf,
 )
-from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ModelGradients, TensorType
 
 tf1, tf, tfv = try_import_tf()
-
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
@@ -53,6 +50,7 @@ class QLoss:
         num_atoms: int = 1,
         v_min: float = -10.0,
         v_max: float = 10.0,
+        loss_fn=huber_loss,
     ):
 
         if num_atoms > 1:
@@ -62,7 +60,7 @@ class QLoss:
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = tf.expand_dims(rewards, -1) + gamma ** n_step * tf.expand_dims(
+            r_tau = tf.expand_dims(rewards, -1) + gamma**n_step * tf.expand_dims(
                 1.0 - done_mask, -1
             ) * tf.expand_dims(z, 0)
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
@@ -102,12 +100,12 @@ class QLoss:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
             self.loss = tf.reduce_mean(
-                tf.cast(importance_weights, tf.float32) * huber_loss(self.td_error)
+                tf.cast(importance_weights, tf.float32) * loss_fn(self.td_error)
             )
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
@@ -152,15 +150,15 @@ def build_q_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Build q_model and target_model for DQN
 
     Args:
-        policy (Policy): The Policy, which will use the model for optimization.
+        policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         ModelV2: The Model for the Policy to use.
@@ -234,16 +232,24 @@ def get_distribution_inputs_and_class(
 
     policy.q_values = q_vals
 
-    return policy.q_values, Categorical, []  # state-out
+    # Return a Torch TorchCategorical distribution where the temperature
+    # parameter is partially binded to the configured value.
+    temperature = policy.config["categorical_distribution_temperature"]
+
+    return (
+        policy.q_values,
+        get_categorical_class_with_temperature(temperature),
+        [],
+    )  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for DQNTFPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -309,28 +315,31 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1
         )
 
+    loss_fn = huber_loss if policy.config["td_error_loss_fn"] == "huber" else l2_loss
+
     policy.q_loss = QLoss(
         q_t_selected,
         q_logits_t_selected,
         q_tp1_best,
         q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS],
-        train_batch[SampleBatch.REWARDS],
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32),
         tf.cast(train_batch[SampleBatch.DONES], tf.float32),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],
         config["v_min"],
         config["v_max"],
+        loss_fn,
     )
 
     return policy.q_loss.loss
 
 
 def adam_optimizer(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         return tf.keras.optimizers.Adam(
             learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"]
         )
@@ -372,9 +381,9 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def compute_q_values(

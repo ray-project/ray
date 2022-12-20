@@ -6,48 +6,45 @@ import base64
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 import uuid
 import warnings
 from collections import defaultdict
 from concurrent.futures import Future
-import tempfile
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 
-from ray.job_config import JobConfig
+import ray._private.utils
 import ray.cloudpickle as cloudpickle
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
-from ray.util.client.client_pickler import (
-    dumps_from_client,
-    loads_from_server,
-)
+from ray.job_config import JobConfig
+from ray.util.client.client_pickler import dumps_from_client, loads_from_server
 from ray.util.client.common import (
+    GRPC_OPTIONS,
+    GRPC_UNRECOVERABLE_ERRORS,
+    INT32_MAX,
+    OBJECT_TRANSFER_WARNING_SIZE,
     ClientActorClass,
     ClientActorHandle,
     ClientActorRef,
     ClientObjectRef,
     ClientRemoteFunc,
     ClientStub,
-    GRPC_OPTIONS,
-    GRPC_UNRECOVERABLE_ERRORS,
-    INT32_MAX,
-    OBJECT_TRANSFER_WARNING_SIZE,
 )
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
-import ray._private.utils
-from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -65,7 +62,7 @@ MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
-MESSAGE_SIZE_THRESHOLD = 10 * 2 ** 20  # 10 MB
+MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -466,7 +463,7 @@ class Worker:
                 if chunk.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
                     "client_object_transfer_size_warning"
                 ):
-                    size_gb = chunk.total_size / 2 ** 30
+                    size_gb = chunk.total_size / 2**30
                     warnings.warn(
                         "Ray Client is attempting to retrieve a "
                         f"{size_gb:.2f} GiB object over the network, which may "
@@ -480,7 +477,13 @@ class Worker:
             raise decode_exception(e)
         return loads_from_server(data)
 
-    def put(self, val, *, client_ref_id: bytes = None):
+    def put(
+        self,
+        val,
+        *,
+        client_ref_id: bytes = None,
+        _owner: Optional[ClientActorHandle] = None,
+    ):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -490,12 +493,17 @@ class Worker:
                 "call 'put' on it (or return it)."
             )
         data = dumps_from_client(val, self._client_id)
-        return self._put_pickled(data, client_ref_id)
+        return self._put_pickled(data, client_ref_id, _owner)
 
-    def _put_pickled(self, data, client_ref_id: bytes):
+    def _put_pickled(
+        self, data, client_ref_id: bytes, owner: Optional[ClientActorHandle] = None
+    ):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
+        if owner is not None:
+            req.owner_id = owner.actor_ref.id
+
         resp = self.data_client.PutObject(req)
         if not resp.valid:
             try:
@@ -711,33 +719,59 @@ class Worker:
             return resp.runtime_context
         return json.loads(resp.json)
 
-    def internal_kv_get(self, key: bytes) -> bytes:
-        req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self._call_stub("KVGet", req, metadata=self.metadata)
+    def internal_kv_get(self, key: bytes, namespace: Optional[bytes]) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key, namespace=namespace)
+        try:
+            resp = self._call_stub("KVGet", req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
         if resp.HasField("value"):
             return resp.value
         # Value is None when the key does not exist in the KV.
         return None
 
-    def internal_kv_exists(self, key: bytes) -> bytes:
-        req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self._call_stub("KVGet", req, metadata=self.metadata)
-        return resp.value
+    def internal_kv_exists(self, key: bytes, namespace: Optional[bytes]) -> bool:
+        req = ray_client_pb2.KVExistsRequest(key=key, namespace=namespace)
+        try:
+            resp = self._call_stub("KVExists", req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
+        return resp.exists
 
-    def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool) -> bool:
-        req = ray_client_pb2.KVPutRequest(key=key, value=value, overwrite=overwrite)
+    def internal_kv_put(
+        self, key: bytes, value: bytes, overwrite: bool, namespace: Optional[bytes]
+    ) -> bool:
+        req = ray_client_pb2.KVPutRequest(
+            key=key, value=value, overwrite=overwrite, namespace=namespace
+        )
         metadata = self._add_ids_to_metadata(self.metadata)
-        resp = self._call_stub("KVPut", req, metadata=metadata)
+        try:
+            resp = self._call_stub("KVPut", req, metadata=metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
         return resp.already_exists
 
-    def internal_kv_del(self, key: bytes) -> None:
-        req = ray_client_pb2.KVDelRequest(key=key)
+    def internal_kv_del(
+        self, key: bytes, del_by_prefix: bool, namespace: Optional[bytes]
+    ) -> int:
+        req = ray_client_pb2.KVDelRequest(
+            key=key, del_by_prefix=del_by_prefix, namespace=namespace
+        )
         metadata = self._add_ids_to_metadata(self.metadata)
-        self._call_stub("KVDel", req, metadata=metadata)
+        try:
+            resp = self._call_stub("KVDel", req, metadata=metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
+        return resp.deleted_num
 
-    def internal_kv_list(self, prefix: bytes) -> bytes:
-        req = ray_client_pb2.KVListRequest(prefix=prefix)
-        return self._call_stub("KVList", req, metadata=self.metadata).keys
+    def internal_kv_list(
+        self, prefix: bytes, namespace: Optional[bytes]
+    ) -> List[bytes]:
+        try:
+            req = ray_client_pb2.KVListRequest(prefix=prefix, namespace=namespace)
+            return self._call_stub("KVList", req, metadata=self.metadata).keys
+        except grpc.RpcError as e:
+            raise decode_exception(e)
 
     def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
         req = ray_client_pb2.ClientPinRuntimeEnvURIRequest(

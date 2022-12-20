@@ -6,7 +6,16 @@ try:
 except ImportError:
     TUNE_INSTALLED = False
 
-# Autofilled train.report() metrics. Keys should be consistent with Tune.
+from ray.air.constants import (  # noqa: F401
+    EVALUATION_DATASET_KEY,
+    MODEL_KEY,
+    PREPROCESSOR_KEY,
+    TRAIN_DATASET_KEY,
+    WILDCARD_KEY,
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+)
+
+# Autofilled session.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
@@ -23,18 +32,11 @@ TIME_TOTAL_S = "_time_total_s"
 # env var is not 0
 DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
 
-# Time between Session.get_next checks when fetching
-# new results after signaling the training function to continue.
-RESULT_FETCH_TIMEOUT = 0.2
-
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
 
 # Default directory where all Train logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
-
-# File name to use for checkpoints saved with Tune.
-TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
 
 # The name of the subdirectory inside the trainer run_dir to store checkpoints.
 TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
@@ -61,16 +63,16 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
-# The key used to identify whether we have already warned about ray.train
-# functions being used outside of the session
-SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
+# Integer value which if set will disable lazy checkpointing
+# (avoiding unnecessary serialization if worker is on the same node
+# as Trainable)
+DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 
-# Reserved keyword used by the ``TorchWorkerProfiler`` and
-# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``train.report()``
-PYTORCH_PROFILER_KEY = "_train_torch_profiler"
+# Default NCCL_SOCKET_IFNAME.
+# Use ethernet when possible.
+# NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
+# "en".
+DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
 
-# Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``train.report()``.
-# See ``TrainingCallback._preprocess_results`` for more details.
-ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+# Key for AIR Checkpoint metadata in TrainingResult metadata
+CHECKPOINT_METADATA_KEY = "checkpoint_metadata"

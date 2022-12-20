@@ -64,23 +64,22 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         abs_path = script_dir.absolute()
 
         for fw, sess in framework_iterator(session=True):
-            fw_ = fw if fw != "tfe" else "tf"
             # Try to create from an abstract class w/o default constructor.
             # Expect None.
-            test = from_config({"type": AbstractDummyComponent, "framework": fw_})
+            test = from_config({"type": AbstractDummyComponent, "framework": fw})
             check(test, None)
 
             # Create a Component via python API (config dict).
             component = from_config(
                 dict(
-                    type=DummyComponent, prop_a=1.0, prop_d="non_default", framework=fw_
+                    type=DummyComponent, prop_a=1.0, prop_d="non_default", framework=fw
                 )
             )
             check(component.prop_d, "non_default")
 
             # Create a tf Component from json file.
             config_file = str(abs_path.joinpath("dummy_config.json"))
-            component = from_config(config_file, framework=fw_)
+            component = from_config(config_file, framework=fw)
             check(component.prop_c, "default")
             check(component.prop_d, 4)  # default
             value = component.add(3.3)
@@ -90,7 +89,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
             # Create a torch Component from yaml file.
             config_file = str(abs_path.joinpath("dummy_config.yml"))
-            component = from_config(config_file, framework=fw_)
+            component = from_config(config_file, framework=fw)
             check(component.prop_a, "something else")
             check(component.prop_d, 3)
             value = component.add(1.2)
@@ -103,7 +102,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 '{"type": "ray.rllib.utils.tests.'
                 'test_framework_agnostic_components.DummyComponent", '
                 '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default", '
-                '"framework": "' + fw_ + '"}'
+                '"framework": "' + fw + '"}'
             )
             check(component.prop_a, "A")
             check(component.prop_d, 4)  # default
@@ -117,7 +116,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 DummyComponent,
                 '{"type": "NonAbstractChildOfDummyComponent", '
                 '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default",'
-                '"framework": "' + fw_ + '"}',
+                '"framework": "' + fw + '"}',
             )
             check(component.prop_a, "A")
             check(component.prop_d, 4)  # default
@@ -136,7 +135,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 {
                     "type": "EpsilonGreedy",
                     "action_space": Discrete(2),
-                    "framework": fw_,
+                    "framework": fw,
                     "num_workers": 0,
                     "worker_index": 0,
                     "policy_config": {},
@@ -152,7 +151,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 "type: ray.rllib.utils.tests."
                 "test_framework_agnostic_components.DummyComponent\n"
                 "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: "
-                "{}".format(fw_)
+                "{}".format(fw)
             )
             check(component.prop_a, "B")
             check(component.prop_d, 4)  # default

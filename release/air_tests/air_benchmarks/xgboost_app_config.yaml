@@ -1,0 +1,14 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - modin==0.12.1
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U --force-reinstall --no-deps xgboost_ray  # Avoid caching
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

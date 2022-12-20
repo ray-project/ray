@@ -21,44 +21,41 @@ def upload(contents: str) -> None:
     pass
 
 
-@workflow.step
+@ray.remote
 def upload_all(file_contents: List[ray.ObjectRef]) -> None:
-    @workflow.step
+    @ray.remote
     def upload_one(contents: str) -> None:
         upload(contents)
 
-    children = [upload_one.step(f) for f in file_contents]
+    children = [upload_one.bind(f) for f in file_contents]
 
-    @workflow.step
+    @ray.remote
     def wait_all(*deps) -> None:
         pass
 
-    return wait_all.step(*children)
+    return wait_all.bind(*children)
 
 
-@workflow.step
+@ray.remote
 def process_all(file_contents: List[ray.ObjectRef]) -> None:
-    @workflow.step
-    def process_one(contents: str) -> ray.ObjectRef:
-        result = process(contents)
-        # Result is too large to return directly; put in the object store.
-        return ray.put(result)
+    @ray.remote
+    def process_one(contents: str) -> str:
+        return process(contents)
 
-    children = [process_one.step(f) for f in file_contents]
-    return upload_all.step(children)
+    children = [process_one.bind(f) for f in file_contents]
+    return upload_all.bind(children)
 
 
-@workflow.step
+@ray.remote
 def download_all(urls: List[str]) -> None:
-    @workflow.step
-    def download_one(url: str) -> ray.ObjectRef:
-        return ray.put(download(url))
+    @ray.remote
+    def download_one(url: str) -> str:
+        return download(url)
 
-    children = [download_one.step(u) for u in urls]
-    return process_all.step(children)
+    children = [download_one.bind(u) for u in urls]
+    return process_all.bind(children)
 
 
 if __name__ == "__main__":
-    workflow.init()
-    res = download_all.step(FILES_TO_PROCESS)
-    res.run()
+    res = download_all.bind(FILES_TO_PROCESS)
+    workflow.run(res)
