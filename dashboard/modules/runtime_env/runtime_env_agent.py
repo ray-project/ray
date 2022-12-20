@@ -74,7 +74,6 @@ class ReferenceTable:
         uris_parser: Callable[[RuntimeEnv], Tuple[str, UriType]],
         unused_uris_callback: Callable[[List[Tuple[str, UriType]]], None],
         unused_runtime_env_callback: Callable[[str], None],
-        logger: logging.Logger = default_logger,
     ):
         # Runtime Environment reference table. The key is serialized runtime env and
         # the value is reference count.
@@ -91,15 +90,14 @@ class ReferenceTable:
         self._reference_exclude_sources: Set[str] = {
             "client_server",
         }
-        self._logger = logger
 
     def _increase_reference_for_uris(self, uris):
-        self._logger.debug(f"Increase reference for uris {uris}.")
+        default_logger.debug(f"Increase reference for uris {uris}.")
         for uri, _ in uris:
             self._uri_reference[uri] += 1
 
     def _decrease_reference_for_uris(self, uris):
-        self._logger.debug(f"Decrease reference for uris {uris}.")
+        default_logger.debug(f"Decrease reference for uris {uris}.")
         unused_uris = list()
         for uri, uri_type in uris:
             if self._uri_reference[uri] > 0:
@@ -108,18 +106,18 @@ class ReferenceTable:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                self._logger.warn(f"URI {uri} does not exist.")
+                default_logger.warn(f"URI {uri} does not exist.")
         if unused_uris:
-            self._logger.info(f"Unused uris {unused_uris}.")
+            default_logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        self._logger.debug(f"Increase reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
-        self._logger.debug(f"Decrease reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
@@ -127,9 +125,9 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            self._logger.warn(f"Runtime env {serialized_env} does not exist.")
+            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
-            self._logger.info(f"Unused runtime env {serialized_env}.")
+            default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
         return unused
 
@@ -213,6 +211,12 @@ class RuntimeEnvAgent(
         for plugin in self._base_plugins:
             self._plugin_manager.add_plugin(plugin)
 
+        self._reference_table = ReferenceTable(
+            self.uris_parser,
+            self.unused_uris_processor,
+            self.unused_runtime_env_processor,
+        )
+
         self._logger = default_logger
         self._logging_params.update(filename=self.LOG_FILENAME)
         self._logger = setup_component_logger(
@@ -223,12 +227,6 @@ class RuntimeEnvAgent(
         # be confined to the runtime env agent log file `self.LOG_FILENAME`.
         self._logger.propagate = False
 
-        self._reference_table = ReferenceTable(
-            self.uris_parser,
-            self.unused_uris_processor,
-            self.unused_runtime_env_processor,
-            self._logger,
-        )
 
     def uris_parser(self, runtime_env):
         result = list()
