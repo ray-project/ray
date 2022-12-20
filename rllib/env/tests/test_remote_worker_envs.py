@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from pettingzoo.butterfly import pistonball_v6
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0

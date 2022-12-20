@@ -15,7 +15,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 import os
 
 import ray
@@ -134,7 +134,7 @@ def centralized_critic_postprocessing(
             sample_batch[SampleBatch.REWARDS], dtype=np.float32
         )
 
-    completed = sample_batch["dones"][-1]
+    completed = sample_batch[SampleBatch.TERMINATEDS][-1]
     if completed:
         last_r = 0.0
     else:

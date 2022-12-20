@@ -1,6 +1,4 @@
 import copy
-import gym
-from gym.spaces import Space
 import logging
 import math
 from typing import (
@@ -39,6 +37,10 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.gym import (
+    convert_old_gym_space_to_gymnasium_space,
+    try_import_gymnasium_and_gym,
+)
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
@@ -55,6 +57,10 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.util import log_once
+
+gym, old_gym = try_import_gymnasium_and_gym()
+Space = gym.Space
+
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -327,7 +333,6 @@ class AlgorithmConfig:
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
-        self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
@@ -414,7 +419,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = "WARN"
+        self.log_level = DEPRECATED_VALUE
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -465,6 +470,7 @@ class AlgorithmConfig:
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
+        self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -666,7 +672,10 @@ class AlgorithmConfig:
             return False
 
         try:
-            env = gym.make(self.env)
+            if self.env.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=self.env)
+            else:
+                env = gym.make(self.env)
         except gym.error.NameNotFound:
             # Not an Atari env if this is not a gym env.
             return False
@@ -1159,7 +1168,6 @@ class AlgorithmConfig:
         recreate_failed_workers: Optional[bool] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
-        no_done_at_end: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
@@ -1168,6 +1176,7 @@ class AlgorithmConfig:
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
+        no_done_at_end=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1262,7 +1271,6 @@ class AlgorithmConfig:
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
-            no_done_at_end: If True, don't set a 'done=True' at the end of the episode.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1339,8 +1347,6 @@ class AlgorithmConfig:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
-        if no_done_at_end is not NotProvided:
-            self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not NotProvided:
             assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
@@ -1367,6 +1373,12 @@ class AlgorithmConfig:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(soft_horizon=..)",
                 new="Your gymnasium.Env.step() should handle soft resets internally.",
+                error=True,
+            )
+        if no_done_at_end != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
+                new="Your gymnasium.Env.step() should return a truncated=True flag",
                 error=True,
             )
 
@@ -1704,8 +1716,8 @@ class AlgorithmConfig:
                 custom output.
             output_compress_columns: What sample batch columns to LZ4 compress in the
                 output data.
-            output_max_file_size: Max output file size before rolling over to a
-                new file.
+            output_max_file_size: Max output file size (in bytes) before rolling over
+                to a new file.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, RolloutWorkers will NOT limit the
                 number of collected batches within the same `sample()` call based on
@@ -2046,7 +2058,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = NotProvided,
+        log_level: Optional[str] = DEPRECATED_VALUE,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2080,8 +2092,16 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level is not NotProvided:
-            self.log_level = log_level
+        if log_level != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.log_level",
+                help=(
+                    "RLlib no longer has a separate logging configuration from the rest"
+                    " of Ray. Configure logging on the root logger; RLlib messages "
+                    "will be propagated up the logger hierarchy to be handled there."
+                ),
+                error=False,
+            )
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
@@ -2371,6 +2391,7 @@ class AlgorithmConfig:
 
             if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
                 env_act_space = env.action_space
+
         # Last resort: Try getting the env's spaces from the spaces
         # dict's special __env__ key.
         if spaces is not None:
@@ -2389,8 +2410,16 @@ class AlgorithmConfig:
             if policy_spec.policy_class is None and default_policy_class is not None:
                 policies[pid].policy_class = default_policy_class
 
+            # In case - somehow - an old gym Space made it to here, convert it
+            # to the corresponding gymnasium space.
+            if old_gym and isinstance(policy_spec.observation_space, old_gym.Space):
+                policies[
+                    pid
+                ].observation_space = convert_old_gym_space_to_gymnasium_space(
+                    policy_spec.observation_space
+                )
             # Infer observation space.
-            if policy_spec.observation_space is None:
+            elif policy_spec.observation_space is None:
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
@@ -2399,15 +2428,15 @@ class AlgorithmConfig:
                     # policy IDs.
                     if (
                         isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_spaces_in_preferred_format")
-                        and env._spaces_in_preferred_format
+                        and hasattr(env, "_obs_space_in_preferred_format")
+                        and env._obs_space_in_preferred_format
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
-                                if mapping_fn(aid, None, None) == pid:
+                                if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
                                     if (
@@ -2437,8 +2466,14 @@ class AlgorithmConfig:
 
                 policies[pid].observation_space = obs_space
 
+            # In case - somehow - an old gym Space made it to here, convert it
+            # to the corresponding gymnasium space.
+            if old_gym and isinstance(policy_spec.action_space, old_gym.Space):
+                policies[pid].action_space = convert_old_gym_space_to_gymnasium_space(
+                    policy_spec.action_space
+                )
             # Infer action space.
-            if policy_spec.action_space is None:
+            elif policy_spec.action_space is None:
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:
@@ -2447,15 +2482,15 @@ class AlgorithmConfig:
                     # policy IDs.
                     if (
                         isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_spaces_in_preferred_format")
-                        and env._spaces_in_preferred_format
+                        and hasattr(env, "_action_space_in_preferred_format")
+                        and env._action_space_in_preferred_format
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
-                                if mapping_fn(aid, None, None) == pid:
+                                if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
                                     if (
