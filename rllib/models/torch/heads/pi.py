@@ -28,14 +28,23 @@ class TorchPi(TorchModel):
         # Size of a single input to produce all the needed distributions
         flat_dist_input_size = sum([d.input_shape_flat for d in self.dist_configs])
         self._input_spec = input_spec
+        # Size of the inputs if we concatenate them over the last dim
+        prev_module_size = sum(v.shape[-1] for v in input_spec.values())
         # Map input shape to the correct shape for action distribution
-        # TODO: make this work for N input vectors
-        pi_input_size = list(input_spec.values())[0].shape[-1]
-        self.to_dist_inputs = torch.nn.Linear(pi_input_size, flat_dist_input_size)
+        self.to_dist_inputs = torch.nn.Linear(prev_module_size, flat_dist_input_size)
         self._output_spec = ModelSpec({config.output_key: Distribution})
 
     def _forward(self, inputs: NestedDict) -> NestedDict:
-        [pi_inputs] = inputs.values()
+        # Ensure all inputs have matching dims before concat
+        # so we can emit an informative error message
+        first_key, first_tensor = list(inputs.items())[0]
+        for k, tensor in inputs.items():
+            assert tensor.shape[:-1] == first_tensor.shape[:-1], (
+                "Inputs have mismatching dimensions, all dims but the last should "
+                f"be equal: {first_key}: {first_tensor.shape} != {k}: {tensor.shape}"
+            )
+        # Concatenate all input along the feature dim
+        pi_inputs = torch.cat(list(inputs.values()), dim=-1)
         # Map to correct shape
         dist_inputs = self.to_dist_inputs(pi_inputs)
         # Each chunk represents the dist_inputs for a single distribution

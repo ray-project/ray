@@ -19,7 +19,7 @@ class Distribution(abc.ABC):
         >>> logp = action_dist.logp(action)
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
-        >>> deterministic_action = action_dist.dsample()
+        >>> max_likelihood_action = action_dist.max_likelihood()
 
     """
 
