@@ -6,7 +6,7 @@ Deploying on Spark Standalone cluster
 This document describes a couple high-level steps to run Ray clusters on `Spark Standalone cluster <https://spark.apache.org/docs/latest/spark-standalone.html>`_.
 
 Running a basic example
-=======================
+-----------------------
 
 This is a spark application example code that starts Ray cluster on spark,
 and then execute ray application code, then shut down initiated ray cluster.
@@ -52,7 +52,7 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
       path/to/ray-on-spark-example1.py
 
 Creating a long running ray cluster on spark cluster
-====================================================
+----------------------------------------------------
 
 This is a spark application example code that starts a long running Ray cluster on spark.
 The created ray cluster can be accessed by remote python processes.
@@ -64,7 +64,7 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
 
     from pyspark.sql import SparkSession
     import time
-    from ray.util.spark import init_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+    from ray.util.spark import init_ray_cluster, MAX_NUM_WORKER_NODES
 
     if __name__ == "__main__":
         spark = SparkSession \
