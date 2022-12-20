@@ -6,6 +6,7 @@ from time import sleep
 import pytest
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -451,7 +452,7 @@ def test_gcs_aio_client_reconnect(
         import asyncio
 
         asyncio.set_event_loop(asyncio.new_event_loop())
-        passed[0] = asyncio.get_event_loop().run_until_complete(async_kv_get())
+        passed[0] = get_or_create_event_loop().run_until_complete(async_kv_get())
 
     ray._private.worker._global_node.kill_gcs_server()
     t = threading.Thread(target=kv_get)

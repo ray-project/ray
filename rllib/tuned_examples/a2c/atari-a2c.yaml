@@ -11,7 +11,8 @@ atari-a2c:
     config:
         # Works for both torch and tf.
         framework: tf
-        rollout_fragment_length: 20
+        train_batch_size: 500
+        rollout_fragment_length: auto
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5

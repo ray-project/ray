@@ -3,6 +3,7 @@ import logging
 import os
 import platform
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,6 +11,7 @@ from typing import (
     Container,
     Dict,
     List,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -21,11 +23,9 @@ import numpy as np
 import tree  # pip install dm_tree
 from gym.spaces import Box
 from packaging import version
-from collections import defaultdict
 
 import ray
 import ray.cloudpickle as pickle
-from ray.util import log_once
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 from ray.rllib.models.action_dist import ActionDistribution
@@ -33,7 +33,6 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -50,12 +49,15 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -70,6 +72,7 @@ from ray.rllib.utils.typing import (
     TensorType,
     TrainerConfigDict,
 )
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
@@ -77,6 +80,8 @@ torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
+    from ray.rllib.core.rl_module import RLModule
+
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +297,10 @@ class Policy(metaclass=ABCMeta):
                 "Cannot create new Policy."
             )
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+        actual_class = get_tf_eager_cls_if_necessary(
+            pol_spec.policy_class,
+            pol_spec.config,
+        )
 
         if pol_spec.config["framework"] == "tf":
             from ray.rllib.policy.tf_policy import TFPolicy
@@ -299,7 +308,7 @@ class Policy(metaclass=ABCMeta):
             return TFPolicy._tf1_from_state_helper(state)
 
         # Create the new policy.
-        new_policy = pol_spec.policy_class(
+        new_policy = actual_class(
             # Note(jungong) : we are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
             # and some others name it observation_space.
@@ -367,6 +376,20 @@ class Policy(metaclass=ABCMeta):
         # Connectors.
         self.agent_connectors = None
         self.action_connectors = None
+
+    @ExperimentalAPI
+    @OverrideToImplementCustomLogic
+    def make_rl_module(self) -> "RLModule":
+        """Returns the RL Module.
+
+        If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
+        this method should be implemented and should return the RLModule instance to
+        use for this Policy. Otherwise, RLlib will error out.
+        """
+        module_class: RLModule = self.config["rl_module_class"]
+        return module_class.from_model_config(
+            self.observation_space, self.action_space, model_config=self.config["model"]
+        )
 
     # TODO: (Artur) this function should become deprecated once we have completely
     #  transitioned to connectors
@@ -929,8 +952,8 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return (
             single_action,
-            [s[0] for s in state_out],
-            {k: v[0] for k, v in info.items()},
+            tree.map_structure(lambda x: x[0], state_out),
+            tree.map_structure(lambda x: x[0], info),
         )
 
     @DeveloperAPI
@@ -1368,8 +1391,10 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @PublicAPI(stability="alpha")
-    def restore_connectors(self, state: PolicyState):
+    def maybe_restore_connectors(self, state: PolicyState):
         """Restore agent and action connectors if configs available.
+
+        This is a noop if connectors are not enabled.
 
         Args:
             state: The new state to set this policy to. Can be
@@ -1385,7 +1410,7 @@ class Policy(metaclass=ABCMeta):
         def _restore(cfg):
             ctx: ConnectorContext = ConnectorContext.from_policy(self)
             name, params = cfg
-            return get_connector(ctx, name, params)
+            return get_connector(name, ctx, params)
 
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:
@@ -1406,8 +1431,34 @@ class Policy(metaclass=ABCMeta):
             state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
+        if "policy_spec" in state:
+            policy_spec = PolicySpec.deserialize(state["policy_spec"])
+            # Assert spaces remained the same.
+            if (
+                policy_spec.observation_space is not None
+                and policy_spec.observation_space != self.observation_space
+            ):
+                logger.warning(
+                    "`observation_space` in given policy state ("
+                    f"{policy_spec.observation_space}) does not match this Policy's "
+                    f"observation space ({self.observation_space})."
+                )
+            if (
+                policy_spec.action_space is not None
+                and policy_spec.action_space != self.action_space
+            ):
+                logger.warning(
+                    "`action_space` in given policy state ("
+                    f"{policy_spec.action_space}) does not match this Policy's "
+                    f"action space ({self.action_space})."
+                )
+            # Override config, if part of the spec.
+            if policy_spec.config:
+                self.config = policy_spec.config
+
+        # Override NN weights.
         self.set_weights(state["weights"])
-        self.restore_connectors(state)
+        self.maybe_restore_connectors(state)
 
     @ExperimentalAPI
     def apply(
@@ -1700,13 +1751,12 @@ class Policy(metaclass=ABCMeta):
         )
 
         self._lazy_tensor_dict(self._dummy_batch)
-
-        (
-            actions,
-            state_outs,
-            extra_outs,
-        ) = self.compute_actions_from_input_dict(self._dummy_batch, explore=False)
-
+        # With RL modules you want the explore flag to be True for initialization of the
+        # tensors and placeholder you'd need for training.
+        explore = self.config.get("_enable_rl_module_api", False)
+        actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
+            self._dummy_batch, explore=explore
+        )
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
@@ -1716,22 +1766,39 @@ class Policy(metaclass=ABCMeta):
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
             if key not in self.view_requirements:
-                self.view_requirements[key] = ViewRequirement(
-                    space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype
-                    ),
-                    used_for_compute_actions=False,
-                )
+                if isinstance(value, (dict, np.ndarray)):
+                    # the assumption is that value is a nested_dict of np.arrays leaves
+                    space = get_gym_space_from_struct_of_tensors(value)
+                    self.view_requirements[key] = ViewRequirement(
+                        space=space, used_for_compute_actions=False
+                    )
+                else:
+                    raise ValueError(
+                        "policy.compute_actions_from_input_dict() returns an "
+                        "extra action output that is neither a numpy array nor a dict."
+                    )
+
         for key in self._dummy_batch.accessed_keys:
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
-            self.view_requirements[key].used_for_compute_actions = True
-        # Get a dummy batch that is transformed from the original space to the model
-        # input space already to initialize the loss with it
-        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size
-        )
+                self.view_requirements[key].used_for_compute_actions = False
+            # TODO (kourosh) Why did we use to make used_for_compute_actions True here?
+        new_batch = self._get_dummy_batch_from_view_requirements(sample_batch_size)
+        # Make sure the dummy_batch will return numpy arrays when accessed
         self._dummy_batch.set_get_interceptor(None)
+
+        # try to re-use the output of the previous run to avoid overriding things that
+        # would break (e.g. scale = 0 of Normal distribution cannot be zero)
+        for k in new_batch:
+            if k not in self._dummy_batch:
+                self._dummy_batch[k] = new_batch[k]
+
+        # Make sure the book-keeping of dummy_batch keys are reset to correcly track
+        # what is accessed, what is added and what's deleted from now on.
+        self._dummy_batch.accessed_keys.clear()
+        self._dummy_batch.deleted_keys.clear()
+        self._dummy_batch.added_keys.clear()
+
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
@@ -1988,3 +2055,41 @@ class Policy(metaclass=ABCMeta):
     @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
+
+
+@DeveloperAPI
+def get_gym_space_from_struct_of_tensors(
+    value: Union[Mapping, np.ndarray]
+) -> gym.spaces.Dict:
+    if isinstance(value, Mapping):
+        value_dict = NestedDict(value)
+        struct = tree.map_structure(
+            lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
+            value_dict,
+        )
+        space = get_gym_space_from_struct_of_spaces(struct.asdict())
+    elif isinstance(value, np.ndarray):
+        space = gym.spaces.Box(-1.0, 1.0, shape=value.shape[1:], dtype=value.dtype)
+    else:
+        raise ValueError(
+            f"Unsupported type of value {type(value)} passed "
+            "to get_gym_space_from_struct_of_tensors. Only Nested dict with "
+            "np.ndarray leaves or an np.ndarray are supported."
+        )
+    return space
+
+
+@DeveloperAPI
+def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
+    if isinstance(value, dict):
+        return gym.spaces.Dict(
+            {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
+        )
+    elif isinstance(value, tuple):
+        return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
+    else:
+        assert isinstance(
+            value, gym.spaces.Space
+        ), "The struct of spaces should only contain dicts, tiples and primitive "
+        "gym spaces."
+        return value

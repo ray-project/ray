@@ -39,22 +39,24 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 RUN_RAYLET_PROFILER = False
 
 # Location of the redis server.
-RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
+RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(RAY_PATH, "core/src/ray/raylet/raylet" + EXE_SUFFIX)
+RAYLET_EXECUTABLE = os.path.join(
+    RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
+)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX
+    RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
@@ -354,7 +356,7 @@ def find_bootstrap_address(temp_dir: Optional[str]):
 def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     """Attempts to find the address of Ray cluster to use, in this order:
 
-    1. Use RAY_ADDRESS if defined.
+    1. Use RAY_ADDRESS if defined and nonempty.
     2. If no address is provided or the provided address is "auto", use the
     address in /tmp/ray/ray_current_cluster if available. This will error if
     the specified address is None and there is no address found. For "auto",
@@ -365,7 +367,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
     env_addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if env_addr is not None:
+    if env_addr is not None and env_addr != "":
         addr = env_addr
 
     if addr is not None and addr != "auto":
@@ -1310,6 +1312,7 @@ def start_raylet(
     ray_debugger_external: bool = False,
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
+    webui: Optional[str] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1437,14 +1440,19 @@ def start_raylet(
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
-        f"--storage={storage}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}",
-        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
+        f"--session-name={session_name}",
+        f"--temp-dir={temp_dir}",
+        f"--webui={webui}",
     ]
+
+    start_worker_command.append(f"--storage={storage}")
+
+    start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]

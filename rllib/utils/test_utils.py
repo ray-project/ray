@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
+    config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -501,6 +501,13 @@ def check_compute_single_action(
                         for full_fetch in (
                             [False, True] if what is algorithm else [False]
                         ):
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test_compute_actions(
                                 what,
                                 method_to_test,
@@ -644,7 +651,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results):
+def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -689,7 +696,18 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    is_multi_agent = train_results["config"].is_multi_agent()
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict(train_results["config"]["multiagent"])
+        .is_multi_agent()
+    )
 
     # Check in particular the "info" dict.
     info = train_results["info"]
@@ -728,6 +746,7 @@ def check_train_results(train_results):
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
+    framework: Optional[str] = None,
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
@@ -735,6 +754,8 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
+        framework: The framework to use for running this test. If None,
+            run the test on all frameworks.
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
@@ -770,15 +791,18 @@ def run_learning_tests_from_yaml(
         return experiment["config"].get("evaluation_interval", None) is not None
 
     # Loop through all collected files and gather experiments.
-    # Augment all by `torch` framework.
+    # Set correct framework(s).
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            # If framework explicitly given, only test for that framework.
+            # If framework given as arg, use that framework.
+            if framework is not None:
+                frameworks = [framework]
+            # If framework given in config, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e:
+            elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support

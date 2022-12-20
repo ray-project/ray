@@ -120,10 +120,86 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
-def test_omp_threads_set(shutdown_only):
-    ray.init(num_cpus=1)
-    # Should have been auto set by ray init.
-    assert os.environ["OMP_NUM_THREADS"] == "1"
+def test_omp_threads_set(ray_start_cluster, monkeypatch):
+    import os
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("OMP_NUM_THREADS")
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            return os.environ.get("OMP_NUM_THREADS")
+
+    ###########################
+    # Test basic tasks
+    ###########################
+    # Test override to num_cpus if OMP_NUM_THREADS not set
+    assert ray.get(f.options(num_cpus=2).remote()) == "2"
+
+    # Test override to default cpu number if OMP_NUM_THREADS not set
+    assert ray.get(f.remote()) == "1"
+
+    # Test set to 1 for fractional CPU
+    assert ray.get(f.options(num_cpus=0.25).remote()) == "1"
+
+    ###########################
+    # Test not overriding env_variables
+    ###########################
+    from ray.runtime_env import RuntimeEnv
+
+    assert (
+        ray.get(
+            f.options(
+                runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+            ).remote()
+        )
+        == "2"
+    )
+    assert (
+        ray.get(
+            f.options(
+                num_cpus=1, runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+            ).remote()
+        )
+        == "2"
+    )
+
+    ###########################
+    # Test actor tasks
+    ###########################
+    # Test actor tasks set OMP_NUM_THREADS correctly in a similar way.
+    assert ray.get(Actor.remote().f.remote()) == "1"
+    assert ray.get(Actor.options(num_cpus=2).remote().f.remote()) == "2"
+    assert ray.get(Actor.options(num_cpus=0.25).remote().f.remote()) == "1"
+
+    ###########################
+    # Test setting and restoring of the environ after tasks run
+    ###########################
+    @ray.remote
+    def g():
+        return os.getpid(), os.environ.get("OMP_NUM_THREADS")
+
+    # Set to 1
+    pid1, omp_num_threads = ray.get(g.remote())
+    assert omp_num_threads == "1"
+    # Set to 2
+    pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
+    assert pid1 == pid2
+    assert omp_num_threads == "2"
+
+    ###########################
+    # Test not setting the value with environ already set to 1 in env
+    ###########################
+    with monkeypatch.context() as m:
+        m.setenv("OMP_NUM_THREADS", "1")
+        cluster.add_node(num_cpus=4)
+    assert ray.get(f.options(num_cpus=4).remote()) == "1"
 
 
 def test_submit_api(shutdown_only):
@@ -574,8 +650,9 @@ def test_nested_functions(ray_start_shared_local_modes):
 
     assert ray.get(f.remote()) == (1, 2)
 
-    # Test a remote function that recursively calls itself.
 
+def test_recursive_remote_call(ray_start_shared_local_modes):
+    # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
         if n == 0:

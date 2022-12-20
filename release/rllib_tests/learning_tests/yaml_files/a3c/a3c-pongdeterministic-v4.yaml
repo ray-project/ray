@@ -7,11 +7,10 @@ a3c-pongdeterministic-v4:
         timesteps_total: 5000000
     stop:
         time_total_s: 3600
-    # TODO(sven, jungong): fix A3C on torch and re-enable.
-    frameworks: [ "tf", "tf2" ]
     config:
         num_gpus: 0
         num_workers: 16
+        max_requests_in_flight_per_sampler_worker: 1
         rollout_fragment_length: 20
         vf_loss_coeff: 0.5
         entropy_coeff: 0.01

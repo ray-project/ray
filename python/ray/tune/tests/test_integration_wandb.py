@@ -1,8 +1,9 @@
 import os
 import tempfile
+import threading
 from collections import namedtuple
 from dataclasses import dataclass
-from multiprocessing import Queue
+from queue import Queue
 from typing import Tuple, Dict
 from unittest.mock import (
     Mock,
@@ -21,12 +22,13 @@ from ray.tune.integration.wandb import (
 )
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
-    _WandbLoggingProcess,
     _QueueItem,
+    _WandbLoggingActor,
 )
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
+    WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
 )
@@ -88,20 +90,41 @@ class _MockWandbAPI:
         return Mock()
 
 
-class _MockWandbLoggingProcess(_WandbLoggingProcess):
+class _MockWandbLoggingActor(_WandbLoggingActor):
     def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
-        super(_MockWandbLoggingProcess, self).__init__(
+        super(_MockWandbLoggingActor, self).__init__(
             logdir, queue, exclude, to_config, *args, **kwargs
         )
         self._wandb = _MockWandbAPI()
 
 
 class WandbTestExperimentLogger(WandbLoggerCallback):
-    _logger_process_cls = _MockWandbLoggingProcess
-
     @property
     def trial_processes(self):
-        return self._trial_processes
+        return self._trial_logging_actors
+
+    def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
+        self._trial_queues[trial] = Queue()
+        local_actor = _MockWandbLoggingActor(
+            logdir=trial.logdir,
+            queue=self._trial_queues[trial],
+            exclude=exclude_results,
+            to_config=self._config_results,
+            **wandb_init_kwargs,
+        )
+        self._trial_logging_actors[trial] = local_actor
+
+        thread = threading.Thread(target=local_actor.run)
+        self._trial_logging_futures[trial] = thread
+        thread.start()
+
+    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+        self._trial_queues[trial].put((_QueueItem.END, None))
+
+        del self._trial_queues[trial]
+        del self._trial_logging_actors[trial]
+        self._trial_logging_futures[trial].join(timeout=2)
+        del self._trial_logging_futures[trial]
 
 
 class _MockWandbTrainableMixin(WandbTrainableMixin):
@@ -110,6 +133,13 @@ class _MockWandbTrainableMixin(WandbTrainableMixin):
 
 class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
     pass
+
+
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    ray.shutdown()
 
 
 @pytest.fixture
@@ -192,6 +222,22 @@ class TestWandbLogger:
         logger = WandbTestExperimentLogger(project="test_project")
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
+
+    def test_wandb_logger_run_location_external_hook(self, monkeypatch):
+        # No project
+        with pytest.raises(ValueError):
+            logger = WandbTestExperimentLogger(api_key="1234")
+            logger.setup()
+
+        # Project and group env vars from external hook
+        monkeypatch.setenv(
+            WANDB_POPULATE_RUN_LOCATION_HOOK,
+            "ray._private.test_utils.wandb_populate_run_location_hook",
+        )
+        logger = WandbTestExperimentLogger(api_key="1234")
+        logger.setup()
+        assert os.environ[WANDB_PROJECT_ENV_VAR] == "test_project"
+        assert os.environ[WANDB_GROUP_ENV_VAR] == "test_group"
 
     def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
@@ -284,6 +330,26 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, rllib_result)
         logged = logger.trial_processes[trial]._wandb.logs.get(timeout=10)
         assert logged != "serialization error"
+
+    def test_wandb_logging_actor_api_key(self, ray_start_2_cpus, trial, monkeypatch):
+        """Tests that the wandb API key get propagated as an environment variable to
+        the remote logging actors."""
+
+        def mock_run(actor_cls):
+            return os.environ.get(WANDB_ENV_VAR)
+
+        monkeypatch.setattr(
+            WandbLoggerCallback, "_logger_actor_cls", _MockWandbLoggingActor
+        )
+        monkeypatch.setattr(_MockWandbLoggingActor, "run", mock_run)
+
+        logger = WandbLoggerCallback(
+            project="test_project", api_key="1234", excludes=["metric2"]
+        )
+        logger.setup()
+        logger.log_trial_start(trial)
+        actor_env_var = ray.get(logger._trial_logging_futures[trial])
+        assert actor_env_var == "1234"
 
 
 class TestWandbClassMixin:
@@ -405,8 +471,8 @@ class TestWandbMixinDecorator:
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
-    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingProcess is
-    correctly called by calling _WandbLoggingProcess.run() mocking
+    Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingActor is
+    correctly called by calling _WandbLoggingActor.run() mocking
     out calls to wandb.
     """
     mock_queue = Mock(get=Mock(return_value=(_QueueItem.END, None)))
@@ -415,7 +481,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
     )
 
     with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
-        logging_process = _WandbLoggingProcess(
+        logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )
         logging_process._wandb = Mock()

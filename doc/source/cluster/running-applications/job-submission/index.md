@@ -36,15 +36,15 @@ If you would like to run an application *interactively* and see the output in re
 
 Note that jobs started in these ways are not managed by the Ray Jobs API, so the Ray Jobs API will not be able to see them or interact with them (with the exception of `ray job list` and `JobSubmissionClient.list_jobs()`).
 
-# Contents
+## Contents
 
 ```{toctree}
 :maxdepth: '1'
 
 quickstart
 sdk
-rest
 jobs-package-ref
 cli
+rest
 ray-client
 ```

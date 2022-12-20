@@ -68,13 +68,6 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    if args.run == "contrib/MADDPG":
-        logger.warning(
-            "`contrib/MADDPG` is not longer a valid algorithm descriptor! "
-            "Use `MADDPG` instead."
-        )
-        args.run = "MADDPG"
-
     grouping = {
         "group_1": [0, 1],
     }
@@ -128,15 +121,15 @@ if __name__ == "__main__":
                     "pol1": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 0},
+                        config=config.overrides(agent_id=0),
                     ),
                     "pol2": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 1},
+                        config=config.overrides(agent_id=1),
                     ),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol2"
                 if agent_id
                 else "pol1",
             )

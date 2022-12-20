@@ -33,6 +33,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
@@ -96,6 +97,7 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -126,19 +128,12 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
-    """Returns the given config dict merged with common agent confs.
-
-    Args:
-        extra_config: A user defined partial config
-            which will get merged with a default AlgorithmConfig() object and returned
-            as plain python dict.
-
-    Returns:
-        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
-            plus `extra_config`.
-    """
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=False,
+)
+def with_common_config(extra_config):
     return Algorithm.merge_trainer_configs(
         AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
     )
@@ -497,15 +492,6 @@ class Algorithm(Trainable):
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
-        log_level = self.config.get("log_level")
-        if log_level in ["WARN", "ERROR"]:
-            logger.info(
-                "Current log_level is {}. For more information, "
-                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
-                "-vv flags.".format(log_level)
-            )
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -529,9 +515,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.evaluation(evaluation_config={"
-                f"'off_policy_estimation_methods'={ope_dict}"
-                "})",
+                new="config.evaluation(evaluation_config=config.overrides("
+                f"off_policy_estimation_methods={ope_dict}"
+                "))",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
@@ -1777,8 +1763,8 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to add.
                 IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
-                or a dot `.` or space ` ` at the end of the ID.
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -2291,6 +2277,28 @@ class Algorithm(Trainable):
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
         )
+
+    @override(Trainable)
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
+        # Override this method to make sure, the `config` key of the returned results
+        # contains the proper Tune config dict (instead of an AlgorithmConfig object).
+        auto_filled = super().get_auto_filled_metrics(
+            now, time_this_iter, debug_metrics_only
+        )
+        if "config" not in auto_filled:
+            raise KeyError("`config` key not found in auto-filled results dict!")
+
+        # If `config` key is no dict (but AlgorithmConfig object) ->
+        # make sure, it's a dict to not break Tune APIs.
+        if not isinstance(auto_filled["config"], dict):
+            assert isinstance(auto_filled["config"], AlgorithmConfig)
+            auto_filled["config"] = auto_filled["config"].to_dict()
+        return auto_filled
 
     @classmethod
     def merge_trainer_configs(

@@ -352,7 +352,7 @@ class TupleSpyModel(TFModelV2):
 class TestNestedObservationSpaces(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -508,17 +508,17 @@ class TestNestedObservationSpaces(unittest.TestCase):
                         None,
                         TUPLE_SPACE,
                         act_space,
-                        {"model": {"custom_model": "tuple_spy"}},
+                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
                     ),
                     "dict_policy": (
                         None,
                         DICT_SPACE,
                         act_space,
-                        {"model": {"custom_model": "dict_spy"}},
+                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
                     ),
                 },
                 policy_mapping_fn=(
-                    lambda agent_id, **kwargs: {
+                    lambda agent_id, episode, worker, **kwargs: {
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy",
                     }[agent_id]

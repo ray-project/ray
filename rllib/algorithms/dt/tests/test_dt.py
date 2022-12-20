@@ -77,6 +77,7 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
@@ -85,11 +86,10 @@ class TestDT(unittest.TestCase):
                 evaluation_duration=10,
                 evaluation_duration_unit="episodes",
                 evaluation_parallel_to_training=False,
-                evaluation_config={"input": "sampler", "explore": False},
+                evaluation_config=DTConfig.overrides(input_="sampler", explore=False),
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .reporting(
                 min_train_timesteps_per_iteration=10,
@@ -161,13 +161,13 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+                horizon=200,
             )
             .evaluation(
                 target_return=-120,
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=200,
             )
             .experimental(_disable_preprocessor_api=True)
         )

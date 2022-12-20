@@ -55,7 +55,12 @@ class RandomPolicy(Policy):
     ):
         # Alternatively, a numpy array would work here as well.
         # e.g.: np.array([random.choice([0, 1])] * len(obs_batch))
-        return [self.action_space_for_sampling.sample() for _ in obs_batch], [], {}
+        obs_batch_size = len(tree.flatten(obs_batch)[0])
+        return (
+            [self.action_space_for_sampling.sample() for _ in range(obs_batch_size)],
+            [],
+            {},
+        )
 
     @override(Policy)
     def learn_on_batch(self, samples):

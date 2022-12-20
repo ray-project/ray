@@ -140,9 +140,6 @@ if __name__ == "__main__":
             num_sgd_iter=10,
             vf_loss_coeff=1e-5,
             model={
-                # Attention net wrapping (for tf) can already use the native keras
-                # model versions. For torch, this will have no effect.
-                "_use_default_native_models": True,
                 "use_attention": not args.no_attention,
                 "max_seq_len": 10,
                 "attention_num_transformer_units": 1,
@@ -195,12 +192,7 @@ if __name__ == "__main__":
             total_reward = 0
             # start with all zeros as state
             num_transformers = config["model"]["attention_num_transformer_units"]
-            attention_dim = config["model"]["attention_dim"]
-            memory = config["model"]["attention_memory_inference"]
-            init_state = state = [
-                np.zeros([memory, attention_dim], np.float32)
-                for _ in range(num_transformers)
-            ]
+            state = algo.get_policy().get_initial_state()
             # run one iteration until done
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
