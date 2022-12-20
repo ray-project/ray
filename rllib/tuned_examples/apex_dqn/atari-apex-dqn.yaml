@@ -1,5 +1,5 @@
-apex-breakoutnoframeskip-v4:
-    env: BreakoutNoFrameskip-v4
+apex-breakoutnoframeskip-v5:
+    env: ALE/Breakout-v5
     run: APEX
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     stop:
@@ -7,6 +7,8 @@ apex-breakoutnoframeskip-v4:
         episode_reward_mean: 20.0
         timesteps_total: 7000000
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         double_q: false
         dueling: false
         num_atoms: 1

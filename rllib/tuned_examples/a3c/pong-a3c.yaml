@@ -1,11 +1,13 @@
 # This gets to ~19-20 reward in ~30 minutes / 4m steps on a m4.10xl instance
 # TODO(rliaw): this has regressed in performance
 pong-a3c:
-    env: PongDeterministic-v4
+    env: ALE/Pong-v5
     run: A3C
     config:
         # Works for both torch and tf.
         framework: tf
+        env_config:
+            nondeterministic: False  # deterministic
         num_workers: 16
         rollout_fragment_length: 20
         vf_loss_coeff: 0.5

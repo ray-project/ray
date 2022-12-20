@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Dict, List
 
 from ray.rllib.utils.annotations import DeveloperAPI
