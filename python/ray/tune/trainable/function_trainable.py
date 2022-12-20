@@ -122,23 +122,25 @@ class FuncCheckpointUtil:
         assert not os.path.exists(os.path.join(perm_checkpoint_dir, TEMP_MARKER))
         return perm_checkpoint_dir
 
-
+@DeveloperAPI
 class _StatusReporter:
     def __init__(
         self,
-        result_queue,
-        continue_semaphore,
-        end_event,
-        experiment_name=None,
-        trial_name=None,
-        trial_id=None,
-        logdir=None,
-        trial_resources=None,
+        result_queue: queue.Queue,
+        continue_semaphore: threading.Semaphore,
+        end_event: threading.Event,
+        training_iteration_func: Callable[[], int],
+        experiment_name: Optional[str] = None,
+        trial_name: Optional[str] = None,
+        trial_id: Optional[str] = None,
+        logdir: Optional[str] = None,
+        trial_resources: Optional[Union[Resources, PlacementGroupFactory]] = None,
     ):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._end_event = end_event
+        self._get_training_iteration = training_iteration_func
         self._experiment_name = experiment_name
         self._trial_name = trial_name
         self._trial_id = trial_id
@@ -146,10 +148,9 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        # Also used as a marker of whether new `report()` API is being used,
-        # in which case, `_iter` will be incremented from 0 every time `report`
-        # is called.
-        self._iter = None
+        # Mark whether the `session.report()` API is being used,
+        # to throw an error if `tune.report()` is called as well
+        self._session_report_used = False
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -158,7 +159,7 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        self._iter = None
+        self._session_report_used = False
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -237,16 +238,15 @@ class _StatusReporter:
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): Tons of optimizations.
-        if not self._iter:
-            self._iter = 0
+        self._session_report_used = True
         if checkpoint:
-            checkpoint_dir = self.make_checkpoint_dir(step=self._iter)
+            training_iteration = self._get_training_iteration()
+            checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
             self.set_checkpoint(checkpoint_dir)
             checkpoint.to_directory(checkpoint_dir)
             # TODO(krfricke): Remove this once support is added in Checkpoint.
             open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
-        self._iter += 1
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
@@ -309,6 +309,11 @@ class FunctionTrainable(Trainable):
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
+            # `session.report()`` gets called during each step of the training function,
+            # which happens before the training iteration gets incremented.
+            # Add 1 here in order to attach this checkpoint to the same
+            # "training_iteration" as its corresponding result.
+            training_iteration_func=lambda: self.training_iteration + 1,
             experiment_name=(
                 self._trial_info.experiment_name if self._trial_info else None
             ),
