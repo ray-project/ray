@@ -270,7 +270,7 @@ class ExecutionPlan:
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 schemas_to_unify.append(m.schema)
         if schemas_to_unify:
-            # Check valid PyArrow installation before attempting schema unification
+            # Check valid pyarrow installation before attempting schema unification
             try:
                 import pyarrow as pa
             except ImportError:

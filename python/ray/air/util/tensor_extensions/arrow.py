@@ -166,13 +166,17 @@ class ArrowTensorType(pa.PyExtensionType):
             # short-circuit since we require a variable-shaped representation.
             if isinstance(arr_type, ArrowVariableShapedTensorType):
                 return True
-            # For PyArrow extension types, we need variable-shaped representation
-            # if all the shapes do not match.
-            if isinstance(arr_type, pa.ExtensionType):
-                if shape is not None and arr_type.shape != shape:
-                    return True
-                if shape is None:
-                    shape = arr_type.shape
+            if not isinstance(arr_type, ArrowTensorType):
+                raise ValueError(
+                    "All provided array types must be an instance of either "
+                    "ArrowTensorType or ArrowVariableShapedTensorType, but "
+                    f"got {arr_type}"
+                )
+            # We need variable-shaped representation if any of the tensor arrays have
+            # different shapes.
+            if shape is not None and arr_type.shape != shape:
+                return True
+            shape = arr_type.shape
         return False
 
 
