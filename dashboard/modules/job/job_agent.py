@@ -18,6 +18,7 @@ from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
 
+
 routes = optional_utils.ClassMethodRouteTable
 logger = logging.getLogger(__name__)
 

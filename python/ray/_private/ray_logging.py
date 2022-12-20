@@ -55,8 +55,9 @@ def setup_component_logger(
             to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
-        logger_name: used to create or get the correspoding
+        logger_name: Used to create or get the correspoding
             logger in getLogger call. It will get the root logger by default.
+        propagate: Whether to propagate the log to the parent logger.
     Returns:
         the created or modified logger.
     """

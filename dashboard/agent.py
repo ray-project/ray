@@ -487,7 +487,6 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
-
         logger = setup_component_logger(**logging_params)
 
         # Initialize event loop, see Dashboard init code for caveat
