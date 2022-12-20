@@ -1,8 +1,9 @@
+from abc import abstractmethod
 import math
 import gym
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Tuple, Type
+from typing import List, Optional, Tuple, Type
 from ray.rllib.utils.typing import TensorType
 import torch
 
@@ -58,20 +59,19 @@ class DistributionConfig:
         output_shape: Automatically set. The feature dimensions of the outgoing shape
             required by the action space. E.g. Discrete(3) will produce
             output_shape=(3,).
-        modified_support: The desired support for the distribution, expressed as a
-            low and high. This refers to the minimum and maximum values x values
-            with nonzero probability mass.
+        low: An optional lower bound on the support of the distribution
+        high: An optional upper bound on the support of the distribution
     """
 
     framework_str: str = "torch"
     distribution_class: Type[Distribution]
     action_space: gym.Space
-    # The following can be automatically be set in init
+    # The following will be automatically be set in init
     input_shape: Tuple[int, ...]
     input_shape_flat: Tuple[int]
     output_shape: Tuple[int]
-    low: TensorType
-    high: TensorType
+    low: Optional[TensorType]
+    high: Optional[TensorType]
 
     def __repr__(self):
         return (
@@ -106,7 +106,7 @@ class DistributionConfig:
             distribution_input: A tensor of inputs to the distribution,
                 sometimes called logits
         Returns:
-            A distribution, ready to be sampled from
+            A Distribution instance, ready to be sampled from
         """
         if is_continuous(self.action_space):
             if self.framework_str == "torch":
@@ -123,9 +123,16 @@ class DistributionConfig:
 
 @dataclass
 class PiConfig:
+    """A config for Pi's, where a ~ Pi(s)
+
+    PiConfig determines how to construct a Pi, which maps some latent
+    state to an action space.
+    """
+
     framework_str: str = "torch"
     output_key: str = "action_dist"
 
+    @abstractmethod
     def decompose_space(self, action_space: gym.Space) -> Distribution:
         """Decompose an arbitrarily-nested gym.space into distributions and shapes.
 
@@ -142,10 +149,20 @@ class PiConfig:
                 characteristics
         """
 
+    @abstractmethod
     def build(
         self, input_spec: ModelSpec, action_space: gym.Space, *args, **kwargs
     ) -> TorchPi:
-        pass
+        """Build the PiConfig into an instance of Pi
+
+        Args:
+            input_spec: The spec describing the inputs of this module
+            action_space: The (possibly nested) action space this Pi
+                will output actions for
+
+        Returns:
+            An instance of TorchPi
+        """
 
 
 @dataclass

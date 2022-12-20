@@ -68,7 +68,7 @@ class TorchDistribution(Distribution, abc.ABC):
         return rsample
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.dist})"
+        return f"{self.__class__.__name__}({self._dist})"
 
 
 @DeveloperAPI
@@ -279,7 +279,7 @@ class TorchCategorical(TorchDistribution):
     def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        max_likelihood = self.dist.mode
+        max_likelihood = self._dist.mode
         if return_logp:
             return max_likelihood, self.logp(max_likelihood)
         return max_likelihood
@@ -291,21 +291,6 @@ class TorchCategorical(TorchDistribution):
     ) -> Tuple[int, ...]:
         # return (space.n,)
         return (gym.spaces.utils.flatdim(space),)
-
-
-@DeveloperAPI
-class TorchOneHotCategorical(TorchCategorical):
-    @override(TorchCategorical)
-    def _get_torch_distribution(
-        self,
-        probs: torch.Tensor = None,
-        logits: torch.Tensor = None,
-        temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits = logits / temperature
-        return torch.distributions.Categorical(probs, logits)
 
 
 class TorchBernoulli(TorchDistribution):
@@ -324,7 +309,7 @@ class TorchBernoulli(TorchDistribution):
     def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        max_likelihood = self.dist.mode
+        max_likelihood = self._dist.mode
         if return_logp:
             return max_likelihood, self.logp(max_likelihood)
         return max_likelihood
@@ -396,7 +381,7 @@ class TorchDiagGaussian(TorchDistribution):
     def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        max_likelihood = self.dist.mean
+        max_likelihood = self._dist.mean
         if return_logp:
             return max_likelihood, self.logp(max_likelihood)
         return max_likelihood
@@ -439,17 +424,17 @@ class TorchSquashedDiagGaussian(TorchDiagGaussian):
     def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        sample = self.dist.sample(sample_shape)
+        sample = self._dist.sample(sample_shape)
         if return_logp:
             # This is more accurate than calling sample and logp separately
-            return self._squash(sample), self.dist.log_prob(sample)
+            return self._squash(sample), self._dist.log_prob(sample)
         return self._squash(sample)
 
     @override(TorchDistribution)
     def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        max_likelihood = self.dist.mean
+        max_likelihood = self._dist.mean
         if return_logp:
             return self._squash(max_likelihood), self.logp(max_likelihood)
         return max_likelihood
@@ -458,7 +443,7 @@ class TorchSquashedDiagGaussian(TorchDiagGaussian):
     def rsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self.dist.rsample(sample_shape)
+        rsample = self._dist.rsample(sample_shape)
         if return_logp:
             return self._squash(rsample), self.logp(rsample)
         return self._squash(rsample)
