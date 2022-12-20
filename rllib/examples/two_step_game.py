@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import logging
 import os
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
                         config=config.overrides(agent_id=1),
                     ),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol2"
                 if agent_id
                 else "pol1",
             )

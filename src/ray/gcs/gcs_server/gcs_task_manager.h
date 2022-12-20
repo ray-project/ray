@@ -60,6 +60,16 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                               rpc::SendReplyCallback send_reply_callback)
       LOCKS_EXCLUDED(mutex_) override;
 
+  /// Handle GetTaskEvent request.
+  ///
+  /// \param request gRPC Request.
+  /// \param reply gRPC Reply.
+  /// \param send_reply_callback Callback to invoke when sending reply.
+  void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                           rpc::GetTaskEventsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback)
+      LOCKS_EXCLUDED(mutex_) override;
+
   /// Stops the event loop and the thread of the task event handler.
   ///
   /// After this is called, no more requests will be handled.
@@ -111,13 +121,30 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// replaced task event.
     absl::optional<rpc::TaskEvents> AddOrReplaceTaskEvent(rpc::TaskEvents &&task_event);
 
-    /// Get task events.
+    /// Get task events from job.
     ///
-    /// \param job_id Getting task events from this `job_id` only if not nullopt.
-    /// Otherwise all task events will be returned.
-    /// \return A vector of task events.
+    /// \param job_id Job ID to filter task events.
+    /// \return task events of `job_id`.
+    std::vector<rpc::TaskEvents> GetTaskEvents(JobID job_id) const;
+
+    /// Get all task events.
+    ///
+    /// \return all task events stored.
+    std::vector<rpc::TaskEvents> GetTaskEvents() const;
+
+    /// Get task events from tasks corresponding to `task_ids`.
+    ///
+    /// \param task_ids Task ids of the tasks.
+    /// \return task events from the `task_ids`.
     std::vector<rpc::TaskEvents> GetTaskEvents(
-        absl::optional<JobID> job_id = absl::nullopt) = delete;
+        const absl::flat_hash_set<TaskID> &task_ids) const;
+
+    /// Get task events of task attempt.
+    ///
+    /// \param task_attempts Task attempts (task ids + attempt number).
+    /// \return task events from the `task_attempts`.
+    std::vector<rpc::TaskEvents> GetTaskEvents(
+        const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
@@ -128,14 +155,24 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
 
-    /// Current task events stored.
-    std::vector<rpc::TaskEvents> task_events_;
-
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
 
-    /// Index from task attempt to the index of the corresponding task event.
+    /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
+    /// https://github.com/ray-project/ray/issues/31158
+    /// Current task events stored.
+    std::vector<rpc::TaskEvents> task_events_;
+
+    /// Index from task attempt to the corresponding task attempt in the buffer
+    /// `task_events_`.
     absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
+
+    /// Secondary index from task id to task attempts.
+    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskAttempt>>
+        task_to_task_attempt_index_;
+    /// Secondary index from job id to task attempts of the job.
+    absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
+        job_to_task_attempt_index_;
 
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.
