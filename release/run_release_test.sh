@@ -102,6 +102,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
+  export RETRY_NUM_GLOBAL="$RETRY_NUM"
   set +e
   python "${RAY_TEST_SCRIPT}" "$@"
   EXIT_CODE=$?

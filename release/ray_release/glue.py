@@ -240,7 +240,7 @@ def run_release_test(
         buildkite_group(":wrench: Preparing remote environment")
         command_runner.prepare_remote_env()
 
-        if os.environ["RETRY_NUM"] == "1":
+        if os.environ["RETRY_NUM_GLOBAL"] == "1":
             raise PrepareCommandTimeout()
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
