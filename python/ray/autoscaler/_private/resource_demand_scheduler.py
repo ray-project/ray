@@ -847,7 +847,7 @@ def _resource_based_utilization_scorer(
             gpu_ok = False
 
     # Prioritize avoiding gpu nodes for non-gpu workloads first,
-    # then matching multiple resource types,
+    # then prioritize matching multiple resource types,
     # then prioritize using all resources,
     # then prioritize overall balance of multiple resources.
     return (
