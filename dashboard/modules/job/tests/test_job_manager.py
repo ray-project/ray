@@ -854,23 +854,11 @@ while True:
         lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
     )
 
-    with pytest.raises(
-        RuntimeError, match="The condition wasn't met before the timeout expired."
-    ):
-        # Job should not be stopped before the specified timeout. (e.g. at 9 seconds)
-        await async_wait_for_condition_async_predicate(
-            check_job_stopped,
-            job_manager=job_manager,
-            job_id=job_id,
-            timeout=0.9 * stop_timeout,
-        )
-
-    # Job should be stopped after the specified timeout. (e.g. at 10 seconds)
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
         job_manager=job_manager,
         job_id=job_id,
-        timeout=0.1 * stop_timeout,
+        timeout=stop_timeout + 10,
     )
 
 
