@@ -22,8 +22,14 @@ from ray.rllib.models.distributions import Distribution
 
 
 def is_continuous(space: gym.spaces.Space) -> bool:
-    """Determines whether the given non-nested space
-    uses continuous or discrete actions"""
+    """Determines whether the primitive space uses continuous or discrete actions
+
+    Args:
+        space: The space to check
+
+    Returns:
+        True if the space is continuous and False if it is discrete
+    """
     if isinstance(space, gym.spaces.Box):
         if np.issubdtype(space.dtype, np.floating):
             return True
@@ -46,17 +52,16 @@ class DistributionConfig:
     and are used by various PiConfigs when constructing Pis.
 
     Args:
+        framework_str: A string denoting the tensor framework (torch, jax, etc.)
         distribution_class: The class of distribution to model
         action_space: A primitive (unnested) action space
 
     Attributes:
-        distribution_class: The class of distribution to model
-        action_space: A primitive (unnested) action space
-        input_shape: Automatically set. The feature dimensions of incoming shape
+        input_shape: The feature dimensions of incoming shape
             required by the distribution. E.g. Box(shape=(3,)) and DiagGaussian
             would produce input_shape = (3, 2).
         input_shape_flat: The input_shape flattened to a single dimension
-        output_shape: Automatically set. The feature dimensions of the outgoing shape
+        output_shape: The feature dimensions of the outgoing shape
             required by the action space. E.g. Discrete(3) will produce
             output_shape=(3,).
         low: An optional lower bound on the support of the distribution
@@ -66,7 +71,7 @@ class DistributionConfig:
     framework_str: str = "torch"
     distribution_class: Type[Distribution]
     action_space: gym.Space
-    # The following will be automatically be set in init
+    # The following attributes will be automatically be set in init
     input_shape: Tuple[int, ...]
     input_shape_flat: Tuple[int]
     output_shape: Tuple[int]
@@ -75,9 +80,9 @@ class DistributionConfig:
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(\n"
-            + "\n   ".join([f"{k}={v}" for k, v in vars(self).items()])
-            + "\n)"
+            f"{self.__class__.__name__}("
+            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + ")"
         )
 
     def __init__(self, distribution_class: Type[Distribution], action_space: gym.Space):
@@ -127,6 +132,11 @@ class PiConfig:
 
     PiConfig determines how to construct a Pi, which maps some latent
     state to an action space.
+
+    Attributes:
+        framework_str: A string describing the tensor framework (e.g. torch, jax)
+        output_key: The key in the NestedDict that the Pi will write the action
+            distribution to
     """
 
     framework_str: str = "torch"
@@ -218,20 +228,33 @@ class PolicyGradientPiConfig(PiConfig):
         # Reflatten added tuples
         flat_space = dm_tree.flatten(flat_space)
 
-        if self.framework_str == "torch":
-            get_distribution = self.get_torch_distribution
-        else:
-            raise NotImplementedError(
-                f"Not implemented for framework_str: {self.framework_str}"
-            )
         dist_configs = []
         for subspace in flat_space:
-            dist_cls = get_distribution(subspace)
+            if self.framework_str == "torch":
+                dist_cls = self.get_torch_distribution(subspace)
+            else:
+                raise NotImplementedError(
+                    f"Not implemented for framework_str: {self.framework_str}"
+                )
             dist_configs.append(DistributionConfig(dist_cls, subspace))
         return dist_configs
 
     @override(PiConfig)
     def build(self, input_spec: ModelSpec, action_space: gym.Space) -> TorchPi:
-        """Builds the PolicyGradientPiConfing in a Pi"""
+        """Build the PolicyGradientPiConfig into a Pi
+
+        Args:
+            input_spec: The spec describing the inputs to the Pi module
+            action_space: The (possibly-nested) action space to build the Pi for
+
+        Returns:
+            A Pi that maps the input_spec to a distribution for
+               the specified action_space
+        """
         dist_configs = self.decompose_space(action_space)
-        return TorchPi(input_spec, dist_configs, self)
+        if self.framework_str == "torch":
+            return TorchPi(input_spec, dist_configs, self)
+        else:
+            raise NotImplementedError(
+                f"Not implemented for framework_str: {self.framework_str}"
+            )
