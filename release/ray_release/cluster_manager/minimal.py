@@ -10,6 +10,7 @@ from ray_release.exception import (
     ClusterEnvBuildTimeout,
     ClusterEnvCreateError,
     ClusterComputeCreateError,
+    CloudInfoError,
 )
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -271,7 +272,10 @@ class MinimalClusterManager(ClusterManager):
 
     def get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
         assert cluster_compute and "cloud_id" in cluster_compute
-        return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
+        try:
+            return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
+        except Exception as e:
+            raise CloudInfoError(f"Could not obtain cloud information: {e}") from e
 
     def build_configs(self, timeout: float = 30.0):
         try:
