@@ -89,6 +89,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.sdk.returns["get_project"] = APIDict(
             result=APIDict(name="release_unit_tests")
         )
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.cluster_env = TEST_CLUSTER_ENV
         self.cluster_compute = TEST_CLUSTER_COMPUTE
@@ -257,19 +258,13 @@ class MinimalSessionManagerTest(unittest.TestCase):
         )
 
     def testClusterComputeExtraTags(self):
-        sdk = MockSDK()
-        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
-        )
-        cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
 
         # No extra tags specified
-        self.assertEqual(cluster_manager.cluster_compute, self.cluster_compute)
+        self.assertEqual(self.cluster_manager.cluster_compute, self.cluster_compute)
 
         # Extra tags specified
-        cluster_manager.set_cluster_compute(
+        self.cluster_manager.set_cluster_compute(
             self.cluster_compute, extra_tags={"foo": "bar"}
         )
 
@@ -287,7 +282,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
         )
 
         # Test merging with already existing tags
@@ -298,7 +293,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
             ]
         }
-        cluster_manager.set_cluster_compute(
+        self.cluster_manager.set_cluster_compute(
             cluster_compute_with_tags, extra_tags={"foo": "bar"}
         )
 
@@ -322,7 +317,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
