@@ -32,9 +32,7 @@ class DBReporter(Reporter):
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
-            # Todo: Activate again once we thinned these out a bit or find another
-            # way to reduce the size.
-            "prometheus_metrics": {},  # result.prometheus_metrics or {},
+            "prometheus_metrics": result.prometheus_metrics or {},
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
@@ -45,6 +43,20 @@ class DBReporter(Reporter):
                 Record={"Data": json.dumps(result_json)},
             )
         except Exception:
-            logger.exception("Failed to persist result to the databricks delta lake")
+            try:
+                # This may happen if metrics are too big.
+                # TODO persist big metrics in an alternative fashion
+                logger.warning(
+                    "Couldn't persist with prometheus_metrics, trying without them"
+                )
+                result_json.pop("prometheus_metrics", None)
+                self.firehose.put_record(
+                    DeliveryStreamName="ray-ci-results",
+                    Record={"Data": json.dumps(result_json)},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to persist result to the databricks delta lake"
+                )
         else:
             logger.info("Result has been persisted to the databricks delta lake")
