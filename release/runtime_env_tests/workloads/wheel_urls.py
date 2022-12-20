@@ -20,7 +20,9 @@ import json
 import time
 import requests
 import pprint
+import sys
 
+import ray._private.runtime_env.constants as ray_constants
 from ray._private.utils import get_master_wheel_url, get_release_wheel_url
 
 
@@ -40,20 +42,20 @@ if __name__ == "__main__":
 
     retry = set()
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39", "310"]:
+        for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             if "dev" in ray.__version__:
                 url = get_master_wheel_url(
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=py_version,
+                    py_version=(sys.version_info.major, sys.version_info.minor),
                 )
             else:
                 url = get_release_wheel_url(
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=py_version,
+                    py_version=(sys.version_info.major, sys.version_info.minor),
                 )
             if requests.head(url).status_code != 200:
                 print("URL not found (yet?):", url)
