@@ -31,4 +31,7 @@ class NodeLaunchException(Exception):
     def __reduce__(self):
         # NOTE: Since tracebacks can't be pickled, we'll drop the optional
         # traceback if we have to serialize this object.
-        return (self.__class__, (self.category, self.description, None),)
+        return (
+            self.__class__,
+            (self.category, self.description, None),
+        )
