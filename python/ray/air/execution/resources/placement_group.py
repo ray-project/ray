@@ -8,7 +8,7 @@ import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
     AcquiredResource,
-    RemoteRayObject,
+    RemoteRayEntity,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -21,11 +21,11 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 class PlacementGroupAcquiredResource(AcquiredResource):
     placement_group: PlacementGroup
 
-    def annotate_remote_objects(
-        self, objects: List[RemoteRayObject]
-    ) -> List[Union[RemoteRayObject]]:
-        # If we have an empty head, we schedule the first object (the "head") in the
-        # first PG bundle with num_cpus=0. The second object will also be scheduled in
+    def annotate_remote_entities(
+        self, entities: List[RemoteRayEntity]
+    ) -> List[Union[RemoteRayEntity]]:
+        # If we have an empty head, we schedule the first entity (the "head") in the
+        # first PG bundle with num_cpus=0. The second entity will also be scheduled in
         # the first bundle, but will occupy the respective resources. Thus, we start
         # counting from i = -1, and bundle = max(i, 0) which will be [0, 0, 1, 2, ...]
         if self.resource_request.head_bundle_is_empty:
@@ -35,14 +35,14 @@ class PlacementGroupAcquiredResource(AcquiredResource):
             start = 0
             bundles = self.resource_request.bundles
 
-        if len(objects) > len(bundles):
+        if len(entities) > len(bundles):
             raise RuntimeError(
-                f"The number of objects to annotate ({len(objects)}) cannot "
+                f"The number of callables to annotate ({len(entities)}) cannot "
                 f"exceed the number of available bundles ({len(bundles)})."
             )
 
         annotated = []
-        for i, (obj, bundle) in enumerate(zip(objects, bundles), start=start):
+        for i, (obj, bundle) in enumerate(zip(entities, bundles), start=start):
             bundle = bundle.copy()
             num_cpus = bundle.pop("CPU", 0)
             num_gpus = bundle.pop("GPU", 0)

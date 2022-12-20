@@ -30,9 +30,9 @@ class ResourceManager(abc.ABC):
     3. "Acquired": The resources have been acquired by a caller to use for scheduling
        remote Ray objects. Note that it is the responsibility of the caller to
        schedule the Ray objects with these resources.
-       The associated resource request has been completed and can no longer be cancelled.
-       The acquired resources can be returned to the resource manager when they are no
-       longer used.
+       The associated resource request has been completed and can no longer be
+       cancelled. The acquired resources can be freed by the resource manager when
+       they are no longer used.
 
     The flow is as follows:
 
@@ -55,7 +55,7 @@ class ResourceManager(abc.ABC):
         acquired_resource = resource_manager.acquire_resources(resource_request)
 
         # Bind to remote task or actor
-        annotated_remote_fn = acquired_resource.annotate_remote_objects(
+        annotated_remote_fn = acquired_resource.annotate_remote_entities(
             [remote_fn])
 
         # Run remote function. This will use the acquired resources
@@ -75,7 +75,7 @@ class ResourceManager(abc.ABC):
 
         Resource requests can be cancelled anytime using ``cancel_resource_request()``.
         Once acquired, the resource request is removed. Acquired resources can be
-        returned with ``free_resources()``.
+        freed with ``free_resources()``.
         """
         raise NotImplementedError
 
@@ -84,7 +84,7 @@ class ResourceManager(abc.ABC):
 
         Resource requests can be cancelled anytime before a resource is acquired.
         Acquiring a resource will remove the associated resource request.
-        Acquired resources can be returned with ``free_resources()``.
+        Acquired resources can be freed with ``free_resources()``.
         """
         raise NotImplementedError
 
@@ -117,9 +117,9 @@ class ResourceManager(abc.ABC):
 
         Depending on the backend, we use resource futures to determine availability
         of resources (e.g. placement groups) or resolution of requests.
-        In this case, the futures can be awaited externally by an outer control loop.
+        In this case, the futures can be awaited externally by the caller.
 
-        When a resource future resolved, you may want to call ``update_state()``
+        When a resource future resolved, the caller may call ``update_state()``
         to force the resource manager to update its internal state immediately.
         """
         return []
@@ -131,7 +131,7 @@ class ResourceManager(abc.ABC):
         For instance, depending on the backend, resource futures can be awaited
         externally (with ``get_resource_futures()``).
 
-        If such a future resolved, the outer control loop can instruct the resource
+        If such a future resolved, the caller can instruct the resource
         manager to update its internal state immediately.
         """
         pass
@@ -141,6 +141,11 @@ class ResourceManager(abc.ABC):
 
         Calling this method will reset the resource manager to its initialization state.
         All resources will be removed.
+
+        Clearing the state will remove tracked resources from the manager, but there are
+        no guarantees about the tasks and actors scheduled on the resources. The caller
+        should make sure that any references to tasks or actors scheduled on the
+        resources have been removed before calling ``clear()``.
         """
         raise NotImplementedError
 

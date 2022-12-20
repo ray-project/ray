@@ -7,7 +7,7 @@ from ray import SCRIPT_MODE, LOCAL_MODE
 from ray.air.execution.resources.request import (
     ResourceRequest,
     AcquiredResource,
-    RemoteRayObject,
+    RemoteRayEntity,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -23,9 +23,9 @@ _DIGITS = 100000
 class FixedAcquiredResource(AcquiredResource):
     bundles: List[Dict[str, float]]
 
-    def annotate_remote_objects(
-        self, objects: List[RemoteRayObject]
-    ) -> List[Union[RemoteRayObject]]:
+    def annotate_remote_entities(
+        self, entities: List[RemoteRayEntity]
+    ) -> List[Union[RemoteRayEntity]]:
         # If we have an empty head, we schedule the first object (the "head") with
         # empty resources.
         if self.resource_request.head_bundle_is_empty:
@@ -33,14 +33,14 @@ class FixedAcquiredResource(AcquiredResource):
         else:
             bundles = self.resource_request.bundles
 
-        if len(objects) > len(bundles):
+        if len(entities) > len(bundles):
             raise RuntimeError(
-                f"The number of objects to annotate ({len(objects)}) cannot "
+                f"The number of objects to annotate ({len(entities)}) cannot "
                 f"exceed the number of available bundles ({len(bundles)})."
             )
 
         annotated = []
-        for i, (obj, bundle) in enumerate(zip(objects, bundles)):
+        for i, (obj, bundle) in enumerate(zip(entities, bundles)):
             bundle = bundle.copy()
             num_cpus = bundle.pop("CPU", 0)
             num_gpus = bundle.pop("GPU", 0)

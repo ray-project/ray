@@ -195,13 +195,13 @@ def test_bind_two_bundles(ray_start_4_cpus):
         return ray.get_runtime_context().get_assigned_resources()
 
     acq = manager.acquire_resources(REQUEST_1_2_CPU)
-    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+    [av1] = acq.annotate_remote_entities([get_assigned_resources])
 
     res1 = ray.get(av1.remote())
 
     assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 1
 
-    [av1, av2] = acq.annotate_remote_objects(
+    [av1, av2] = acq.annotate_remote_entities(
         [get_assigned_resources, get_assigned_resources]
     )
 
@@ -229,13 +229,13 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
         return ray.get_runtime_context().get_assigned_resources()
 
     acq = manager.acquire_resources(REQUEST_0_2_CPU)
-    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+    [av1] = acq.annotate_remote_entities([get_assigned_resources])
 
     res1 = ray.get(av1.remote())
 
     assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 0
 
-    [av1, av2] = acq.annotate_remote_objects(
+    [av1, av2] = acq.annotate_remote_entities(
         [get_assigned_resources, get_assigned_resources]
     )
 
@@ -270,7 +270,7 @@ def test_capture_child_tasks(ray_start_4_cpus):
         return ray.get(needs_cpus.options(num_cpus=num_cpus).remote())
 
     acq = manager.acquire_resources(REQUEST_1_2_CPU)
-    [av1] = acq.annotate_remote_objects([spawn_child_task])
+    [av1] = acq.annotate_remote_entities([spawn_child_task])
 
     res = ray.get(av1.remote(2), timeout=2.0)
 
