@@ -1445,20 +1445,23 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   }
   for (const auto &entry : by_owner) {
     if (entry.first == worker_context_.GetWorkerID()) {
-      RAY_LOG(ERROR) << "Deleting local objects " << entry.second.size() << " " << entry.first;
+      RAY_LOG(ERROR) << "Deleting local objects " << entry.second.size() << " "
+                     << entry.first;
       DeleteImpl(entry.second, local_only);
     } else {
-      RAY_LOG(ERROR) << "Deleting remote objects " << entry.second.size() << " " << entry.first << " " << lookup[entry.first].ip_address() << " " << lookup[entry.first].port();
+      RAY_LOG(ERROR) << "Deleting remote objects " << entry.second.size() << " "
+                     << entry.first << " " << lookup[entry.first].ip_address() << " "
+                     << lookup[entry.first].port();
       auto conn = core_worker_client_pool_->GetOrConnect(lookup[entry.first]);
       rpc::DeleteObjectsRequest request;
       for (const auto &obj_id : entry.second) {
         request.add_object_ids(obj_id.Binary());
       }
       request.set_local_only(local_only);
-      conn->DeleteObjects(request,
-                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
-                            RAY_LOG(ERROR) << "Completed object delete request " << status;
-                          });
+      conn->DeleteObjects(
+          request, [](const Status &status, const rpc::DeleteObjectsReply &reply) {
+            RAY_LOG(ERROR) << "Completed object delete request " << status;
+          });
     }
   }
   return Status::OK();
