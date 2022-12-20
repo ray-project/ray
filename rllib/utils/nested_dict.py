@@ -1,5 +1,5 @@
 """Custom NestedDict datatype."""
-
+from collections import abc
 import itertools
 from typing import (
     AbstractSet,
@@ -17,7 +17,6 @@ from typing import (
     Union,
 )
 
-from collections import abc
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -126,7 +125,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         elif isinstance(x, abc.Mapping):
             for k in x:
                 self[k] = x[k]
-        elif isinstance(x, abc.Sequence):
+        elif isinstance(x, abc.Iterable):
             for k, v in x:
                 self[k] = v
         else:
