@@ -86,7 +86,7 @@ def test_zero_cpu_default_actor():
         cluster.shutdown()
 
 
-def test_autoscaler_all_gpu_node_types():
+def test_autoscaler_cpu_task_gpu_node_up():
     """Validates that CPU tasks can trigger GPU upscaling.
     See https://github.com/ray-project/ray/pull/31202.
     """
