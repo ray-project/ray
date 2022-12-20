@@ -93,17 +93,16 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   return node_table_data;
 }
 
-std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
-  std::vector<std::string> profile_table_data;
+std::vector<std::string> GlobalStateAccessor::GetAllTaskEvents() {
+  std::vector<std::string> task_events;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::ProfileTableData>(profile_table_data,
-                                                             promise)));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGetTaskEvents(
+        TransformForMultiItemCallback<rpc::TaskEvents>(task_events, promise)));
   }
   promise.get_future().get();
-  return profile_table_data;
+  return task_events;
 }
 
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {

@@ -61,10 +61,10 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllAvailableResources()
         return result
 
-    def get_profile_table(self):
+    def get_task_events(self):
         cdef c_vector[c_string] result
         with nogil:
-            result = self.inner.get().GetAllProfileInfo()
+            result = self.inner.get().GetAllTaskEvents()
         return result
 
     def get_all_resource_usage(self):
