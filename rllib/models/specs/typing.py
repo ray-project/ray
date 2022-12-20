@@ -7,6 +7,6 @@ if TYPE_CHECKING:
 
 
 NestedKeys = List[Union[str, Tuple[str, ...]]]
-Constraint = Union[Type, Tuple[Type, ...], Spec]
+Constraint = Union[Type, Tuple[Type, ...], "Spec"]
 # Either a flat list of nested keys or a tree of constraints
-SpecType = Union[NestedKeys, NestedDict[Optional[Constraint]]]
+SpecType = Union[NestedKeys, "NestedDict[Optional[Constraint]]"]

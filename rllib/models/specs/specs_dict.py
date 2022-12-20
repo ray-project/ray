@@ -132,7 +132,7 @@ class SpecDict(NestedDict[Spec], Spec):
                         f"Mismatch found in data element {spec_name}, "
                         f"which is a TensorSpec: {e}"
                     )
-            elif isinstance(spec, (Type, tuple)):
+            elif isinstance(spec, (type, tuple)):
                 if not isinstance(data_to_validate, spec):
                     raise ValueError(
                         _TYPE_MISMATCH.format(

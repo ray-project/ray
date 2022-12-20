@@ -17,6 +17,8 @@ from typing import (
     Union,
 )
 
+from collections import abc
+
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -121,10 +123,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         x = x or {}
         if isinstance(x, NestedDict):
             self._data = x._data
-        elif isinstance(x, Mapping):
+        elif isinstance(x, abc.Mapping):
             for k in x:
                 self[k] = x[k]
-        elif isinstance(x, Iterable):
+        elif isinstance(x, abc.Sequence):
             for k, v in x:
                 self[k] = v
         else:

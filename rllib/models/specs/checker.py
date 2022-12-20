@@ -9,6 +9,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_base import TensorSpec, Spec, TypeSpec
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
+from collections import abc
 
 def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     # convert spec of form list of nested_keys to model_spec with None leaves
@@ -17,13 +18,12 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         return SpecDict({k: None for k in spec})
     
     # convert spec of form tree of constraints to model_spec
-    if isinstance(spec, Mapping):
+    if isinstance(spec, abc.Mapping):
         spec = SpecDict(spec)
         for key in spec:
             # if values are types or tuple of types, convert to TypeSpec
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
-        
         return spec
 
     if isinstance(spec, type):
