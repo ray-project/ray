@@ -1,4 +1,3 @@
-import copy
 import pytest
 import platform
 
@@ -91,24 +90,18 @@ def test_autoscaler_all_gpu_node_types():
     """Validates that CPU tasks can trigger GPU upscaling.
     See https://github.com/ray-project/ray/pull/31202.
     """
-    gpu_node_type_1 = (
-        {
-            "resources": {
-                "CPU": 1,
-                "GPU": 1,
-            },
-            "node_config": {},
-            "min_workers": 0,
-            "max_workers": 1,
-        },
-    )
-    gpu_node_type_2 = copy.deepcopy(gpu_node_type_1)
-
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
-            "gpu_node_type_1": gpu_node_type_1,
-            "gpu_node_type_2": gpu_node_type_2,
+            "gpu_node_type": {
+                "resources": {
+                    "CPU": 1,
+                    "GPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
         },
     )
 
