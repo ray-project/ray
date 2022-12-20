@@ -149,7 +149,7 @@ class GlobalStateAccessor {
   /// \param placement_group_name The name of placement group to look up in the GCS
   /// Service.
   /// \return Placement group info. To support multi-language, we serialize each
-  /// PlacementGroupTableData and return the serialized string. Where used, it needs to
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace)
