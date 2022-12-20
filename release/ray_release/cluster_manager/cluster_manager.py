@@ -2,6 +2,10 @@ import abc
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from ray_release.aws import (
+    add_tags_to_aws_config,
+    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+)
 from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.exception import CloudInfoError
@@ -78,7 +82,7 @@ class ClusterManager(abc.ABC):
             "maximum_uptime_minutes", self.maximum_uptime_minutes
         )
         self.cloud_provider = self._get_cloud_provider(cluster_compute)
-        self.cluster_compute = self.annotate_cluster_compute(
+        self.cluster_compute = self._annotate_cluster_compute(
             self.cluster_compute,
             cloud_provider=self.cloud_provider,
             extra_tags=extra_tags,
@@ -97,12 +101,20 @@ class ClusterManager(abc.ABC):
         except Exception as e:
             raise CloudInfoError(f"Could not obtain cloud information: {e}") from e
 
-    def annotate_cluster_compute(
+    def _annotate_cluster_compute(
         self,
         cluster_compute: Dict[str, Any],
         cloud_provider: str,
         extra_tags: Dict[str, str],
     ) -> Dict[str, Any]:
+        if not extra_tags or cloud_provider != "AWS":
+            return cluster_compute
+
+        cluster_compute = cluster_compute.copy()
+        aws = cluster_compute.get("aws", {})
+        cluster_compute["aws"] = add_tags_to_aws_config(
+            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        )
         return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):

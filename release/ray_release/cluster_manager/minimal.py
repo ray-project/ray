@@ -1,10 +1,5 @@
 import time
-from typing import Dict, Any
 
-from ray_release.aws import (
-    add_tags_to_aws_config,
-    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
-)
 from ray_release.exception import (
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
@@ -252,22 +247,6 @@ class MinimalClusterManager(ClusterManager):
                     f"name {self.cluster_compute_name} and "
                     f"ID {self.cluster_compute_id}"
                 )
-
-    def annotate_cluster_compute(
-        self,
-        cluster_compute: Dict[str, Any],
-        cloud_provider: str,
-        extra_tags: Dict[str, str],
-    ) -> Dict[str, Any]:
-        if not extra_tags or cloud_provider != "AWS":
-            return cluster_compute
-
-        cluster_compute = cluster_compute.copy()
-        aws = cluster_compute.get("aws", {})
-        cluster_compute["aws"] = add_tags_to_aws_config(
-            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
-        )
-        return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):
         try:
