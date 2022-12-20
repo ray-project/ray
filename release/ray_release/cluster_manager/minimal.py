@@ -270,7 +270,7 @@ class MinimalClusterManager(ClusterManager):
         )
         return cluster_compute
 
-    def get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
+    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
         assert cluster_compute and "cloud_id" in cluster_compute
         try:
             return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider

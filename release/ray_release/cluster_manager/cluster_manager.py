@@ -76,7 +76,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute.setdefault(
             "maximum_uptime_minutes", self.maximum_uptime_minutes
         )
-        self.cloud_provider = self.get_cloud_provider(cluster_compute)
+        self.cloud_provider = self._get_cloud_provider(cluster_compute)
         self.cluster_compute = self.annotate_cluster_compute(
             self.cluster_compute,
             cloud_provider=self.cloud_provider,
@@ -89,7 +89,7 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_compute)}"
         )
 
-    def get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
+    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
         raise NotImplementedError
 
     def annotate_cluster_compute(
