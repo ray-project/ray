@@ -202,9 +202,7 @@ class Dataset(Generic[T]):
         self,
         plan: ExecutionPlan,
         epoch: int,
-        lazy: bool,
-        *,
-        defer_execution: bool = False,
+        lazy: bool = True,
     ):
         """Construct a Dataset (internal API).
 
@@ -219,7 +217,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy and not defer_execution:
+        if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -1012,7 +1010,7 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
+        return Dataset(plan, self._epoch, self._lazy)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
