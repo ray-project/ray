@@ -3567,7 +3567,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_torch_rlm",
+    name = "examples/self_play_with_open_spiel_connect_4_torch_w_rlm",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
