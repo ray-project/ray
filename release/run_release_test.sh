@@ -73,7 +73,7 @@ if [ -z "${NO_INSTALL}" ]; then
 fi
 
 RETRY_NUM=0
-MAX_RETRIES=${MAX_RETRIES-1}
+MAX_RETRIES=${MAX_RETRIES-2}
 
 if [ "${BUILDKITE_RETRY_COUNT-0}" -ge 1 ]; then
   echo "This is a manually triggered retry from the Buildkite web UI, so we set the number of infra retries to 1."
@@ -86,7 +86,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
   if [ "$RETRY_NUM" -gt 1 ]; then
     # Sleep for random time between 30 and 90 minutes
-    SLEEP_TIME=$((1800 + RANDOM % 5400))
+    SLEEP_TIME=$((180 + RANDOM % 540))
 
     if [ -n "${OVERRIDE_SLEEP_TIME}" ]; then
       SLEEP_TIME=${OVERRIDE_SLEEP_TIME}

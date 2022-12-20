@@ -260,6 +260,8 @@ def run_release_test(
             except CommandTimeout as e:
                 raise PrepareCommandTimeout(e)
 
+        raise PrepareCommandTimeout()
+
         buildkite_group(":runner: Running test script")
         command = test["run"]["script"]
         command_env = {}
