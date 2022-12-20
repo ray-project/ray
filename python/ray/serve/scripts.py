@@ -298,15 +298,13 @@ def run(
             config_dict = yaml.safe_load(config_file)
             # If host or port is specified as a CLI argument, they should take priority
             # over config values.
+            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
             if host is not None:
                 config_dict["host"] = host
-            else:
-                config_dict.setdefault("host", DEFAULT_HTTP_HOST)
 
+            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
             if port is not None:
                 config_dict["port"] = port
-            else:
-                config_dict.setdefault("port", DEFAULT_HTTP_PORT)
 
             config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
