@@ -46,7 +46,7 @@ try:
 except AttributeError:
     create_task = asyncio.ensure_future
 
-logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 aiogrpc.init_grpc_aio()
 
@@ -488,9 +488,7 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count,
         )
 
-        logger = setup_component_logger(
-            logger_name=ray_constants.AGENT_LOGGER_NAME, **logging_params
-        )
+        logger = setup_component_logger(**logging_params)
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.

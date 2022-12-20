@@ -27,13 +27,13 @@ from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, AGENT_LOGGER_NAME
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.util.debug import log_once
 from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
-logger = logging.getLogger(AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
 

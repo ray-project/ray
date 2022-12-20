@@ -1,5 +1,4 @@
 import logging
-import ray._private.ray_constants as ray_constants
 from ray._private.utils import get_or_create_event_loop
 
 try:
@@ -11,7 +10,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
-logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 

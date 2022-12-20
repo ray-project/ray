@@ -192,12 +192,6 @@ LOGGER_FORMAT_STDERR = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
 
-# Logs for this logger are configured by Ray be sent to `dashboard_agent.log`.
-# For agent logs that should be sent to a different file, use a different logger.
-AGENT_LOGGER_NAME = "agent_logger"
-
-RUNTIME_ENV_AGENT_LOGGER_NAME = "runtime_env_agent_logger"
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"

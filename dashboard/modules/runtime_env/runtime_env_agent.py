@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
-    RUNTIME_ENV_AGENT_LOGGER_NAME,
 )
 
 import ray.dashboard.consts as dashboard_consts
@@ -40,7 +39,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
-default_logger = logging.getLogger(RUNTIME_ENV_AGENT_LOGGER_NAME)
+default_logger = logging.getLogger(__name__)
 
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
@@ -75,6 +74,7 @@ class ReferenceTable:
         uris_parser: Callable[[RuntimeEnv], Tuple[str, UriType]],
         unused_uris_callback: Callable[[List[Tuple[str, UriType]]], None],
         unused_runtime_env_callback: Callable[[str], None],
+        logger: logging.Logger = default_logger,
     ):
         # Runtime Environment reference table. The key is serialized runtime env and
         # the value is reference count.
@@ -91,14 +91,15 @@ class ReferenceTable:
         self._reference_exclude_sources: Set[str] = {
             "client_server",
         }
+        self._logger = logger
 
     def _increase_reference_for_uris(self, uris):
-        default_logger.debug(f"Increase reference for uris {uris}.")
+        self._logger.debug(f"Increase reference for uris {uris}.")
         for uri, _ in uris:
             self._uri_reference[uri] += 1
 
     def _decrease_reference_for_uris(self, uris):
-        default_logger.debug(f"Decrease reference for uris {uris}.")
+        self._logger.debug(f"Decrease reference for uris {uris}.")
         unused_uris = list()
         for uri, uri_type in uris:
             if self._uri_reference[uri] > 0:
@@ -107,18 +108,18 @@ class ReferenceTable:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                default_logger.warn(f"URI {uri} does not exist.")
+                self._logger.warn(f"URI {uri} does not exist.")
         if unused_uris:
-            default_logger.info(f"Unused uris {unused_uris}.")
+            self._logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
+        self._logger.debug(f"Increase reference for runtime env {serialized_env}.")
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
+        self._logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
@@ -126,9 +127,9 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
+            self._logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
-            default_logger.info(f"Unused runtime env {serialized_env}.")
+            self._logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
         return unused
 
@@ -212,16 +213,21 @@ class RuntimeEnvAgent(
         for plugin in self._base_plugins:
             self._plugin_manager.add_plugin(plugin)
 
+        self._logger = default_logger
+        self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
+
         self._reference_table = ReferenceTable(
             self.uris_parser,
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
-        )
-
-        self._logger = default_logger
-        self._logging_params.update(filename=self.LOG_FILENAME)
-        setup_component_logger(
-            logger_name=RUNTIME_ENV_AGENT_LOGGER_NAME, **self._logging_params
+            self._logger,
         )
 
     def uris_parser(self, runtime_env):
@@ -259,6 +265,7 @@ class RuntimeEnvAgent(
             params = self._logging_params.copy()
             params["filename"] = f"runtime_env_setup-{job_id}.log"
             params["logger_name"] = f"runtime_env_{job_id}"
+            params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]

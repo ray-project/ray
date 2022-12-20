@@ -14,7 +14,7 @@ from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
 
-logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 class EventAgent(dashboard_utils.DashboardAgentModule):

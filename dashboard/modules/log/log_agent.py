@@ -13,9 +13,8 @@ from pathlib import Path
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 
-import ray._private.ray_constants as ray_constants
 
-logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 

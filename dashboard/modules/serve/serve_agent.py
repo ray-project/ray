@@ -12,9 +12,8 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-import ray._private.ray_constants as ray_constants
 
-logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 routes = optional_utils.ClassMethodRouteTable
