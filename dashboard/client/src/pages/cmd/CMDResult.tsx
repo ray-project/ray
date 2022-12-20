@@ -7,7 +7,7 @@ import {
   Select,
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import TitleCard from "../../components/TitleCard";
 import { getJmap, getJstack, getJstat } from "../../service/util";
@@ -30,14 +30,13 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const CMDResult = (
-  props: RouteComponentProps<{ cmd: string; ip: string; pid: string }>,
-) => {
+const CMDResult = () => {
   const classes = useStyles();
-  const {
-    match: { params },
-  } = props;
-  const { cmd, ip, pid } = params;
+  const { cmd, ip, pid } = useParams() as {
+    cmd: string;
+    ip: string;
+    pid: string;
+  };
   const [result, setResult] = useState<string>();
   const [option, setOption] = useState("gcutil");
   const executeJstat = useCallback(

@@ -6,7 +6,7 @@ import unittest.mock
 import pytest
 
 import ray
-from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL
+from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
 import ray._private.services
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import run_string_as_driver
@@ -250,6 +250,34 @@ def test_ray_init_from_workers(ray_start_cluster):
         cluster.gcs_address, "127.0.0.3"
     )
     assert node_info.node_manager_port == node2.node_manager_port
+
+
+def test_default_resource_not_allowed_error(shutdown_only):
+    """
+    Make sure when the default resources are passed to `resources`
+    it raises an exception with a good error message.
+    """
+    for resource in DEFAULT_RESOURCES:
+        with pytest.raises(
+            AssertionError,
+            match=(
+                f"`{resource}` cannot be a custom resource because "
+                "it is one of the default resources"
+            ),
+        ):
+            ray.init(resources={resource: 100000})
+
+
+def test_get_ray_address_from_environment(monkeypatch):
+    monkeypatch.setenv("RAY_ADDRESS", "")
+    assert (
+        ray._private.services.get_ray_address_from_environment("addr", None) == "addr"
+    )
+    monkeypatch.setenv("RAY_ADDRESS", "env_addr")
+    assert (
+        ray._private.services.get_ray_address_from_environment("addr", None)
+        == "env_addr"
+    )
 
 
 if __name__ == "__main__":

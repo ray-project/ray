@@ -10,8 +10,14 @@ import psutil
 
 from pydantic import BaseModel
 from urllib.parse import quote
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+    generate_grafana_dashboard,
+)
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
+)
+from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import (
+    DASHBOARD_PROVISIONING_TEMPLATE,
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -33,6 +39,7 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
+PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -91,6 +98,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     ):
         super().__init__(dashboard_head)
         self.http_session = http_session or aiohttp.ClientSession()
+        self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -98,9 +106,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
+        grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
         self._grafana_dashboard_output_dir = os.environ.get(
-            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
+            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
+            os.path.join(grafana_config_output_path, "dashboards"),
         )
+
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
         self._pid = os.getpid()
@@ -113,18 +124,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Endpoint that checks if grafana is running
         """
-        grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
-
         # If disabled, we don't want to show the metrics tab at all.
-        if grafana_host == GRAFANA_HOST_DISABLED_VALUE:
+        if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Grafana disabled",
                 grafana_host=GRAFANA_HOST_DISABLED_VALUE,
             )
 
-        grafana_iframe_host = os.environ.get(GRAFANA_IFRAME_HOST_ENV_VAR, grafana_host)
-        path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
+        grafana_iframe_host = os.environ.get(
+            GRAFANA_IFRAME_HOST_ENV_VAR, self.grafana_host
+        )
+        path = f"{self.grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
             async with self._session.get(path) as resp:
                 if resp.status != 200:
@@ -147,15 +158,51 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     success=True,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
+                    session_name=self._session_name,
                 )
 
         except Exception as e:
-            logger.warning(
+            logger.debug(
                 "Error fetching grafana endpoint. Is grafana running?", exc_info=e
             )
 
             return dashboard_optional_utils.rest_response(
                 success=False, message="Grafana healtcheck failed", exception=str(e)
+            )
+
+    @routes.get("/api/prometheus_health")
+    async def prometheus_health(self, req) -> bool:
+        try:
+            path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
+
+            async with self._session.get(path) as resp:
+                if resp.status != 200:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                    )
+
+                text = await resp.text()
+                # Basic sanity check of prometheus health check schema
+                if "Prometheus" not in text:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                        text=text,
+                    )
+
+                return dashboard_optional_utils.rest_response(
+                    success=True,
+                    message="prometheus running",
+                )
+        except Exception as e:
+            logger.debug(
+                "Error fetching prometheus endpoint. Is prometheus running?", exc_info=e
+            )
+            return dashboard_optional_utils.rest_response(
+                success=False, message="prometheus healthcheck failed.", reason=str(e)
             )
 
     @routes.get("/api/progress")
@@ -183,6 +230,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=False,
                 message=e.message,
+            )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
             )
 
     @routes.get("/api/progress_by_task_name")
@@ -214,6 +266,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 success=False,
                 message=e.message,
             )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
+            )
 
     @staticmethod
     def is_minimal_module():
@@ -230,6 +287,28 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             shutil.rmtree(grafana_config_output_path)
         os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
         shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
+
+        # Overwrite grafana's dashboard provisioning directory based on env var
+        dashboard_provisioning_path = os.path.join(
+            grafana_config_output_path, "provisioning", "dashboards"
+        )
+        os.makedirs(
+            dashboard_provisioning_path,
+            exist_ok=True,
+        )
+        with open(
+            os.path.join(
+                dashboard_provisioning_path,
+                "default.yml",
+            ),
+            "w",
+        ) as f:
+            f.write(
+                DASHBOARD_PROVISIONING_TEMPLATE.format(
+                    dashboard_output_folder=self._grafana_dashboard_output_dir
+                )
+            )
+
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -241,6 +320,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             data_sources_path,
             exist_ok=True,
         )
+        os.makedirs(
+            self._grafana_dashboard_output_dir,
+            exist_ok=True,
+        )
         with open(
             os.path.join(
                 data_sources_path,
@@ -249,19 +332,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
-
-        # Output the dashboards in a special directory
-        if self._grafana_dashboard_output_dir:
-            grafana_dashboards_dir = os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards"
-            )
-            # Copy all dashboard jsons from directory
-            for root, _, files in os.walk(grafana_dashboards_dir):
-                for file in files:
-                    shutil.copy2(
-                        os.path.join(root, file),
-                        os.path.join(self._grafana_dashboard_output_dir, file),
-                    )
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "default_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            f.write(generate_grafana_dashboard())
 
     def _create_default_prometheus_configs(self):
         """
@@ -291,7 +369,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_info().rss) / 1.0e6)
+        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
@@ -305,8 +383,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def _create_prometheus_query_for_progress(
         self, filters: List[str], sum_by: List[str]
     ) -> str:
-        filter_for_terminal_states = ['State=~"FINISHED|FAILED"'] + filters
-        filter_for_non_terminal_states = ['State!~"FINISHED|FAILED"'] + filters
+        filter_for_terminal_states = [
+            'State=~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ] + filters
+        filter_for_non_terminal_states = [
+            'State!~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ] + filters
 
         filter_for_terminal_states_str = ",".join(filter_for_terminal_states)
         filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)

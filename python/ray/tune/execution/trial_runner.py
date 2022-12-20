@@ -1,5 +1,6 @@
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional, Union, Tuple
+from typing import Any, DefaultDict, List, Mapping, Optional, Union, Tuple, Set
 
 import click
 from datetime import datetime
@@ -11,6 +12,7 @@ import traceback
 import warnings
 
 import ray
+from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
@@ -65,21 +67,47 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
-def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+def _load_trial_from_checkpoint(
+    trial_cp: dict, stub: bool = False, new_local_dir: Optional[str] = None
+) -> Trial:
+    """Create a Trial from the state stored in the experiment checkpoint.
+
+    Args:
+        trial_cp: Trial state from the experiment checkpoint, which is loaded
+            from the trial's `Trial.get_json_state`.
+        stub: Whether or not to validate the trainable name when creating the Trial.
+            Used for testing purposes for creating mocks.
+        new_local_dir: If set, this `local_dir` will overwrite what's saved in the
+            `trial_cp` state. Used in the case that the trial directory has moved.
+            The Trial `logdir` and the persistent trial checkpoints will have their
+            paths updated relative to this new directory.
+
+    Returns:
+        new_trial: New trial with state loaded from experiment checkpoint
+    """
     new_trial = Trial(
-        trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
+        trial_cp["trainable_name"],
+        stub=stub,
+        _setup_default_resource=False,
     )
+    if new_local_dir:
+        trial_cp["local_dir"] = new_local_dir
     new_trial.__setstate__(trial_cp)
+    new_trial.refresh_default_resource_request()
     return new_trial
 
 
 def _load_trials_from_experiment_checkpoint(
-    experiment_checkpoint: Mapping[str, Any], stub: bool = False
+    experiment_checkpoint: Mapping[str, Any],
+    stub: bool = False,
+    new_local_dir: Optional[str] = None,
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
     Given an experiment checkpoint (TrialRunner state dict), return
-    list of trials."""
+    list of trials. See `_ExperimentCheckpointManager.checkpoint` for
+    what's saved in the TrialRunner state dict.
+    """
     checkpoints = [
         json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
         for cp in experiment_checkpoint["checkpoints"]
@@ -87,7 +115,13 @@ def _load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(
+            _load_trial_from_checkpoint(
+                trial_cp,
+                stub=stub,
+                new_local_dir=new_local_dir,
+            )
+        )
 
     return trials
 
@@ -112,6 +146,10 @@ class _ExperimentCheckpointManager:
     time (1/20) will be used for writing checkpoints, while 95% of the time
     (19/20) will be used to handle the rest of the training loop.
 
+    If ``sync_every_n_trial_checkpoints`` is not None, syncing
+    to cloud will be forced if any trial has checkpointed more times than
+    ``sync_every_n_trial_checkpoints`` since last sync.
+
     """
 
     def __init__(
@@ -124,6 +162,7 @@ class _ExperimentCheckpointManager:
         sync_trial_checkpoints: bool,
         local_dir: str,
         remote_dir: str,
+        sync_every_n_trial_checkpoints: Optional[int] = None,
     ):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -141,10 +180,31 @@ class _ExperimentCheckpointManager:
         self._remote_dir = remote_dir
 
         self._last_checkpoint_time = 0.0
+        self._last_sync_time = 0.0
+        self._sync_every_n_trial_checkpoints = sync_every_n_trial_checkpoints
+        self._trial_num_checkpoints_since_last_sync: DefaultDict[
+            Trial, int
+        ] = defaultdict(int)
+        self._excessive_sync_threshold = float(
+            os.environ.get(
+                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
+            )
+        )
+        self._should_force_cloud_sync = False
 
     @property
     def auto_checkpoint_enabled(self):
         return self._auto_checkpoint_enabled
+
+    def on_trial_checkpoint(self, trial: Trial):
+        if not self._sync_every_n_trial_checkpoints:
+            return
+        self._trial_num_checkpoints_since_last_sync[trial] += 1
+        if (
+            self._trial_num_checkpoints_since_last_sync[trial]
+            > self._sync_every_n_trial_checkpoints
+        ):
+            self._should_force_cloud_sync = True
 
     def checkpoint(
         self,
@@ -167,6 +227,8 @@ class _ExperimentCheckpointManager:
         """
         if not self._checkpoint_dir:
             return
+
+        force = force or self._should_force_cloud_sync
 
         now = time.time()
         if now - self._last_checkpoint_time < self._checkpoint_period and (not force):
@@ -197,23 +259,52 @@ class _ExperimentCheckpointManager:
         else:
             exclude = ["*/checkpoint_*"]
 
+        synced = False
         if self._syncer:
-            # Todo: Implement sync_timeout for experiment-level syncing
-            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
-                self._syncer.wait()
-                self._syncer.sync_up(
+                try:
+                    self._syncer.wait()
+                except TimeoutError as e:
+                    logger.warning(
+                        "The previous sync of the experiment checkpoint to the cloud "
+                        f"timed out: {str(e)}. Tune will continue to retry syncing. "
+                        "If this warning keeps showing up, consider diagnosing the "
+                        "reason behind the hanging sync operation, or increase the "
+                        "`sync_timeout` in `SyncConfig`."
+                    )
+                synced = self._syncer.sync_up(
                     local_dir=self._local_dir,
                     remote_dir=self._remote_dir,
                     exclude=exclude,
                 )
             else:
-                self._syncer.sync_up_if_needed(
+                synced = self._syncer.sync_up_if_needed(
                     local_dir=self._local_dir,
                     remote_dir=self._remote_dir,
                     exclude=exclude,
                 )
+
+        if synced:
+            self._should_force_cloud_sync = False
+            self._trial_num_checkpoints_since_last_sync.clear()
+
+            # syncing might have taken some time, so we grab the current timestamp again
+            now = time.time()
+            if now - self._last_sync_time < self._excessive_sync_threshold:
+                logger.warning(
+                    "Experiment checkpoint syncing has been triggered multiple "
+                    f"times in the last {self._excessive_sync_threshold} seconds. "
+                    "A sync will be triggered whenever a trial has checkpointed "
+                    "more than `num_to_keep` times since last sync or if "
+                    f"{self._syncer.sync_period} seconds have passed since last "
+                    "sync. If you have set `num_to_keep` in your `CheckpointConfig`, "
+                    "consider increasing the checkpoint frequency or keeping more "
+                    "checkpoints. You can supress this warning by changing the "
+                    "`TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S` "
+                    "environment variable."
+                )
+            self._last_sync_time = now
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -307,6 +398,7 @@ class TrialRunner:
         trial_executor: Optional[RayTrialExecutor] = None,
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
+        trial_checkpoint_config: Optional[CheckpointConfig] = None,
         # Deprecate on next refactor
         driver_sync_trial_checkpoints: bool = False,
     ):
@@ -381,8 +473,8 @@ class TrialRunner:
         if server_port is not None:
             self._server = TuneServer(self, self._server_port)
 
-        self._trials = []
-        self._live_trials = set()  # Set of non-terminated trials
+        self._trials: List[Trial] = []
+        self._live_trials: Set[Trial] = set()  # Set of non-terminated trials
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
 
@@ -441,6 +533,7 @@ class TrialRunner:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
+        self._trial_checkpoint_config = trial_checkpoint_config or CheckpointConfig()
         self._checkpoint_manager = self._create_checkpoint_manager(
             driver_sync_trial_checkpoints
         )
@@ -477,6 +570,7 @@ class TrialRunner:
             sync_trial_checkpoints=sync_trial_checkpoints,
             local_dir=self._local_checkpoint_dir,
             remote_dir=self._remote_checkpoint_dir,
+            sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
 
     @property
@@ -751,18 +845,26 @@ class TrialRunner:
             )
         )
 
-        self.__setstate__(runner_state["runner_data"])
+        trial_runner_data = runner_state["runner_data"]
+        # Don't overwrite the current `_local_checkpoint_dir`
+        # The current directory could be different from the checkpointed
+        # directory, if the experiment directory has changed.
+        trial_runner_data.pop("_local_checkpoint_dir", None)
+
+        self.__setstate__(trial_runner_data)
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = _load_trials_from_experiment_checkpoint(runner_state)
+        trials = _load_trials_from_experiment_checkpoint(
+            runner_state, new_local_dir=self._local_checkpoint_dir
+        )
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
                     # Keep trial ID on resume
-                    trial_to_add.error_file = None
-                    trial_to_add.pickled_error_file = None
+                    trial_to_add.error_filename = None
+                    trial_to_add.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
@@ -1223,6 +1325,7 @@ class TrialRunner:
                 checkpoint=trial.saving_to,
             )
             trial.on_checkpoint(trial.saving_to)
+            self._checkpoint_manager.on_trial_checkpoint(trial)
             if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:

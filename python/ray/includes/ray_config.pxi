@@ -136,3 +136,27 @@ cdef class Config:
     @staticmethod
     def REDIS_SERVER_NAME():
         return RayConfig.instance().REDIS_SERVER_NAME()
+
+    @staticmethod
+    def pull_based_healthcheck():
+        return RayConfig.instance().pull_based_healthcheck()
+
+    @staticmethod
+    def health_check_initial_delay_ms():
+        return RayConfig.instance().health_check_initial_delay_ms()
+
+    @staticmethod
+    def health_check_period_ms():
+        return RayConfig.instance().health_check_period_ms()
+
+    @staticmethod
+    def health_check_timeout_ms():
+        return RayConfig.instance().health_check_timeout_ms()
+
+    @staticmethod
+    def health_check_failure_threshold():
+        return RayConfig.instance().health_check_failure_threshold()
+
+    @staticmethod
+    def memory_monitor_refresh_ms():
+        return (RayConfig.instance().memory_monitor_refresh_ms())

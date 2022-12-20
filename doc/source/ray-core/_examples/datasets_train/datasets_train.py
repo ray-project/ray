@@ -23,13 +23,12 @@ from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import train
 from ray.air import session, Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def make_and_upload_dataset(dir_path):
@@ -455,8 +454,7 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        checkpoint = Checkpoint.from_dict(dict(model=module.state_dict()))
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
         print(f"session report on {session.get_world_rank()}")

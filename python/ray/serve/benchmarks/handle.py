@@ -94,4 +94,5 @@ async def main():
                 await run_test(num_replicas, num_forwarders, sync)
 
 
-asyncio.get_event_loop().run_until_complete(main())
+# TODO(rickyx): use asyncio.run after deprecating 3.6
+asyncio.new_event_loop().run_until_complete(main())

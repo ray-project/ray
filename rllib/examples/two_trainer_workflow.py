@@ -64,7 +64,7 @@ parser.add_argument(
 )
 
 
-# Define new Algorithm with custom execution_plan/workflow.
+# Define new Algorithm with custom `training_step()` method (training workflow).
 class MyAlgo(Algorithm):
     @override(Algorithm)
     def setup(self, config):
@@ -163,12 +163,14 @@ if __name__ == "__main__":
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
             None,
             None,
+            # Provide entire AlgorithmConfig object, not just an override.
             PPOConfig().training(num_sgd_iter=10, sgd_minibatch_size=128),
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
+            # Provide entire AlgorithmConfig object, not just an override.
             DQNConfig(),
         ),
     }

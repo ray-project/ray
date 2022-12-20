@@ -11,6 +11,7 @@ from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.trainable.function_trainable import _StatusReporter
+from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -48,6 +49,10 @@ class _TuneSessionImpl(Session):
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         return self._status_reporter.loaded_checkpoint
+
+    @property
+    def experiment_name(self) -> str:
+        return self._status_reporter.experiment_name
 
     @property
     def trial_name(self) -> str:
@@ -315,6 +320,9 @@ def checkpoint_dir(step: int):
         _checkpoint_dir = os.path.abspath("./")
 
     yield _checkpoint_dir
+
+    # Drop marker again in case it was deleted.
+    TrainableUtil.mark_as_checkpoint_dir(_checkpoint_dir)
 
     if _session:
         _session.set_checkpoint(_checkpoint_dir)

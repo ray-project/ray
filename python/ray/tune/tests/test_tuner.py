@@ -13,7 +13,7 @@ from sklearn.utils import shuffle
 
 from ray import tune
 from ray.air import session
-from ray.air.config import RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig, FailureConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -22,10 +22,25 @@ from ray.data.block import BlockMetadata
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, TuneError, CLIReporter
+from ray.tune import Callback, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def chdir_tmpdir(tmpdir):
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    yield tmpdir
+    os.chdir(old_cwd)
 
 
 class DummyTrainer(BaseTrainer):
@@ -90,6 +105,12 @@ def gen_dataset_func_eager():
 
 class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
+
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
@@ -186,7 +207,7 @@ class TunerTest(unittest.TestCase):
             # As the unit test only has access to 4 CPUs on Buildkite.
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
-        with self.assertRaises(TuneError):
+        with self.assertRaises(RuntimeError):
             tuner.fit()
 
         # Test resume
@@ -212,6 +233,46 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 2
         for i in range(2):
             assert results[i].error
+
+    def test_tuner_fail_fast_true(self):
+        trainer = FailingTrainer()
+        param_space = {
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
+        }
+
+        failure_config = FailureConfig(fail_fast=True)
+
+        tuner = Tuner(
+            trainable=trainer,
+            run_config=RunConfig(
+                name="test_tuner_trainer_fail", failure_config=failure_config
+            ),
+            param_space=param_space,
+            tune_config=TuneConfig(mode="max", metric="iteration"),
+        )
+
+        results = tuner.fit()
+        errors = [result.error for result in results if result.error]
+        assert len(errors) == 1
+
+    def test_tuner_fail_fast_raise(self):
+        trainer = FailingTrainer()
+        param_space = {
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
+        }
+
+        failure_config = FailureConfig(fail_fast="raise")
+
+        tuner = Tuner(
+            trainable=trainer,
+            run_config=RunConfig(
+                name="test_tuner_trainer_fail", failure_config=failure_config
+            ),
+            param_space=param_space,
+            tune_config=TuneConfig(mode="max", metric="iteration"),
+        )
+        with self.assertRaises(RuntimeError):
+            tuner.fit()
 
     def test_tuner_with_torch_trainer(self):
         """Test a successful run using torch trainer."""
@@ -274,7 +335,7 @@ class TunerTest(unittest.TestCase):
         ),
     ],
 )
-def test_tuner_api_kwargs(params_expected):
+def test_tuner_api_kwargs(shutdown_only, params_expected):
     tuner_params, assertion = params_expected
 
     tuner = Tuner(lambda config: 1, **tuner_params)
@@ -290,18 +351,18 @@ def test_tuner_api_kwargs(params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true():
+def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_false():
+def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -311,7 +372,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_false():
     tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_none():
+def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -321,24 +382,34 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
     tuner.fit()
 
 
+def test_nonserializable_trainable(capsys):
+    import threading
+
+    lock = threading.Lock()
+    with pytest.raises(TypeError):
+        Tuner(lambda config: print(lock))
+
+    # Check that the `inspect_serializability` trace was printed
+    out, _ = capsys.readouterr()
+    assert "was found to be non-serializable." in out
+
+
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_no_chdir_to_trial_dir(runtime_env):
+def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
     reading relatives paths to the original working directory.
     Also tests that `session.get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=1, runtime_env=runtime_env)
-
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
 
+    ray.init(num_cpus=1, runtime_env=runtime_env)
+
     def train_func(config):
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
-        assert orig_working_dir == os.getcwd(), (
+        assert str(orig_working_dir) == os.getcwd(), (
             "Working directory should not have changed from "
             f"{orig_working_dir} to {os.getcwd()}"
         )
@@ -350,37 +421,32 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
         trial_dir = Path(session.get_trial_dir())
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
-        # Make sure we didn't write to the working dir
-        assert not os.path.exists(orig_working_dir / "write.txt")
-        # Make sure that the file we wrote to isn't overwritten
-        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
 
     tuner = Tuner(
         train_func,
-        tune_config=TuneConfig(
-            chdir_to_trial_dir=False,
-        ),
+        tune_config=TuneConfig(chdir_to_trial_dir=False),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
-    tuner.fit()
-    ray.shutdown()
+    results = tuner.fit()
+    assert not results.errors
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(runtime_env):
+def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
-    # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
-    # Tune should still chdir to the trial directory, since we didn't disable the
-    # `chdir_to_trial_dir` flag.
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=1, runtime_env=runtime_env)
-
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
+
+    # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
+    # Tune should still chdir to the trial directory, since we didn't disable the
+    # `chdir_to_trial_dir` flag.
+    ray.init(num_cpus=1, runtime_env=runtime_env)
 
     def train_func(config):
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
@@ -399,18 +465,17 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
 
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
-        assert not os.path.exists(orig_working_dir / "write.txt")
-        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
 
     tuner = Tuner(
         train_func,
-        tune_config=TuneConfig(
-            chdir_to_trial_dir=True,
-        ),
+        tune_config=TuneConfig(chdir_to_trial_dir=True),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
-    tuner.fit()
-    ray.shutdown()
+    results = tuner.fit()
+    assert not results.errors
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
 
 
 if __name__ == "__main__":

@@ -24,8 +24,21 @@ class SupportedFileType(str, Enum):
     """Supported file types for RLlib, used for CLI argument validation."""
 
     yaml = "yaml"
-    json = "json"
     python = "python"
+
+
+def get_file_type(config_file: str) -> SupportedFileType:
+    if config_file.endswith(".py"):
+        file_type = SupportedFileType.python
+    elif config_file.endswith(".yaml") or config_file.endswith(".yml"):
+        file_type = SupportedFileType.yaml
+    else:
+        raise ValueError(
+            "Unknown file type for config "
+            "file: {}. Supported extensions: .py, "
+            ".yml, .yaml".format(config_file)
+        )
+    return file_type
 
 
 def _create_tune_parser_help():
@@ -64,7 +77,14 @@ def download_example_file(
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
-        temp_file = tempfile.NamedTemporaryFile()
+        file_type = get_file_type(example_url)
+        if file_type == SupportedFileType.yaml:
+            temp_file = tempfile.NamedTemporaryFile(suffix=".yaml")
+        else:
+            assert (
+                file_type == SupportedFileType.python
+            ), f"`example_url` ({example_url}) must be a python or yaml file!"
+            temp_file = tempfile.NamedTemporaryFile(suffix=".py")
 
         r = requests.get(example_url)
         with open(temp_file.name, "wb") as f:
@@ -105,7 +125,7 @@ train_help = dict(
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
     filetype="The file type of the config file. Defaults to 'yaml' and can also be "
-    "'json', or 'python'.",
+    "'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -252,7 +272,7 @@ EXAMPLES = {
     },
     "cartpole-a2c": {
         "file": "tuned_examples/a2c/cartpole_a2c.py",
-        "file_type": SupportedFileType.python,
+        "stop": "{'timesteps_total': 50000, 'episode_reward_mean': 200}",
         "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
@@ -261,7 +281,8 @@ EXAMPLES = {
     },
     # A3C
     "cartpole-a3c": {
-        "file": "tuned_examples/a3c/cartpole-a3c.yaml",
+        "file": "tuned_examples/a3c/cartpole_a3c.py",
+        "stop": "{'timesteps_total': 20000, 'episode_reward_mean': 150}",
         "description": "Runs A3C on the CartPole-v1 environment.",
     },
     "pong-a3c": {

@@ -21,8 +21,11 @@ virtualenv>=20.0.24
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
-grpcio>=1.32.0; python_version < '3.10'
-grpcio>=1.42.0; python_version >= '3.10'
+# Tracking issue: https://github.com/ray-project/ray/issues/30984
+grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'
+grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
+grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'
+grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'
 numpy>=1.16; python_version < '3.9'
 numpy>=1.19.3; python_version >= '3.9'
 packaging; python_version >= '3.10'
@@ -35,7 +38,6 @@ rich
 urllib3
 tabulate
 scikit-image
-kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
@@ -57,7 +59,8 @@ aiorwlock
 opentelemetry-exporter-otlp==1.1.0
 starlette
 typer
-pyarrow<7.0.0,>=6.0.1
+pyarrow >= 6.0.1; python_version >= '3.7' and platform_system != "Windows"
+pyarrow >= 6.0.1, < 7.0.0; python_version < '3.7' or platform_system == "Windows"
 aiohttp_cors
 opentelemetry-api==1.1.0
 pyyaml

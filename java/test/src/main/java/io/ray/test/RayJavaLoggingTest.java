@@ -29,7 +29,7 @@ public class RayJavaLoggingTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testJavaLoggingRotate() {
     ActorHandle<HeavyLoggingActor> loggingActor =
         Ray.actor(HeavyLoggingActor::new)
@@ -39,14 +39,30 @@ public class RayJavaLoggingTest extends BaseTest {
             .remote();
     Assert.assertTrue(loggingActor.task(HeavyLoggingActor::log).remote().get());
     final int pid = loggingActor.task(HeavyLoggingActor::getPid).remote().get();
-    final JobId jobId = Ray.getRuntimeContext().getCurrentJobId();
-    String currLogDir = "/tmp/ray/session_latest/logs";
-    for (int i = 1; i <= 3; ++i) {
-      File rotatedFile =
-          new File(String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
-      Assert.assertTrue(rotatedFile.exists());
-      long fileSize = rotatedFile.length();
-      Assert.assertTrue(fileSize > 1024 && fileSize < 1024 * 2);
-    }
+    // Note(qwang): Due to log4j2 is async, once the `log()` actor method returned, we
+    // still have no confident to make sure all log messages are printed to the log files,
+    // especially on slow CI machine.
+    boolean rotated =
+        TestUtils.waitForCondition(
+            () -> {
+              final JobId jobId = Ray.getRuntimeContext().getCurrentJobId();
+              String currLogDir = "/tmp/ray/session_latest/logs";
+              for (int i = 1; i <= 3; ++i) {
+                File rotatedFile =
+                    new File(
+                        String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
+                if (!rotatedFile.exists()) {
+                  return false;
+                }
+                long fileSize = rotatedFile.length();
+                boolean fileSizeExpected = fileSize > 1024 && fileSize < 1024 * 2;
+                if (!fileSizeExpected) {
+                  return false;
+                }
+              }
+              return true;
+            },
+            10 * 1000);
+    Assert.assertTrue(rotated);
   }
 }

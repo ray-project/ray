@@ -93,7 +93,10 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        [(_, opponent_batch)] = list(other_agent_batches.values())
+        if policy.config["enable_connectors"]:
+            [(_, _, opponent_batch)] = list(other_agent_batches.values())
+        else:
+            [(_, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]
@@ -232,8 +235,9 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
 
 
 class CentralizedCritic(PPO):
+    @classmethod
     @override(PPO)
-    def get_default_policy_class(self, config):
+    def get_default_policy_class(cls, config):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
         elif config["framework"] == "tf":
@@ -243,7 +247,7 @@ class CentralizedCritic(PPO):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -265,20 +269,20 @@ if __name__ == "__main__":
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
                 "pol2": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            policy_mapping_fn=lambda aid, **kwargs: "pol1" if aid == 0 else "pol2",
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

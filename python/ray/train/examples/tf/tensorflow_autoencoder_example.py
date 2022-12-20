@@ -14,7 +14,7 @@ from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
 from ray.train.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
 
 import ray
 

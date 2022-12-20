@@ -316,8 +316,18 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
             "_system_config": {
                 "num_heartbeats_timeout": 10,
                 "raylet_heartbeat_period_milliseconds": 100,
+                "pull_based_healthcheck": False,
             },
-        }
+        },
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 100,
+                "health_check_failure_threshold": 10,
+                "pull_based_healthcheck": True,
+            },
+        },
     ],
     indirect=True,
 )
@@ -360,7 +370,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
             assert not graceful
 
     """
-    Kill the first worker non-gracefully.
+    Kill the first worker ungracefully.
     """
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)

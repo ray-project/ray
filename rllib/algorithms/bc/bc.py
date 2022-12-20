@@ -10,29 +10,34 @@ class BCConfig(MARWILConfig):
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
         >>> # Run this from the ray directory root.
-        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)\
-        ...             .offline_data(input_="./rllib/tests/data/cartpole/large.json")
-        >>> print(config.to_dict())
+        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)
+        >>> config = config.offline_data(  # doctest: +SKIP
+        ...     input_="./rllib/tests/data/cartpole/large.json")
+        >>> print(config.to_dict())  # doctest:+SKIP
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
         >>> from ray import tune
         >>> config = BCConfig()
         >>> # Print out some default values.
-        >>> print(config.beta)
+        >>> print(config.beta)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), beta=0.75)
+        >>> config.training(  # doctest:+SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75
+        ... )
         >>> # Set the config object's data path.
         >>> # Run this from the ray directory root.
-        >>> config.offline_data(input_="./rllib/tests/data/cartpole/large.json")
+        >>> config.offline_data(  # doctest:+SKIP
+        ...     input_="./rllib/tests/data/cartpole/large.json"
+        ... )
         >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")  # doctest:+SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(   # doctest:+SKIP
         ...     "BC",
         ...     param_space=config.to_dict(),
         ... ).fit()
@@ -51,10 +56,12 @@ class BCConfig(MARWILConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # TODO: Remove this when the off_polciy_estimation_methods
-        # default config is removed from MARWIL
-        # No off-policy estimation.
-        self.off_policy_estimation_methods = {}
+    @override(MARWILConfig)
+    def validate(self) -> None:
+        super().validate()
+
+        if self.beta != 0.0:
+            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 class BC(MARWIL):
@@ -67,14 +74,6 @@ class BC(MARWIL):
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-    @override(MARWIL)
-    def validate_config(self, config: AlgorithmConfig) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["beta"] != 0.0:
-            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 # Deprecated: Use ray.rllib.algorithms.bc.BCConfig instead!

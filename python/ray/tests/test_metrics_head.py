@@ -12,6 +12,7 @@ from ray.dashboard.modules.metrics.metrics_head import (
     TaskProgressWithTaskName,
     TaskProgress,
 )
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import GRAFANA_PANELS
 from ray.tests.conftest import _ray_start
 
 
@@ -34,6 +35,7 @@ def test_metrics_folder():
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
+        assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
 
 
@@ -49,10 +51,16 @@ def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
     """
     Tests that the default dashboard files get created.
     """
-    with _ray_start(include_dashboard=True):
+    with _ray_start(include_dashboard=True) as context:
+        session_dir = context["session_dir"]
         assert os.path.exists(
             f"{override_dashboard_dir}/default_grafana_dashboard.json"
         )
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
+        ) as f:
+            contents = f.read()
+            assert override_dashboard_dir in contents
 
 
 def test_metrics_folder_when_dashboard_disabled():
@@ -230,6 +238,12 @@ def test_format_prometheus_output_by_task_names():
             ),
         ]
     )
+
+
+def test_default_dashboard_utilizes_global_filters():
+    for panel in GRAFANA_PANELS:
+        for target in panel.targets:
+            assert "{global_filters}" in target.expr
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/use-cases
       - file: ray-overview/ray-libraries
 
   - caption: Ray AI Runtime
@@ -40,6 +41,8 @@ parts:
         - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
         - file: ray-air/examples/automl_with_ray_air
+        - file: ray-air/examples/batch_tuning
+        - file: ray-air/examples/batch_forecasting
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
@@ -55,6 +58,8 @@ parts:
             sections:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
+              - file: data/examples/batch_training
+                title: Batch training on the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
@@ -101,6 +106,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/tutorials/tune_get_data_in_and_out
               - file: tune/examples/tune_analyze_results
               - file: tune/examples/pbt_guide
                 sections:
@@ -115,8 +121,6 @@ parts:
           - file: tune/examples/index
             sections:
               - file: tune/examples/ml-frameworks
-              - file: tune/examples/experiment-tracking
-              - file: tune/examples/hpo-frameworks
                 sections:
                   - file: tune/examples/tune-sklearn
                     title: "Scikit-Learn Example"
@@ -140,10 +144,16 @@ parts:
                     title: "Horovod Example"
                   - file: tune/examples/pbt_transformers
                     title: "Huggingface Example"
+              - file: tune/examples/experiment-tracking
+                sections:
                   - file: tune/examples/tune-comet
                     title: "Comet Example"
                   - file: tune/examples/tune-wandb
                     title: "Weights & Biases Example"
+                  - file: tune/examples/tune-mlflow
+                    title: "MLflow Example"
+              - file: tune/examples/hpo-frameworks
+                sections:
                   - file: tune/examples/ax_example
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example
@@ -211,12 +221,13 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/core-concepts
           - file: rllib/rllib-training
+          - file: rllib/core-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
             sections:
+              - file: rllib/rllib-advanced-api
               - file: rllib/rllib-models
               - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
@@ -235,7 +246,7 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-core/examples/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: workflows/index
             title: Ray Workflows (Alpha)
             sections:
@@ -269,7 +280,7 @@ parts:
           - file: ray-core/examples/batch_prediction
           - file: ray-core/examples/batch_training
           - file: ray-core/examples/automl_for_time_series
-      - file: ray-core/package-ref
+      - file: ray-core/api
 
   - caption: Ray Clusters
     chapters:
@@ -318,6 +329,7 @@ parts:
       - file: cluster/running-applications/index
         title: Applications Guide
       - file: cluster/faq
+      - file: cluster/package-overview
 
   - caption: Monitoring and Debugging
     chapters:
@@ -342,4 +354,3 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-contribute/whitepaper
-      - file: ray-use-cases/overview

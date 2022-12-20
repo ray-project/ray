@@ -230,14 +230,6 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message GetGcsSchedulingStatsRequest {}
-
-message GetGcsSchedulingStatsReply {
-  GcsStatus status = 1;
-  repeated TaskSpec infeasible_tasks = 2;
-  repeated TaskSpec ready_tasks = 3;
-}
-
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
@@ -606,9 +598,6 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-  // Get current scheduling stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
-      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
@@ -633,4 +622,45 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskEventDataRequest {
+  // Task event data from core worker.
+  TaskEventData data = 1;
+}
+
+message AddTaskEventDataReply {
+  GcsStatus status = 1;
+}
+
+message GetTaskEventsRequest {
+  message TaskIDs {
+    repeated string vals = 1;
+  }
+  oneof select_by {
+    // Get task events from a job.
+    string job_id = 1;
+    // Get task events from a set of tasks.
+    TaskIDs task_ids = 2;
+  }
+}
+
+message GetTaskEventsReply {
+  GcsStatus status = 1;
+  // Task events returned.
+  repeated TaskEvents events_by_task = 2;
+  // Number of profile events dropped at GCS and worker for the queried events.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of status events dropped at GCS and worker for the queried events.
+  int32 num_status_task_events_dropped = 4;
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add task event data to GCS.
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+
+  // Get task events.
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////

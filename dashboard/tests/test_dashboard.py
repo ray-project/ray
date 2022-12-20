@@ -24,6 +24,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,
@@ -418,9 +419,8 @@ def test_class_method_route_table(enable_test_module):
             break
     assert post_handler is not None
 
-    loop = asyncio.get_event_loop()
-    r = loop.run_until_complete(post_handler())
-    assert r.status == 200
+    r = get_or_create_event_loop().run_until_complete(post_handler())
+    assert r.status == 500
     resp = json.loads(r.body)
     assert resp["result"] is False
     assert "Traceback" in resp["msg"]
@@ -438,7 +438,7 @@ def test_async_loop_forever():
         counter[0] += 1
         raise Exception("Test exception")
 
-    loop = asyncio.get_event_loop()
+    loop = get_or_create_event_loop()
     loop.create_task(foo())
     loop.call_later(1, loop.stop)
     loop.run_forever()
@@ -537,7 +537,8 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert len(collections.Counter(volatile_value_timestamps)) == 10
 
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
-    response.raise_for_status()
+    with pytest.raises(Exception):
+        response.raise_for_status()
     result = response.json()
     assert result["result"] is False
     assert "KeyError" in result["msg"]

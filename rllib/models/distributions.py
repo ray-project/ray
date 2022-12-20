@@ -20,7 +20,6 @@ class Distribution(abc.ABC):
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
         >>> max_likelihood_action = action_dist.max_likelihood()
-
     """
 
     @abc.abstractmethod

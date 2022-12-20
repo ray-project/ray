@@ -9,12 +9,12 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -30,6 +30,7 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -133,9 +134,9 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        log_dir: str = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
-        stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
         self.gcs_address = address
@@ -169,14 +170,22 @@ class Monitor:
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
-        # Can be used to signal graceful exit from monitor loop.
-        self.stop_event = stop_event  # type: Optional[Event]
         self.retry_on_failure = retry_on_failure
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
+
+        if log_dir:
+            try:
+                self.event_logger = get_event_logger(
+                    RayEvent.SourceType.AUTOSCALER, log_dir
+                )
+            except Exception:
+                self.event_logger = None
+        else:
+            self.event_logger = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -333,16 +342,15 @@ class Monitor:
         """Run the monitor loop."""
         while True:
             try:
-                if self.stop_event and self.stop_event.is_set():
-                    break
                 gcs_request_start_time = time.time()
                 self.update_load_metrics()
                 gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
+                load_metrics_summary = self.load_metrics.summary()
                 status = {
                     "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "load_metrics_report": asdict(load_metrics_summary),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
                 }
@@ -368,6 +376,20 @@ class Monitor:
                             self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
 
+                        for resource_name in ["CPU", "GPU"]:
+                            _, total = load_metrics_summary.usage.get(
+                                resource_name, (0, 0)
+                            )
+                            pending = autoscaler_summary.pending_resources.get(
+                                resource_name, 0
+                            )
+                            self.prom_metrics.cluster_resources.labels(
+                                resource=resource_name
+                            ).set(total)
+                            self.prom_metrics.pending_resources.labels(
+                                resource=resource_name
+                            ).set(pending)
+
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
                         # get pushed to the driver logs.
@@ -377,6 +399,8 @@ class Monitor:
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
                             )
+                            if self.event_logger:
+                                self.event_logger.info(line)
 
                     self.event_summarizer.clear()
 
@@ -610,6 +634,7 @@ if __name__ == "__main__":
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
+        log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )
 

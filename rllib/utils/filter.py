@@ -311,16 +311,6 @@ class MeanStdFilter(Filter):
         else:
             return _helper(x, self.running_stats, self.buffer, self.shape)
 
-    def __repr__(self) -> str:
-        return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape,
-            self.demean,
-            self.destd,
-            self.clip,
-            self.running_stats,
-            self.buffer,
-        )
-
 
 @DeveloperAPI
 class ConcurrentMeanStdFilter(MeanStdFilter):

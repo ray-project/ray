@@ -15,8 +15,6 @@ cql-halfcheetahbulletenv-v0:
             paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
         actions_in_input_normalized: true
 
-        soft_horizon: False
-        horizon: 1000
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]
@@ -27,7 +25,7 @@ cql-halfcheetahbulletenv-v0:
         target_entropy: auto
         no_done_at_end: false
         n_step: 3
-        rollout_fragment_length: 1
+        rollout_fragment_length: auto
         num_workers: 8
         grad_clip: 40
         train_batch_size: 256

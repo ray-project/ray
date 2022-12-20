@@ -1,7 +1,7 @@
 from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -13,10 +13,10 @@ class PGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -27,27 +27,29 @@ class PGConfig(AlgorithmConfig):
         >>> print(config.lr) # doctest: +SKIP
         0.0004
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """
 
-    def __init__(self):
+    def __init__(self, algo_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(algo_class=PG)
+        super().__init__(algo_class=algo_class or PG)
 
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with PG-specific values.
         self.lr_schedule = None
         self.lr = 0.0004
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 200
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
@@ -56,7 +58,7 @@ class PGConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
     ) -> "PGConfig":
         """Sets the training related configuration.
@@ -78,10 +80,19 @@ class PGConfig(AlgorithmConfig):
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # Synchronous sampling, on-policy PG algo -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
 
 class PG(Algorithm):
@@ -95,8 +106,8 @@ class PG(Algorithm):
     https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
-    (`get_default_policy` and `get_default_config`). Utilizes
-    the default `execution_plan()` of `Trainer`.
+    (`get_default_policy_class` and `get_default_config`). Utilizes
+    the default `training_step()` method of `Algorithm`.
     """
 
     @classmethod
@@ -104,8 +115,11 @@ class PG(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return PGConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 

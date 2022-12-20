@@ -17,7 +17,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 class DummyModelSingleTensor(torch.nn.Module):
@@ -84,7 +84,7 @@ def test_predict_model_not_training(model, use_gpu):
     assert not predictor.model.training
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     predictor = TorchPredictor(model=DummyModelMultiInput())
 
@@ -97,9 +97,9 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
 @pytest.mark.parametrize("use_state_dict", [True, False])
-def test_predict_batch(ray_start_4_cpus, batch_type, use_state_dict):
+def test_predict_dataset_block(ray_start_4_cpus, block_type, use_state_dict):
     if use_state_dict:
         checkpoint = TorchCheckpoint.from_state_dict({})
         # Notice here that predictor needs to take in additional information
@@ -118,12 +118,9 @@ def test_predict_batch(ray_start_4_cpus, batch_type, use_state_dict):
         [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["X0", "X1"]
     )
 
-    # Todo: Ray data does not support numpy dicts
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data.to_numpy())
-    elif batch_type == pd.DataFrame:
+    if block_type == pd.DataFrame:
         dataset = ray.data.from_pandas(dummy_data)
-    elif batch_type == pa.Table:
+    elif block_type == pa.Table:
         dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
     else:
         raise RuntimeError("Invalid batch_type")
@@ -141,8 +138,8 @@ def test_predict_array(model, use_gpu):
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -152,8 +149,8 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
     assert predictor.get_preprocessor().has_preprocessed
 
 
@@ -226,7 +223,7 @@ def test_predict_array_with_different_dtypes(
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
 
-    assert predictions.dtype == expected_output_dtype
+    assert predictions["predictions"].dtype == expected_output_dtype
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -237,8 +234,8 @@ def test_predict_array_no_training(model, use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -248,7 +245,8 @@ def test_array_real_model(use_gpu):
 
     data = np.array([[1, 2], [3, 4]])
     predictions = predictor.predict(data, dtype=torch.float)
-    assert len(predictions) == 2
+    assert len(predictions) == 1
+    assert len(predictions["predictions"]) == 2
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])

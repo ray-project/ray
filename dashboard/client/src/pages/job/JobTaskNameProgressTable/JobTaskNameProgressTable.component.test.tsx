@@ -27,7 +27,9 @@ describe("JobTaskNameProgressTable", () => {
         },
       ],
       page: { pageNo: 1, pageSize: 10 },
-      setPage: () => {},
+      setPage: () => {
+        // purposefully empty
+      },
       total: 2,
     } as any);
 

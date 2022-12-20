@@ -31,6 +31,10 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+/// ===============================================================================
+/// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
+/// ===============================================================================
+
 /// Tracks tasks by state, including pending, running, and finished tasks.
 /// This metric may be recorded from multiple components processing the task in Ray,
 /// including the submitting core worker, executor core worker, and pull manager.
@@ -43,7 +47,8 @@ DEFINE_stats(
     // State: the task state, as described by rpc::TaskState proto in common.proto.
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Name", "Source"),
+    // IsRetry: whether this task is a retry.
+    ("State", "Name", "Source", "IsRetry"),
     (),
     ray::stats::GAUGE);
 
@@ -60,6 +65,50 @@ DEFINE_stats(actors,
              ("State", "Name", "Source"),
              (),
              ray::stats::GAUGE);
+
+/// Logical resource usage reported by raylets.
+DEFINE_stats(resources,
+             // TODO(sang): Support placement_group_reserved_available | used
+             "Logical Ray resources broken per state {AVAILABLE, USED}",
+             ("Name", "State"),
+             (),
+             ray::stats::GAUGE);
+
+/// Object store memory usage.
+DEFINE_stats(
+    object_store_memory,
+    "Object store memory by various sub-kinds on this node",
+    /// Location:
+    ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
+    ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
+    ///      e.g. /tmp.
+    ///    - WORKER_HEAP: ray objects smaller than ('max_direct_call_object_size',
+    ///      default 100KiB) stored in process memory, i.e. inlined return
+    ///      values, placeholders for objects stored in plasma store.
+    ///    - SPILLED: current number of bytes from objects spilled
+    ///      to external storage. Note this might be smaller than
+    ///      the physical storage incurred on the external storage because
+    ///      Ray might fuse spilled objects into a single file, so a deleted
+    ///      spill object might still exist in the spilled file. Check
+    ///      spilled object fusing for more details.
+    /// ObjectState:
+    ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+    ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+    (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
+    (),
+    ray::stats::GAUGE);
+
+/// Placement group metrics from the GCS.
+DEFINE_stats(placement_groups,
+             "Number of placement groups broken down by state.",
+             // State: from rpc::PlacementGroupData::PlacementGroupState.
+             ("State"),
+             (),
+             ray::stats::GAUGE);
+
+/// ===============================================================================
+/// ===================== INTERNAL SYSTEM METRICS =================================
+/// ===============================================================================
 
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -184,14 +233,6 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              (),
              ray::stats::GAUGE);
 
-/// Raylet Resource Manager
-DEFINE_stats(resources,
-             // TODO(sang): Support placement_group_reserved_available | used
-             "Logical Ray resources broken per state {AVAILABLE, USED}",
-             ("Name", "State"),
-             (),
-             ray::stats::GAUGE);
-
 /// Local Object Manager
 DEFINE_stats(
     spill_manager_objects,
@@ -227,24 +268,6 @@ DEFINE_stats(gcs_storage_operation_count,
              (),
              ray::stats::COUNT);
 
-/// Object store
-DEFINE_stats(object_store_memory,
-             "Object store memory by various sub-kinds on this node",
-             /// Location:
-             ///    TODO(rickyx): spill fallback from in memory
-             ///    - IN_MEMORY: currently in shared memory(e.g. /dev/shm) and
-             ///      fallback allocated. This is memory already sealed.
-             ///    - SPILLED: current number of bytes from objects spilled
-             ///      to external storage. Note this might be smaller than
-             ///      the physical storage incurred on the external storage because
-             ///      Ray might fuse spilled objects into a single file, so a deleted
-             ///      spill object might still exist in the spilled file. Check
-             ///      spilled object fusing for more details.
-             ///    - UNSEALED: unsealed bytes that come from objects just created.
-             ("Location"),
-             (),
-             ray::stats::GAUGE);
-
 /// Placement Group
 // The end to end placement group creation latency.
 // The time from placement group creation request has received
@@ -273,6 +296,36 @@ DEFINE_stats(gcs_placement_group_count,
 DEFINE_stats(gcs_actors_count,
              "Number of actors per state {Created, Destroyed, Unresolved, Pending}",
              ("State"),
+             (),
+             ray::stats::GAUGE);
+
+/// GCS Task Manager
+DEFINE_stats(gcs_task_manager_task_events_reported,
+             "Number of all task events reported to gcs.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_dropped,
+             /// Type:
+             ///     - PROFILE_EVENT: number of profile task events dropped from both
+             ///     workers and GCS.
+             ///     - STATUS_EVENT: number of task status updates events dropped from
+             ///     both workers and GCS.
+             "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
+             ("Type"),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored,
+             "Number of task events stored in GCS.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
+             "Number of bytes of all task events stored in GCS.",
+             (),
              (),
              ray::stats::GAUGE);
 

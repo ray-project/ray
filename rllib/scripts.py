@@ -10,7 +10,6 @@ from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
-    SupportedFileType,
     example_help,
     download_example_file,
 )
@@ -101,11 +100,11 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     example = EXAMPLES[example_id]
     example_file = get_example_file(example_id)
     example_file, temp_file = download_example_file(example_file)
-    file_type = example.get("file_type", SupportedFileType.yaml)
+    stop = example.get("stop")
 
     train_module.file(
         config_file=example_file,
-        file_type=file_type,
+        stop=stop,
         checkpoint_freq=1,
         checkpoint_at_end=True,
         keep_checkpoints_num=None,

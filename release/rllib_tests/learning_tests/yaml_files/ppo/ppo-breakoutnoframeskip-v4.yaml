@@ -15,7 +15,7 @@ ppo-breakoutnoframeskip-v4:
         vf_clip_param: 10.0
         entropy_coeff: 0.01
         train_batch_size: 5000
-        rollout_fragment_length: 100
+        rollout_fragment_length: auto
         sgd_minibatch_size: 500
         num_sgd_iter: 10
         num_workers: 30

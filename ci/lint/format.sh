@@ -144,10 +144,6 @@ MYPY_FILES=(
     'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
     'autoscaler/_private/autoscaler.py'
-    # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
-    # in the CI. Type check once we get serious about type checking:
-    #'ray_operator/operator.py'
-    'ray_operator/operator_utils.py'
     '_private/gcs_utils.py'
 )
 
@@ -196,6 +192,20 @@ mypy_on_each() {
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
     done
     popd
+}
+
+format_frontend() {
+  (
+    echo "$(date)" "format frontend...."
+    local folder 
+    folder="$(pwd)/dashboard/client"
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
+    "${folder}/"node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
+  )
 }
 
 
@@ -359,6 +369,10 @@ format_changed() {
             shellcheck_scripts "${shell_files[@]}"
         fi
     fi
+
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.ts' '*.tsx' &>/dev/null; then
+        format_frontend
+    fi
 }
 
 # This flag formats individual files. --files *must* be the first command line
@@ -374,6 +388,8 @@ elif [ "${1-}" == '--all-scripts' ]; then
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
+elif [ "${1-}" == '--frontend' ]; then
+    format_frontend
 else
     # Add the upstream remote if it doesn't exist
     if ! git remote -v | grep -q upstream; then

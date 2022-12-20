@@ -218,6 +218,15 @@ class TestValidateEnvVars:
         with pytest.raises(TypeError, match=".*Dict[str, str]*"):
             parse_and_validate_env_vars({1: "hi"})
 
+        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
+            parse_and_validate_env_vars({"hi": 123})
+
+        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
+            parse_and_validate_env_vars({"hi": True})
+
+        with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
+            parse_and_validate_env_vars({1.23: "hi"})
+
 
 class TestParsedRuntimeEnv:
     def test_empty(self):

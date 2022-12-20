@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 import re
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
 
 import ray.data
@@ -12,21 +12,14 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import SampleBatchType
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
-
-# TODO: @avnishn what is the use of this function anymore?
-def _get_resource_bundles(config: AlgorithmConfigDict):
-    input_config = config.get("input_config", {})
-    parallelism = input_config.get("parallelism", config.get("num_workers", 1))
-    cpus_per_task = input_config.get(
-        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
-    )
-    return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
+logger = logging.getLogger(__name__)
 
 
 def _unzip_this_path(fpath: Path, extract_path: str):
@@ -75,7 +68,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int = 0
+    config: "AlgorithmConfig", num_workers: int = 0
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -106,16 +99,13 @@ def get_dataset_and_shards(
         shared would be a dummy None shard for local_worker.
     """
     # check input and input config keys
-    assert config["input"] == "dataset", (
-        f"Must specify input as dataset if"
-        f" calling `get_dataset_and_shards`. Got {config['input']}"
+    assert config.input_ == "dataset", (
+        f"Must specify config.input_ as 'dataset' if"
+        f" calling `get_dataset_and_shards`. Got {config.input_}"
     )
-    assert (
-        "input_config" in config
-    ), "Must specify input_config dict if using Dataset input."
 
     # check input config format
-    input_config = config["input_config"]
+    input_config = config.input_config
     format = input_config.get("format")
 
     supported_fmts = ["json", "parquet"]
@@ -135,9 +125,8 @@ def get_dataset_and_shards(
     # check if at least loader_fn or format + path is specified.
     if not (format and paths) and not loader_fn:
         raise ValueError(
-            f"If using a loader_fn: {loader_fn} that constructs a dataset, "
-            "neither format: {format} and paths: {paths} must not be specified. If "
-            "format and paths are specified, a loader_fn must not be specified."
+            "Must specify either a `loader_fn` or a `format` and `path` in "
+            "`input_config`."
         )
 
     # check paths to be a str or list[str] if not None
@@ -150,6 +139,8 @@ def get_dataset_and_shards(
             raise ValueError("Paths must be a path string or a list of path strings.")
         paths = _unzip_if_needed(paths, format)
 
+    # TODO (Kourosh): num_workers is not necessary since we can use parallelism for
+    # everything. Having two parameters is confusing here. Remove num_workers later.
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK

@@ -322,7 +322,21 @@ class TrialRunnerTest2(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tempdir)
 
-        trial = Trial("__fake", checkpoint_config=CheckpointConfig(num_to_keep=2))
+        # The Trial `local_dir` must match up with the `local_checkpoint_dir`
+        # passed into the TrialRunner. This creates an experiment directory structure
+        # that matches a real Tune run, where the trial logdir is created as a
+        # subdirectory of the experiment directory. This is the directory
+        # structure assumed by `TrialRunner.resume`.
+        # Example:
+        # local_checkpoint_dir/
+        #     experiment_state.json
+        #     trial.logdir/
+        #         checkpoint_00000/
+        trial = Trial(
+            "__fake",
+            local_dir=tempdir,
+            checkpoint_config=CheckpointConfig(num_to_keep=2),
+        )
         trial.init_logdir()
         trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 

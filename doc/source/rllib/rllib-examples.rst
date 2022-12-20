@@ -199,10 +199,10 @@ Community Examples
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
-   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
+   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.   
 - `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
-   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication).
+   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).
 - `Flatland <https://flatland.aicrowd.com/intro.html>`__:
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
@@ -219,9 +219,12 @@ Community Examples
    Example of training robotic control policies in SageMaker with RLlib.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
+- `Simple custom environment for single RL with Ray 2.0, Tune and Air <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
+   Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+   
 
 .. include:: /_includes/rllib/announcement_bottom.rst

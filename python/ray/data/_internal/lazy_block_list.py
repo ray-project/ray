@@ -34,9 +34,7 @@ class LazyBlockList(BlockList):
         self,
         tasks: List[ReadTask],
         block_partition_refs: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
-        block_partition_meta_refs: Optional[
-            List[ObjectRef[BlockPartitionMetadata]]
-        ] = None,
+        block_partition_meta_refs: Optional[List[ObjectRef[BlockMetadata]]] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         stats_uuid: str = None,
@@ -53,7 +51,9 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs: An optional list of block partition metadata
                 refs. This should be the same length as the tasks argument.
             cached_metadata: An optional list of already computed AND fetched metadata.
-                This serves as a cache of fetched block metadata.
+                This serves as a cache of fetched block metadata. Note that each entry
+                in cached_metadata represents the list of output blocks metadata per
+                the read task. One task can produce multiple output blocks.
             ray_remote_args: Ray remote arguments for the read tasks.
             stats_uuid: UUID for the dataset stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
@@ -101,12 +101,13 @@ class LazyBlockList(BlockList):
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
             # Always return fetched metadata if we already have it.
-            metadata = self._cached_metadata
+            metadata = self._flatten_metadata(self._cached_metadata)
         elif not fetch_if_missing:
             metadata = [
-                m if m is not None else t.get_metadata()
+                m if m is not None else [t.get_metadata()]
                 for m, t in zip(self._cached_metadata, self._tasks)
             ]
+            metadata = self._flatten_metadata(metadata)
         else:
             _, metadata = self._get_blocks_with_metadata()
         return metadata
@@ -114,7 +115,8 @@ class LazyBlockList(BlockList):
     def stats(self) -> DatasetStats:
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
-            stages={"read": self.get_metadata(fetch_if_missing=False)},
+            # Make a copy of metadata, as the DatasetStats may mutate it in-place.
+            stages={"read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
@@ -317,15 +319,14 @@ class LazyBlockList(BlockList):
                 ref_to_blocks[ref] = refs_list
                 ref_to_metadata[ref] = meta
 
-            output_block_refs, metadata = [], []
-            for ref in block_refs:
+            output_block_refs = []
+            for idx, ref in enumerate(block_refs):
                 output_block_refs += ref_to_blocks[ref]
-                metadata += ref_to_metadata[ref]
-            self._cached_metadata = metadata
-            return output_block_refs, metadata
+                self._cached_metadata[idx] = ref_to_metadata[ref]
+            return output_block_refs, self._flatten_metadata(self._cached_metadata)
         if all(meta is not None for meta in self._cached_metadata):
             # Short-circuit on cached metadata.
-            return block_refs, self._cached_metadata
+            return block_refs, self._flatten_metadata(self._cached_metadata)
         if not meta_refs:
             # Short-circuit on empty set of block partitions.
             assert not block_refs, block_refs
@@ -338,9 +339,8 @@ class LazyBlockList(BlockList):
         ref_to_data = {
             meta_ref: data for meta_ref, data in zip(unique_meta_refs, metadata)
         }
-        metadata = [ref_to_data[meta_ref] for meta_ref in meta_refs]
-        self._cached_metadata = metadata
-        return block_refs, metadata
+        self._cached_metadata = [[ref_to_data[meta_ref]] for meta_ref in meta_refs]
+        return block_refs, self._flatten_metadata(self._cached_metadata)
 
     def compute_to_blocklist(self) -> BlockList:
         """Launch all tasks and return a concrete BlockList."""
@@ -387,10 +387,10 @@ class LazyBlockList(BlockList):
                 generator = ray.get(block_partition_ref)
                 blocks_ref = list(generator)
                 metadata = ray.get(blocks_ref[-1])
-                self._cached_metadata[0] = metadata[0]
+                self._cached_metadata[0] = metadata
             else:
                 metadata = ray.get(metadata_ref)
-                self._cached_metadata[0] = metadata
+                self._cached_metadata[0] = [metadata]
         return metadata
 
     def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
@@ -426,7 +426,8 @@ class LazyBlockList(BlockList):
         pre-read metadata from the ReadTasks given to this LazyBlockList so it doesn't
         have to block on the execution of the read tasks. Therefore, the metadata may be
         under-specified, e.g. missing schema or the number of rows. If fully-specified
-        block metadata is required, pass block_for_metadata=True.
+        block metadata is required, pass block_for_metadata=True. When dynamic block
+        splitting is enabled, always block on the execution of the read tasks.
 
         The length of this iterator is not known until execution.
 
@@ -456,6 +457,8 @@ class LazyBlockList(BlockList):
                         generator_ref, _ = next(self._base_iter)
                         generator = ray.get(generator_ref)
                         refs = list(generator)
+                        # This blocks until the read task completes, returning
+                        # fully-specified block metadata for each output block.
                         metadata = ray.get(refs.pop(-1))
                         assert len(metadata) == len(refs)
                         for block_ref, meta in zip(refs, metadata):
@@ -516,7 +519,7 @@ class LazyBlockList(BlockList):
     ) -> Iterator[
         Tuple[
             ObjectRef[MaybeBlockPartition],
-            Union[None, ObjectRef[BlockPartitionMetadata]],
+            Union[None, ObjectRef[BlockMetadata]],
         ]
     ]:
         """Iterate over the block futures and their corresponding metadata futures.
@@ -543,9 +546,7 @@ class LazyBlockList(BlockList):
     def _get_or_compute(
         self,
         i: int,
-    ) -> Tuple[
-        ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockPartitionMetadata]]
-    ]:
+    ) -> Tuple[ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockMetadata]]]:
         assert i < len(self._tasks), i
         # Check if we need to compute more block_partition_refs.
         if not self._block_partition_refs[i]:
@@ -569,9 +570,7 @@ class LazyBlockList(BlockList):
 
     def _submit_task(
         self, task_idx: int
-    ) -> Tuple[
-        ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockPartitionMetadata]]
-    ]:
+    ) -> Tuple[ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockMetadata]]]:
         """Submit the task with index task_idx.
 
         NOTE: When dynamic block splitting is enabled, returns
@@ -619,6 +618,16 @@ class LazyBlockList(BlockList):
             if b is not None:
                 i += 1
         return i
+
+    def _flatten_metadata(
+        self, metadata: List[BlockPartitionMetadata]
+    ) -> List[BlockMetadata]:
+        """Flatten the metadata of computed blocks into a list.
+
+        This is required because dynamic block splitting can produce multiple output
+        blocks from each task.
+        """
+        return [meta for meta_list in metadata for meta in meta_list]
 
 
 def _execute_read_task_nosplit(

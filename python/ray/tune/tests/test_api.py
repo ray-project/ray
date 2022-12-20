@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.air import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
@@ -1462,6 +1462,21 @@ def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
 
 
 @pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_scaling_config(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn,
+            resources=ScalingConfig(trainer_resources={"GPU": num_gpus}, num_workers=0),
+        )
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
 def test_with_resources_fn(ray_start_2_cpus_2_gpus, num_gpus):
     def train_fn(config):
         return len(ray.get_gpu_ids())
@@ -1812,6 +1827,7 @@ class ApiTestFast(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 # should be converted from strings at this case
@@ -1832,6 +1848,7 @@ class ApiTestFast(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=True,
                 )
 
@@ -1887,6 +1904,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                 trial_executor=None,
                 callbacks=None,
                 metric=None,
+                trial_checkpoint_config=None,
                 driver_sync_trial_checkpoints=True,
             ):
                 capture["search_alg"] = search_alg
@@ -1905,6 +1923,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     trial_executor=trial_executor,
                     callbacks=callbacks,
                     metric=metric,
+                    trial_checkpoint_config=trial_checkpoint_config,
                     driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
                 )
 

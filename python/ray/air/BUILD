@@ -62,7 +62,7 @@ py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 
@@ -110,7 +110,7 @@ py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 

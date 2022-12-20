@@ -23,6 +23,7 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -241,8 +242,12 @@ class BackendExecutor:
                 )
         ray.get(futures)
 
-    def _create_local_rank_map(self) -> Dict:
-        """Create mapping from worker world_rank to local_rank.
+    def _create_rank_world_size_mappings(self) -> List[Dict]:
+        """Create rank and world size mappings for workers.
+        There are three maps returned:
+            - local_rank_map, which maps from worker world_rank to local_rank.
+            - local_world_size_map, which maps from world_rank to local_world_size
+            - node_rank_map, which maps from world rank to node rank
 
         Example:
             Worker 0: 0.0.0.0
@@ -254,7 +259,7 @@ class BackendExecutor:
             Workers 0, 1, 3 are on 0.0.0.0.
             Workers 2, 4 are on 0.0.0.1.
 
-            Expected Output:
+            Expected local_rank_map:
             {
                 0 -> 0,
                 1 -> 1,
@@ -262,15 +267,50 @@ class BackendExecutor:
                 3 -> 2,
                 4 -> 1
             }
+
+            Expected local_world_size_map:
+            {
+                0 -> 3,
+                1 -> 3,
+                2 -> 2,
+                3 -> 3,
+                4 -> 2
+            }
+
+            Expected node_rank_map:
+            {
+                0 -> 0,
+                1 -> 0,
+                2 -> 1,
+                3 -> 0,
+                4 -> 1
+            }
+
         """
-        rank_mapping = {}
-        ip_dict = defaultdict(int)
+        local_rank_map = {}  # map from world rank to local rank
+        local_world_size_map = {}  # map from world rank to local world size
+        node_rank_map = {}  # map from world rank to node rank
+        node_ips = {}  # map from node ip to node index
+        node_cnt = 0  # count the number of nodes
+
+        ip_dict = defaultdict(int)  # map from node ip to the number of workers on it.
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
             node_ip = worker.metadata.node_ip
-            rank_mapping[world_rank] = ip_dict[node_ip]
+            local_rank_map[world_rank] = ip_dict[node_ip]
             ip_dict[node_ip] += 1
-        return rank_mapping
+
+            if node_ip not in node_ips:
+                node_ips[node_ip] = node_cnt
+                node_cnt += 1
+            node_rank_map[world_rank] = node_ips[node_ip]
+
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata.node_ip
+            local_world_size_map[world_rank] = ip_dict[node_ip]
+
+        return local_rank_map, local_world_size_map, node_rank_map
 
     def start_training(
         self,
@@ -295,12 +335,15 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
+        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
             train_func,
             world_rank,
             local_rank,
+            node_rank,
+            local_world_size,
             world_size,
             trial_info,
             checkpoint,
@@ -312,12 +355,15 @@ class BackendExecutor:
                     training_func=train_func,
                     world_rank=world_rank,
                     local_rank=local_rank,
+                    node_rank=node_rank,
+                    local_world_size=local_world_size,
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
+                    enable_lazy_checkpointing=use_lazy_checkpointing,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -331,7 +377,11 @@ class BackendExecutor:
             actors = [worker.actor for worker in self.worker_group.workers]
             self.dataset_shards = dataset_spec.get_dataset_shards(actors)
 
-        local_rank_map = self._create_local_rank_map()
+        (
+            local_rank_map,
+            local_world_size_map,
+            node_rank_map,
+        ) = self._create_rank_world_size_mappings()
 
         futures = []
         for index in range(len(self.worker_group)):
@@ -341,6 +391,8 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=index,
                     local_rank=local_rank_map[index],
+                    node_rank=node_rank_map[index],
+                    local_world_size=local_world_size_map[index],
                     world_size=len(self.worker_group),
                     trial_info=self._trial_info,
                     train_func=train_func,
@@ -484,16 +536,27 @@ class BackendExecutor:
             self._restart()
             raise TrainingWorkerError
 
-    def shutdown(self):
-        """Shuts down the workers in the worker group."""
-        try:
-            self._backend.on_shutdown(self.worker_group, self._backend_config)
-        except RayActorError:
-            logger.warning(
-                "Graceful shutdown of backend failed. This is "
-                "expected if one of the workers has crashed."
-            )
-        self.worker_group.shutdown()
+    def shutdown(self, graceful_termination: bool = True):
+        """Shuts down the workers in the worker group.
+
+        Args:
+            graceful_termination: If set to True, attempt to clean up the backend
+                before terminating the Ray actors.
+
+        """
+        if graceful_termination:
+            try:
+                self._backend.on_shutdown(self.worker_group, self._backend_config)
+            except RayActorError:
+                logger.warning(
+                    "Graceful shutdown of backend failed. This is "
+                    "expected if one of the workers has crashed."
+                )
+
+        if graceful_termination:
+            self.worker_group.shutdown()
+        else:
+            self.worker_group.shutdown(patience_s=0)
         self.worker_group = InactiveWorkerGroup()
 
         if self._placement_group:
@@ -519,14 +582,15 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            exc = RuntimeError(
-                "Training has failed after "
-                f"{self._num_failures} "
-                "attempts. You can change the number of max "
-                "failure attempts by setting the "
-                "`max_retries` arg in your `Trainer`."
-            )
-            raise exc.with_traceback(None) from self._last_failure
+            failure = self._last_failure
+            self._last_failure = None
+            if self._max_failures > 0:
+                exc = RuntimeError(
+                    "Training has failed after " f"{self._num_failures} " "attempts."
+                )
+                raise exc.with_traceback(None) from failure
+            else:
+                raise failure
 
     def get_worker_group(self):
         return self.worker_group

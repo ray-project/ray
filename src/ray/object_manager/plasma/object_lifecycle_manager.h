@@ -147,7 +147,15 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   // Test only
   ObjectLifecycleManager(std::unique_ptr<IObjectStore> store,
                          std::unique_ptr<IEvictionPolicy> eviction_policy,
-                         ray::DeleteObjectCallback delete_object_callback);
+                         ray::DeleteObjectCallback delete_object_callback,
+                         std::unique_ptr<ObjectStatsCollector> stats_collector);
+
+  friend struct ObjectLifecycleManagerTest;
+  friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
+  FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
+  friend struct GetRequestQueueTest;
+  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 
   const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
                                           plasma::flatbuf::ObjectSource source,
@@ -159,15 +167,6 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   void EvictObjects(const std::vector<ObjectID> &object_ids);
 
   void DeleteObjectInternal(const ObjectID &object_id);
-
- private:
-  friend struct ObjectLifecycleManagerTest;
-  friend struct ObjectStatsCollectorTest;
-  FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
-  FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
-  friend struct GetRequestQueueTest;
-  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
-
   std::unique_ptr<IObjectStore> object_store_;
   std::unique_ptr<IEvictionPolicy> eviction_policy_;
   const ray::DeleteObjectCallback delete_object_callback_;
@@ -176,7 +175,6 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   // once reference count becomes 0.
   absl::flat_hash_set<ObjectID> earger_deletion_objects_;
 
-  ObjectStatsCollector stats_collector_;
+  std::unique_ptr<ObjectStatsCollector> stats_collector_;
 };
-
 }  // namespace plasma

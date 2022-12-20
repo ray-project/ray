@@ -182,8 +182,6 @@ ray_files += [
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
-    "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -200,6 +198,7 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
 
 # html templates for notebook integration
 ray_files += [
@@ -216,13 +215,19 @@ if setup_spec.type == SetupType.RAY:
     else:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
-        # Numpy dropped python 3.6 support in 1.20.
+        # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
+    if sys.version_info >= (3, 7) and sys.platform != "win32":
+        pyarrow_dep = "pyarrow >= 6.0.1"
+    else:
+        # pyarrow dropped python 3.6 support in 7.0.0.
+        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
+        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
         "data": [
             numpy_dep,
             pandas_dep,
-            "pyarrow >= 6.0.1, < 7.0.0",
+            pyarrow_dep,
             "fsspec",
         ],
         "default": [
@@ -236,7 +241,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
-            "prometheus_client >= 0.7.1, < 0.14.0",
+            "prometheus_client >= 0.7.1",
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
@@ -256,9 +261,6 @@ if setup_spec.type == SetupType.RAY:
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
-
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
@@ -303,8 +305,11 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.32.0; python_version < '3.10'",
-        "grpcio >= 1.42.0; python_version >= '3.10'",
+        # Tracking issue: https://github.com/ray-project/ray/issues/30984
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -780,7 +785,6 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
-            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },

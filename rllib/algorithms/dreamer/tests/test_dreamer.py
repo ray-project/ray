@@ -17,7 +17,7 @@ class TestDreamer(unittest.TestCase):
         ray.shutdown()
 
     def test_dreamer_compilation(self):
-        """Test whether an Dreamer can be built with all frameworks."""
+        """Test whether Dreamer can be built with all frameworks."""
         config = dreamer.DreamerConfig()
         config.environment(
             env=RandomEnv,

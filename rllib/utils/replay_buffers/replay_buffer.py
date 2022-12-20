@@ -1,21 +1,21 @@
-import logging
-import platform
-from typing import Any, Dict, List, Optional, Callable, Union
-
-import numpy as np
-import random
 from enum import Enum
+import logging
+import numpy as np
+import platform
+import random
+from typing import Any, Dict, List, Optional, Union
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
-import psutil  # noqa E402
+import psutil
 
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.typing import SampleBatchType, T
+from ray.rllib.utils.typing import SampleBatchType
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
@@ -65,7 +65,7 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 
 # TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
 @DeveloperAPI
-class ReplayBuffer(ParallelIteratorWorker):
+class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
     """The lowest-level replay buffer interface used by RLlib.
 
     This class implements a basic ring-type of buffer with random sampling.
@@ -392,27 +392,6 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         return platform.node()
 
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this ReplayBuffer instance.
-
-        This is useful if we want to apply a function to a set of remote actors.
-
-        Args:
-            func: A callable that accepts the replay buffer itself, args and kwargs
-            ``*args``: Any args to pass to func
-            ``**kwargs``: Any kwargs to pass to func
-
-        Returns:
-            Return value of the induced function call
-        """
-        return func(self, *args, **kwargs)
-
     @Deprecated(new="ReplayBuffer.add()", error=True)
     def add_batch(self, *args, **kwargs):
         pass
@@ -423,7 +402,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         error=True,
     )
     def replay(self, num_items):
-        return self.sample(num_items)
+        pass
 
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "

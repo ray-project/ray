@@ -25,6 +25,12 @@ if __name__ == "__main__":
         default="",
         help="Sub directory under yaml_files/ to look for test files.",
     )
+    parser.add_argument(
+        "--framework",
+        type=str,
+        default="tf",
+        help="The framework (tf|tf2|torch) to use.",
+    )
     args = parser.parse_args()
 
     assert args.yaml_sub_dir, "--yaml-sub-dir can't be empty."
@@ -48,10 +54,17 @@ if __name__ == "__main__":
         # Talk to jungong@ if you have questions about why we do this.
         use_pass_criteria_as_stop=False,
         smoke_test=args.smoke_test,
+        framework=args.framework,
     )
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
-    print("Ok.")
+    if len(results["not_passed"]) > 0:
+        raise ValueError(
+            "Not all learning tests successfully learned the tasks.\n"
+            f"Results=\n{results}"
+        )
+    else:
+        print("Ok.")

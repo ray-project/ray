@@ -1,12 +1,16 @@
 import { makeStyles } from "@material-ui/core";
+import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React from "react";
-import { RouteComponentProps } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import ActorList from "../actor/ActorList";
+import { MainNavPageInfo } from "../layout/mainNavContext";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -22,15 +26,22 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const JobDetailPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail(props);
-  const jobId = props.match.params.id;
-  const { progress } = useJobProgress(jobId);
+  const { job, msg, params } = useJobDetail();
+  const jobId = params.id;
+  const { progress, error, driverExists } = useJobProgress(jobId);
 
   if (!job) {
     return (
       <div className={classes.root}>
+        <MainNavPageInfo
+          pageInfo={{
+            title: "Job details",
+            id: "job-detail",
+            path: undefined,
+          }}
+        />
         <Loading loading={msg.startsWith("Loading")} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
@@ -41,11 +52,75 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     );
   }
 
+  const tasksSectionContents = (() => {
+    if (!driverExists) {
+      return <TaskProgressBar />;
+    }
+    const { status } = job;
+    if (!progress || error) {
+      return (
+        <Alert severity="warning">
+          No tasks visualizations because prometheus is not detected. Please
+          make sure prometheus is running and refresh this page. See:{" "}
+          <a
+            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
+          </a>
+          .
+          <br />
+          If you are hosting prometheus on a separate machine or using a
+          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
+          to your prometheus server when launching ray.
+        </Alert>
+      );
+    }
+    if (status === "SUCCEEDED" || status === "FAILED") {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} showAsComplete />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    } else {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    }
+  })();
+
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          title: job.job_id ?? "Job details",
+          id: "job-detail",
+          path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
+        }}
+      />
       <TitleCard title={`JOB - ${params.id}`}>
         <MetadataSection
           metadataList={[
+            {
+              label: "Entrypoint",
+              content: job.entrypoint
+                ? {
+                    value: job.entrypoint,
+                    copyableValue: job.entrypoint,
+                  }
+                : { value: "-" },
+            },
             {
               label: "Status",
               content: <StatusChip type="job" status={job.status} />,
@@ -71,6 +146,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   },
             },
             {
+              label: "Duration",
+              content: job.start_time ? (
+                <DurationText
+                  startTime={job.start_time}
+                  endTime={job.end_time}
+                />
+              ) : (
+                <React.Fragment>-</React.Fragment>
+              ),
+            },
+            {
               label: "Started at",
               content: {
                 value: job.start_time
@@ -86,29 +172,16 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   : "-",
               },
             },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
-        />
-        <JobTaskNameProgressTable
-          className={classes.taskProgressTable}
-          jobId={jobId}
-        />
+      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Task Table">
+        <TaskList jobId={jobId} />
+      </TitleCard>
+      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      <TitleCard title="Placement Groups">
+        <PlacementGroupList jobId={jobId} />
       </TitleCard>
     </div>
   );

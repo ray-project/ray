@@ -12,7 +12,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
@@ -126,8 +126,7 @@ if __name__ == "__main__":
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Trainer and restore its state from the last checkpoint.
-    algo = get_algorithm_class(args.run)(config=config)
-    algo.restore(checkpoint)
+    algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")

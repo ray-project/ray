@@ -26,6 +26,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     TIMESTAMP,
     TRAINING_ITERATION,
+    CHECKPOINT_METADATA_KEY,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
@@ -47,12 +48,14 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    driver_ip: str
+    experiment_name: Optional[str] = None
 
 
 @dataclass
 class TrainingResult:
     type: TrainingResultType
-    data: Union[Dict, Checkpoint]
+    data: Union[Dict, Checkpoint, str]
     metadata: Optional[Dict] = None
 
 
@@ -65,6 +68,8 @@ class _TrainSession:
         training_func: Callable,
         world_rank: int,
         local_rank: int,
+        node_rank: int,
+        local_world_size: int,
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
@@ -74,16 +79,23 @@ class _TrainSession:
         # Deprecated
         encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
+        # If True and the worker is on the same node as driver,
+        # will send over checkpoint path and metadata instead of
+        # the whole checkpoint to avoid unnecessary serialization.
+        enable_lazy_checkpointing: bool = True,
     ):
 
         self.dataset_shard = dataset_shard
 
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.node_rank = node_rank
+        self.local_world_size = local_world_size
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         self.loaded_checkpoint = checkpoint
+        self.enable_lazy_checkpointing = enable_lazy_checkpointing
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -287,10 +299,21 @@ class _TrainSession:
         elif checkpoint:
             checkpoint = self._encode_data_fn(checkpoint)
 
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        if (
+            checkpoint
+            and self.enable_lazy_checkpointing
+            and checkpoint._local_path
+            and self.get_current_ip() == self.trial_info.driver_ip
+        ):
+            metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
+            checkpoint = str(checkpoint._local_path)
+
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
-            metadata=self._auto_fill_checkpoint_metrics({}),
+            metadata=metadata,
         )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)

@@ -14,7 +14,7 @@ but it's NOT recommended in production.
 The reason is that Ray currently still misses some features for multi-tenancy in production:
 
 * Ray doesn't provide strong resource isolation:
-  Ray :ref:`resources <resource-requirements>` are logical and they don't limit how much physical resources a task or actor can use while running.
+  Ray :ref:`resources <core-resources>` are logical and they don't limit the physical resources a task or actor can use while running.
   This means simultaneous jobs can interfere with each other and makes them less reliable to run in production.
 
 * Ray doesn't support priorities: All jobs, tasks and actors have the same priority so there is no way to prioritize important jobs under load.

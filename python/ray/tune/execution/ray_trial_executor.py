@@ -15,6 +15,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 import ray
 from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
     TuneError,
@@ -44,6 +45,11 @@ DEFAULT_ENV_VARS = {
     # https://github.com/ray-project/ray/issues/28197
     "PL_DISABLE_FORK": "1"
 }
+ENV_VARS_TO_PROPAGATE = {
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
+    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
+}
 
 
 class _ActorClassCache:
@@ -72,6 +78,10 @@ class _ActorClassCache:
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
         env_vars = DEFAULT_ENV_VARS.copy()
+
+        for env_var_to_propagate in ENV_VARS_TO_PROPAGATE:
+            if env_var_to_propagate in os.environ:
+                env_vars[env_var_to_propagate] = os.environ[env_var_to_propagate]
 
         runtime_env = {"env_vars": env_vars}
         if trainable_cls not in self._cache:
@@ -146,8 +156,8 @@ class _TrialCleanup:
 
 def _noop_logger_creator(config, logdir, should_chdir: bool = True):
     # Upon remote process setup, record the actor's original working dir before
-    # changing the working dir to the Tune logdir
-    os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
+    # changing to the Tune logdir
+    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
     os.makedirs(logdir, exist_ok=True)
     if should_chdir:

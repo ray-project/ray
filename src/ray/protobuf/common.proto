@@ -67,7 +67,8 @@ message DefaultSchedulingStrategy {}
 
 message SpreadSchedulingStrategy {}
 
-// Update std::hash<SchedulingStrategy> in task_spec.h when this is changed.
+// Update std::hash<SchedulingStrategy> and operator== in task_spec.h when this is
+// changed.
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.
@@ -393,6 +394,13 @@ message TaskInfoEntry {
   map<string, double> required_resources = 13;
   // Runtime environment for this task.
   RuntimeEnvInfo runtime_env_info = 23;
+  // The node if of the task. If the task is retried, it could
+  // contain the node id of the previous executed task.
+  optional bytes node_id = 24;
+  // The actor id for this task.
+  // If the task type is Actor creation task or Actor task
+  // this is set. Otherwise, it is empty.
+  optional bytes actor_id = 25;
 }
 
 message Bundle {
