@@ -7,7 +7,7 @@ one a ray Actor.
 You can access your Env's API via a custom callback as shown below.
 """
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -71,13 +71,14 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
         self.observation_space = gym.spaces.Box(0, 1, shape=(2,))
         self.task = 1
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return self.observation_space.sample()
+        return self.observation_space.sample(), {}
 
     def step(self, action):
         self.steps += 1
-        return self.observation_space.sample(), 0, self.steps > 10, {}
+        done = truncated = self.steps > 10
+        return self.observation_space.sample(), 0, done, truncated, {}
 
     def set_task(self, task) -> None:
         """We can set the task of each sub-env (ray actor)"""

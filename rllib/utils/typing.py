@@ -12,7 +12,7 @@ from typing import (
 )
 
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 
@@ -109,7 +109,8 @@ EnvObsType = Any
 # Represents an action passed to the env.
 EnvActionType = Any
 
-# Info dictionary returned by calling step() on gym envs. Commonly empty dict.
+# Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
+# instances. Might be an empty dict.
 EnvInfoDict = dict
 
 # Represents a File object
@@ -172,7 +173,8 @@ class AgentConnectorDataType:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
         data: A payload (``data``). With RLlib's default sampler, the payload
-            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+            is a dictionary of arbitrary data columns (obs, rewards, terminateds,
+            truncateds, etc).
     """
 
     def __init__(self, env_id: str, agent_id: str, data: Any):

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import List, Optional, Tuple, Type, Union
 
@@ -309,7 +309,9 @@ def actor_critic_loss(
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
         # Discrete case: "Best" means weighted by the policy (prob) outputs.
         q_tp1_best = torch.sum(torch.mul(policy_tp1, q_tp1), dim=-1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
@@ -383,7 +385,9 @@ def actor_critic_loss(
         q_tp1 -= alpha * log_pis_tp1
 
         q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = (
