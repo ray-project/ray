@@ -120,6 +120,9 @@ class SpecDict(NestedDict[Spec], Spec):
 
         for spec_name, spec in self.items():
             data_to_validate = data[spec_name]
+            if spec is None:
+                continue
+
             if isinstance(spec, Spec):
                 try:
                     spec.validate(data_to_validate)
@@ -144,74 +147,3 @@ class SpecDict(NestedDict[Spec], Spec):
     @override(NestedDict)
     def __repr__(self) -> str:
         return f"SpecDict({repr(self._data)})"
-
-
-@ExperimentalAPI
-def check_specs(
-    input_spec: str = "",
-    output_spec: str = "",
-    filter: bool = False,
-    cache: bool = True,
-    input_exact_match: bool = False,
-    output_exact_match: bool = False,
-):
-    """A general-purpose check_specs decorator for Neural Network modules.
-
-    This is a stateful decorator
-    (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
-    enforce input/output specs for any instance method that has an argument named
-    `input_data` in its args and returns a single object.
-
-    It also allows you to filter the input data dictionary to only include those keys
-    that are specified in the model specs. It also allows you to cache the validation
-    to make sure the spec is only validated once in the entire lifetime of the instance.
-
-    Examples (See more exmaples in ../tests/test_specs_dict.py):
-
-        >>> class MyModel(nn.Module):
-        ...     def input_spec(self):
-        ...         return SpecDict({"obs": TensorSpec("b, d", d=64)})
-        ...
-        ...     @check_specs(input_spec="input_spec")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         ...
-        ...         output_dict = ...
-        ...         return output_dict
-
-        >>> model = MyModel()
-        >>> model.forward({"obs": torch.randn(32, 64)}) # No error
-        >>> model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
-
-    Args:
-        func: The instance method to decorate. It should be a callable that takes
-            `self` as the first argument, `input_data` as the second argument and any
-            other keyword argument thereafter. It should return a single object
-            (i.e. not a tuple).
-        input_spec: `self` should have an instance method whose name matches the string
-            in input_spec and returns the `SpecDict`, `TensorSpec`, or simply the
-            `Type` that the `input_data` should comply with.
-        output_spec: `self` should have an instance method whose name matches the
-            string in output_spec and returns the spec that the output should comply
-            with.
-        filter: If True, and `input_data` is a nested dict the `input_data` will be
-            filtered by its corresponding spec tree structure and then passed into the
-            implemented function to make sure user is not confounded with unnecessary
-            data.
-        cache: If True, only checks the input/output validation for the first time the
-            instance method is called.
-        input_exact_match: If True, the input data (should be a nested dict) must match
-            the spec exactly. Otherwise, the data is validated as long as it contains
-            at least the elements of the spec, but can contain more entries.
-        output_exact_match: If True, the output data (should be a nested dict) must
-            match the spec exactly. Otherwise, the data is validated as long as it
-            contains at least the elements of the spec, but can contain more entries.
-
-    Returns:
-        A wrapped instance method. In case of `cache=True`, after the first invokation
-        of the decorated method, the intance will have `__checked_specs_cache__`
-        attribute that store which method has been invoked at least once. This is a
-        special attribute that can be used for the cache itself. The wrapped class
-        method also has a special attribute `__checked_specs__` that marks the method as
-        decorated.
-    """
-    pass
