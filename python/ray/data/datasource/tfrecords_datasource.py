@@ -240,14 +240,14 @@ def _read_records(
 
             row_count += 1
             data_length = None
-        except Exception:
+        except Exception as e:
             error_message = (
-                f"Failed to read TFRecord file {path}. Please check the TFRecord file "
-                f"has correct format. Already read {row_count} rows."
+                f"Failed to read TFRecord file {path}. Please ensure that the "
+                f"TFRecord file has correct format. Already read {row_count} rows."
             )
             if data_length is not None:
-                error_message += f" Bytes size of current record data is {data_length}."
-            raise Exception(error_message)
+                error_message += f" Byte size of current record data is {data_length}."
+            raise RuntimeError(error_message) from e
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501

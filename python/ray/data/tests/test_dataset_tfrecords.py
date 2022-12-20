@@ -219,8 +219,8 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
 
-    # Expect exception raised when reading JSON as TFRecord file.
-    with pytest.raises(Exception, match="Failed to read TFRecord file"):
+    # Expect RuntimeError raised when reading JSON as TFRecord file.
+    with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
         ray.data.read_tfrecords(file_path)
 
 
