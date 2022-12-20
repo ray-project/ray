@@ -1,8 +1,5 @@
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 from collections import defaultdict
-from inspect import signature
-from copy import deepcopy
-import json
 import os
 import time
 import uuid
@@ -10,6 +7,7 @@ import uuid
 import ray
 from ray import ObjectRef, logger
 from ray.actor import ActorClass
+from ray.air.execution.resources.request import ResourceRequest
 from ray.tune.resources import Resources
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import (
@@ -55,23 +53,8 @@ def _get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
-def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
-    """Sum all resources in a list of resource bundles.
-
-    Args:
-        bundles: List of resource bundles.
-
-    Returns: Dict containing all resources summed up.
-    """
-    resources = {}
-    for bundle in bundles:
-        for k, v in bundle.items():
-            resources[k] = resources.get(k, 0) + v
-    return resources
-
-
 @PublicAPI(stability="beta")
-class PlacementGroupFactory:
+class PlacementGroupFactory(ResourceRequest):
     """Wrapper class that creates placement groups for trials.
 
     This function should be used to define resource requests for Ray Tune
@@ -154,129 +137,10 @@ class PlacementGroupFactory:
 
     """
 
-    def __init__(
-        self,
-        bundles: List[Dict[str, Union[int, float]]],
-        strategy: str = "PACK",
-        *args,
-        **kwargs,
-    ):
-        if not bundles:
-            raise ValueError(
-                "Cannot initialize a PlacementGroupFactory with zero bundles."
-            )
-
-        self._bundles = [
-            {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
-        ]
-
-        if not self._bundles[0]:
-            # This is when trainable itself doesn't need resources.
-            self._head_bundle_is_empty = True
-            self._bundles.pop(0)
-
-            if not self._bundles:
-                raise ValueError(
-                    "Cannot initialize a PlacementGroupFactory with an empty head "
-                    "and zero worker bundles."
-                )
-        else:
-            self._head_bundle_is_empty = False
-
-        self._strategy = strategy
-        self._args = args
-        self._kwargs = kwargs
-
-        self._hash = None
-        self._bound = None
-
-        self._bind()
-
-    @property
-    def head_bundle_is_empty(self):
-        """Returns True if head bundle is empty while child bundles
-        need resources.
-
-        This is considered an internal API within Tune.
-        """
-        return self._head_bundle_is_empty
-
-    @property
-    @DeveloperAPI
-    def head_cpus(self) -> float:
-        return 0.0 if self._head_bundle_is_empty else self._bundles[0].get("CPU", 0.0)
-
-    @property
-    @DeveloperAPI
-    def bundles(self) -> List[Dict[str, float]]:
-        """Returns a deep copy of resource bundles"""
-        return deepcopy(self._bundles)
-
-    @property
-    def required_resources(self) -> Dict[str, float]:
-        """Returns a dict containing the sums of all resources"""
-        return _sum_bundles(self._bundles)
-
-    @property
-    @DeveloperAPI
-    def strategy(self) -> str:
-        """Returns the placement strategy"""
-        return self._strategy
-
-    def _bind(self):
-        sig = signature(placement_group)
-        try:
-            self._bound = sig.bind(
-                self._bundles, self._strategy, *self._args, **self._kwargs
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                "Invalid definition for placement group factory. Please check "
-                "that you passed valid arguments to the PlacementGroupFactory "
-                "object."
-            ) from exc
-
     def __call__(self, *args, **kwargs):
         kwargs.update(self._bound.kwargs)
         # Call with bounded *args and **kwargs
         return placement_group(*self._bound.args, **kwargs)
-
-    def __eq__(self, other: "PlacementGroupFactory"):
-        return (
-            self._bound == other._bound
-            and self.head_bundle_is_empty == other.head_bundle_is_empty
-        )
-
-    def __hash__(self):
-        if not self._hash:
-            # Cache hash
-            self._hash = hash(
-                json.dumps(
-                    {"args": self._bound.args, "kwargs": self._bound.kwargs},
-                    sort_keys=True,
-                    indent=0,
-                    ensure_ascii=True,
-                )
-            )
-        return self._hash
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state.pop("_hash", None)
-        state.pop("_bound", None)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self._hash = None
-        self._bound = None
-        self._bind()
-
-    def __repr__(self) -> str:
-        return (
-            f"<PlacementGroupFactory (_bound={self._bound}, "
-            f"head_bundle_is_empty={self.head_bundle_is_empty})>"
-        )
 
 
 @DeveloperAPI
