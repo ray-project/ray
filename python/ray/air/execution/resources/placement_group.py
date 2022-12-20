@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AcquiredResource,
+    AcquiredResources,
     RemoteRayEntity,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
@@ -18,7 +18,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 @DeveloperAPI
 @dataclass
-class PlacementGroupAcquiredResource(AcquiredResource):
+class PlacementGroupAcquiredResources(AcquiredResources):
     placement_group: PlacementGroup
 
     def _annotate_remote_entity(
@@ -48,7 +48,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     This manager will use placement groups to fulfill resource requests. Requesting
     a resource will schedule the placement group. Acquiring a resource will
-    return a ``PlacementGroupAcquiredResource`` that can be used to schedule
+    return a ``PlacementGroupAcquiredResources`` that can be used to schedule
     Ray tasks and actors on the placement group. Freeing an acquired resource
     will destroy the associated placement group.
 
@@ -66,7 +66,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     """
 
-    _resource_cls: AcquiredResource = PlacementGroupAcquiredResource
+    _resource_cls: AcquiredResources = PlacementGroupAcquiredResources
 
     def __init__(self, update_interval_s: float = 0.1):
         # Internally, the placement group lifecycle is like this:
@@ -173,7 +173,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[PlacementGroupAcquiredResource]:
+    ) -> Optional[PlacementGroupAcquiredResources]:
         if not self.has_resources_ready(resource_request):
             return None
 
@@ -182,7 +182,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def free_resources(self, acquired_resource: PlacementGroupAcquiredResource):
+    def free_resources(self, acquired_resource: PlacementGroupAcquiredResources):
         pg = acquired_resource.placement_group
 
         self._acquired_pgs.remove(pg)

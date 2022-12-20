@@ -5,7 +5,7 @@ from typing import List, Optional
 import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AcquiredResource,
+    AcquiredResources,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -94,7 +94,7 @@ class ResourceManager(abc.ABC):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[AcquiredResource]:
+    ) -> Optional[AcquiredResources]:
         """Acquire resources. Returns None if resources are not ready to be acquired.
 
         Acquiring resources will remove the associated resource request.
@@ -102,7 +102,7 @@ class ResourceManager(abc.ABC):
         """
         raise NotImplementedError
 
-    def free_resources(self, acquired_resource: AcquiredResource):
+    def free_resources(self, acquired_resource: AcquiredResources):
         """Free acquired resources from usage and return them to the resource manager.
 
         Freeing resources will return the resources to the manager, but there are

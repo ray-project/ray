@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 
 import pytest
@@ -278,7 +279,15 @@ def test_capture_child_tasks(ray_start_4_cpus):
 
 
 def test_clear_state(ray_start_4_cpus):
-    """Test that clearing state will remove existing placement groups."""
+    """Test that clearing state will remove existing placement groups.
+
+    - Create resource request
+    - Wait until PG is scheduled
+    - Assert that Ray PG is created
+    - Call `mgr.clear()`
+    - Assert that resources are not ready anymore
+    - Assert that Ray PG is removed
+    """
     manager = PlacementGroupResourceManager(update_interval_s=0)
     manager.request_resources(REQUEST_1_2_CPU)
     ray.wait(manager.get_resource_futures(), num_returns=1)
@@ -298,6 +307,102 @@ def test_clear_state(ray_start_4_cpus):
     assert pg_states["CREATED"] == 0
     assert pg_states["PENDING"] == 0
     assert pg_states["REMOVED"] == 1
+
+
+def test_internal_state(ray_start_4_cpus):
+    """Test internal state mappings of the placement group manager.
+
+    This test makes assumptions and assertions around the internal state transition
+    of private properties of the placement group resource manager.
+
+    If you change internal handling logic of the manager, you may need to change this
+    test as well.
+    """
+    manager = PlacementGroupResourceManager(update_interval_s=0)
+
+    assert manager.update_interval_s == 0
+
+    manager.has_resources_ready(REQUEST_2_CPU)
+
+    # The key may exist but the set should be empty
+    assert not manager._request_to_ready_pgs[REQUEST_2_CPU]
+
+    ####
+    # 1. Request, wait until ready, cancel
+
+    # Request resources
+    manager.request_resources(REQUEST_2_CPU)
+
+    # PG should be staged
+    assert manager._request_to_staged_pgs[REQUEST_2_CPU]
+    pg = list(manager._request_to_staged_pgs[REQUEST_2_CPU])[0]
+    assert manager._pg_to_request[pg] == REQUEST_2_CPU
+
+    # Staging future should exist
+    assert manager._pg_to_staging_future[pg]
+    fut = manager._pg_to_staging_future[pg]
+    assert manager._staging_future_to_pg[fut] == pg
+
+    # Wait until PG is ready
+    while not manager.has_resources_ready(resource_request=REQUEST_2_CPU):
+        time.sleep(0.05)
+
+    # PG should now be ready
+    assert manager._request_to_ready_pgs[REQUEST_2_CPU]
+    # PG should not be staged anymore
+    assert not manager._request_to_staged_pgs[REQUEST_2_CPU]
+    # Staging future should not exist anymore
+    assert not manager._pg_to_staging_future
+    assert not manager._staging_future_to_pg
+
+    # Cancel request
+    manager.cancel_resource_request(REQUEST_2_CPU)
+
+    # PG should not be ready anymore
+    assert not manager._request_to_ready_pgs[REQUEST_2_CPU]
+    # All PGs should be fully removed
+    assert not manager._pg_to_request
+
+    ####
+    # 2. Request, cancel while staging
+
+    # Stage another PG
+    manager.request_resources(REQUEST_2_CPU)
+    # Cancel request before it's ready
+    manager.cancel_resource_request(REQUEST_2_CPU)
+    # Assert no leftover
+    assert not manager._pg_to_staging_future
+    assert not manager._staging_future_to_pg
+    assert not manager._request_to_staged_pgs[REQUEST_2_CPU]
+    assert not manager._request_to_ready_pgs[REQUEST_2_CPU]
+    assert not manager._pg_to_request
+
+    ####
+    # 2. Request, acquire, free
+
+    # Stage another PG
+    manager.request_resources(REQUEST_2_CPU)
+    pg = list(manager._request_to_staged_pgs[REQUEST_2_CPU])[0]
+    # Wait until PG is ready
+    while not manager.has_resources_ready(resource_request=REQUEST_2_CPU):
+        time.sleep(0.05)
+    # Acquire
+    acquired_resources = manager.acquire_resources(resource_request=REQUEST_2_CPU)
+    # Assert no staging/ready leftover
+    assert not manager._pg_to_staging_future
+    assert not manager._staging_future_to_pg
+    assert not manager._request_to_staged_pgs[REQUEST_2_CPU]
+    assert not manager._request_to_ready_pgs[REQUEST_2_CPU]
+    # We still retain this mapping
+    assert manager._pg_to_request
+    # And we keep track of acquired PGs
+    assert pg in manager._acquired_pgs
+
+    # Free PG
+    manager.free_resources(acquired_resources)
+    # State should be cleared now
+    assert not manager._pg_to_request
+    assert not manager._acquired_pgs
 
 
 if __name__ == "__main__":

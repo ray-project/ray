@@ -191,7 +191,7 @@ class ResourceRequest:
 
 @DeveloperAPI
 @dataclass
-class AcquiredResource(abc.ABC):
+class AcquiredResources(abc.ABC):
     """Base class for resources that have been acquired.
 
     Acquired resources can be associated to Ray objects, which can then be
