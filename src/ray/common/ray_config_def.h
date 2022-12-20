@@ -465,8 +465,6 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
-/// Each task event takes up 500 bytes approximately for now, so 500k task events should
-/// cost less than 250MiB.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
