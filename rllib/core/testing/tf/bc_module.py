@@ -6,6 +6,7 @@ from typing import Any, Mapping, Union
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -33,28 +34,28 @@ class DiscreteBCTFModule(TfRLModule):
         self._output_dim = output_dim
 
     @override(RLModule)
-    def input_specs_exploration(self) -> SpecDict:
-        return SpecDict(self._default_inputs())
+    def input_specs_exploration(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return SpecDict(self._default_inputs())
+    def input_specs_inference(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return SpecDict(self._default_inputs())
+    def input_specs_train(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return SpecDict(self._default_outputs())
+    def output_specs_exploration(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return SpecDict(self._default_outputs())
+    def output_specs_inference(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return SpecDict(self._default_outputs())
+    def output_specs_train(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:

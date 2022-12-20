@@ -8,13 +8,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_base import TensorSpec, Spec, TypeSpec
 from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.typing import SpecType
 
-NestedKeys = List[Union[str, Tuple[str, ...]]]
-Constraint = Union[Type, Tuple[Type, ...], Spec]
-SupportedSpecs = Union[NestedKeys, NestedDict[Optional[Constraint]]]
-
-
-def _convert_to_canonical_format(spec: SupportedSpecs) -> Union[Spec, SpecDict]:
+def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
         spec = [(k,) if isinstance(k, str) else k for k in spec]
