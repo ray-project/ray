@@ -1445,16 +1445,8 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
     addresses[worker_id] = owner_address;
   }
   // Send a batch delete call per owner id.
-  Status error;
   for (const auto &entry : by_owner) {
-    if (entry.first == worker_context_.GetWorkerID()) {
-      RAY_LOG(INFO) << "Deleting local objects " << entry.second.size() << " "
-                    << entry.first;
-      auto status = DeleteImpl(entry.second, local_only);
-      if (!status.ok()) {
-        error = status;
-      }
-    } else {
+    if (entry.first != worker_context_.GetWorkerID()) {
       RAY_LOG(INFO) << "Deleting remote objects " << entry.second.size() << " "
                     << entry.first;
       auto conn = core_worker_client_pool_->GetOrConnect(addresses[entry.first]);
@@ -1463,16 +1455,14 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
         request.add_object_ids(obj_id.Binary());
       }
       request.set_local_only(local_only);
-      auto status = conn->DeleteObjects(
-          request, [](const Status &status, const rpc::DeleteObjectsReply &reply) {
-            RAY_LOG(INFO) << "Completed object delete request " << status;
-          });
-      if (!status.ok()) {
-        error = status;
-      }
+      conn->DeleteObjects(request,
+                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
+                            RAY_LOG(INFO) << "Completed object delete request " << status;
+                          });
     }
   }
-  return error;
+  // Also try to delete all objects locally.
+  return DeleteImpl(object_ids, local_only);
 }
 
 Status CoreWorker::GetLocationFromOwner(

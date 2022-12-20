@@ -10,6 +10,7 @@ import pytest
 
 import ray._private.profiling as profiling
 import ray.cluster_utils
+from ray._private.internal_api import memory_summary
 from ray._private.test_utils import RayTestTimeoutException, client_test_enabled
 from ray.exceptions import ObjectFreedError
 
@@ -54,7 +55,7 @@ def test_internal_free(shutdown_only):
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_internal_free_non_owned(shutdown_only):
-    ray.init(num_cpus=1)
+    info = ray.init(num_cpus=1)
 
     @ray.remote
     def gen_data():
@@ -63,17 +64,26 @@ def test_internal_free_non_owned(shutdown_only):
     @ray.remote
     def do_free(ref_list):
         ray._private.internal_api.free(ref_list, local_only=False)
+        for ref in ref_list:
+            with pytest.raises(ObjectFreedError):
+                ray.get(ref)
 
+    # Can free locally owned objects from remote worker.
     ref_1 = ray.put(np.zeros(1024 * 1024))
     ref_2 = ray.put(np.zeros(1024 * 1024))
+    ray.get(do_free.remote([ref_1, ref_2]))
+
+    # Can free remotely owned objects from local worker.
     ref_3 = ray.get(gen_data.remote())
     ref_4 = ray.get(gen_data.remote())
-
-    ray.get(do_free.remote([ref_1, ref_2, ref_3, ref_4]))
-
-    for ref in [ref_1, ref_2, ref_3, ref_4]:
+    ray._private.internal_api.free([ref_3, ref_4], local_only=False)
+    for ref in [ref_3, ref_4]:
         with pytest.raises(ObjectFreedError):
             ray.get(ref)
+
+    # Memory was really freed.
+    info = memory_summary(info.address_info["address"])
+    assert "Plasma memory usage 0 MiB, 0 objects" in info, info
 
 
 def test_multiple_waits_and_gets(shutdown_only):
