@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from torchvision import transforms
 
@@ -97,3 +98,9 @@ class TestTorchVisionPreprocessor:
         assert all(image.dtype == np.double for image in transformed_images)
         labels = {record["label"] for record in transformed_dataset.take_all()}
         assert labels == {0, 1}
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))
