@@ -216,25 +216,46 @@ class GlobalState:
 
         return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
-    def profile_table(self):
+    def profile_events(self):
+        """Retrieve and return task profiling events from GCS.
+
+        Return:
+            Profiling events by component id (e.g. worker id).
+            {
+                <component_id>: [
+                    {
+                        event_type: <event name> ,
+                        component_id: <i.e. worker id>,
+                        node_ip_address: <on which node profiling was done>,
+                        component_type: <i.e. worker/driver>,
+                        start_time: <unix timestamp in seconds>,
+                        end_time: <unix timestamp in seconds>,
+                        extra_data: <e.g. stack trace when error raised>,
+                    }
+                ]
+            }
+        """
         self._check_connected()
 
         result = defaultdict(list)
-        profile_table = self.global_state_accessor.get_profile_table()
-        for i in range(len(profile_table)):
-            profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
+        task_events = self.global_state_accessor.get_task_events()
+        for i in range(len(task_events)):
+            event = gcs_utils.TaskEvents.FromString(task_events[i])
+            profile = event.profile_events
+            if not profile:
+                continue
 
             component_type = profile.component_type
             component_id = binary_to_hex(profile.component_id)
             node_ip_address = profile.node_ip_address
 
-            for event in profile.profile_events:
+            for event in profile.events:
                 try:
                     extra_data = json.loads(event.extra_data)
                 except ValueError:
                     extra_data = {}
                 profile_event = {
-                    "event_type": event.event_type,
+                    "event_type": event.event_name,
                     "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
@@ -441,10 +462,10 @@ class GlobalState:
 
         time.sleep(1)
 
-        profile_table = self.profile_table()
+        profile_events = self.profile_events()
         all_events = []
 
-        for component_id_hex, component_events in profile_table.items():
+        for component_id_hex, component_events in profile_events.items():
             # Only consider workers and drivers.
             component_type = component_events[0]["component_type"]
             if component_type not in ["worker", "driver"]:
@@ -522,7 +543,7 @@ class GlobalState:
 
         all_events = []
 
-        for key, items in self.profile_table().items():
+        for key, items in self.profile_events().items():
             # Only consider object manager events.
             if items[0]["component_type"] != "object_manager":
                 continue

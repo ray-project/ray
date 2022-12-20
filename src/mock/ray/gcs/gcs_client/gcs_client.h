@@ -42,7 +42,6 @@ class MockGcsClient : public GcsClient {
     mock_node_accessor = new MockNodeInfoAccessor();
     mock_node_resource_accessor = new MockNodeResourceInfoAccessor();
     mock_error_accessor = new MockErrorInfoAccessor();
-    mock_stats_accessor = new MockStatsInfoAccessor();
     mock_worker_accessor = new MockWorkerInfoAccessor();
     mock_placement_group_accessor = new MockPlacementGroupInfoAccessor();
     mock_internal_kv_accessor = new MockInternalKVAccessor();
@@ -63,7 +62,6 @@ class MockGcsClient : public GcsClient {
   MockNodeInfoAccessor *mock_node_accessor;
   MockNodeResourceInfoAccessor *mock_node_resource_accessor;
   MockErrorInfoAccessor *mock_error_accessor;
-  MockStatsInfoAccessor *mock_stats_accessor;
   MockWorkerInfoAccessor *mock_worker_accessor;
   MockPlacementGroupInfoAccessor *mock_placement_group_accessor;
   MockInternalKVAccessor *mock_internal_kv_accessor;

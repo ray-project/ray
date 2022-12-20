@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 import ray
 

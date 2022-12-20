@@ -383,14 +383,6 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
             node_info_list[0].state());
 }
 
-TEST_F(GcsServerTest, TestStats) {
-  rpc::ProfileTableData profile_table_data;
-  profile_table_data.set_component_id(NodeID::FromRandom().Binary());
-  rpc::AddProfileDataRequest add_profile_data_request;
-  add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
-  ASSERT_TRUE(AddProfileData(add_profile_data_request));
-}
-
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
   auto worker_failure_data = Mocker::GenWorkerTableData();
