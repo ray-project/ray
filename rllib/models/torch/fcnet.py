@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, normc_initializer

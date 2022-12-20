@@ -284,41 +284,6 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            # Make sure GCS is up.
-            self.get_gcs_client().internal_kv_put(
-                b"session_name",
-                self._session_name.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            self.get_gcs_client().internal_kv_put(
-                b"session_dir",
-                self._session_dir.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            self.get_gcs_client().internal_kv_put(
-                b"temp_dir",
-                self._temp_dir.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            if ray_params.storage is not None:
-                self.get_gcs_client().internal_kv_put(
-                    b"storage",
-                    ray_params.storage.encode(),
-                    True,
-                    ray_constants.KV_NAMESPACE_SESSION,
-                )
-            # Add tracing_startup_hook to redis / internal kv manually
-            # since internal kv is not yet initialized.
-            if ray_params.tracing_startup_hook:
-                self.get_gcs_client().internal_kv_put(
-                    b"tracing_startup_hook",
-                    ray_params.tracing_startup_hook.encode(),
-                    True,
-                    ray_constants.KV_NAMESPACE_TRACING,
-                )
 
         if not connect_only:
             self.start_ray_processes()
@@ -1070,6 +1035,41 @@ class Node:
         import ray._private.usage.usage_lib as ray_usage_lib
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        # Make sure GCS is up.
+        self.get_gcs_client().internal_kv_put(
+            b"session_name",
+            self._session_name.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        self.get_gcs_client().internal_kv_put(
+            b"session_dir",
+            self._session_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        self.get_gcs_client().internal_kv_put(
+            b"temp_dir",
+            self._temp_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        if self._ray_params.storage is not None:
+            self.get_gcs_client().internal_kv_put(
+                b"storage",
+                self._ray_params.storage.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+        # Add tracing_startup_hook to redis / internal kv manually
+        # since internal kv is not yet initialized.
+        if self._ray_params.tracing_startup_hook:
+            self.get_gcs_client().internal_kv_put(
+                b"tracing_startup_hook",
+                self._ray_params.tracing_startup_hook.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_TRACING,
+            )
 
     def start_head_processes(self):
         """Start head processes on the node."""

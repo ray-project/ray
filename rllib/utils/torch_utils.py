@@ -3,10 +3,10 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -231,7 +231,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1))))
@@ -436,7 +436,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
 
     Examples:
         >>> import torch
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.utils.torch_utils import one_hot
         >>> x = torch.IntTensor([0, 3])  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
