@@ -20,7 +20,7 @@ class Result:
     cluster_url: Optional[str] = None
 
     buildkite_job_id: Optional[str] = None
-    session_id: Optional[str] = None
+    cluster_id: Optional[str] = None
 
     prometheus_metrics: Optional[Dict] = None
     extra_tags: Optional[Dict] = None

@@ -104,11 +104,13 @@ def run_release_test(
     result.smoke_test = smoke_test
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+
     if buildkite_url:
-        buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
         buildkite_url += "#" + buildkite_job_id
-        result.buildkite_job_id = buildkite_job_id
+
     result.buildkite_url = buildkite_url
+    result.buildkite_job_id = buildkite_job_id
 
     working_dir = test["working_dir"]
 
@@ -255,7 +257,7 @@ def run_release_test(
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
-        result.session_id = cluster_manager.cluster_id
+        result.cluster_id = cluster_manager.cluster_id
 
         # Upload files
         buildkite_group(":wrench: Preparing remote environment")
