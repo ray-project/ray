@@ -16,6 +16,7 @@ class TypeClass2:
 
 class TestSpecDict(unittest.TestCase):
     def test_basic_validation(self):
+        """Tests basic validation of SpecDict."""
 
         h1, h2 = 3, 4
         spec_1 = SpecDict(
@@ -35,7 +36,7 @@ class TestSpecDict(unittest.TestCase):
 
         spec_1.validate(tensor_1)
 
-        # test missing key in specs
+        # test missing key in tensor
         tensor_2 = {
             "out_tensor_1": np.random.randn(2, h1),
             "out_tensor_2": np.random.randn(2, h2),
@@ -43,7 +44,7 @@ class TestSpecDict(unittest.TestCase):
 
         self.assertRaises(ValueError, lambda: spec_1.validate(tensor_2))
 
-        # test missing key in data
+        # test additional key in tensor (not mentioned in spec)
         tensor_3 = {
             "out_tensor_1": np.random.randn(2, h1),
             "out_tensor_2": np.random.randn(2, h2),
@@ -96,6 +97,8 @@ class TestSpecDict(unittest.TestCase):
         spec_2.validate(tensor_5)
 
     def test_spec_check_integration(self):
+        """Tests the integration of SpecDict with the check_input_specs."""
+
         class Model:
             @property
             def nested_key_spec(self):

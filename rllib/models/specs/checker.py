@@ -13,8 +13,11 @@ from ray.rllib.models.specs.typing import SpecType
 def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     """Converts a spec type input to the canonical format.
 
-    The canonical format is either a tree structure with SpecType leaves (i.e.
-    SpecDict) or if the spec is a single constraint, a single SpecType object.
+    The canonical format is either
+
+    1. A nested SpecDict when the input spec is dict-like tree of specs and types or
+    nested list of nested_keys.
+    2. A single SpecType object, if the spec is a single constraint.
 
     The input can be any of the following:
         - a list of nested_keys. nested_keys are either strings or tuples of strings
@@ -23,8 +26,50 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         hash-map structure (e.g. dict, SpecDict, NestedDict, etc.) The leaves of the
         tree can be either a Spec object, a type, or None. If the leaf is a type, it is
         converted to a TypeSpec. If the leaf is None, only the existance of the key is
-        checked.
+        checked and the value will be None in the canonical format.
         - a single constraint. The constraint can be a Spec object, a type, or None.
+
+
+    Examples of canoncial format #1:
+
+    .. code-block:: python
+        spec = ["foo", ("bar", "baz")]
+        output = _convert_to_canonical_format(spec)
+        # output = SpecDict({"foo": None, ("bar", "baz"): None})
+
+        spec = {"foo": int, "bar": {"baz": None}}
+        output = _convert_to_canonical_format(spec)
+        # output = SpecDict(
+        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": None})}
+        # )
+
+        spec = {"foo": int, "bar": {"baz": str}}
+        output = _convert_to_canonical_format(spec)
+        # output = SpecDict(
+        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
+        # )
+
+        spec = {"foo": int, "bar": {"baz": TorchTensorSpec("b,h")}}
+        output = _convert_to_canonical_format(spec)
+        # output = SpecDict(
+        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TorchTensorSpec("b,h")})}
+        # )
+
+
+    # Example of canoncial format #2:
+
+    .. code-block:: python
+        spec = int
+        output = _convert_to_canonical_format(spec)
+        # output = TypeSpec(int)
+
+        spec = None
+        output = _convert_to_canonical_format(spec)
+        # output = None
+
+        spec = TorchTensorSpec("b,h")
+        output = _convert_to_canonical_format(spec)
+        # output = TorchTensorSpec("b,h")
 
     Args:
         spec: The spec to convert to canonical format.
@@ -99,11 +144,10 @@ def _validate(
     Returns:
         The data, filtered if filter is True.
     """
-    is_mapping = isinstance(spec, SpecDict)
     cache_miss = _should_validate(cls_instance, method, tag=tag)
 
-    if is_mapping:
-        if not isinstance(data, Mapping):
+    if isinstance(spec, SpecDict):
+        if not isinstance(data, abc.Mapping):
             raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
         if cache_miss or filter:
             data = NestedDict(data)
@@ -127,7 +171,7 @@ def check_input_specs(
     filter: bool = False,
     cache: bool = False,
 ):
-    """A general-purpose spec checker decorator for Neural Network base classes.
+    """A general-purpose spec checker decorator for neural network base classes.
 
     This is a stateful decorator
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
@@ -138,7 +182,7 @@ def check_input_specs(
     that are specified in the model specs. It also allows you to cache the validation
     to make sure the spec is only validated once in the entire lifetime of the instance.
 
-    Examples (See more exmaples in ../tests/test_specs_dict.py):
+    Examples (See more examples in ../tests/test_specs_dict.py):
 
         >>> class MyModel(nn.Module):
         ...     @property
@@ -159,7 +203,7 @@ def check_input_specs(
             other keyword argument thereafter.
         input_spec: `self` should have an instance attribute whose name matches the
             string in input_spec and returns the `SpecDict`, `Spec`, or simply the
-            `Type` that the `input_data` should comply with. It can alos be None or
+            `Type` that the `input_data` should comply with. It can also be None or
             empty list / dict to enforce no input spec.
         filter: If True, and `input_data` is a nested dict the `input_data` will be
             filtered by its corresponding spec tree structure and then passed into the
@@ -183,24 +227,26 @@ def check_input_specs(
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
 
-            input_data_ = input_data
+            checked_data = input_data
             if input_spec:
-                input_spec_ = getattr(self, input_spec)
-                input_spec_ = _convert_to_canonical_format(input_spec_)
-                input_data_ = _validate(
+                spec = getattr(self, input_spec, "___NOT_FOUND___")
+                if spec == "___NOT_FOUND___":
+                    raise ValueError(f"object {self} has no attribute {input_spec}.")
+                spec = _convert_to_canonical_format(spec)
+                checked_data = _validate(
                     cls_instance=self,
                     method=func,
                     data=input_data,
-                    spec=input_spec_,
+                    spec=spec,
                     filter=filter,
                     tag="input",
                 )
 
-                if filter and isinstance(input_data_, NestedDict):
+                if filter and isinstance(checked_data, NestedDict):
                     # filtering should happen regardless of cache
-                    input_data_ = input_data_.filter(input_spec_)
+                    checked_data = checked_data.filter(spec)
 
-            output_data = func(self, input_data_, **kwargs)
+            output_data = func(self, checked_data, **kwargs)
 
             if cache and func.__name__ not in self.__checked_input_specs_cache__:
                 self.__checked_input_specs_cache__[func.__name__] = True
@@ -228,7 +274,7 @@ def check_output_specs(
     It also allows you to cache the validation to make sure the spec is only validated
     once in the entire lifetime of the instance.
 
-    Examples (See more exmaples in ../tests/test_specs_dict.py):
+    Examples (See more examples in ../tests/test_specs_dict.py):
 
         >>> class MyModel(nn.Module):
         ...     @property
@@ -269,13 +315,15 @@ def check_output_specs(
             output_data = func(self, input_data, **kwargs)
 
             if output_spec:
-                output_spec_ = getattr(self, output_spec)
-                output_spec_ = _convert_to_canonical_format(output_spec_)
+                spec = getattr(self, output_spec, "___NOT_FOUND___")
+                if spec == "___NOT_FOUND___":
+                    raise ValueError(f"object {self} has no attribute {output_spec}.")
+                spec = _convert_to_canonical_format(spec)
                 _validate(
                     cls_instance=self,
                     method=func,
                     data=output_data,
-                    spec=output_spec_,
+                    spec=spec,
                     tag="output",
                 )
 
