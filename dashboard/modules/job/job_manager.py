@@ -219,8 +219,13 @@ class JobSupervisor:
                 terminated or killed upon user calling stop().
         """
         with open(logs_path, "w") as logs_file:
+            command = (
+                f"exec {self._entrypoint}"
+                if sys.platform != "win32"
+                else self._entrypoint
+            )
             child_process = subprocess.Popen(
-                self._entrypoint,
+                command,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,

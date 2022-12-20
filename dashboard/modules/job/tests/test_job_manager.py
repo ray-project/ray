@@ -841,14 +841,22 @@ while True:
 
     assert job_manager.stop_job(job_id) is True
 
+    with pytest.raises(RuntimeError):
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S - 1,
+        )
+
     await async_wait_for_condition(
         lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
     )
+
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
         job_manager=job_manager,
         job_id=job_id,
-        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S + 10,
     )
 
 
