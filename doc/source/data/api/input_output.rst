@@ -1,15 +1,16 @@
 .. _input-output:
 
+.. currentmodule:: ray.data
+
 Input/Output
 ============
 
 Synthetic Data
 --------------
 
-.. currentmodule:: ray.data
-
 .. autosummary::
    :toctree: generated/
+   :nosignatures:
 
    range
    range_table
@@ -18,241 +19,249 @@ Synthetic Data
 Python Objects
 --------------
 
-.. autofunction:: ray.data.from_items
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   from_items
 
 Parquet
 -------
 
-.. autofunction:: ray.data.read_parquet
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.read_parquet_bulk
-
-.. automethod:: ray.data.Dataset.write_parquet
-    :noindex:
+   read_parquet
+   read_parquet_bulk
+   Dataset.write_parquet
 
 CSV
 ---
 
-.. autofunction:: ray.data.read_csv
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.write_csv
-    :noindex:
+   read_csv
+   Dataset.write_csv
 
 JSON
 ----
 
-.. autofunction:: ray.data.read_json
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.write_json
-    :noindex:
+   read_json
+   Dataset.write_json
 
 Text
 ----
 
-.. autofunction:: ray.data.read_text
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   read_text
 
 Images
 ------
 
-.. autofunction:: ray.data.read_images
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   read_images
 
 Binary
 ------
 
-.. autofunction:: ray.data.read_binary_files
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   read_binary_files
 
 TFRecords
 ---------
 
-.. autofunction:: ray.data.read_tfrecords
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.Dataset.write_tfrecords
-    :noindex:
+   read_tfrecords
+   Dataset.write_tfrecords
 
 
 Pandas
 ------
 
-.. autofunction:: ray.data.from_pandas
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.from_pandas_refs
-
-.. automethod:: ray.data.Dataset.to_pandas
-    :noindex:
-
-.. automethod:: ray.data.Dataset.to_pandas_refs
-    :noindex:
+   from_pandas
+   from_pandas_refs
+   Dataset.to_pandas
+   Dataset.to_pandas_refs
 
 NumPy
 -----
 
-.. autofunction:: ray.data.read_numpy
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.from_numpy
-
-.. autofunction:: ray.data.from_numpy_refs
-
-.. automethod:: ray.data.Dataset.write_numpy
-    :noindex:
-
-.. automethod:: ray.data.Dataset.to_numpy_refs
-    :noindex:
+   read_numpy
+   from_numpy
+   from_numpy_refs
+   Dataset.write_numpy
+   Dataset.to_numpy_refs
 
 Arrow
 -----
 
-.. autofunction:: ray.data.from_arrow
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.from_arrow_refs
-
-.. automethod:: ray.data.Dataset.to_arrow_refs
-    :noindex:
+   from_arrow
+   from_arrow_refs
+   Dataset.to_arrow_refs
 
 MongoDB
 -------
 
-.. autofunction:: ray.data.read_mongo
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autofunction:: ray.data.Dataset.write_mongo
-    :noindex:
+   read_mongo
+   Dataset.write_mongo
 
 Dask
 ----
 
-.. autofunction:: ray.data.from_dask
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.to_dask
-    :noindex:
+   from_dask
+   Dataset.to_dask
 
 Spark
 -----
 
-.. autofunction:: ray.data.from_spark
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.to_spark
-    :noindex:
+   from_spark
+   Dataset.to_spark
 
 Modin
 -----
 
-.. autofunction:: ray.data.from_modin
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.to_modin
-    :noindex:
+   from_modin
+   Dataset.to_modin
 
 Mars
 ----
 
-.. autofunction:: ray.data.from_mars
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.to_mars
-    :noindex:
+   from_mars
+   Dataset.to_mars
 
 Torch
 -----
 
-.. autofunction:: ray.data.from_torch
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   from_torch
 
 HuggingFace
-------------
+-------
 
-.. autofunction:: ray.data.from_huggingface
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   from_huggingface
 
 TensorFlow
 ----------
 
-.. autofunction:: ray.data.from_tf
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-
-.. _data_source_api:
+   from_tf
 
 Datasource API
 --------------
 
-.. autofunction:: ray.data.read_datasource
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. automethod:: ray.data.Dataset.write_datasource
-    :noindex:
-
-.. autoclass:: ray.data.Datasource
-    :members:
-
-.. autoclass:: ray.data.ReadTask
-    :members:
-
-.. autoclass:: ray.data.datasource.Reader
-    :members:
+   read_datasource
+   Dataset.write_datasource
+   Datasource
+   ReadTask
+   datasource.Reader
 
 
 Built-in Datasources
 ####################
 
-.. autoclass:: ray.data.datasource.BinaryDatasource
-    :members:
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autoclass:: ray.data.datasource.CSVDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.FileBasedDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.ImageDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.JSONDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.NumpyDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.ParquetDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.RangeDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.TFRecordDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.MongoDatasource
-    :members:
+   datasource.BinaryDatasource
+   datasource.CSVDatasource
+   datasource.FileBasedDatasource
+   datasource.ImageDatasource
+   datasource.JSONDatasource
+   datasource.NumpyDatasource
+   datasource.ParquetDatasource
+   datasource.RangeDatasource
+   datasource.TFRecordDatasource
+   datasource.MongoDatasource
 
 Partitioning API
 ----------------
 
-.. autoclass:: ray.data.datasource.Partitioning
-    :members:
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-.. autoclass:: ray.data.datasource.PartitionStyle
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionEncoder
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionParser
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionFilter
-
+   datasource.Partitioning
+   datasource.PartitionStyle
+   datasource.PathPartitionEncoder
+   datasource.PathPartitionParser
+   datasource.PathPartitionFilter
 
 MetadataProvider API
 --------------------
 
-.. autoclass:: ray.data.datasource.FileMetadataProvider
-    :members:
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
 
-
-.. autoclass:: ray.data.datasource.BaseFileMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.ParquetMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.DefaultFileMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.DefaultParquetMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.FastFileMetadataProvider
-    :members:
+   datasource.FileMetadataProvider
+   datasource.BaseFileMetadataProvider
+   datasource.ParquetMetadataProvider
+   datasource.DefaultFileMetadataProvider
+   datasource.DefaultParquetMetadataProvider
+   datasource.FastFileMetadataProvider
