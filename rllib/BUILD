@@ -1860,6 +1860,14 @@ py_test(
     srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
+# Test policies
+py_test(
+    name = "test_pi",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/torch/heads/tests/test_pi.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Offline

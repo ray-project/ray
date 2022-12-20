@@ -67,17 +67,16 @@ class Distribution(abc.ABC):
         """
 
     @abc.abstractmethod
-    def dsample(
+    def max_likelihood(
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
         return_logp: bool = False,
         **kwargs
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        """Draw a deterministic sample from the action distribution.
+        """Outputs the maximum likelihood sample of the distribution.
 
-        This will always return the maximum likelihood sample given
-        a specific set of logits.
+        Returns a deterministic maximum likelihood sample given a specific input.
 
         Args:
             sample_shape: The shape of the sample to draw.

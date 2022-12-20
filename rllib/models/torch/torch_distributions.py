@@ -4,7 +4,6 @@ the code. This matches the design pattern of torch distribution which developers
 already be familiar with.
 """
 import gym
-from matplotlib.pyplot import sca
 import numpy as np
 from typing import List, Optional
 import abc
@@ -54,7 +53,7 @@ class TorchDistribution(Distribution, abc.ABC):
         return sample
 
     @override(Distribution)
-    def dsample(
+    def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         raise NotImplementedError()
@@ -158,8 +157,6 @@ class TorchMultiDistribution(TorchDistribution):
         if return_logp:
             samples, logps = zip(*samples)
 
-        breakpoint()
-
         samples = torch.cat(samples, dim=-1)
         if not return_logp:
             return samples
@@ -183,19 +180,21 @@ class TorchMultiDistribution(TorchDistribution):
             return rsamples
 
     @override(Distribution)
-    def dsample(
+    def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        dsamples = [d.dist.dsample(sample_shape) for d in self.distributions]
+        max_likelihoods = [
+            d.dist.max_likelihood(sample_shape) for d in self.distributions
+        ]
         if return_logp:
-            logps = [d.logp(s) for s, d in zip(dsamples, self.distributions)]
+            logps = [d.logp(s) for s, d in zip(max_likelihoods, self.distributions)]
             logps = torch.cat(logps, dim=-1)
-        dsamples = torch.cat(dsamples, dim=-1)
+        max_likelihoods = torch.cat(max_likelihoods, dim=-1)
 
         if return_logp:
-            return dsamples, logps
+            return max_likelihoods, logps
         else:
-            return dsamples
+            return max_likelihoods
 
     @staticmethod
     @override(Distribution)
@@ -262,13 +261,27 @@ class TorchCategorical(TorchDistribution):
             logits = logits / temperature
         return torch.distributions.Categorical(probs, logits)
 
-    def dsample(
+    @override(TorchDistribution)
+    def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        dsample = self.dist.mode
+        sample = super().sample()
         if return_logp:
-            return dsample, self.logp(dsample)
-        return dsample
+            sample, logp = super().sample(
+                sample_shape=sample_shape, return_logp=return_logp
+            )
+            # Do not collapse the batch dimension into the feature dimension
+            return sample.unsqueeze(-1), logp.unsqueeze(-1)
+        sample = super().sample(sample_shape=sample_shape, return_logp=return_logp)
+        return sample.unsqueeze(-1)
+
+    def max_likelihood(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        max_likelihood = self.dist.mode
+        if return_logp:
+            return max_likelihood, self.logp(max_likelihood)
+        return max_likelihood
 
     @staticmethod
     @override(Distribution)
@@ -277,6 +290,21 @@ class TorchCategorical(TorchDistribution):
     ) -> Tuple[int, ...]:
         # return (space.n,)
         return (gym.spaces.utils.flatdim(space),)
+
+
+@DeveloperAPI
+class TorchOneHotCategorical(TorchCategorical):
+    @override(TorchCategorical)
+    def _get_torch_distribution(
+        self,
+        probs: torch.Tensor = None,
+        logits: torch.Tensor = None,
+        temperature: float = 1.0,
+    ) -> torch.distributions.Distribution:
+        if logits is not None:
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+            logits = logits / temperature
+        return torch.distributions.Categorical(probs, logits)
 
 
 class TorchBernoulli(TorchDistribution):
@@ -292,13 +320,13 @@ class TorchBernoulli(TorchDistribution):
             logits = logits / temperature
         return torch.distributions.Bernoulli(probs, logits)
 
-    def dsample(
+    def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        dsample = self.dist.mode
+        max_likelihood = self.dist.mode
         if return_logp:
-            return dsample, self.logp(dsample)
-        return dsample
+            return max_likelihood, self.logp(max_likelihood)
+        return max_likelihood
 
     @staticmethod
     @override(Distribution)
@@ -364,13 +392,13 @@ class TorchDiagGaussian(TorchDistribution):
         return super().kl(other).sum(-1)
 
     @override(TorchDistribution)
-    def dsample(
+    def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        dsample = self.dist.mean
+        max_likelihood = self.dist.mean
         if return_logp:
-            return dsample, self.logp(dsample)
-        return dsample
+            return max_likelihood, self.logp(max_likelihood)
+        return max_likelihood
 
     @staticmethod
     @override(Distribution)
@@ -417,13 +445,13 @@ class TorchSquashedDiagGaussian(TorchDiagGaussian):
         return self._squash(sample)
 
     @override(TorchDistribution)
-    def dsample(
+    def max_likelihood(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        dsample = self.dist.mean
+        max_likelihood = self.dist.mean
         if return_logp:
-            return self._squash(dsample), self.logp(dsample)
-        return dsample
+            return self._squash(max_likelihood), self.logp(max_likelihood)
+        return max_likelihood
 
     @override(TorchDistribution)
     def rsample(
@@ -477,7 +505,7 @@ class TorchDeterministic(Distribution):
         shape = sample_shape + self.loc.shape
         return torch.ones(shape, device=device, dtype=dtype) * self.loc
 
-    def dsample(
+    def max_likelihood(
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
