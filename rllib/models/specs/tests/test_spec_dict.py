@@ -170,7 +170,16 @@ class TestSpecDict(unittest.TestCase):
             ValueError, lambda: model.forward_dict_key_with_none_leaves(input_dict_2)
         )
 
-        # test extra key
+        input_dict_3 = {
+            "a": TypeClass1(),
+            "b": np.array([1, 2, 3]),
+        }
+
+        # should raise shape mismatch
+        self.assertRaises(
+            ValueError,
+            lambda: model.forward_spec_with_type_and_tensor_leaves(input_dict_3),
+        )
 
 
 if __name__ == "__main__":
