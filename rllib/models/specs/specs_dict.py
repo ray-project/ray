@@ -20,7 +20,6 @@ _TYPE_MISMATCH = (
     "{} has type {} (expected type {})."
 )
 
-# SPEC_LEAF_TYPE = Union[Type, TensorSpec]
 DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
