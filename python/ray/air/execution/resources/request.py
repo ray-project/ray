@@ -218,4 +218,37 @@ class AcquiredResource(abc.ABC):
         Args:
             entities: Remote Ray entities to annotate with the acquired resources.
         """
+        bundles = self.resource_request.bundles
+
+        # Also count the empty head bundle as a bundle
+        num_bundles = len(bundles) + int(self.resource_request.head_bundle_is_empty)
+
+        if len(entities) > num_bundles:
+            raise RuntimeError(
+                f"The number of callables to annotate ({len(entities)}) cannot "
+                f"exceed the number of available bundles ({num_bundles})."
+            )
+
+        annotated = []
+
+        if self.resource_request.head_bundle_is_empty:
+            # The empty head bundle is place on the first bundle index with empty
+            # resources.
+            annotated.append(
+                self._annotate_remote_entity(entities[0], {}, bundle_index=0)
+            )
+
+            # Shift the remaining entities
+            entities = entities[1:]
+
+        for i, (entity, bundle) in enumerate(zip(entities, bundles)):
+            annotated.append(
+                self._annotate_remote_entity(entity, bundle, bundle_index=i)
+            )
+
+        return annotated
+
+    def _annotate_remote_entity(
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+    ) -> RemoteRayEntity:
         raise NotImplementedError

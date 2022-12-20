@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from dataclasses import dataclass
 
@@ -23,38 +23,20 @@ _DIGITS = 100000
 class FixedAcquiredResource(AcquiredResource):
     bundles: List[Dict[str, float]]
 
-    def annotate_remote_entities(
-        self, entities: List[RemoteRayEntity]
-    ) -> List[Union[RemoteRayEntity]]:
-        # If we have an empty head, we schedule the first object (the "head") with
-        # empty resources.
-        if self.resource_request.head_bundle_is_empty:
-            bundles = [{}] + self.resource_request.bundles
-        else:
-            bundles = self.resource_request.bundles
+    def _annotate_remote_entity(
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+    ) -> RemoteRayEntity:
+        bundle = bundle.copy()
+        num_cpus = bundle.pop("CPU", 0)
+        num_gpus = bundle.pop("GPU", 0)
+        memory = bundle.pop("memory", 0.0)
 
-        if len(entities) > len(bundles):
-            raise RuntimeError(
-                f"The number of objects to annotate ({len(entities)}) cannot "
-                f"exceed the number of available bundles ({len(bundles)})."
-            )
-
-        annotated = []
-        for i, (obj, bundle) in enumerate(zip(entities, bundles)):
-            bundle = bundle.copy()
-            num_cpus = bundle.pop("CPU", 0)
-            num_gpus = bundle.pop("GPU", 0)
-            memory = bundle.pop("memory", 0.0)
-
-            annotated.append(
-                obj.options(
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    resources=bundle,
-                )
-            )
-        return annotated
+        return entity.options(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            resources=bundle,
+        )
 
 
 @DeveloperAPI

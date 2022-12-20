@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set
 
 from dataclasses import dataclass
 
@@ -21,48 +21,25 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 class PlacementGroupAcquiredResource(AcquiredResource):
     placement_group: PlacementGroup
 
-    def annotate_remote_entities(
-        self, entities: List[RemoteRayEntity]
-    ) -> List[Union[RemoteRayEntity]]:
-        # If we have an empty head, we schedule the first entity (the "head") in the
-        # first PG bundle with num_cpus=0. The second entity will also be scheduled in
-        # the first bundle, but will occupy the respective resources. Thus, we start
-        # counting from i = -1, and bundle = max(i, 0) which will be [0, 0, 1, 2, ...]
-        if self.resource_request.head_bundle_is_empty:
-            start = -1
-            bundles = [{}] + self.resource_request.bundles
-        else:
-            start = 0
-            bundles = self.resource_request.bundles
+    def _annotate_remote_entity(
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+    ) -> RemoteRayEntity:
+        bundle = bundle.copy()
+        num_cpus = bundle.pop("CPU", 0)
+        num_gpus = bundle.pop("GPU", 0)
+        memory = bundle.pop("memory", 0.0)
 
-        if len(entities) > len(bundles):
-            raise RuntimeError(
-                f"The number of callables to annotate ({len(entities)}) cannot "
-                f"exceed the number of available bundles ({len(bundles)})."
-            )
-
-        annotated = []
-        for i, (obj, bundle) in enumerate(zip(entities, bundles), start=start):
-            bundle = bundle.copy()
-            num_cpus = bundle.pop("CPU", 0)
-            num_gpus = bundle.pop("GPU", 0)
-            memory = bundle.pop("memory", 0.0)
-
-            annotated.append(
-                obj.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=self.placement_group,
-                        # Max ensures that empty head bundles are correctly placed
-                        placement_group_bundle_index=max(0, i),
-                        placement_group_capture_child_tasks=True,
-                    ),
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    resources=bundle,
-                )
-            )
-        return annotated
+        return entity.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=self.placement_group,
+                placement_group_bundle_index=bundle_index,
+                placement_group_capture_child_tasks=True,
+            ),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            resources=bundle,
+        )
 
 
 @DeveloperAPI
