@@ -9,7 +9,7 @@ Synthetic Data
 --------------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    range
@@ -20,7 +20,7 @@ Python Objects
 --------------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_items
@@ -29,7 +29,7 @@ Parquet
 -------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_parquet
@@ -40,7 +40,7 @@ CSV
 ---
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_csv
@@ -50,7 +50,7 @@ JSON
 ----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_json
@@ -60,7 +60,7 @@ Text
 ----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_text
@@ -69,7 +69,7 @@ Images
 ------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_images
@@ -78,7 +78,7 @@ Binary
 ------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_binary_files
@@ -87,7 +87,7 @@ TFRecords
 ---------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_tfrecords
@@ -98,7 +98,7 @@ Pandas
 ------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_pandas
@@ -110,7 +110,7 @@ NumPy
 -----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_numpy
@@ -123,7 +123,7 @@ Arrow
 -----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_arrow
@@ -134,7 +134,7 @@ MongoDB
 -------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_mongo
@@ -144,7 +144,7 @@ Dask
 ----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_dask
@@ -154,7 +154,7 @@ Spark
 -----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_spark
@@ -164,7 +164,7 @@ Modin
 -----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_modin
@@ -174,7 +174,7 @@ Mars
 ----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_mars
@@ -184,7 +184,7 @@ Torch
 -----
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_torch
@@ -193,7 +193,7 @@ HuggingFace
 -------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_huggingface
@@ -202,7 +202,7 @@ TensorFlow
 ----------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    from_tf
@@ -211,7 +211,7 @@ Datasource API
 --------------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    read_datasource
@@ -225,7 +225,7 @@ Built-in Datasources
 ####################
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    datasource.BinaryDatasource
@@ -243,7 +243,7 @@ Partitioning API
 ----------------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    datasource.Partitioning
@@ -256,7 +256,7 @@ MetadataProvider API
 --------------------
 
 .. autosummary::
-   :toctree: generated/
+   :toctree: doc/
    :nosignatures:
 
    datasource.FileMetadataProvider

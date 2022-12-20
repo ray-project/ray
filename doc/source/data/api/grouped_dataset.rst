@@ -3,29 +3,54 @@
 GroupedDataset API
 ==================
 
-.. autoclass:: ray.data.grouped_dataset.GroupedDataset
-    :members:
+.. currentmodule:: ray.data
 
-Aggregations
-------------
+GroupedDataset objects are returned by groupby call: Dataset.groupby().
 
-.. autoclass:: ray.data.aggregate.AggregateFn
-    :members:
+Constructor
+-----------
 
-.. autoclass:: ray.data.aggregate.Count
-    :members:
+.. autosummary::
+   :toctree: doc/
+   :nosignatures:
 
-.. autoclass:: ray.data.aggregate.Sum
-    :members:
+   GroupedDataset
 
-.. autoclass:: ray.data.aggregate.Max
-    :members:
+Computations / Descriptive Stats
+--------------------------------
 
-.. autoclass:: ray.data.aggregate.Mean
-    :members:
+.. autosummary::
+   :toctree: doc/
+   :nosignatures:
 
-.. autoclass:: ray.data.aggregate.Std
-    :members:
+   GroupedDataset.count
+   GroupedDataset.sum
+   GroupedDataset.min
+   GroupedDataset.max
+   GroupedDataset.mean
+   GroupedDataset.std
 
-.. autoclass:: ray.data.aggregate.AbsMax
-    :members:
+Function Application
+--------------------
+
+.. autosummary::
+   :toctree: doc/
+   :nosignatures:
+
+   GroupedDataset.aggregate
+   GroupedDataset.map_groups
+
+Aggregate Function
+------------------
+
+.. autosummary::
+   :toctree: doc/
+   :nosignatures:
+
+   aggregate.AggregateFn
+   aggregate.Count
+   aggregate.Sum
+   aggregate.Max
+   aggregate.Mean
+   aggregate.Std
+   aggregate.AbsMax
