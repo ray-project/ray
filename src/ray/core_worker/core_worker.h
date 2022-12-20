@@ -649,7 +649,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
-  void DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
+  /// \return Status.
+  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.

@@ -1436,32 +1436,33 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
   absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
-  absl::flat_hash_map<WorkerID, rpc::Address> lookup;
+  absl::flat_hash_map<WorkerID, rpc::Address> addresses;
+  // Group by owner id.
   for (const auto &obj_id : object_ids) {
     auto owner_address = GetOwnerAddressOrDie(obj_id);
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
     by_owner[worker_id].push_back(obj_id);
-    lookup[worker_id] = owner_address;
+    addresses[worker_id] = owner_address;
   }
+  // Send a batch delete call per owner id.
   for (const auto &entry : by_owner) {
     if (entry.first == worker_context_.GetWorkerID()) {
-      RAY_LOG(ERROR) << "Deleting local objects " << entry.second.size() << " "
-                     << entry.first;
+      RAY_LOG(INFO) << "Deleting local objects " << entry.second.size() << " "
+                    << entry.first;
       DeleteImpl(entry.second, local_only);
     } else {
-      RAY_LOG(ERROR) << "Deleting remote objects " << entry.second.size() << " "
-                     << entry.first << " " << lookup[entry.first].ip_address() << " "
-                     << lookup[entry.first].port();
+      RAY_LOG(INFO) << "Deleting remote objects " << entry.second.size() << " "
+                    << entry.first;
       auto conn = core_worker_client_pool_->GetOrConnect(lookup[entry.first]);
       rpc::DeleteObjectsRequest request;
       for (const auto &obj_id : entry.second) {
         request.add_object_ids(obj_id.Binary());
       }
       request.set_local_only(local_only);
-      conn->DeleteObjects(
-          request, [](const Status &status, const rpc::DeleteObjectsReply &reply) {
-            RAY_LOG(ERROR) << "Completed object delete request " << status;
-          });
+      conn->DeleteObjects(request,
+                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
+                            RAY_LOG(INFO) << "Completed object delete request " << status;
+                          });
     }
   }
   return Status::OK();
@@ -3383,16 +3384,15 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
 void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
                                      rpc::DeleteObjectsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "HandleDeleteObjects";
   std::vector<ObjectID> object_ids;
   for (const auto &obj_id : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(obj_id));
   }
-  DeleteImpl(object_ids, request.local_only());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto status = DeleteImpl(object_ids, request.local_only());
+  send_reply_callback(status, nullptr, nullptr);
 }
 
-void CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
+Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
   // Release the object from plasma. This does not affect the object's ref
   // count. If this was called from a non-owning worker, then a warning will be
   // logged and the object will not get released.
@@ -3409,8 +3409,7 @@ void CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects can only be deleted once the ref count goes to 0.
   absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  auto status = plasma_store_provider_->Delete(plasma_object_ids, local_only);
-  RAY_LOG(ERROR) << "DeleteImpl" << status;
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
