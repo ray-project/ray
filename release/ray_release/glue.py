@@ -240,6 +240,9 @@ def run_release_test(
         buildkite_group(":wrench: Preparing remote environment")
         command_runner.prepare_remote_env()
 
+        if os.environ["RETRY_NUM"] == "1":
+            raise PrepareCommandTimeout()
+
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
@@ -259,8 +262,6 @@ def run_release_test(
                 raise PrepareCommandError(e)
             except CommandTimeout as e:
                 raise PrepareCommandTimeout(e)
-
-        raise PrepareCommandTimeout()
 
         buildkite_group(":runner: Running test script")
         command = test["run"]["script"]
