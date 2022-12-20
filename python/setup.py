@@ -216,7 +216,7 @@ if setup_spec.type == SetupType.RAY:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
         # NumPy dropped python 3.6 support in 1.20.
-        numpy_dep = "numpy >= 1.19, numpy < 1.24.0"
+        numpy_dep = "numpy >= 1.19, < 1.24.0"
     if sys.version_info >= (3, 7) and sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
@@ -312,8 +312,8 @@ if setup_spec.type == SetupType.RAY:
         "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "numpy >= 1.16, numpy < 1.24.0; python_version < '3.9'",
-        "numpy >= 1.19.3; numpy < 1.24.0; python_version >= '3.9'",
+        "numpy >= 1.16, < 1.24.0; python_version < '3.9'",
+        "numpy >= 1.19.3, < 1.24.0; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
