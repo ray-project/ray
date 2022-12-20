@@ -815,7 +815,8 @@ def _resource_based_utilization_scorer(
     # if there *is* a GPU task, then CPU tasks can be scheduled as well.
     if AUTOSCALER_CONSERVE_GPU_NODES:
         if is_gpu_node and not any_gpu_task:
-            return None
+            # The lowest possible score.
+            return (-float("inf"), -float("inf"), -float("inf"))
 
     fittable = []
     resource_types = set()
