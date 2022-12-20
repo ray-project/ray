@@ -1,7 +1,7 @@
 from email.policy import Policy
 from ray.rllib.models.specs.specs_dict import ModelSpec
 from ray.rllib.models.torch.heads.pi import TorchPi
-from ray.rllib.models.configs.pi import PolicyGradientPiConfig 
+from ray.rllib.models.configs.pi import PolicyGradientPiConfig
 import unittest
 import gym
 import torch
@@ -11,18 +11,19 @@ import itertools
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.nested_dict import NestedDict
 
+
 class TestPi(unittest.TestCase):
     def setUp(self):
         self.primitive_spaces = [
             # Discrete
-            #gym.spaces.Discrete(1, dtype=np.int8), 
-            #gym.spaces.Discrete(1, dtype=np.int16), 
-            #gym.spaces.Discrete(1, dtype=np.int32), 
-            #gym.spaces.Discrete(1, dtype=np.uint8), 
-            #gym.spaces.Discrete(1, dtype=np.uint16), 
-            #gym.spaces.Discrete(1, dtype=np.uint32), 
-            #gym.spaces.MultiBinary(2),
-            gym.spaces.MultiDiscrete([1,2]),
+            # gym.spaces.Discrete(1, dtype=np.int8),
+            # gym.spaces.Discrete(1, dtype=np.int16),
+            # gym.spaces.Discrete(1, dtype=np.int32),
+            # gym.spaces.Discrete(1, dtype=np.uint8),
+            # gym.spaces.Discrete(1, dtype=np.uint16),
+            # gym.spaces.Discrete(1, dtype=np.uint32),
+            # gym.spaces.MultiBinary(2),
+            gym.spaces.MultiDiscrete([1, 2]),
             # Continuous
             gym.spaces.Box(shape=(1,), dtype=np.float16, low=2, high=3),
             gym.spaces.Box(shape=(1,), dtype=np.float32, low=-1, high=0),
@@ -45,11 +46,12 @@ class TestPi(unittest.TestCase):
             m = c.build(input_spec, s)
             outputs, _ = m.unroll(inputs, NestedDict())
             dist = outputs[c.output_key]
-            #action_dims = m.dist_configs.
+            # action_dims = m.dist_configs.
             actions = dist.sample().numpy().astype(s.dtype)
             for action in actions:
-                self.assertTrue(s.contains(action), f"Space {s} does not contain action {action}")
-
+                self.assertTrue(
+                    s.contains(action), f"Space {s} does not contain action {action}"
+                )
 
     '''
     def test_tuple_spaces(self):
@@ -91,11 +93,10 @@ class TestPi(unittest.TestCase):
         action = dist.sample()
     '''
 
-
     def test_squashed_gaussian(self):
         """Ensure the continuous actions are squashed correctly"""
         input_spec = ModelSpec({"bork": TorchTensorSpec("a, b, c", c=5)})
-        action_space = gym.spaces.Box(shape=(1,), dtype=np.float32, low=5, high=10),
+        action_space = (gym.spaces.Box(shape=(1,), dtype=np.float32, low=5, high=10),)
         c = PolicyGradientPiConfig()
         m = c.build(input_spec, action_space)
         inputs = NestedDict({"bork": torch.ones(3, 4, 5)})

@@ -13,8 +13,7 @@ if TYPE_CHECKING:
 
 
 class TorchPi(TorchModel):
-    """Maps state to a MultiTorchDistribution: pi(s) -> d
-    """
+    """Maps state to a MultiTorchDistribution: pi(s) -> d"""
 
     def __init__(
         self,
@@ -29,6 +28,7 @@ class TorchPi(TorchModel):
         # Size of a single input to produce all the needed distributions
         flat_input_size = sum([d.input_shape_flat for d in self.dist_configs])
         self._input_spec = input_spec
+        # Map input shape to the correct shape for action distribution
         self.to_dist_inputs = torch.nn.Linear(flat_input_size, flat_input_size)
         self._output_spec = ModelSpec({config.output_key: Distribution})
 
@@ -38,6 +38,12 @@ class TorchPi(TorchModel):
         chunks = dist_inputs.tensor_split(
             [s.input_shape_flat for s in self.dist_configs], dim=-1
         )
+        # Build a list of distributions, e.g.
+        # [Discrete(2), Box(3), Multibinary(2)] -> [
+        #   (torch.tensor(2), Categorical),
+        #   (torch.tensor(3,2).flatten(), Gaussian),
+        #   (torch.tensor(2), Categorical)
+        # ]
         multidist = []
         for dist_input, dist_cfg in zip(chunks, self.dist_configs):
             multidist.append(dist_cfg.build(dist_input))

@@ -2,19 +2,22 @@ import math
 import gym
 import numpy as np
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple, Type
+from typing import List, Tuple, Type
 from ray.rllib.utils.typing import TensorType
 import torch
 
 import tree as dm_tree
 from ray.rllib.models.specs.specs_dict import ModelSpec
 
-from ray.rllib.models.torch.torch_distributions import TorchCategorical, TorchDistribution, TorchSquashedDiagGaussian, TorchMultinomial, TorchBernoulli
+from ray.rllib.models.torch.torch_distributions import (
+    TorchCategorical,
+    TorchDistribution,
+    TorchSquashedDiagGaussian,
+    TorchBernoulli,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.models.torch.heads.pi import TorchPi
 from ray.rllib.models.distributions import Distribution
-
-#if TYPE_CHECKING:
 
 
 def is_continuous(space: gym.spaces.Space) -> bool:
@@ -36,7 +39,7 @@ def is_continuous(space: gym.spaces.Space) -> bool:
 
 
 class DistributionConfig:
-    """Config for building Distribution objects used in Pi's. 
+    """Config for building Distribution objects used in Pi's.
 
     DistributionConfig provides input and output shapes of each distribution,
     and are used by various PiConfigs when constructing Pis.
@@ -55,8 +58,8 @@ class DistributionConfig:
         output_shape: Automatically set. The feature dimensions of the outgoing shape
             required by the action space. E.g. Discrete(3) will produce
             output_shape=(3,).
-        modified_support: The desired support for the distribution, expressed as a 
-            low and high. This refers to the minimum and maximum values x values 
+        modified_support: The desired support for the distribution, expressed as a
+            low and high. This refers to the minimum and maximum values x values
             with nonzero probability mass.
     """
 
@@ -67,21 +70,23 @@ class DistributionConfig:
     input_shape: Tuple[int, ...]
     input_shape_flat: Tuple[int]
     output_shape: Tuple[int]
-    low: TensorType 
+    low: TensorType
     high: TensorType
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(\n" + 
-            "\n   ".join([f"{k}={v}" for k, v in vars(self).items()]) + 
-            "\n)"
+            f"{self.__class__.__name__}(\n"
+            + "\n   ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + "\n)"
         )
 
     def __init__(self, distribution_class: Type[Distribution], action_space: gym.Space):
         self.distribution_class = distribution_class
         self.action_space = action_space
 
-        self.input_shape = distribution_class.required_model_output_shape(action_space, None)
+        self.input_shape = distribution_class.required_model_output_shape(
+            action_space, None
+        )
         self.input_shape_flat = math.prod(self.input_shape)
         self.output_shape = gym.spaces.utils.flatdim(action_space)
         if is_continuous(action_space):
@@ -93,7 +98,7 @@ class DistributionConfig:
 
     def build(self, distribution_input: TensorType) -> Distribution:
         """Build the config into a Distribution object.
-        
+
         Note that build() is called for each Pi forward pass, so keep
         this lightweight.
 
@@ -101,7 +106,7 @@ class DistributionConfig:
             distribution_input: A tensor of inputs to the distribution,
                 sometimes called logits
         Returns:
-            A distribution, ready to be sampled from 
+            A distribution, ready to be sampled from
         """
         if is_continuous(self.action_space):
             if self.framework_str == "torch":
@@ -109,7 +114,9 @@ class DistributionConfig:
                 self.high = self.high.to(distribution_input.device)
             else:
                 raise NotImplementedError()
-            return self.distribution_class(distribution_input, low=self.low, high=self.high)
+            return self.distribution_class(
+                distribution_input, low=self.low, high=self.high
+            )
         else:
             return self.distribution_class(logits=distribution_input)
 
@@ -151,7 +158,7 @@ class PolicyGradientPiConfig(PiConfig):
 
     def get_torch_distribution(self, space: gym.Space) -> TorchDistribution:
         """Return the distribution associated with each primitive gym action space.
-        
+
         Args:
             space: Action space to get the distribution for
 
@@ -166,14 +173,16 @@ class PolicyGradientPiConfig(PiConfig):
             if is_continuous(space):
                 return TorchSquashedDiagGaussian
             else:
-                raise NotImplementedError("Use MultiDiscrete or Discrete instead of Box(dtype=int)")
+                raise NotImplementedError(
+                    "Use MultiDiscrete or Discrete instead of Box(dtype=int)"
+                )
         else:
             raise NotImplementedError(f"Unsupported action space {space}")
 
     @override(PiConfig)
     def decompose_space(self, action_space: gym.Space) -> List[DistributionConfig]:
         """Decompose an action space into a list of DistributionConfigs
-        
+
         Args:
             action_space: A (possibly nested) action space that we want to
                 decompose into individual DistributionConfigs
@@ -185,7 +194,10 @@ class PolicyGradientPiConfig(PiConfig):
         flat_space = dm_tree.flatten(action_space)
         # Constructing a Tuple from MultiDiscrete
         # results in a Tuple of Discrete
-        flat_space = [gym.spaces.Tuple(s) if isinstance(s, gym.spaces.MultiDiscrete) else s for s in flat_space ]
+        flat_space = [
+            gym.spaces.Tuple(s) if isinstance(s, gym.spaces.MultiDiscrete) else s
+            for s in flat_space
+        ]
         # Reflatten added tuples
         flat_space = dm_tree.flatten(flat_space)
 
