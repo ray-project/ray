@@ -309,11 +309,7 @@ class FunctionTrainable(Trainable):
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
-            # `session.report()`` gets called during each step of the training function,
-            # which happens before the training iteration gets incremented.
-            # Add 1 here in order to attach this checkpoint to the same
-            # "training_iteration" as its corresponding result.
-            training_iteration_func=lambda: self.training_iteration + 1,
+            training_iteration_func=lambda: self.training_iteration,
             experiment_name=(
                 self._trial_info.experiment_name if self._trial_info else None
             ),
