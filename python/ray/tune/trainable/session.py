@@ -241,7 +241,7 @@ def report(_metric=None, **kwargs):
     )
     _session = get_session()
     if _session:
-        if _session._iter:
+        if _session._has_reported:
             raise ValueError(
                 "It is not allowed to mix `tune.report` with `session.report`."
             )
@@ -310,7 +310,7 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
-        if _session._iter:
+        if _session._has_reported:
             raise ValueError(
                 "It is not allowed to mix `with tune.checkpoint_dir` "
                 "with `session.report`."
