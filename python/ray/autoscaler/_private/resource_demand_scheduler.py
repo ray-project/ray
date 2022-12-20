@@ -209,6 +209,8 @@ class ResourceDemandScheduler:
             Dict of count to add for each node type, and residual of resources
             that still cannot be fulfilled.
         """
+        # The following function mutates self.node_types.
+        self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
         # Does every worker node type have gpus?
         # (More precisely, does every non-head node type have gpus?)
         all_gpu_node_types = all(
@@ -221,7 +223,6 @@ class ResourceDemandScheduler:
             node_availability_summary=node_availability_summary,
             all_gpu_node_types=all_gpu_node_types,
         )
-        self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
