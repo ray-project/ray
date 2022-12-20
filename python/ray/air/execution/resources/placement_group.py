@@ -1,14 +1,14 @@
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set
 
 from dataclasses import dataclass
 
 import ray
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AcquiredResource,
-    RemoteRayObject,
+    AcquiredResources,
+    RemoteRayEntity,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -18,51 +18,28 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 @DeveloperAPI
 @dataclass
-class PlacementGroupAcquiredResource(AcquiredResource):
+class PlacementGroupAcquiredResources(AcquiredResources):
     placement_group: PlacementGroup
 
-    def annotate_remote_objects(
-        self, objects: List[RemoteRayObject]
-    ) -> List[Union[RemoteRayObject]]:
-        # If we have an empty head, we schedule the first object (the "head") in the
-        # first PG bundle with num_cpus=0. The second object will also be scheduled in
-        # the first bundle, but will occupy the respective resources. Thus, we start
-        # counting from i = -1, and bundle = max(i, 0) which will be [0, 0, 1, 2, ...]
-        if self.resource_request.head_bundle_is_empty:
-            start = -1
-            bundles = [{}] + self.resource_request.bundles
-        else:
-            start = 0
-            bundles = self.resource_request.bundles
+    def _annotate_remote_entity(
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+    ) -> RemoteRayEntity:
+        bundle = bundle.copy()
+        num_cpus = bundle.pop("CPU", 0)
+        num_gpus = bundle.pop("GPU", 0)
+        memory = bundle.pop("memory", 0.0)
 
-        if len(objects) > len(bundles):
-            raise RuntimeError(
-                f"The number of objects to annotate ({len(objects)}) cannot "
-                f"exceed the number of available bundles ({len(bundles)})."
-            )
-
-        annotated = []
-        for i, (obj, bundle) in enumerate(zip(objects, bundles), start=start):
-            bundle = bundle.copy()
-            num_cpus = bundle.pop("CPU", 0)
-            num_gpus = bundle.pop("GPU", 0)
-            memory = bundle.pop("memory", 0.0)
-
-            annotated.append(
-                obj.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=self.placement_group,
-                        # Max ensures that empty head bundles are correctly placed
-                        placement_group_bundle_index=max(0, i),
-                        placement_group_capture_child_tasks=True,
-                    ),
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    resources=bundle,
-                )
-            )
-        return annotated
+        return entity.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=self.placement_group,
+                placement_group_bundle_index=bundle_index,
+                placement_group_capture_child_tasks=True,
+            ),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            resources=bundle,
+        )
 
 
 @DeveloperAPI
@@ -71,7 +48,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     This manager will use placement groups to fulfill resource requests. Requesting
     a resource will schedule the placement group. Acquiring a resource will
-    return a ``PlacementGroupAcquiredResource`` that can be used to schedule
+    return a ``PlacementGroupAcquiredResources`` that can be used to schedule
     Ray tasks and actors on the placement group. Freeing an acquired resource
     will destroy the associated placement group.
 
@@ -89,7 +66,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     """
 
-    _resource_cls: AcquiredResource = PlacementGroupAcquiredResource
+    _resource_cls: AcquiredResources = PlacementGroupAcquiredResources
 
     def __init__(self, update_interval_s: float = 0.1):
         # Internally, the placement group lifecycle is like this:
@@ -98,7 +75,7 @@ class PlacementGroupResourceManager(ResourceManager):
         # - A ``PlacementGroup.ready()`` future is scheduled ("staging future")
         # - We update the scheduling state when we need to
         #   (e.g. when ``has_resources_ready()`` is called)
-        # - When staging futures resolved, a placement group is moved from "staging"
+        # - When staging futures resolve, a placement group is moved from "staging"
         #   to "ready"
         # - When a resource request is canceled, we remove a placement group from
         #   "staging". If there are not staged placement groups
@@ -196,7 +173,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[PlacementGroupAcquiredResource]:
+    ) -> Optional[PlacementGroupAcquiredResources]:
         if not self.has_resources_ready(resource_request):
             return None
 
@@ -205,7 +182,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def free_resources(self, acquired_resource: PlacementGroupAcquiredResource):
+    def free_resources(self, acquired_resource: PlacementGroupAcquiredResources):
         pg = acquired_resource.placement_group
 
         self._acquired_pgs.remove(pg)

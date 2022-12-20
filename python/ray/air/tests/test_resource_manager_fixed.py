@@ -78,13 +78,13 @@ def test_bind_two_bundles(ray_start_4_cpus):
         return ray.get_runtime_context().get_assigned_resources()
 
     acq = manager.acquire_resources(REQUEST_1_2_CPU)
-    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+    [av1] = acq.annotate_remote_entities([get_assigned_resources])
 
     res1 = ray.get(av1.remote())
 
     assert sum(v for k, v in res1.items() if k.startswith("CPU")) == 1
 
-    [av1, av2] = acq.annotate_remote_objects(
+    [av1, av2] = acq.annotate_remote_entities(
         [get_assigned_resources, get_assigned_resources]
     )
 
@@ -112,13 +112,13 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
         return ray.get_runtime_context().get_assigned_resources()
 
     acq = manager.acquire_resources(REQUEST_0_2_CPU)
-    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+    [av1] = acq.annotate_remote_entities([get_assigned_resources])
 
     res1 = ray.get(av1.remote())
 
     assert sum(v for k, v in res1.items() if k.startswith("CPU")) == 0
 
-    [av1, av2] = acq.annotate_remote_objects(
+    [av1, av2] = acq.annotate_remote_entities(
         [get_assigned_resources, get_assigned_resources]
     )
 

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from dataclasses import dataclass
 
@@ -6,8 +6,8 @@ import ray
 from ray import SCRIPT_MODE, LOCAL_MODE
 from ray.air.execution.resources.request import (
     ResourceRequest,
-    AcquiredResource,
-    RemoteRayObject,
+    AcquiredResources,
+    RemoteRayEntity,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
@@ -20,41 +20,23 @@ _DIGITS = 100000
 
 @DeveloperAPI
 @dataclass
-class FixedAcquiredResource(AcquiredResource):
+class FixedAcquiredResources(AcquiredResources):
     bundles: List[Dict[str, float]]
 
-    def annotate_remote_objects(
-        self, objects: List[RemoteRayObject]
-    ) -> List[Union[RemoteRayObject]]:
-        # If we have an empty head, we schedule the first object (the "head") with
-        # empty resources.
-        if self.resource_request.head_bundle_is_empty:
-            bundles = [{}] + self.resource_request.bundles
-        else:
-            bundles = self.resource_request.bundles
+    def _annotate_remote_entity(
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+    ) -> RemoteRayEntity:
+        bundle = bundle.copy()
+        num_cpus = bundle.pop("CPU", 0)
+        num_gpus = bundle.pop("GPU", 0)
+        memory = bundle.pop("memory", 0.0)
 
-        if len(objects) > len(bundles):
-            raise RuntimeError(
-                f"The number of objects to annotate ({len(objects)}) cannot "
-                f"exceed the number of available bundles ({len(bundles)})."
-            )
-
-        annotated = []
-        for i, (obj, bundle) in enumerate(zip(objects, bundles)):
-            bundle = bundle.copy()
-            num_cpus = bundle.pop("CPU", 0)
-            num_gpus = bundle.pop("GPU", 0)
-            memory = bundle.pop("memory", 0.0)
-
-            annotated.append(
-                obj.options(
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    resources=bundle,
-                )
-            )
-        return annotated
+        return entity.options(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            resources=bundle,
+        )
 
 
 @DeveloperAPI
@@ -84,7 +66,7 @@ class FixedResourceManager(ResourceManager):
 
     """
 
-    _resource_cls: AcquiredResource = FixedAcquiredResource
+    _resource_cls: AcquiredResources = FixedAcquiredResources
 
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
         rtc = ray.get_runtime_context()
@@ -148,7 +130,7 @@ class FixedResourceManager(ResourceManager):
 
     def acquire_resources(
         self, resource_request: ResourceRequest
-    ) -> Optional[AcquiredResource]:
+    ) -> Optional[AcquiredResources]:
         if not self.has_resources_ready(resource_request):
             return None
 
@@ -157,7 +139,7 @@ class FixedResourceManager(ResourceManager):
             bundles=resource_request.bundles, resource_request=resource_request
         )
 
-    def free_resources(self, acquired_resource: AcquiredResource):
+    def free_resources(self, acquired_resource: AcquiredResources):
         resources = acquired_resource.resource_request
         self._used_resources.remove(resources)
 
