@@ -77,8 +77,8 @@ class GlobalStateAccessor {
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
-  /// each AvailableResources and return the serialized string. Where used, it needs to
-  /// be deserialized with protobuf function.
+  /// each AvailableResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() LOCKS_EXCLUDED(mutex_);
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
@@ -91,16 +91,16 @@ class GlobalStateAccessor {
 
   /// Get information of all actors from GCS Service.
   ///
-  /// \return All actor info. To support multi-language, we serialize each
-  /// ActorTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
+  /// \return All actor info. To support multi-language, we serialize each ActorTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
   std::vector<std::string> GetAllActorInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of an actor from GCS Service.
   ///
   /// \param actor_id The ID of actor to look up in the GCS Service.
-  /// \return Actor info. To support multi-language, we serialize each ActorTableData
-  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// \return Actor info. To support multi-language, we serialize each ActorTableData and
+  /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id)
       LOCKS_EXCLUDED(mutex_);
@@ -131,16 +131,16 @@ class GlobalStateAccessor {
   /// Get information of all placement group from GCS Service.
   ///
   /// \return All placement group info. To support multi-language, we serialize each
-  /// PlacementGroupTableData and return the serialized string. Where used, it needs to
-  /// be deserialized with protobuf function.
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
   std::vector<std::string> GetAllPlacementGroupInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a placement group from GCS Service by ID.
   ///
   /// \param placement_group_id The ID of placement group to look up in the GCS Service.
   /// \return Placement group info. To support multi-language, we serialize each
-  /// PlacementGroupTableData and return the serialized string. Where used, it needs to
-  /// be deserialized with protobuf function.
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupInfo(
       const PlacementGroupID &placement_group_id) LOCKS_EXCLUDED(mutex_);
 
@@ -150,7 +150,7 @@ class GlobalStateAccessor {
   /// Service.
   /// \return Placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to
-  /// be deserialized with protobuf function.
+  /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace)
       LOCKS_EXCLUDED(mutex_);
