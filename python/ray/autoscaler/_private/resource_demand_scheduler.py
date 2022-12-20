@@ -808,16 +808,6 @@ def _resource_based_utilization_scorer(
     node_availability_summary: NodeAvailabilitySummary,
 ) -> Optional[Tuple[int, float, float]]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
-    any_gpu_task = any("GPU" in r for r in resources)
-
-    # Prefer not to launch a GPU node if there aren't any GPU requirements in the
-    # resource bundle.
-    if AUTOSCALER_CONSERVE_GPU_NODES:
-        if is_gpu_node and not any_gpu_task:
-            # The lowest possible score.
-            return (-1, -float("inf"), -float("inf"))
-
     fittable = []
     resource_types = set()
     for r in resources:
@@ -846,6 +836,15 @@ def _resource_based_utilization_scorer(
     # Could happen if node_resources has only zero values.
     if not util_by_resources:
         return None
+
+    # Prefer not to launch a GPU node if there aren't any GPU requirements in the
+    # resource bundle.
+    if AUTOSCALER_CONSERVE_GPU_NODES:
+        is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
+        any_gpu_task = any("GPU" in r for r in resources)
+        if is_gpu_node and not any_gpu_task:
+            # The lowest possible score.
+            return (-1, -float("inf"), -float("inf"))
 
     # Prioritize matching multiple resource types first, then prioritize
     # using all resources, then prioritize overall balance
