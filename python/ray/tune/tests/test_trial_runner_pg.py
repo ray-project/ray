@@ -45,14 +45,15 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
     def _assertCleanup(self, trial_executor):
         # Assert proper cleanup
-        pg_manager = trial_executor._pg_manager
-        self.assertFalse(pg_manager._in_use_trials)
-        self.assertFalse(pg_manager._in_use_pgs)
-        self.assertFalse(pg_manager._staging_futures)
-        for pgf in pg_manager._staging:
-            self.assertFalse(pg_manager._staging[pgf])
-        for pgf in pg_manager._ready:
-            self.assertFalse(pg_manager._ready[pgf])
+        resource_manager = trial_executor._resource_manager
+        self.assertFalse(resource_manager._pg_to_request)
+        self.assertFalse(resource_manager._acquired_pgs)
+        self.assertFalse(resource_manager._staging_future_to_pg)
+        self.assertFalse(resource_manager._pg_to_staging_future)
+        for rr in resource_manager._request_to_staged_pgs:
+            self.assertFalse(resource_manager._request_to_staged_pgs[rr])
+        for rr in resource_manager._request_to_ready_pgs:
+            self.assertFalse(resource_manager._request_to_ready_pgs[rr])
 
         num_non_removed_pgs = len(
             [p for pid, p in placement_group_table().items() if p["state"] != "REMOVED"]
@@ -84,6 +85,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         )
 
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
+        trial_executor.setup(max_pending_trials=max_num_parallel, trainable_kwargs={})
 
         this = self
 
@@ -97,14 +99,19 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     ]
                 )
 
+                resource_manager = trial_executor._resource_manager
+
                 num_staging = sum(
-                    len(s) for s in trial_executor._pg_manager._staging.values()
+                    len(s) for s in resource_manager._request_to_staged_pgs.values()
                 )
                 num_ready = sum(
-                    len(s) for s in trial_executor._pg_manager._ready.values()
+                    len(s) for s in resource_manager._request_to_ready_pgs.values()
                 )
-                num_in_use = len(trial_executor._pg_manager._in_use_pgs)
-                num_cached = len(trial_executor._pg_manager._cached_pgs)
+                num_in_use = len(resource_manager._acquired_pgs)
+                num_cached = sum(
+                    len(a)
+                    for a in trial_executor._resource_request_to_cached_actors.values()
+                )
 
                 total_num_tracked = num_staging + num_ready + num_in_use + num_cached
 
@@ -123,10 +130,15 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 num_parallel_reuse = int(reuse_actors) * max_num_parallel
 
                 # The number of PGs should decrease when trials finish
+                # We allow a constant excess of 1 here because the trial will
+                # be TERMINATED and the resources only returned after the trainable
+                # cleanup future succeeded. Because num_finished will increase,
+                # this still asserts that the number of PGs goes down over time.
                 this.assertGreaterEqual(
-                    max(scheduled, len(trials)) - num_finished + num_parallel_reuse,
+                    max(scheduled, len(trials)) - num_finished + 1 + num_parallel_reuse,
                     total_num_tracked,
-                    msg=f"Num tracked iter {iteration}",
+                    msg=f"Num tracked iter {iteration}, {len(trials)}, "
+                    f"{scheduled}, {num_finished}, {num_parallel_reuse}",
                 )
 
         start = time.time()
