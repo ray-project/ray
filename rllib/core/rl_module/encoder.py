@@ -13,7 +13,7 @@ from ray.rllib.models.torch.primitives import FCNet
 
 # TODO (Kourosh): Find a better / more straight fwd approach for sub-components
 
-ENCODER_OUT = "encoder_out"
+ENCODER_OUT = "embedding"
 STATE_IN = "state_in"
 
 

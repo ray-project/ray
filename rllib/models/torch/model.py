@@ -220,6 +220,6 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         nn.Module.__init__(self)
         TorchModelIO.__init__(self, config)
 
-    @check_specs(input_spec="_input_spec", output_spec="_output_spec")
+    @check_specs(input_spec="_input_spec", output_spec="_output_spec", filter=True)
     def forward(self, input_dict):
         return self._forward(input_dict)

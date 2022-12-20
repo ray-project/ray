@@ -272,7 +272,8 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out = self.shared_encoder(batch)
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
+        pi_out = self.pi(encoder_out_pi)
+        action_logits = pi_out[ENCODER_OUT]
 
         output = {}
         if self._is_discrete:
@@ -286,7 +287,9 @@ class PPOTorchRLModule(TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist
 
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf[ENCODER_OUT]).squeeze(-1)
+        vf_out = self.vf(encoder_out_vf)
+        output[SampleBatch.VF_PREDS] = vf_out[ENCODER_OUT].squeeze(-1)
+
         output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
