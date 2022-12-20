@@ -116,14 +116,17 @@ if __name__ == "__main__":
     ray.init()
     env = gym.make("CartPole-v0")
     trainer_class = TfRLTrainer
-    trainer_cfg = dict(module_class=DiscreteBCTFModule,
-                        module_config={"observation_space": env.observation_space,
-                                    "action_space": env.action_space,
-                                    "model_config": {"hidden_dim": 32}
-                                    },
-                        optimizer_class=BCTFOptimizer,
-                        optimizer_config={})
-    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=dict(num_gpus=1))
+    trainer_cfg = dict(
+        module_class=DiscreteBCTFModule,
+        module_config={
+            "observation_space": env.observation_space,
+            "action_space": env.action_space,
+            "model_config": {"hidden_dim": 32}
+        },
+        optimizer_class=BCTFOptimizer,
+        optimizer_config={}
+    )
+    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=dict(num_gpus=0))
     env = gym.make("CartPole-v1")
 
     # path = "s3://air-example-data/rllib/cartpole/large.json"

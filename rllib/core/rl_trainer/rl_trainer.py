@@ -1,13 +1,18 @@
 import abc
 from typing import Any, Mapping, Union, Type
 
-import tensorflow as tf
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.framework import try_import_tf
+
+
+tf1, tf, tfv = try_import_tf()
+
+tf1.enable_eager_execution()
 
 
 class RLTrainer:
@@ -77,16 +82,11 @@ class RLTrainer:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        tf.print("loss: ", loss_numpy)
-        tf.print("gradients: ", post_processed_gradients)
+        print("eagerly?? ", tf.executing_eagerly())
         print("loss: ", loss_numpy)
         print("gradients: ", post_processed_gradients)
-        print(dir(post_processed_gradients["policy"]))
-        print(dir(loss_numpy["total_loss"]))
-        print(type(post_processed_gradients["policy"][0]))
-        print(type(loss_numpy["total_loss"]))
-        # print(loss_numpy["total_loss"].eval())
-        print(loss_numpy["total_loss"].numpy())
+        print(loss_numpy["total_loss"])
+        print(post_processed_gradients["policy"][0].numpy())
         assert False
         # print(convert_to_numpy(post_processed_gradients))
         # print("loss: ", loss_numpy)
