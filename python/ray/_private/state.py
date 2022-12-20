@@ -369,9 +369,9 @@ class GlobalState:
             },
         }
 
-    def _seconds_to_microseconds(self, time_in_seconds):
-        """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10**6 * time_in_seconds
+    def _nanoseconds_to_microseconds(self, time_in_nanoseconds):
+        """A helper function for converting nanoseconds to microseconds."""
+        time_in_microseconds = time_in_nanoseconds / 1000
         return time_in_microseconds
 
     # Colors are specified at
@@ -483,9 +483,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": event["component_type"] + ":" + event["component_id"],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?
@@ -508,7 +508,8 @@ class GlobalState:
         if not all_events:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
-                "by setting RAY_PROFILING=1."
+                "by setting RAY_PROFILING=1, and make sure "
+                "RAY_task_events_report_interval_ms not set to 0 or negative values."
             )
 
         if filename is not None:
@@ -579,9 +580,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": node_id_to_address[remote_node_id],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?

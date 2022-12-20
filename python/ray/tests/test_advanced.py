@@ -222,6 +222,31 @@ def test_profiling_api(shutdown_only):
 
     wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
 
+    # Test for content of the profiling events.
+    @ray.remote
+    def k():
+        exec_time_us = time.time() * (10**6)
+        worker_id = ray._private.worker.global_worker.core_worker.get_worker_id().hex()
+        return worker_id, exec_time_us
+
+    k_worker_id, k_exec_time_us = ray.get(k.remote())
+
+    def verify():
+        profile_data = ray.timeline()
+        k_events = [
+            event for event in profile_data if event["tid"] == f"worker:{k_worker_id}"
+        ]
+        assert len(k_events) > 0
+        for event in k_events:
+            if event["name"] == "task:execute":
+                reported_exec_time = event["ts"]
+                # diff smaller than 3 secs, a fine-tuned threshold from running locally.
+                assert abs(reported_exec_time - k_exec_time_us) < 3 * (10**6)
+
+        return True
+
+    wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
+
 
 def test_wait_cluster(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
