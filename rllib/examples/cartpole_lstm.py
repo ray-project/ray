@@ -1,5 +1,4 @@
 import argparse
-import os
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -12,7 +11,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--eager-tracing", action="store_true")
@@ -50,11 +49,6 @@ if __name__ == "__main__":
             },
             "vf_loss_coeff": 0.0001,
         },
-        "IMPALA": {
-            "num_workers": 2,
-            "num_gpus": 0,
-            "vf_loss_coeff": 0.01,
-        },
     }
 
     config = dict(
@@ -62,13 +56,6 @@ if __name__ == "__main__":
         **{
             "env": StatelessCartPole,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "model": {
-                "use_lstm": True,
-                "lstm_cell_size": 256,
-                "lstm_use_prev_action": args.use_prev_action,
-                "lstm_use_prev_reward": args.use_prev_reward,
-            },
             "framework": args.framework,
             # Run with tracing enabled for tf2?
             "eager_tracing": args.eager_tracing,
@@ -115,7 +102,14 @@ if __name__ == "__main__":
     # >>         prev_r = reward
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop={"num_env_steps_trained": 1},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=True,
+            ),
+        ),
     )
     results = tuner.fit()
 

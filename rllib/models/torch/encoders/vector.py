@@ -60,9 +60,7 @@ class TorchVectorEncoder(TorchModel):
             prev_size = size
 
         # Final layer
-        layers += [
-            nn.Linear(config.hidden_layer_sizes[-2], config.hidden_layer_sizes[-1])
-        ]
+        layers += [nn.Linear(prev_size, config.hidden_layer_sizes[-1])]
         if config.final_activation != "linear":
             layers += [
                 get_activation_fn(

@@ -1927,9 +1927,16 @@ py_test(
     name = "test_torch_vector_encoder",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
+    srcs = ["models/torch/encoders/tests/test_vector_encoder.py"]
 )
 
+# test TorchIdentity
+py_test(
+    name = "test_torch_identity",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/torch/tests/test_identity.py"]
+)
 
 # --------------------------------------------------------------------
 # Offline

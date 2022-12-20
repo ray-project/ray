@@ -30,14 +30,6 @@ class EncoderConfig:
 
 
 @dataclass
-class IdentityConfig(EncoderConfig):
-    """Configuration for an identity encoder."""
-
-    def build(self):
-        return IdentityEncoder(self)
-
-
-@dataclass
 class FCConfig(EncoderConfig):
     """Configuration for a fully connected network.
     input_dim: The input dimension of the network. It cannot be None.
@@ -70,15 +62,17 @@ class Encoder(nn.Module):
     def __init__(self, config: EncoderConfig) -> None:
         super().__init__()
         self.config = config
-        self._input_spec = self.input_spec()
-        self._output_spec = self.output_spec()
+        self._input_spec = self.input_spec
+        self._output_spec = self.output_spec
 
     def get_inital_state(self):
         return []
 
+    @property
     def input_spec(self):
         return ModelSpec()
 
+    @property
     def output_spec(self):
         return ModelSpec()
 
@@ -101,11 +95,13 @@ class FullyConnectedEncoder(Encoder):
             activation=config.activation,
         )
 
+    @property
     def input_spec(self):
         return ModelSpec(
             {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
         )
 
+    @property
     def output_spec(self):
         return ModelSpec(
             {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
@@ -185,11 +181,3 @@ class LSTMEncoder(Encoder):
             ENCODER_OUT: x,
             "state_out": tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
-
-
-class IdentityEncoder(Encoder):
-    def __init__(self, config: EncoderConfig) -> None:
-        super().__init__(config)
-
-    def _forward(self, input_dict):
-        return input_dict

@@ -205,7 +205,7 @@ class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.
 
-    As a convienience, users may override _forward instead of _unroll,
+    As a convenience, users may override _forward instead of _unroll,
     which hides model states.
 
     Args:

@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 import gym
 from typing import Mapping, Any, Union
@@ -15,15 +16,14 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDeterministic,
     TorchDiagGaussian,
 )
+from ray.rllib.models.configs.base import ModelConfig
 from ray.rllib.core.rl_module.encoder import (
-    FCNet,
     FCConfig,
     LSTMConfig,
-    IdentityConfig,
     LSTMEncoder,
     ENCODER_OUT,
 )
-
+from rllib.models.configs.identity import IdentityConfig
 
 torch, nn = try_import_torch()
 
@@ -55,11 +55,11 @@ class PPOModuleConfig(RLModuleConfig):
         shared_encoder: Whether to share the encoder between the pi and value
     """
 
-    pi_config: FCConfig = None
-    vf_config: FCConfig = None
-    pi_encoder_config: FCConfig = None
-    vf_encoder_config: FCConfig = None
-    shared_encoder_config: FCConfig = None
+    pi_config: ModelConfig = None
+    vf_config: ModelConfig = None
+    pi_encoder_config: ModelConfig = None
+    vf_encoder_config: ModelConfig = None
+    shared_encoder_config: ModelConfig = None
     free_log_std: bool = False
     shared_encoder: bool = True
 
@@ -75,23 +75,27 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
 
-        self.shared_encoder = self.config.shared_encoder_config.build()
-        self.pi_encoder = self.config.pi_encoder_config.build()
-        self.vf_encoder = self.config.vf_encoder_config.build()
-
-        self.pi = FCNet(
-            input_dim=self.config.pi_encoder_config.output_dim,
-            output_dim=self.config.pi_config.output_dim,
-            hidden_layers=self.config.pi_config.hidden_layers,
-            activation=self.config.pi_config.activation,
+        obs_spec = ModelSpec(
+            {  # bxt is just a name for better readability to indicated padded batch
+                SampleBatch.OBS: TorchTensorSpec(
+                    "bxt, h", h=self.config.observation_space.shape[0]
+                )
+            }
         )
 
-        self.vf = FCNet(
-            input_dim=self.config.vf_encoder_config.output_dim,
-            output_dim=1,
-            hidden_layers=self.config.vf_config.hidden_layers,
-            activation=self.config.vf_config.activation,
+        self.shared_encoder = self.config.shared_encoder_config.build(
+            input_spec=obs_spec
         )
+        self.pi_encoder = self.config.pi_encoder_config.build(
+            self.shared_encoder.output_spec
+        )
+        self.vf_encoder = self.config.vf_encoder_config.build(
+            self.shared_encoder.output_spec
+        )
+
+        self.pi = self.config.pi_encoder_config.build(self.pi_encoder.output_spec)
+
+        self.vf = self.config.pi_encoder_config.build(self.vf_encoder.output_spec)
 
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
 
@@ -209,10 +213,12 @@ class PPOTorchRLModule(TorchRLModule):
                 return self.pi_encoder.get_inital_state()
         return {}
 
+    @property
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:
-        return self.input_specs_exploration()
+        return self.input_specs_exploration
 
+    @property
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpec:
         return ModelSpec({SampleBatch.ACTION_DIST: TorchDeterministic})
@@ -234,10 +240,12 @@ class PPOTorchRLModule(TorchRLModule):
         output["state_out"] = pi_enc_out.get("state_out", {})
         return output
 
+    @property
     @override(RLModule)
     def input_specs_exploration(self):
-        return self.shared_encoder.input_spec()
+        return self.shared_encoder.input_spec
 
+    @property
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
         specs = {SampleBatch.ACTION_DIST: self.__get_action_dist_type()}
@@ -282,6 +290,7 @@ class PPOTorchRLModule(TorchRLModule):
         output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
+    @property
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
         if self._is_discrete:
@@ -290,13 +299,14 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        spec_dict = self.shared_encoder.input_spec()
+        spec_dict = copy.deepcopy(self.shared_encoder.input_spec)
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
         spec = ModelSpec(spec_dict)
         return spec
 
+    @property
     @override(RLModule)
     def output_specs_train(self) -> ModelSpec:
         spec = ModelSpec(

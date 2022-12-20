@@ -123,12 +123,12 @@ class RLModule(abc.ABC):
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
-        self._input_specs_train = self.input_specs_train()
-        self._output_specs_train = self.output_specs_train()
-        self._input_specs_exploration = self.input_specs_exploration()
-        self._output_specs_exploration = self.output_specs_exploration()
-        self._input_specs_inference = self.input_specs_inference()
-        self._output_specs_inference = self.output_specs_inference()
+        self._input_specs_train = self.input_specs_train
+        self._output_specs_train = self.output_specs_train
+        self._input_specs_exploration = self.input_specs_exploration
+        self._output_specs_exploration = self.output_specs_exploration
+        self._input_specs_inference = self.input_specs_inference
+        self._output_specs_inference = self.output_specs_inference
 
     @classmethod
     def from_model_config(
@@ -209,18 +209,22 @@ class RLModule(abc.ABC):
         """
         return ModelSpec({"action_dist": Distribution})
 
+    @property
     def output_specs_train(self) -> ModelSpec:
         """Returns the output specs of the forward_train method."""
         return ModelSpec()
 
+    @property
     def input_specs_inference(self) -> ModelSpec:
         """Returns the input specs of the forward_inference method."""
         return ModelSpec()
 
+    @property
     def input_specs_exploration(self) -> ModelSpec:
         """Returns the input specs of the forward_exploration method."""
         return ModelSpec()
 
+    @property
     def input_specs_train(self) -> ModelSpec:
         """Returns the input specs of the forward_train method."""
         return ModelSpec()

@@ -1,13 +1,14 @@
 import torch
-from torch import nn
 import tree
+from torch import nn
 
+from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
+from ray.rllib.models.specs.specs_dict import check_specs
+from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     override,
 )
-from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
-from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
 
 
 class TorchModelIO(ModelIO):
@@ -218,3 +219,7 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         Model.__init__(self)
         nn.Module.__init__(self)
         TorchModelIO.__init__(self, config)
+
+    @check_specs(input_spec="_input_spec", output_spec="_output_spec")
+    def forward(self, input_dict):
+        return self._forward(input_dict)
