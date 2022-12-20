@@ -3,7 +3,7 @@ pendulum-ppo:
     env: Pendulum-v1
     run: PPO
     stop:
-        episode_reward_mean: -500
+        episode_reward_mean: -400
         timesteps_total: 400000
     config:
         # TODO (Kourosh): Works only for torch.
@@ -16,7 +16,6 @@ pendulum-ppo:
         gamma: 0.95
         lr: 0.0003
         sgd_minibatch_size: 64
-        num_sgd_iter: 6
         observation_filter: MeanStdFilter
         seed: 42
         enable_connectors: true
