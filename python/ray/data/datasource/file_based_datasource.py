@@ -425,7 +425,9 @@ class _FileBasedDatasourceReader(Reader):
                 fs = fs.unwrap()
             ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
+                block_udf=_block_udf,
+                target_max_block_size=ctx.target_max_block_size,
+                splitting_enabled=ctx.block_splitting_enabled,
             )
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
