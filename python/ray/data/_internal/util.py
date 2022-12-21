@@ -316,14 +316,6 @@ class _MemActor:
                 f"[mem_tracing] Freed obj from {loc} at {dealloc_loc}, "
                 f"size {size_bytes}: {ref}"
             )
-            ok = False
-            try:
-                ray.get(ref)
-            except Exception as e:
-                print("Exception", e)
-                ok = True
-            if not ok:
-                print("OBJECT WAS NOT PROPERLY DEALLOCATED", ref)
         print("[mem_tracing] ===== End freed objects =====")
         print(f"[mem_tracing] Peak size bytes {self.peak_mem}")
         print(f"[mem_tracing] Current size bytes {self.cur_mem}")
