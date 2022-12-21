@@ -15,7 +15,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
 
@@ -662,7 +662,13 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_handles(self, name: str, unique: bool = False):
+    def get_log_file_handles(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ) -> Tuple[Optional[IO[AnyStr]], Optional[IO[AnyStr]]]:
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
@@ -671,40 +677,52 @@ class Node:
             name: descriptive string for this log file.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
 
         Returns:
-            A tuple of two file handles for redirecting (stdout, stderr), or
-            `(None, None)` if output redirection is disabled.
+            A tuple of two file handles for redirecting optional (stdout, stderr),
+            or `(None, None)` if output redirection is disabled.
         """
         if not self.should_redirect_logs():
             return None, None
 
-        log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
-        return open_log(log_stdout), open_log(log_stderr)
+        log_stdout = None
+        log_stderr = None
 
-    def _get_log_file_names(self, name: str, unique: bool = False):
+        if create_out:
+            log_stdout = open_log(self._get_log_file_name(name, "out", unique=unique))
+        if create_err:
+            log_stderr = open_log(self._get_log_file_name(name, "err", unique=unique))
+        return log_stdout, log_stderr
+
+    def _get_log_file_name(
+        self,
+        name: str,
+        suffix: str,
+        unique: bool = False,
+    ) -> str:
         """Generate partially randomized filenames for log files.
 
         Args:
             name: descriptive string for this log file.
+            suffix: suffix of the file. Usually it is .out of .err.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
             A tuple of two file names for redirecting (stdout, stderr).
         """
+        # strip if the suffix is something like .out.
+        suffix = suffix.strip(".")
 
         if unique:
-            log_stdout = self._make_inc_temp(
-                suffix=".out", prefix=name, directory_name=self._logs_dir
-            )
-            log_stderr = self._make_inc_temp(
-                suffix=".err", prefix=name, directory_name=self._logs_dir
+            filename = self._make_inc_temp(
+                suffix=f".{suffix}", prefix=name, directory_name=self._logs_dir
             )
         else:
-            log_stdout = os.path.join(self._logs_dir, f"{name}.out")
-            log_stderr = os.path.join(self._logs_dir, f"{name}.err")
-        return log_stdout, log_stderr
+            filename = os.path.join(self._logs_dir, f"{name}.{suffix}")
+        return filename
 
     def _get_unused_port(self, allocated_ports=None):
         if allocated_ports is None:
@@ -835,6 +853,11 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles(
+            "log_monitor", unique=True, create_out=False
+        )
         process_info = ray._private.services.start_log_monitor(
             self._logs_dir,
             self.gcs_address,
@@ -842,6 +865,8 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -859,6 +884,11 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles(
+            "dashboard", unique=True, create_out=False
+        )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
             raise_on_failure,
@@ -872,6 +902,8 @@ class Node:
             backup_count=self.backup_count,
             port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
