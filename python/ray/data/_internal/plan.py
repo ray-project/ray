@@ -311,7 +311,11 @@ class ExecutionPlan:
             context = DatasetContext.get_current()
 
             # Read stage is handled with the legacy execution impl for now.
-            if context.new_execution_backend and not self.is_read_stage_equivalent():
+            if (
+                context.new_execution_backend
+                and not self.is_read_stage_equivalent()
+                and self._stages_after_snapshot
+            ):
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.interfaces import ExecutionOptions
                 from ray.data._internal.execution.legacy_compat import (
@@ -320,10 +324,13 @@ class ExecutionPlan:
 
                 executor = BulkExecutor(ExecutionOptions())
                 blocks = execute_to_legacy_block_list(
-                    executor, self, allow_clear_input_blocks=allow_clear_input_blocks
+                    executor,
+                    self,
+                    allow_clear_input_blocks=allow_clear_input_blocks,
+                    dataset_uuid=self._dataset_uuid,
                 )
-                # TODO(ekl) this is confusing; we should be able to get rid of owned
-                # by consumer flag in favor of just properly setting "owns_blocks".
+                # TODO(ekl) we shouldn't need to set this; it should be set correctly
+                # by execute_to_legacy_block_list based on owns_blocks, but it isn't.
                 blocks._owned_by_consumer = self._run_by_consumer
                 stats = executor.get_stats()
 
@@ -346,7 +353,7 @@ class ExecutionPlan:
                     else:
                         stats = stats_builder.build(blocks)
 
-            stats.dataset_uuid = uuid.uuid4().hex
+            stats.dataset_uuid = self._dataset_uuid
             stats_summary_string = stats.summary_string(include_parent=False)
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
@@ -354,7 +361,6 @@ class ExecutionPlan:
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:

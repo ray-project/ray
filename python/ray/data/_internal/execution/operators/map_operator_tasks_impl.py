@@ -1,4 +1,4 @@
-from typing import Callable, Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Callable, Optional, List, Dict, TYPE_CHECKING
 
 import ray
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -15,13 +15,12 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_operator import MapOperator
 
 
-def _map_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]):
+def _map_task(fn: Callable, *blocks: List[Block]):
     """Remote function for a single operator task.
 
     Args:
-        fn: The callable that takes (Iterator[Block], input_metadata) as input and
-            returns Iterator[Block] as output.
-        input_metadata: The input metadata from the task ref bundle.
+        fn: The callable that takes Iterator[Block] as input and returns
+            Iterator[Block] as output.
         blocks: The concrete block values from the task ref bundle.
 
     Returns:
@@ -30,7 +29,7 @@ def _map_task(fn: Callable, input_metadata: Dict[str, Any], *blocks: List[Block]
     """
     output_metadata = []
     stats = BlockExecStats.builder()
-    for b_out in fn(blocks, input_metadata):
+    for b_out in fn(blocks):
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
         output_metadata.append(m_out)
@@ -75,7 +74,7 @@ class MapOperatorTasksImpl:
             input_blocks.append(block)
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         generator_ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn, bundle.input_metadata, *input_blocks
+            self._transform_fn, *input_blocks
         )
         task = _TaskState(bundle)
         self._tasks[generator_ref] = task

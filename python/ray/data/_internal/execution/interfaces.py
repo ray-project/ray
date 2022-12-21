@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Iterator, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Iterator, Tuple
 
 import ray
 from ray.data._internal.stats import DatasetStats, StatsDict
@@ -30,11 +30,6 @@ class RefBundle:
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
-
-    # Serializable extra data passed from upstream operator. This can be
-    # used to implement per-block behavior, for example, the last task
-    # for a Limit() operation truncates the block at a certain row.
-    input_metadata: Dict[str, Any] = field(default_factory=lambda: {})
 
     def __post_init__(self):
         for b in self.blocks:
@@ -82,11 +77,11 @@ class RefBundle:
 class ExecutionOptions:
     """Common options that should be supported by all Executor implementations."""
 
-    # Max number of in flight tasks.
+    # Max number of in flight tasks. This is a soft limit.
     parallelism_limit: Optional[int] = None
 
     # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB.
+    # memory usage to 1GB. This is a soft limit.
     memory_limit_bytes: Optional[int] = None
 
     # Set this to prefer running tasks on the same node as the output
@@ -106,6 +101,29 @@ class PhysicalOperator:
 
     Operators are stateful and non-serializable; they live on the driver side of the
     Dataset execution only.
+
+    Here's a simple example of implementing a basic "Map" operator:
+
+        class Map(PhysicalOperator):
+            def __init__(self):
+                self.active_tasks = []
+
+            def add_input(self, refs):
+                self.active_tasks.append(map_task.remote(refs))
+
+            def has_next(self):
+                ready, _ = ray.wait(self.active_tasks, timeout=0)
+                return len(ready) > 0
+
+            def get_next(self):
+                ready, remaining = ray.wait(self.active_tasks, num_returns=1)
+                self.active_tasks = remaining
+                return ready[0]
+
+    Note that the above operator fully supports both bulk and streaming execution,
+    since `add_input` and `get_next` can be called in any order. In bulk execution,
+    all inputs would be added up-front, but in streaming execution the calls could
+    be interleaved.
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
@@ -160,31 +178,69 @@ class PhysicalOperator:
         return None
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
-        """Called when an upstream result is available."""
+        """Called when an upstream result is available.
+
+        Inputs may be added in any order, and calls to `add_input` may be interleaved
+        with calls to `get_next` / `has_next` to implement streaming execution.
+
+        Args:
+            refs: The ref bundle that should be added as input.
+            input_index: The index identifying the input dependency producing the
+                input. For most operators, this is always `0` since there is only
+                one upstream input operator.
+        """
         raise NotImplementedError
 
     def inputs_done(self, input_index: int) -> None:
-        """Called when an upstream operator finishes."""
+        """Called when an upstream operator finishes.
+
+        This is called exactly once per input dependency. After this is called, the
+        upstream operator guarantees no more inputs will be added via `add_input`
+        for that input index.
+
+        Args:
+            input_index: The index identifying the input dependency producing the
+                input. For most operators, this is always `0` since there is only
+                one upstream input operator.
+        """
         pass
 
     def has_next(self) -> bool:
-        """Returns when a downstream output is available."""
+        """Returns when a downstream output is available.
+
+        When this returns true, it is safe to call `get_next()`.
+        """
         raise NotImplementedError
 
     def get_next(self) -> RefBundle:
-        """Get the next downstream output."""
+        """Get the next downstream output.
+
+        It is only allowed to call this if `has_next()` has returned True.
+        """
         raise NotImplementedError
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
-        """Get a list of object references the executor should wait on."""
+        """Get a list of object references the executor should wait on.
+
+        When a reference becomes ready, the executor must call
+        `notify_work_completed(ref)` to tell this operator of the state change.
+        """
         return []
 
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
-        """Executor calls this when the given work is completed and local."""
+        """Executor calls this when the given work is completed and local.
+
+        This must be called as soon as the operator is aware that `work_ref` is
+        ready.
+        """
         raise NotImplementedError
 
     def shutdown(self) -> None:
-        """Abort execution and release all resources used by this operator."""
+        """Abort execution and release all resources used by this operator.
+
+        This release any Ray resources acquired by this operator such as active
+        tasks, actors, and objects.
+        """
         pass
 
 
@@ -203,9 +259,19 @@ class Executor:
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> Iterator[RefBundle]:
-        """Start execution."""
+        """Start execution.
+
+        Args:
+            dag: The operator graph to execute.
+            initial_stats: The DatasetStats to prepend to the stats returned by the
+                executor. These stats represent actions done to compute inputs.
+        """
         raise NotImplementedError
 
     def get_stats(self) -> DatasetStats:
-        """Return stats for the execution so far."""
+        """Return stats for the execution so far.
+
+        This is generally called after `execute` has completed, but may be called
+        while iterating over `execute` results for streaming execution.
+        """
         raise NotImplementedError

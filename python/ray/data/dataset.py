@@ -299,7 +299,9 @@ class Dataset(Generic[T]):
         @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(
+                None, context.target_max_block_size, context.block_splitting_enabled
+            )
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 output_buffer.add(fn(row))
@@ -564,7 +566,9 @@ class Dataset(Generic[T]):
             **fn_kwargs,
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(
+                None, context.target_max_block_size, context.block_splitting_enabled
+            )
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(
                 batch_size, ensure_copy=not zero_copy_batch and batch_size is not None
@@ -840,7 +844,9 @@ class Dataset(Generic[T]):
         @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(
+                None, context.target_max_block_size, context.block_splitting_enabled
+            )
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -3697,7 +3703,6 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            assert False
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
             read_stage = None

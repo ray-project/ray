@@ -93,76 +93,67 @@ def test_util_score():
     )
     assert _resource_based_utilization_scorer(
         {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 0.5, 0.5)
+    ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
         {"GPU": 4},
         [{"GPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0.5, 0.5)
+    ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
         {"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 2, 2)
+    ) == (True, 1, 2, 2)
     assert _resource_based_utilization_scorer(
         {"GPU": 2},
         [{"GPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 2, 2)
+    ) == (True, 1, 2, 2)
     assert _resource_based_utilization_scorer(
         {"GPU": 1},
         [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (
-        1,
-        1,
-        1,
-    )
+    ) == (True, 1, 1, 1)
     assert _resource_based_utilization_scorer(
         {"GPU": 1, "CPU": 1},
         [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (2, 1, 1)
+    ) == (True, 2, 1, 1)
     assert _resource_based_utilization_scorer(
         {"GPU": 2, "TPU": 1},
         [{"GPU": 2}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0, 1)
+    ) == (True, 1, 0, 1)
     assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 64}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 64, 64)
+    ) == (True, 1, 64, 64)
     assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 32}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 8, 8)
+    ) == (True, 1, 8, 8)
     assert _resource_based_utilization_scorer(
         {"CPU": 64},
         [{"CPU": 16}, {"CPU": 16}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 8, 8)
+    ) == (True, 1, 8, 8)
 
 
 def test_gpu_node_util_score():
     # Avoid scheduling CPU tasks on GPU node.
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 1, "CPU": 1},
-            [{"CPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        is None
+    utilization_score = _resource_based_utilization_scorer(
+        {"GPU": 1, "CPU": 1},
+        [{"CPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     )
+    gpu_ok = utilization_score[0]
+    assert gpu_ok is False
     assert _resource_based_utilization_scorer(
         {"GPU": 1, "CPU": 1},
         [{"CPU": 1, "GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (
-        2,
-        1.0,
-        1.0,
-    )
+    ) == (True, 2, 1.0, 1.0)
     assert _resource_based_utilization_scorer(
         {"GPU": 1, "CPU": 1},
         [{"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0.0, 0.5)
+    ) == (True, 1, 0.0, 0.5)
 
 
 def test_zero_resource():
@@ -322,13 +313,23 @@ def test_gpu_node_avoid_cpu_task():
         },
     }
     r1 = [{"CPU": 1}] * 100
+    # max_to_add ten nodes allowed. All chosen to be "cpu".
     assert get_nodes_for(
         types,
         {},
         "empty_node",
-        100,
+        10,
         r1,
     ) == {"cpu": 10}
+    # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
+    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        11,
+        r1,
+    ) == {"cpu": 10, "gpu": 1}
     r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
     assert get_nodes_for(
         types,

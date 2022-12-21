@@ -31,5 +31,4 @@ def _merge_ref_bundles(x: RefBundle, y: RefBundle) -> RefBundle:
         return RefBundle(
             x.blocks + y.blocks,
             x.owns_blocks and y.owns_blocks,
-            {**x.input_metadata, **y.input_metadata},
         )

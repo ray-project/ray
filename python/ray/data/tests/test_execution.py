@@ -21,7 +21,7 @@ def s(s, f):
 
 
 def make_transform(block_fn):
-    def map_fn(block_iter, _):
+    def map_fn(block_iter):
         for block in block_iter:
             yield block_fn(block)
 

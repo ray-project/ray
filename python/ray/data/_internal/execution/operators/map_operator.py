@@ -29,7 +29,7 @@ class MapOperator(PhysicalOperator):
 
     def __init__(
         self,
-        transform_fn: Callable[[Iterator[Block], Dict], Iterator[Block]],
+        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
         name: str = "Map",
         compute_strategy: Optional[ComputeStrategy] = None,
@@ -60,7 +60,7 @@ class MapOperator(PhysicalOperator):
 
     def get_transform_fn(
         self,
-    ) -> Callable[[Iterator[Block], Dict[str, Any]], Iterator[Block]]:
+    ) -> Callable[[Iterator[Block]], Iterator[Block]]:
         """Return the block transformation to run on a worker process.
 
         This callable must be serializable as it will be sent to remote processes.
@@ -71,7 +71,6 @@ class MapOperator(PhysicalOperator):
                     this will yield only a single block, unless the transformation has
                     multiple inputs, e.g., in the SortReduce or ZipBlocks cases. It is
                     an iterator instead of a list for memory efficiency.
-                input_metadata: Extra metadata provided from the upstream operator.
         """
         return self._transform_fn
 
