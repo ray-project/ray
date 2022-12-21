@@ -139,7 +139,6 @@ def get_default_fixture_ray_kwargs():
 @contextmanager
 def _setup_redis(request):
     # Setup external Redis and env var for initialization.
-    param = getattr(request, "param", {})
     redis_ports = []
     for _ in range(3):
         with socket.socket() as s:
