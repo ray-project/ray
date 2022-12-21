@@ -16,7 +16,8 @@ PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
          "cp38-cp38"
          "cp39-cp39"
-         "cp310-cp310")
+         "cp310-cp310"
+         "cp311-cp311")
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
