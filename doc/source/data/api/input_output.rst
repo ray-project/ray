@@ -190,7 +190,7 @@ Torch
    from_torch
 
 HuggingFace
--------
+-----------
 
 .. autosummary::
    :toctree: doc/
@@ -206,6 +206,8 @@ TensorFlow
    :nosignatures:
 
    from_tf
+
+.. _data_source_api:
 
 Datasource API
 --------------
