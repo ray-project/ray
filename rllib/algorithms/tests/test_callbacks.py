@@ -176,7 +176,7 @@ class TestCallbacks(unittest.TestCase):
                 RandomEnv,
                 env_config={
                     "max_episode_len": 200,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                 },
             )
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
