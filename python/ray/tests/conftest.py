@@ -162,7 +162,7 @@ def _setup_redis(request):
             leader_port = redis_ports[0]
         processes.append(proc)
     scheme = "rediss://" if enable_tls else ""
-    address_str = f"{scheme}127.0.0.1:{redis_ports[2]}"
+    address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
     yield
