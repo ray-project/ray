@@ -81,6 +81,7 @@ def enable_external_redis():
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -94,7 +95,7 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
-    replica_of = None,
+    replica_of=None,
 ):
     """Start a single Redis server.
 
