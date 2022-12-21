@@ -347,7 +347,9 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config.simple_optimizer:
+        if self.config.get("enable_trainer_runner", False):
+            train_results = self.trainer_runner.update(train_batch)
+        elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -366,10 +368,29 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(
-                    policies=policies_to_update,
-                    global_vars=global_vars,
-                )
+                if self.config.get("enable_trainer_runner", False):
+                    weights = self.trainer_runner.get_weights()
+                    self.workers.foreach_worker(
+                        lambda worker: worker.set_weights(weights),
+                    )
+                else:
+                    self.workers.sync_weights(
+                        policies=policies_to_update,
+                        global_vars=global_vars,
+                    )
+
+        if self.config.get("enable_trainer_runner", False):
+            kl_dict = {
+                pid: pinfo[LEARNER_STATS_KEY].get("kl")
+                for pid, pinfo in train_results.items()
+            }
+            # triggers a special update method on RLOptimizer
+            self.trainer_runner.update_sync(update={"kl_values": kl_dict})
+
+            # Update global vars on local worker as well.
+            self.workers.local_worker().set_global_vars(global_vars)
+
+            return train_results
 
         # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

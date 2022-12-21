@@ -33,9 +33,11 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.train.trainer_runner import TrainerRunner
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -667,6 +669,14 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+
+        # create the trainer_runner
+        self.trainer_runner = None
+        if self.config.get("enable_trainer_runner", False):
+            # create remote trainers
+            trainers = []
+            # create the fault tolerant trainer runner
+            self.trainer_runner = TrainerRunner(trainers)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -1310,7 +1320,9 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("simple_optimizer") is True:
+            if self.config.get("enable_trainer_runner", False):
+                train_results = self.trainer_runner.update_sync(train_batch)
+            elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
@@ -1324,10 +1336,16 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.workers.sync_weights(
-                policies=list(train_results.keys()),
-                global_vars=global_vars,
-            )
+            if self.config.get("enable_trainer_runner", False):
+                weights = self.trainer_runner.get_weights()
+                self.workers.foreach_worker(
+                    lambda worker: worker.set_weights(weights),
+                )
+            else:
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
 
         return train_results
 
