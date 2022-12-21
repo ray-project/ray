@@ -89,6 +89,33 @@ def test_internal_free_non_owned(shutdown_only):
     assert "Plasma memory usage 0 MiB, 0 objects" in info, info
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_internal_free_edge_case(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "fetch_fail_timeout_milliseconds": 200,
+        },
+    )
+
+    @ray.remote
+    def gen():
+        return ray.put(np.ones(1024 * 1024 * 100))
+
+    @ray.remote
+    def free(x):
+        ray._private.internal_api.free(x[0], local_only=False)
+
+    x = ray.get(gen.remote())
+    ray.get(x)
+    ray.get(free.remote([x]))
+
+    # This currently hangs, since as a borrower we never subscribe for
+    # object deletion events. Check that we at least hit the fetch timeout.
+    with pytest.raises(ray.exceptions.ObjectFetchTimedOutError):
+        ray.get(x)
+
+
 def test_multiple_waits_and_gets(shutdown_only):
     # It is important to use three workers here, so that the three tasks
     # launched in this experiment can run at the same time.
