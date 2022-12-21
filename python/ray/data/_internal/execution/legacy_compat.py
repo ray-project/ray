@@ -104,7 +104,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for b in i.blocks:
                 _trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
 
-        def do_read(blocks: Iterator[Block], _) -> Iterator[Block]:
+        def do_read(blocks: Iterator[Block]) -> Iterator[Block]:
             for read_task in blocks:
                 for output_block in read_task():
                     yield output_block
@@ -142,7 +142,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         fn_args = fn_args + (stage.fn_args or ())
         fn_kwargs = stage.fn_kwargs or {}
 
-        def do_map(blocks: Iterator[Block], _) -> Iterator[Block]:
+        def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
             for output_block in block_fn(blocks, *fn_args, **fn_kwargs):
                 yield output_block
 

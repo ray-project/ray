@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Iterator, Tuple
+from typing import Dict, List, Optional, Iterator, Tuple
 
 import ray
 from ray.data._internal.stats import DatasetStats, StatsDict
