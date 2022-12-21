@@ -23,7 +23,8 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
                 "1.19.3"
-                "1.22.0")
+                "1.22.0"
+                "1.24.0")
 
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
