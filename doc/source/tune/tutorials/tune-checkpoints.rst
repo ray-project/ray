@@ -258,7 +258,9 @@ for further processing, and the experiment directory will be identical to the lo
 Examples
 --------
 
-Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
+Let's cover how to configure your synchronization storage location and synchronization frequency.
+We'll also show how to resume the experiment from the synchronized directory for each of the examples.
+See :ref:`tune-stopping-guide` for more information on resuming experiments.
 
 A simple cloud checkpointing example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -430,7 +432,7 @@ It is also used to load tuning results after a Ray Tune experiment has finished.
 Trial Checkpoints
 ~~~~~~~~~~~~~~~~~
 
-Trial-level checkpoints capture the per-trial state. They are saved by the :ref:`trainable <tune-key-concepts-trainables>` itself.
+Trial-level checkpoints capture the per-trial state. They are saved by the :ref:`trainable <tune_60_seconds_trainables>` itself.
 This often includes the model and optimizer states. Here are a few uses of trial checkpoints:
 
 - If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
