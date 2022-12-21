@@ -89,7 +89,6 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.sdk.returns["get_project"] = APIDict(
             result=APIDict(name="release_unit_tests")
         )
-        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.cluster_env = TEST_CLUSTER_ENV
         self.cluster_compute = TEST_CLUSTER_COMPUTE
@@ -100,10 +99,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
             test_name=f"unit_test__{self.__class__.__name__}",
         )
         self.sdk.reset()
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
     def testClusterName(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
             test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
@@ -116,6 +117,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
     def testSetClusterEnv(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
             test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
