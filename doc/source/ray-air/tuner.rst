@@ -93,6 +93,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
 - **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
+See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 
 How to configure a Tuner?
 -------------------------

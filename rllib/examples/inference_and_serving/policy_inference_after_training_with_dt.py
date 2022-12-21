@@ -5,7 +5,7 @@ inference (computing actions) in an environment.
 import argparse
 from pathlib import Path
 
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     # Create the env to do inference in.
     env = gym.make("CartPole-v1")
 
-    obs = env.reset()
+    obs, info = env.reset()
     input_dict = algo.get_initial_input_dict(obs)
 
     num_episodes = 0
@@ -156,13 +156,13 @@ if __name__ == "__main__":
         # Compute an action (`a`).
         a, _, extra = algo.compute_single_action(input_dict=input_dict)
         # Send the computed action `a` to the env.
-        obs, reward, done, _ = env.step(a)
+        obs, reward, terminated, truncated, _ = env.step(a)
         # Add to total rewards.
         total_rewards += reward
         # Is the episode `done`? -> Reset.
-        if done:
+        if terminated or truncated:
             print(f"Episode {num_episodes+1} - return: {total_rewards}")
-            obs = env.reset()
+            obs, info = env.reset()
             input_dict = algo.get_initial_input_dict(obs)
             num_episodes += 1
             total_rewards = 0.0

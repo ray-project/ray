@@ -224,22 +224,6 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 }
 
-TEST_P(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
-  for (int index = 0; index < profile_count; ++index) {
-    auto node_id = NodeID::FromRandom();
-    auto profile_table_data = Mocker::GenProfileTableData(node_id);
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
-        profile_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-  }
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
-            RayConfig::instance().maximum_profile_table_rows_count());
-}
-
 TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info

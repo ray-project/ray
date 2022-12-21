@@ -1,4 +1,4 @@
-from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
+from gymnasium.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
 import random
@@ -118,7 +118,9 @@ class Unity3DEnv(MultiAgentEnv):
 
     def step(
         self, action_dict: MultiAgentDict
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
         """Performs one multi-agent step through the game.
 
         Args:
@@ -172,27 +174,30 @@ class Unity3DEnv(MultiAgentEnv):
         # Do the step.
         self.unity_env.step()
 
-        obs, rewards, dones, infos = self._get_step_results()
+        obs, rewards, terminateds, truncateds, infos = self._get_step_results()
 
-        # Global horizon reached? -> Return __all__ done=True, so user
-        # can reset. Set all agents' individual `done` to True as well.
+        # Global horizon reached? -> Return __all__ truncated=True, so user
+        # can reset. Set all agents' individual `truncated` to True as well.
         self.episode_timesteps += 1
         if self.episode_timesteps > self.episode_horizon:
             return (
                 obs,
                 rewards,
+                terminateds,
                 dict({"__all__": True}, **{agent_id: True for agent_id in all_agents}),
                 infos,
             )
 
-        return obs, rewards, dones, infos
+        return obs, rewards, terminateds, truncateds, infos
 
-    def reset(self) -> MultiAgentDict:
+    def reset(
+        self, *, seed=None, options=None
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
         self.unity_env.reset()
-        obs, _, _, _ = self._get_step_results()
-        return obs
+        obs, _, _, _, infos = self._get_step_results()
+        return obs, infos
 
     def _get_step_results(self):
         """Collects those agents' obs/rewards that have to act in next `step`.
@@ -237,7 +242,7 @@ class Unity3DEnv(MultiAgentEnv):
                 )
 
         # Only use dones if all agents are done, then we should do a reset.
-        return obs, rewards, {"__all__": False}, infos
+        return obs, rewards, {"__all__": False}, {"__all__": False}, infos
 
     @staticmethod
     def get_policy_configs_for_game(
