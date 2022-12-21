@@ -14,7 +14,7 @@ Constructor
    :toctree: doc/
    :nosignatures:
 
-   GroupedDataset
+   grouped_dataset.GroupedDataset
 
 Computations / Descriptive Stats
 --------------------------------
@@ -23,12 +23,12 @@ Computations / Descriptive Stats
    :toctree: doc/
    :nosignatures:
 
-   GroupedDataset.count
-   GroupedDataset.sum
-   GroupedDataset.min
-   GroupedDataset.max
-   GroupedDataset.mean
-   GroupedDataset.std
+   grouped_dataset.GroupedDataset.count
+   grouped_dataset.GroupedDataset.sum
+   grouped_dataset.GroupedDataset.min
+   grouped_dataset.GroupedDataset.max
+   grouped_dataset.GroupedDataset.mean
+   grouped_dataset.GroupedDataset.std
 
 Function Application
 --------------------
@@ -37,8 +37,8 @@ Function Application
    :toctree: doc/
    :nosignatures:
 
-   GroupedDataset.aggregate
-   GroupedDataset.map_groups
+   grouped_dataset.GroupedDataset.aggregate
+   grouped_dataset.GroupedDataset.map_groups
 
 Aggregate Function
 ------------------
