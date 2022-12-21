@@ -1,10 +1,14 @@
 import abc
-from typing import Any, Mapping, Union
+from typing import Any, Mapping, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import TensorType
 from ray.util.annotations import PublicAPI
 
@@ -92,3 +96,9 @@ class RLOptimizer(abc.ABC):
         Args:
             state: The optimizer state.
         """
+
+    def as_multi_agent(self) -> "MultiAgentRLOptimizer":
+        """Wraps this optimizer in a MultiAgentOptimizer."""
+        from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
+
+        return MultiAgentRLOptimizer({DEFAULT_POLICY_ID: self})

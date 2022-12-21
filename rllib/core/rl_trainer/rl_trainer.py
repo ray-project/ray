@@ -34,13 +34,15 @@ class RLTrainer:
         optimizer_class: Type[RLOptimizer],
         optimizer_config: Mapping[str, Any],
         scaling_config: Mapping[str, Any],
-        distributed: bool = False
+        distributed: bool = False,
+        debug=False,
     ):
         self.module_class = module_class
         self.module_config = module_config
         self.optimizer_class = optimizer_class
         self.optimizer_config = optimizer_config
         self.distributed = distributed
+        self.debug = debug
 
     @staticmethod
     def on_after_compute_gradients(
@@ -82,20 +84,11 @@ class RLTrainer:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        print("eagerly?? ", tf.executing_eagerly())
-        print("loss: ", loss_numpy)
-        print("gradients: ", post_processed_gradients)
-        print(loss_numpy["total_loss"])
-        print(post_processed_gradients["policy"][0].numpy())
-        assert False
-        # print(convert_to_numpy(post_processed_gradients))
-        # print("loss: ", loss_numpy)
-        # grads = convert_to_numpy(post_processed_gradients)
-        # return {
-        #     "avg_reward": batch["rewards"].mean(),
-        #     **loss_numpy,
-        # }
-        return {}
+        batch = convert_to_numpy(batch)
+        return {
+            "avg_reward": batch["rewards"].mean(),
+            **loss_numpy,
+        }
 
     @abc.abstractmethod
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
@@ -141,5 +134,9 @@ class RLTrainer:
         if self.distributed:
             self._module, self._rl_optimizer = self.make_distributed()
         else:
-            self._module = self.module_class.from_model_config(**self.module_config)
-            self._rl_optimizer = self.optimizer_class(self._module, self.optimizer_config)
+            self._module = self.module_class.from_model_config(
+                **self.module_config
+            ).as_multi_agent()
+            self._rl_optimizer = self.optimizer_class(
+                self._module, self.optimizer_config
+            ).as_multi_agent()
