@@ -73,13 +73,12 @@ class LeelaChessZeroPolicy(TorchPolicy):
             for i, episode in enumerate(episodes):
                 env_state = episode.user_data["current_state"][-1]
                 # create tree root node
-                self.env.set_state(env_state)
-                obs, rew, done, info = self.env.env.last()
+                obs = self.env.set_state(env_state)
                 tree_node = Node(
                     state=env_state,
                     obs=obs,
-                    reward=rew,
-                    done=done,
+                    reward=0,
+                    done=False,
                     action=None,
                     parent=RootParentNode(env=self.env),
                     mcts=self.mcts,
@@ -119,10 +118,6 @@ class LeelaChessZeroPolicy(TorchPolicy):
         # final episode reward corresponds to the value (if not discounted)
         # for all transitions in episode
         final_reward = sample_batch["rewards"][-1]
-        # if r2 is enabled, then add the reward to the buffer and normalize it
-        if self.env.__class__.__name__ == "RankedRewardsEnvWrapper":
-            self.env.r2_buffer.add_reward(final_reward)
-            final_reward = self.env.r2_buffer.normalize(final_reward)
         sample_batch["value_label"] = final_reward * np.ones_like(sample_batch["t"])
         return sample_batch
 
