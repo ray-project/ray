@@ -3,6 +3,7 @@ import pathlib
 import sys
 import time
 import yaml
+from typing import Optional, Union
 
 from ray import serve
 from ray._private.utils import import_attr
@@ -25,12 +26,13 @@ def main():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-or-import-path")
-    parser.add_argument("--host")
-    parser.add_argument("--port")
     parser.add_argument("--app-dir")
+    parser.add_argument("--host")
+    parser.add_argument("--port", type=int)
     parser.add_argument("--blocking", action="store_true")
     parser.add_argument("--gradio", action="store_true")
     args = parser.parse_args()
+    host, port = args.host, args.port
 
     sys.path.insert(0, args.app_dir)
     if pathlib.Path(args.config_or_import_path).is_file():
@@ -74,8 +76,8 @@ def main():
         client = _private_api.serve_start(
             detached=True,
             http_options={
-                "host": args.host,
-                "port": args.port,
+                "host": host,
+                "port": port,
                 "location": "EveryNode",
             },
         )
@@ -87,7 +89,7 @@ def main():
             if args.gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            handle = serve.run(node, host=args.host, port=args.port)
+            handle = serve.run(node, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if args.gradio:

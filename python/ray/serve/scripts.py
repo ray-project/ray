@@ -312,9 +312,9 @@ def run(
         entrypoint=(
             f"python -c '{script}' "
             f"--config-or-import-path={config_or_import_path} "
-            f"--host={host} "
-            f"--port={port} "
             f"--app-dir={app_dir} "
+            + (f"--host={host} " if host is not None else "")
+            + (f"--port={port} " if port is not None else "")
             + ("--blocking " if blocking else "")
             + ("--gradio " if gradio else "")
         ),
