@@ -32,6 +32,7 @@ from ray._private.test_utils import (
     setup_tls,
     teardown_tls,
     enable_external_redis,
+    redis_replicas,
     start_redis_instance,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
@@ -140,7 +141,7 @@ def get_default_fixture_ray_kwargs():
 def _setup_redis(request):
     # Setup external Redis and env var for initialization.
     redis_ports = []
-    for _ in range(3):
+    for _ in range(redis_replicas()):
         with socket.socket() as s:
             s.bind(("", 0))
             port = s.getsockname()[1]

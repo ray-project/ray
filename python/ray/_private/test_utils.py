@@ -82,6 +82,12 @@ def enable_external_redis():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def redis_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,

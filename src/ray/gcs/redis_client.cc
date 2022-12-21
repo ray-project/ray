@@ -124,11 +124,11 @@ static void GetRedisShards(redisContext *context,
 RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {
   instrumented_io_context io_context;
   auto tmp_context = std::make_shared<RedisContext>(io_context);
-  tmp_context->Connect(options_.server_ip_,
-                       options_.server_port_,
-                       /*sharding=*/options_.enable_sharding_conn_,
-                       /*password=*/options_.password_,
-                       /*enable_ssl=*/options_.enable_ssl_);
+  RAY_CHECK_OK(tmp_context->Connect(options_.server_ip_,
+                                    options_.server_port_,
+                                    /*sharding=*/options_.enable_sharding_conn_,
+                                    /*password=*/options_.password_,
+                                    /*enable_ssl=*/options_.enable_ssl_));
   auto reply = tmp_context->RunArgvSync(std::vector<std::string>{"INFO", "REPLICATION"});
   RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis replication info";
   auto replication_info = reply->ReadAsString();
