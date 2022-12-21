@@ -806,17 +806,8 @@ def _resource_based_utilization_scorer(
     resources: List[ResourceDict],
     *,
     node_availability_summary: NodeAvailabilitySummary,
-) -> Optional[Tuple[float, float]]:
+) -> Optional[Tuple[bool, int, float, float]]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
-    any_gpu_task = any("GPU" in r for r in resources)
-
-    # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
-    # if there *is* a GPU task, then CPU tasks can be scheduled as well.
-    if AUTOSCALER_CONSERVE_GPU_NODES:
-        if is_gpu_node and not any_gpu_task:
-            return None
-
     fittable = []
     resource_types = set()
     for r in resources:
@@ -846,10 +837,21 @@ def _resource_based_utilization_scorer(
     if not util_by_resources:
         return None
 
-    # Prioritize matching multiple resource types first, then prioritize
-    # using all resources, then prioritize overall balance
-    # of multiple resources.
+    # Prefer not to launch a GPU node if there aren't any GPU requirements in the
+    # resource bundle.
+    gpu_ok = True
+    if AUTOSCALER_CONSERVE_GPU_NODES:
+        is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
+        any_gpu_task = any("GPU" in r for r in resources)
+        if is_gpu_node and not any_gpu_task:
+            gpu_ok = False
+
+    # Prioritize avoiding gpu nodes for non-gpu workloads first,
+    # then prioritize matching multiple resource types,
+    # then prioritize using all resources,
+    # then prioritize overall balance of multiple resources.
     return (
+        gpu_ok,
         num_matching_resource_types,
         min(util_by_resources),
         np.mean(util_by_resources),
