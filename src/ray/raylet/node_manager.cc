@@ -2952,8 +2952,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details = this->CreateOomKillMessageDetails(
-              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          std::string oom_kill_details =
+              this->CreateOomKillMessageDetails(worker_to_kill,
+                                                this->self_node_id_,
+                                                system_memory,
+                                                usage_threshold,
+                                                should_retry);
           std::string oom_kill_suggestions =
               this->CreateOomKillMessageSuggestions(worker_to_kill);
 
@@ -3002,7 +3006,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
-    float usage_threshold) const {
+    float usage_threshold,
+    bool should_retry) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb =
