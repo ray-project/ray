@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Tuple
 
 import copy
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 import pandas as pd
@@ -177,7 +177,7 @@ class TestOPE(unittest.TestCase):
             .debugging(seed=seed)
         )
 
-        # Read n_episodes of data, assuming that one line is one episode
+        # Read n episodes of data, assuming that one line is one episode.
         reader = DatasetReader(read_json(train_data))
         batches = [reader.next() for _ in range(n_episodes)]
         cls.batch = concat_samples(batches)
@@ -281,6 +281,7 @@ class TestFQE(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
+
         env = CliffWalkingWallEnv()
         cls.policy = CliffWalkingWallPolicy(
             observation_space=env.observation_space,
@@ -288,30 +289,37 @@ class TestFQE(unittest.TestCase):
             config={},
         )
         cls.gamma = 0.99
+
         # Collect single episode under optimal policy
         obs_batch = []
         new_obs = []
         actions = []
         action_prob = []
         rewards = []
-        dones = []
-        obs = env.reset()
-        done = False
-        while not done:
+        terminateds = []
+        truncateds = []
+
+        obs, info = env.reset()
+
+        terminated = truncated = False
+        while not terminated and not truncated:
             obs_batch.append(obs)
             act, _, extra = cls.policy.compute_single_action(obs)
             actions.append(act)
             action_prob.append(extra["action_prob"])
-            obs, rew, done, _ = env.step(act)
+            obs, rew, terminated, truncated, _ = env.step(act)
             new_obs.append(obs)
             rewards.append(rew)
-            dones.append(done)
+            terminateds.append(terminated)
+            truncateds.append(truncated)
+
         cls.batch = SampleBatch(
             obs=obs_batch,
             actions=actions,
             action_prob=action_prob,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
+            truncateds=truncateds,
             new_obs=new_obs,
         )
 

@@ -5,6 +5,7 @@ import pytest
 import sys
 import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import ray
@@ -61,7 +62,7 @@ class TrainableUtilTest(unittest.TestCase):
         )
         df = a.dataframe()
         checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])._local_path
-        assert checkpoint_dir.endswith("/checkpoint_000001/")
+        assert Path(checkpoint_dir).stem == "checkpoint_000001"
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir, "0/my/nested/chkpt")
@@ -187,6 +188,12 @@ class UnflattenDictTest(unittest.TestCase):
             {"0/a/0/b": 1, "0/a/1": 2, "1/0": 3, "1/1": 4, "1/2/c": 5, "2": 6}
         )
         assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
+
+    def test_unflatten_noop(self):
+        """Unflattening an already unflattened dict should be a noop."""
+        unflattened = {"a": 1, "b": {"c": {"d": [1, 2]}, "e": 3}, "f": {"g": 3}}
+        assert unflattened == unflatten_dict(unflattened)
+        assert unflattened == unflatten_list_dict(unflattened)
 
     def test_raises_error_on_key_conflict(self):
         """Ensure that an informative exception is raised on key conflict."""

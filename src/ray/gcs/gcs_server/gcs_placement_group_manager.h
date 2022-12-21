@@ -25,6 +25,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
@@ -122,6 +123,9 @@ class GcsPlacementGroup {
 
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
+
+  /// Check if there are unplaced bundles.
+  bool HasUnplacedBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
@@ -224,12 +228,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
-  explicit GcsPlacementGroupManager(
-      instrumented_io_context &io_context,
-      std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsResourceManager &gcs_resource_manager,
-      std::function<std::string(const JobID &)> get_ray_namespace);
+  GcsPlacementGroupManager(instrumented_io_context &io_context,
+                           std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
+                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                           GcsResourceManager &gcs_resource_manager,
+                           std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -362,6 +365,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Record internal metrics of the placement group manager.
   void RecordMetrics() const;
 
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
+  }
+
  private:
   /// Push a placement group to pending queue.
   ///
@@ -403,6 +410,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   // Update placement group load information so that the autoscaler can use it.
   void UpdatePlacementGroupLoad();
+
+  /// Check if this placement group is waiting for scheduling.
+  bool IsInPendingQueue(const PlacementGroupID &placement_group_id) const;
+
+  /// Reschedule this placement group if it still has unplaced bundles.
+  bool RescheduleIfStillHasUnplacedBundles(const PlacementGroupID &placement_group_id);
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -456,6 +469,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  UsageStatsClient *usage_stats_client_;
+
   /// Get ray namespace.
   std::function<std::string(const JobID &)> get_ray_namespace_;
 
@@ -463,6 +478,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// name, first keyed by namespace.
   absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, PlacementGroupID>>
       named_placement_groups_;
+
+  /// Total number of successfully created placement groups in the cluster lifetime.
+  int64_t lifetime_num_placement_groups_created_ = 0;
 
   // Debug info.
   enum CountType {

@@ -90,7 +90,8 @@ class EpisodeV2:
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
 
         self._has_init_obs: Dict[AgentID, bool] = {}
-        self._last_dones: Dict[AgentID, bool] = {}
+        self._last_terminateds: Dict[AgentID, bool] = {}
+        self._last_truncateds: Dict[AgentID, bool] = {}
         # Keep last info dict around, in case an environment tries to signal
         # us something.
         self._last_infos: Dict[AgentID, Dict] = {}
@@ -116,7 +117,9 @@ class EpisodeV2:
         # duration of this episode to the returned PolicyID.
         if agent_id not in self._agent_to_policy or refresh:
             policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                agent_id, episode=self, worker=self.worker
+                agent_id,  # agent_id
+                self,  # episode
+                worker=self.worker,
             )
         # Use already determined PolicyID.
         else:
@@ -162,8 +165,10 @@ class EpisodeV2:
 
     def add_init_obs(
         self,
+        *,
         agent_id: AgentID,
         init_obs: TensorType,
+        init_infos: Dict[str, TensorType],
         t: int = -1,
     ) -> None:
         """Add initial env obs at the start of a new episode
@@ -171,6 +176,7 @@ class EpisodeV2:
         Args:
             agent_id: Agent ID.
             init_obs: Initial observations.
+            init_infos: Initial infos dicts.
             t: timestamp.
         """
         policy = self.policy_map[self.policy_for(agent_id)]
@@ -191,6 +197,7 @@ class EpisodeV2:
             agent_index=self.agent_index(agent_id),
             env_id=self.env_id,
             init_obs=init_obs,
+            init_infos=init_infos,
             t=t,
         )
 
@@ -226,9 +233,13 @@ class EpisodeV2:
         self.agent_rewards[(agent_id, self.policy_for(agent_id))] += reward
         self._agent_reward_history[agent_id].append(reward)
 
-        # Keep track of last done info for agent.
-        if SampleBatch.DONES in values:
-            self._last_dones[agent_id] = values[SampleBatch.DONES]
+        # Keep track of last terminated info for agent.
+        if SampleBatch.TERMINATEDS in values:
+            self._last_terminateds[agent_id] = values[SampleBatch.TERMINATEDS]
+        # Keep track of last truncated info for agent.
+        if SampleBatch.TRUNCATEDS in values:
+            self._last_truncateds[agent_id] = values[SampleBatch.TRUNCATEDS]
+
         # Keep track of last info dict if available.
         if SampleBatch.INFOS in values:
             self.set_last_info(agent_id, values[SampleBatch.INFOS])
@@ -246,7 +257,7 @@ class EpisodeV2:
         Args:
             batch_builder: _PolicyCollectorGroup for saving the collected per-agent
                 sample batches.
-            is_done: If this episode is done.
+            is_done: If this episode is done (terminated or truncated).
             check_dones: Whether to make sure per-agent trajectories are actually done.
         """
         # TODO: (sven) Once we implement multi-agent communication channels,
@@ -266,15 +277,14 @@ class EpisodeV2:
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
-            if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
+            if is_done and check_dones and not pre_batch.is_terminated_or_truncated():
                 raise ValueError(
                     "Episode {} terminated for all agents, but we still "
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(self.episode_id, agent_id, self.policy_for(agent_id))
                     + "Please ensure that you include the last observations "
                     "of all live agents when setting done[__all__] to "
-                    "True. Alternatively, set no_done_at_end=True to "
-                    "allow this."
+                    "True."
                 )
 
             # Skip a trajectory's postprocessing (and thus using it for training),
@@ -284,7 +294,7 @@ class EpisodeV2:
                 continue
 
             if (
-                any(pre_batch[SampleBatch.DONES][:-1])
+                not pre_batch.is_single_trajectory()
                 or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
             ):
                 raise ValueError(
@@ -340,13 +350,19 @@ class EpisodeV2:
         If agent_id is None, return whether we have received any initial obs,
         in other words, whether this episode is completely fresh.
         """
-        if agent_id:
+        if agent_id is not None:
             return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
         else:
             return any(list(self._has_init_obs.values()))
 
     def is_done(self, agent_id: AgentID) -> bool:
-        return self._last_dones.get(agent_id, False)
+        return self.is_terminated(agent_id) or self.is_truncated(agent_id)
+
+    def is_terminated(self, agent_id: AgentID) -> bool:
+        return self._last_terminateds.get(agent_id, False)
+
+    def is_truncated(self, agent_id: AgentID) -> bool:
+        return self._last_truncateds.get(agent_id, False)
 
     def set_last_info(self, agent_id: AgentID, info: Dict):
         self._last_infos[agent_id] = info

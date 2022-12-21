@@ -11,7 +11,8 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.connector import Connector, ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
@@ -26,6 +27,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def __preprocessing_enabled(config: TrainerConfigDict):
+    if config._disable_preprocessor_api:
+        return False
+    # Same conditions as in RolloutWorker.__init__.
+    if (
+        config.is_atari
+        and not config.model.get("custom_preprocessor")
+        and config.preprocessor_pref == "deepmind"
+    ):
+        return False
+    if not config.model.get("custom_preprocessor") and config.preprocessor_pref is None:
+        return False
+    return True
+
+
+def __clip_rewards(config: TrainerConfigDict):
+    # Same logic as in RolloutWorker.__init__.
+    # We always clip rewards for Atari games.
+    return config.clip_rewards or config.is_atari
+
+
 @PublicAPI(stability="alpha")
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
@@ -33,14 +55,13 @@ def get_agent_connectors_from_config(
 ) -> AgentConnectorPipeline:
     connectors = []
 
-    if config["clip_rewards"] is True:
+    clip_rewards = __clip_rewards(config)
+    if clip_rewards is True:
         connectors.append(ClipRewardAgentConnector(ctx, sign=True))
-    elif type(config["clip_rewards"]) == float:
-        connectors.append(
-            ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
-        )
+    elif type(clip_rewards) == float:
+        connectors.append(ClipRewardAgentConnector(ctx, limit=abs(clip_rewards)))
 
-    if not config["_disable_preprocessor_api"]:
+    if __preprocessing_enabled(config):
         connectors.append(ObsPreprocessorConnector(ctx))
 
     # Filters should be after observation preprocessing
@@ -91,11 +112,9 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
-    assert policy.agent_connectors is None and policy.agent_connectors is None, (
-        "Can not create connectors for a policy that already has connectors. This "
-        "can happen if you add a Policy that has connectors attached to a "
-        "RolloutWorker with add_policy()."
-    )
+    assert (
+        policy.agent_connectors is None and policy.agent_connectors is None
+    ), "Can not create connectors for a policy that already has connectors."
 
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_config(ctx, config)
@@ -117,7 +136,7 @@ def restore_connectors_for_policy(
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config
-    return get_connector(ctx, name, params)
+    return get_connector(name, ctx, params)
 
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
@@ -139,13 +158,17 @@ def maybe_get_filters_for_syncing(rollout_worker, policy_id):
     # As long as the historic filter synchronization mechanism is in
     # place, we need to put filters into self.filters so that they get
     # synchronized
-    filter_connectors = rollout_worker.policy_map[policy_id].agent_connectors[
-        SyncedFilterAgentConnector
-    ]
+    policy = rollout_worker.policy_map[policy_id]
+    if not policy.agent_connectors:
+        return
+
+    filter_connectors = policy.agent_connectors[SyncedFilterAgentConnector]
     # There can only be one filter at a time
-    if filter_connectors:
-        assert len(filter_connectors) == 1, (
-            "ConnectorPipeline has multiple connectors of type "
-            "SyncedFilterAgentConnector but can only have one."
-        )
-        rollout_worker.filters[policy_id] = filter_connectors[0].filter
+    if not filter_connectors:
+        return
+
+    assert len(filter_connectors) == 1, (
+        "ConnectorPipeline has multiple connectors of type "
+        "SyncedFilterAgentConnector but can only have one."
+    )
+    rollout_worker.filters[policy_id] = filter_connectors[0].filter

@@ -275,6 +275,8 @@ class GetLogOptions:
     # The interval where new logs are streamed to.
     # Should be used only when media_type == stream.
     interval: Optional[float] = None
+    # The suffix of the log file if file resolution not through filename directly.
+    suffix: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -292,8 +294,8 @@ class GetLogOptions:
             raise ValueError(f"Invalid media type: {self.media_type}")
         if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "node_id or node_ip should be provided."
-                "Please provide at least one of them."
+                "node_id or node_ip must be provided as constructor arguments when no "
+                "actor or task_id is supplied as arguments."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -305,6 +307,8 @@ class GetLogOptions:
                 "None of actor_id, task_id, pid, or filename is provided. "
                 "At least one of them is required to fetch logs."
             )
+        if self.filename and self.suffix:
+            raise ValueError("suffix should not be provided together with filename.")
 
 
 # See the ActorTableData message in gcs.proto for all potential options that
@@ -350,7 +354,7 @@ class ActorState(StateSchema):
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
-    resource_mapping: dict = state_column(filterable=False, detail=True)
+    required_resources: dict = state_column(filterable=False, detail=True)
     #: Actor's death information in detail. None if the actor is not dead yet.
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
@@ -365,6 +369,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.

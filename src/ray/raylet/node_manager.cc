@@ -338,9 +338,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_service_(ray_syncer_),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
-          RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
-          RayConfig::instance().memory_monitor_interval_ms(),
+          RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -445,7 +445,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
-
+  // GCS will check the health of the service named with the node id.
+  // Fail to setup this will lead to the health check failure.
+  node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+      self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
@@ -1581,8 +1584,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Return the resources that were being used by this worker.
     local_task_manager_->ReleaseWorkerResources(worker);
 
-    local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-
     // Since some resources may have been released, we can try to dispatch more tasks.
     cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
@@ -1604,6 +1605,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << ", JobId: " << worker->GetAssignedJobId();
     }
   }
+
+  local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
 
   client->Close();
 
@@ -2071,6 +2074,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     return;
   }
   auto shutdown_after_reply = []() {
+    rpc::DrainAndResetServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
@@ -2927,6 +2931,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
             << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
       } else {
+        system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
         auto workers = worker_pool_.GetAllRegisteredWorkers();
         if (workers.empty()) {
           RAY_LOG_EVERY_MS(WARNING, 5000)
@@ -2937,7 +2942,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         }
         RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill =
-            worker_killing_policy.SelectWorkerToKill(workers, *memory_monitor_.get());
+            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -2945,8 +2950,6 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          static std::string oom_kill_title =
-              "Task was killed due to the node running low on memory. ";
           std::string oom_kill_details = this->CreateOomKillMessageDetails(
               worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
           std::string oom_kill_suggestions =
@@ -2960,8 +2963,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << oom_kill_suggestions;
 
           std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss << oom_kill_title << oom_kill_details
-                                 << oom_kill_suggestions;
+          worker_exit_message_ss
+              << "Task was killed due to the node running low on memory.\n"
+              << oom_kill_details << "\n"
+              << oom_kill_suggestions;
           std::string worker_exit_message = worker_exit_message_ss.str();
 
           rpc::RayErrorInfo task_failure_reason;
@@ -3003,18 +3008,35 @@ const std::string NodeManager::CreateOomKillMessageDetails(
       FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
   std::stringstream oom_kill_details_ss;
 
+  auto pid = worker->GetProcess().GetId();
+  int64_t used_bytes = 0;
+  const auto pid_entry = system_memory.process_used_bytes.find(pid);
+  if (pid_entry != system_memory.process_used_bytes.end()) {
+    used_bytes = pid_entry->second;
+  } else {
+    return "";
+    RAY_LOG_EVERY_MS(INFO, 60000)
+        << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+  }
+  std::string process_used_bytes_gb =
+      FormatFloat(static_cast<float>(used_bytes) / 1024 / 1024 / 1024, 2);
+
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
-      << ", name= " << worker->GetAssignedTask().GetTaskSpecification().GetName()
-      << ") was running was " << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
-      << usage_fraction << "), which exceeds the memory usage threshold of "
-      << usage_threshold << ". Ray killed this worker (ID: " << worker->WorkerId()
+      << ", name=" << worker->GetAssignedTask().GetTaskSpecification().GetName()
+      << ", pid=" << worker->GetProcess().GetId()
+      << ", memory used=" << process_used_bytes_gb << "GB) was running was "
+      << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+      << "), which exceeds the memory usage threshold of " << usage_threshold
+      << ". Ray killed this worker (ID: " << worker->WorkerId()
       << ") because it was the most recently scheduled task; to see more "
          "information about memory usage on this node, use `ray logs raylet.out "
          "-ip "
       << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
-      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << ". ";
+      << worker->WorkerId() << "*out -ip " << worker->IpAddress()
+      << ". Top 10 memory users:\n"
+      << MemoryMonitor::TopNMemoryDebugString(10, system_memory);
   return oom_kill_details_ss.str();
 }
 
@@ -3040,9 +3062,9 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
       << not_retriable_recommendation_ss.str()
       << "To adjust the kill "
          "threshold, set the environment variable "
-         "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+         "`RAY_memory_usage_threshold` when starting Ray. To disable "
          "worker killing, set the environment variable "
-         "`RAY_memory_monitor_interval_ms` to zero.";
+         "`RAY_memory_monitor_refresh_ms` to zero.";
   return oom_kill_suggestions_ss.str();
 }
 
@@ -3051,7 +3073,7 @@ void NodeManager::SetTaskFailureReason(const TaskID &task_id,
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
   ray::TaskFailureEntry entry(failure_reason);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
-  if (result.second) {
+  if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
                         "task, the previous failure will be removed. Task id: "
                      << task_id;

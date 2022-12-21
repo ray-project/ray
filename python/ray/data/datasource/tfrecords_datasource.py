@@ -22,7 +22,7 @@ class TFRecordDatasource(FileBasedDatasource):
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         from google.protobuf.message import DecodeError
-        import pandas as pd
+        import pyarrow as pa
         import tensorflow as tf
 
         for record in _read_records(f):
@@ -36,7 +36,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pd.DataFrame([_convert_example_to_dict(example)])
+            yield pa.Table.from_pydict(_convert_example_to_dict(example))
 
     def _write_block(
         self,
@@ -64,13 +64,26 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[str, Union[bytes, List[bytes], float, List[float], int, List[int]]]:
+) -> Dict[
+    str,
+    Union[
+        List[bytes],
+        List[List[bytes]],
+        List[float],
+        List[List[float]],
+        List[int],
+        List[List[int]],
+    ],
+]:
     record = {}
     for feature_name, feature in example.features.feature.items():
         value = _get_feature_value(feature)
+        # Return value itself if the list has single value.
+        # This is to give better user experience when writing preprocessing UDF on
+        # these single-value lists.
         if len(value) == 1:
             value = value[0]
-        record[feature_name] = value
+        record[feature_name] = [value]
     return record
 
 

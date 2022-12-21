@@ -16,8 +16,10 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import uuid
+
+import requests
 from ray._raylet import Config
 
 import grpc
@@ -39,7 +41,13 @@ from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.core.generated import (
+    gcs_pb2,
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -540,6 +548,52 @@ async def async_wait_for_condition_async_predicate(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def get_metric_check_condition(
+    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+) -> Callable[[], bool]:
+    """A condition to check if a prometheus metrics reach a certain value.
+    This is a blocking check that can be passed into a `wait_for_condition`
+    style function.
+
+    Args:
+      metrics_to_check: A map of metric lable to values to check, to ensure
+        that certain conditions have been reached. If a value is None, just check
+        that the metric was emitted with any value.
+
+    Returns:
+      A function that returns True if all the metrics are emitted.
+    """
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+    def f():
+        for metric_name, metric_value in metrics_to_check.items():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            found_metric = False
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
+                        found_metric = True
+            if not found_metric:
+                print(
+                    "Didn't find metric, all metric names: ",
+                    metric_names,
+                    "all values",
+                    metric_samples,
+                )
+                return False
+        return True
+
+    return f
 
 
 def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
@@ -1263,7 +1317,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = asyncio.get_event_loop().create_future()
+            self.done = ray._private.utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1562,6 +1616,34 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     return reply
 
 
+# Gets resource usage assuming gcs is local.
+def get_resource_usage(gcs_address, timeout=10):
+    if not gcs_address:
+        gcs_address = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
+    )
+
+    gcs_node_resources_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
+        gcs_channel
+    )
+
+    request = gcs_service_pb2.GetAllResourceUsageRequest()
+    response = gcs_node_resources_stub.GetAllResourceUsage(request, timeout=timeout)
+    resources_batch_data = response.resource_usage_data
+
+    return resources_batch_data
+
+
+# Gets the load metrics report assuming gcs is local.
+def get_load_metrics_report(webui_url):
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
+
+
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -1691,3 +1773,14 @@ def get_gcs_memory_used():
     }
     assert "gcs_server" in m
     return sum(m.values())
+
+
+def wandb_populate_run_location_hook():
+    """
+    Example external hook to populate W&B project and group env vars in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
