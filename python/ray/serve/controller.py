@@ -15,7 +15,7 @@ from ray._private.utils import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray._private.gcs_utils import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
@@ -583,6 +583,11 @@ class ServeController:
                 except RayTaskError:
                     serve_app_status = ApplicationStatus.DEPLOY_FAILED
                     serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+                except RuntimeEnvSetupError:
+                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
+                    serve_app_message = (
+                        f"Runtime env setup failed:\n{traceback.format_exc()}"
+                    )
 
         app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
