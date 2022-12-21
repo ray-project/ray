@@ -67,13 +67,18 @@ class RefBundle:
 
 @dataclass
 class ExecutionOptions:
-    """Common options that should be supported by all Executor implementations."""
+    """Common options for execution.
 
-    # Max number of in flight tasks. This is a soft limit.
+    Some options may not be supported on all executors (e.g., parallelism limit).
+    """
+
+    # Max number of in flight tasks. This is a soft limit, and is not supported in
+    # bulk execution mode.
     parallelism_limit: Optional[int] = None
 
     # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB. This is a soft limit.
+    # memory usage to 1GB. This is a soft limit, and is not supported in
+    # bulk execution mode.
     memory_limit_bytes: Optional[int] = None
 
     # Set this to prefer running tasks on the same node as the output
