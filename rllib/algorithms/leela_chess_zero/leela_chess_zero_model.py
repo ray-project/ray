@@ -44,8 +44,8 @@ class LeelaChessZeroModel(TorchModelV2, nn.Module):
         else:
             self.input_channel_size = 19
 
-        filters = 24
-        res_blocks = 1
+        filters = 32
+        res_blocks = 3
         se_channels = 0
         policy_conv_size = 73
         policy_output_size = 4672
@@ -110,13 +110,18 @@ class LeelaChessZeroModel(TorchModelV2, nn.Module):
             x = self.conv1(x)
             x = self.conv2(x)
             if self.se_channels > 0:
-                x = self.pool(x)
-                x = torch.flatten(x, 1)
-                x = F.relu(self.se1(x))
-                x = self.se2(x)
-                w, b = torch.tensor_split(x, 2, dim=-1)
-                residual = torch.reshape(residual, (-1, self.filters, 64))
-                x = torch.mul(w, residual) + b
+                input = x
+                se = self.pool(x)
+                se = torch.flatten(se, 1)
+                se = F.relu(self.se1(se))
+                se = self.se2(se)
+                w, b = torch.tensor_split(se, 2, dim=-1)
+                z = torch.sigmoid(w)
+                input = torch.reshape(input, (-1, self.filters, 64))
+                z = torch.reshape(z, (-1, self.filters, 1))
+                se = torch.mul(z, input)
+                se = torch.reshape(se, (-1, self.filters, 8, 8))
+                se += b
             x += residual
             residual = x
             x = torch.relu(x)
