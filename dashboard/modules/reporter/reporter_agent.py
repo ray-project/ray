@@ -344,6 +344,17 @@ class ReporterAgent(
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
+    async def MemoryProfiling(self, request, context):
+        pid = request.pid
+        duration = request.duration
+        format = request.format
+        native = request.native
+        p = CpuProfilingManager(self._log_dir)
+        success, output = await p.memory_profile(
+            pid, format=format, duration=duration, native=native
+        )
+        return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:

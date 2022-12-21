@@ -62,6 +62,19 @@ message CpuProfilingReply {
   string output = 2;
 }
 
+message MemoryProfilingRequest {
+  uint32 pid = 1;
+  optional string format = 2;
+  optional uint32 duration = 3;
+  // If using native flag for py-spy
+  optional bool native = 4;
+}
+
+message MemoryProfilingReply {
+  bool success = 1;
+  string output = 2;
+}
+
 message ReportMetricsRequest {
   repeated MetricPoint metrics_points = 1;
 }
@@ -95,6 +108,7 @@ service ReporterService {
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
+  rpc MemoryProfiling(MemoryProfilingRequest) returns (MemoryProfilingReply);
 }
 
 message StreamLogRequest {

@@ -350,6 +350,15 @@ const ActorTable = ({
                         CPU&nbsp;Flame&nbsp;Graph
                       </a>
                       <br />
+                      <a
+                        href={`/worker/memory_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
+                        target="_blank"
+                        title="Profile the Python worker for 5 seconds (default) and display a memory flame graph."
+                        rel="noreferrer"
+                      >
+                        Memory&nbsp;Flame&nbsp;Graph
+                      </a>
+                      <br />
                     </React.Fragment>
                   )}
                 </TableCell>

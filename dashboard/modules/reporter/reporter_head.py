@@ -148,9 +148,46 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
-                    "Content-Type": "image/svg+xml"
+                    "Content-Type": "text/html"
                     if format == "flamegraph"
                     else "text/plain"
+                },
+            )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+    @routes.get("/worker/memory_profile")
+    async def mem_profile(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        duration = int(req.query.get("duration", 5))
+        if duration > 60:
+            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        format = req.query.get("format", "flamegraph")
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending memory profiling request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
+        )
+        reply = await reporter_stub.MemoryProfiling(
+            reporter_pb2.MemoryProfilingRequest(
+                pid=pid, duration=duration, format=format, native=native
+            )
+        )
+        if reply.success:
+            logger.info(
+                "Returning profiling response, size {}".format(len(reply.output))
+            )
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "text/html"
                 },
             )
         else:
