@@ -131,7 +131,7 @@ class TestPPO(unittest.TestCase):
                         }
 
                         if lstm:
-                            state_in = module.pi_encoder.get_inital_state()
+                            state_in = module.get_initial_state()
                             state_in = tree.map_structure(
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
@@ -167,8 +167,7 @@ class TestPPO(unittest.TestCase):
                         obs = env.reset()
                         tstep = 0
                         if lstm:
-                            # TODO (Artur): Multiple states
-                            state_in = module.pi_encoder.get_inital_state()
+                            state_in = module.get_initial_state()
                             state_in = tree.map_structure(
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
