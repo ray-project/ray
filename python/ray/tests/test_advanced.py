@@ -10,6 +10,7 @@ import pytest
 
 import ray._private.profiling as profiling
 import ray.cluster_utils
+from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
@@ -53,6 +54,66 @@ def test_internal_free(shutdown_only):
     time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(ObjectFreedError):
         ray.get(big_id)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_internal_free_non_owned(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    @ray.remote
+    def gen_data():
+        return ray.put(np.zeros(1024 * 1024))
+
+    @ray.remote
+    def do_free(ref_list):
+        ray._private.internal_api.free(ref_list, local_only=False)
+        for ref in ref_list:
+            with pytest.raises(ObjectFreedError):
+                ray.get(ref)
+
+    # Can free locally owned objects from remote worker.
+    ref_1 = ray.put(np.zeros(1024 * 1024))
+    ref_2 = ray.put(np.zeros(1024 * 1024))
+    ray.get(do_free.remote([ref_1, ref_2]))
+
+    # Can free remotely owned objects from local worker.
+    ref_3 = ray.get(gen_data.remote())
+    ref_4 = ray.get(gen_data.remote())
+    ray._private.internal_api.free([ref_3, ref_4], local_only=False)
+    for ref in [ref_3, ref_4]:
+        with pytest.raises(ObjectFreedError):
+            ray.get(ref)
+
+    # Memory was really freed.
+    info = memory_summary(info.address_info["address"])
+    assert "Plasma memory usage 0 MiB, 0 objects" in info, info
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_internal_free_edge_case(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "fetch_fail_timeout_milliseconds": 200,
+        },
+    )
+
+    @ray.remote
+    def gen():
+        return ray.put(np.ones(1024 * 1024 * 100))
+
+    @ray.remote
+    def free(x):
+        ray._private.internal_api.free(x[0], local_only=False)
+
+    x = ray.get(gen.remote())
+    ray.get(x)
+    ray.get(free.remote([x]))
+
+    # This currently hangs, since as a borrower we never subscribe for
+    # object deletion events. Check that we at least hit the fetch timeout.
+    with pytest.raises(ray.exceptions.ObjectFetchTimedOutError):
+        ray.get(x)
 
 
 def test_multiple_waits_and_gets(shutdown_only):
