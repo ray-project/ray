@@ -1,0 +1,19 @@
+connect-4-leela-zero:
+    env: ray.rllib.examples.env.pettingzoo_connect4.MultiAgentConnect4
+    run: LeelaChessZero
+    pass_criteria:
+      policy_reward_mean/p_0: 0.5
+    stop:
+      policy_reward_mean/p_0: 0.9
+      timesteps_total: 100000
+    config:
+      # Only supported for torch right now.
+      framework: torch
+      num_workers: 8
+      model:
+        custom_model: ray.rllib.tuned_examples.leela_chess_zero.custom_model.DenseModel
+      multi_agent:
+        policies: ["p_0","p_1"]
+        policies_to_train: ["p_0"]
+        policy_mapping_fn:
+          type: ray.rllib.tuned_examples.leela_chess_zero.custom_model.PolicyMappingFn
