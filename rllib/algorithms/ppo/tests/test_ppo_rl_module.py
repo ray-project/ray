@@ -22,7 +22,9 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
-def get_expected_model_config(env, lstm, shared_encoder) -> PPOModuleConfig:
+def get_expected_model_config(
+    env: gym.Env, lstm: bool, shared_encoder: bool
+) -> PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
@@ -114,8 +116,8 @@ class TestPPO(unittest.TestCase):
                             # TODO (Artur): Implement
                             continue
                         print(
-                            f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
-                            f"{shared_encoder}] | LSTM={lstm}"
+                            f"[ENV={env_name}] | [SHARED={shared_encoder}] | LSTM"
+                            f"={lstm}"
                         )
                         env = gym.make(env_name)
 
@@ -134,11 +136,11 @@ class TestPPO(unittest.TestCase):
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
                             batch[STATE_IN] = state_in
-                            batch["seq_lens"] = torch.Tensor([1])
+                            batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
                         if fwd_fn == "forward_exploration":
                             module.forward_exploration(batch)
-                        elif fwd_fn == "forward_inference":
+                        else:
                             module.forward_inference(batch)
 
     def test_forward_train(self):
@@ -170,7 +172,7 @@ class TestPPO(unittest.TestCase):
                             state_in = tree.map_structure(
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
-                            output_states = state_in
+                            initial_state = state_in
                         while tstep < 10:
                             if lstm:
                                 input_batch = {
@@ -196,14 +198,6 @@ class TestPPO(unittest.TestCase):
                             }
                             if lstm:
                                 assert STATE_OUT in fwd_out
-                                if tstep > 0:  # First states are already added
-
-                                    # Extend nested batches of states
-                                    output_states = tree.map_structure(
-                                        lambda *s: torch.cat((s[0], s[1])),
-                                        output_states,
-                                        state_in,
-                                    )
                                 state_in = fwd_out[STATE_OUT]
                             batches.append(output_batch)
                             obs = new_obs
@@ -217,8 +211,8 @@ class TestPPO(unittest.TestCase):
                             for k, v in batch.items()
                         }
                         if lstm:
-                            fwd_in[STATE_IN] = output_states
-                            fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([1] * 10)
+                            fwd_in[STATE_IN] = initial_state
+                            fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
                         # forward train
                         # before training make sure module is on the right device and in

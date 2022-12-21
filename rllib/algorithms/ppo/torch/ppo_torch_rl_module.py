@@ -205,13 +205,12 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if isinstance(self.config.shared_encoder_config, LSTMConfig):
-            # TODO (Kourosh): How does this work in RLlib today?
-            if isinstance(self.shared_encoder, LSTMEncoder):
-                return self.shared_encoder.get_inital_state()
-            else:
-                return self.pi_encoder.get_inital_state()
-        return {}
+        if isinstance(self.shared_encoder, LSTMEncoder):
+            return self.shared_encoder.get_inital_state()
+        elif isinstance(self.pi_encoder, LSTMEncoder):
+            return self.pi_encoder.get_inital_state()
+        else:
+            return NestedDict({})
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
