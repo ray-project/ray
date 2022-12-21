@@ -1,13 +1,16 @@
 import ray
 import unittest
+from typing import Dict, List, Optional, Union, Tuple
 import numpy as np
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.mock_env import MockEnv3
 from ray.rllib.policy import Policy
 from ray.rllib.utils import override
+from ray.rllib.utils.typing import TensorStructType, TensorType
 
 NUM_STEPS = 25
 NUM_AGENTS = 4
@@ -75,15 +78,16 @@ class EchoPolicy(Policy):
     @override(Policy)
     def compute_actions(
         self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        episodes=None,
-        explore=None,
-        timestep=None,
-        **kwargs
-    ):
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["Episode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         return obs_batch.argmax(axis=1), [], {}
 
 

@@ -1,6 +1,6 @@
 # Algolia-Crawler-Verif: C37A60AFB138256B
 User-agent: *
-Allow: /
+Disallow: /
 Allow: /*/latest/
 Allow: /en/latest/   # Fallback for bots that don't understand wildcards
 Allow: /*/master/
