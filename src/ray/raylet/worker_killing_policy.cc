@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include <gtest/gtest_prod.h>
 
@@ -136,6 +137,9 @@ std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
   } else if (killing_policy_str == kLifoPolicy) {
     RAY_LOG(INFO) << "Running RetriableLIFO policy.";
     return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
+  } else if (killing_policy_str == kGroupByOwner) {
+    RAY_LOG(INFO) << "Running GroupByOwner policy.";
+    return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
   } else {
     RAY_LOG(ERROR)
         << killing_policy_str

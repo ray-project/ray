@@ -28,6 +28,7 @@ namespace raylet {
 
 constexpr char kGroupByDepthPolicy[] = "group_by_depth";
 constexpr char kLifoPolicy[] = "retriable_lifo";
+constexpr char kGroupByOwner[] = "group_by_owner";
 
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
