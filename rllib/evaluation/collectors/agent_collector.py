@@ -153,7 +153,6 @@ class AgentCollector:
             #  space that is not a gym.Space
             if (
                 hasattr(vr.space, "shape")
-                # and vr.space.shape is not None
                 and not (
                     np.sum(
                         (
