@@ -149,9 +149,9 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        # Mark whether the `session.report()` API is being used,
+        # Mark whether the `ray.air.session.report()` API is being used,
         # to throw an error if `tune.report()` is called as well
-        self._has_reported = False
+        self._air_session_has_reported = False
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -160,7 +160,7 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        self._has_reported = False
+        self._air_session_has_reported = False
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -239,7 +239,7 @@ class _StatusReporter:
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): Tons of optimizations.
-        self._has_reported = True
+        self._air_session_has_reported = True
         if checkpoint:
             training_iteration = self._get_training_iteration()
             checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
