@@ -797,8 +797,6 @@ void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
 rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
   rpc::TaskInfoEntry task_info;
-  return task_info;
-
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
@@ -890,12 +888,15 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
   task_event.set_job_id(task_entry.spec.JobId().Binary());
   task_event.set_attempt_number(task_entry.spec.AttemptNumber());
   auto state_updates = task_event.mutable_state_updates();
+  auto status_event = state_updates->add_status_events();
+  status_event->set_timestamp(absl::GetCurrentTimeNanos());
+  status_event->set_status(status);
+
   switch (status) {
   case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
     // Initialize a new TaskInfoEntry
     auto task_info = MakeTaskInfoEntry(task_entry.spec);
     task_event.mutable_task_info()->Swap(&task_info);
-    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
     break;
   }
   case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
@@ -905,19 +906,12 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
            "SUBMITTED_TO_WORKER.";
     // Update the node id
     state_updates->set_node_id(task_entry.GetNodeId().Binary());
-    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
     break;
   }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT:
+  case rpc::TaskStatus::FAILED:
   case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
+    // No other actions other than adding status event timestamp.
     break;
   }
   default: {

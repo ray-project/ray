@@ -65,7 +65,9 @@ class TaskEventBufferTest : public ::testing::Test {
     task_events.set_task_id(task_id.Binary());
     task_events.set_attempt_number(attempt_num);
     auto status_update = task_events.mutable_state_updates();
-    status_update->set_running_ts(running_ts);
+    auto status_event = status_update->add_status_events();
+    status_event->set_status(rpc::TaskStatus::RUNNING);
+    status_event->set_timestamp(running_ts);
     return task_events;
   }
 

@@ -173,13 +173,28 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   // Populate reply.
+  auto limit = request.has_limit() ? request.limit() : -1;
+  // Simple limit.
+  auto count = 0;
+  int32_t num_profile_event_limit = 0;
+  int32_t num_status_event_limit = 0;
   for (auto &task_event : task_events) {
-    auto events = reply->add_events_by_task();
-    events->Swap(&task_event);
+    if (limit < 0 || count++ < limit) {
+      auto events = reply->add_events_by_task();
+      events->Swap(&task_event);
+    } else {
+      num_profile_event_limit +=
+          task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
+      num_status_event_limit += task_event.has_state_updates()
+                                    ? task_event.state_updates().status_events_size()
+                                    : 0;
+    }
   }
 
-  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_);
-  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_);
+  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_ +
+                                             num_profile_event_limit);
+  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_ +
+                                            num_status_event_limit);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
@@ -207,10 +222,8 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 
     if (replaced_task_events) {
       if (replaced_task_events->has_state_updates()) {
-        // TODO(rickyx): should we un-flatten the status updates into a list of
-        // StatusEvents? so that we could get an accurate number of status change
-        // events being dropped like profile events.
-        total_num_status_task_events_dropped_++;
+        total_num_status_task_events_dropped_ +=
+            replaced_task_events->state_updates().status_events_size();
       }
       if (replaced_task_events->has_profile_events()) {
         total_num_profile_task_events_dropped_ +=
