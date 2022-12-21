@@ -146,86 +146,85 @@ class TestPPO(unittest.TestCase):
     def test_forward_train(self):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            for fwd_fn in ["forward_exploration", "forward_inference"]:
-                for shared_encoder in [False, True]:
-                    for lstm in [True, False]:
-                        if lstm and shared_encoder:
-                            # Not yet implemented
-                            # TODO (Artur): Implement
-                            continue
-                        print(
-                            f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED="
-                            f"{shared_encoder}] | LSTM={lstm}"
+            for shared_encoder in [False, True]:
+                for lstm in [True, False]:
+                    if lstm and shared_encoder:
+                        # Not yet implemented
+                        # TODO (Artur): Implement
+                        continue
+                    print(
+                        f"[ENV={env_name}] | [SHARED="
+                        f"{shared_encoder}] | LSTM={lstm}"
+                    )
+                    env = gym.make(env_name)
+
+                    config = get_expected_model_config(env, lstm, shared_encoder)
+                    module = PPOTorchRLModule(config)
+
+                    # collect a batch of data
+                    batches = []
+                    obs = env.reset()
+                    tstep = 0
+                    if lstm:
+                        state_in = module.get_initial_state()
+                        state_in = tree.map_structure(
+                            lambda x: x[None], convert_to_torch_tensor(state_in)
                         )
-                        env = gym.make(env_name)
-
-                        config = get_expected_model_config(env, lstm, shared_encoder)
-                        module = PPOTorchRLModule(config)
-
-                        # collect a batch of data
-                        batches = []
-                        obs = env.reset()
-                        tstep = 0
+                        initial_state = state_in
+                    while tstep < 10:
                         if lstm:
-                            state_in = module.get_initial_state()
-                            state_in = tree.map_structure(
-                                lambda x: x[None], convert_to_torch_tensor(state_in)
-                            )
-                            initial_state = state_in
-                        while tstep < 10:
-                            if lstm:
-                                input_batch = {
-                                    SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                                    STATE_IN: state_in,
-                                    SampleBatch.SEQ_LENS: np.array([1]),
-                                }
-                            else:
-                                input_batch = {
-                                    SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
-                                }
-                            fwd_out = module.forward_exploration(input_batch)
-                            action = convert_to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
-                            )
-                            new_obs, reward, done, _ = env.step(action)
-                            output_batch = {
-                                SampleBatch.OBS: obs,
-                                SampleBatch.NEXT_OBS: new_obs,
-                                SampleBatch.ACTIONS: action,
-                                SampleBatch.REWARDS: np.array(reward),
-                                SampleBatch.DONES: np.array(done),
+                            input_batch = {
+                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+                                STATE_IN: state_in,
+                                SampleBatch.SEQ_LENS: np.array([1]),
                             }
-                            if lstm:
-                                assert STATE_OUT in fwd_out
-                                state_in = fwd_out[STATE_OUT]
-                            batches.append(output_batch)
-                            obs = new_obs
-                            tstep += 1
-
-                        # convert the list of dicts to dict of lists
-                        batch = tree.map_structure(lambda *x: list(x), *batches)
-                        # convert dict of lists to dict of tensors
-                        fwd_in = {
-                            k: convert_to_torch_tensor(np.array(v))
-                            for k, v in batch.items()
+                        else:
+                            input_batch = {
+                                SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
+                            }
+                        fwd_out = module.forward_exploration(input_batch)
+                        action = convert_to_numpy(
+                            fwd_out["action_dist"].sample().squeeze(0)
+                        )
+                        new_obs, reward, done, _ = env.step(action)
+                        output_batch = {
+                            SampleBatch.OBS: obs,
+                            SampleBatch.NEXT_OBS: new_obs,
+                            SampleBatch.ACTIONS: action,
+                            SampleBatch.REWARDS: np.array(reward),
+                            SampleBatch.DONES: np.array(done),
                         }
                         if lstm:
-                            fwd_in[STATE_IN] = initial_state
-                            fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                            assert STATE_OUT in fwd_out
+                            state_in = fwd_out[STATE_OUT]
+                        batches.append(output_batch)
+                        obs = new_obs
+                        tstep += 1
 
-                        # forward train
-                        # before training make sure module is on the right device and in
-                        # training mode
-                        module.to("cpu")
-                        module.train()
-                        fwd_out = module.forward_train(fwd_in)
-                        loss = get_ppo_loss(fwd_in, fwd_out)
-                        loss.backward()
+                    # convert the list of dicts to dict of lists
+                    batch = tree.map_structure(lambda *x: list(x), *batches)
+                    # convert dict of lists to dict of tensors
+                    fwd_in = {
+                        k: convert_to_torch_tensor(np.array(v))
+                        for k, v in batch.items()
+                    }
+                    if lstm:
+                        fwd_in[STATE_IN] = initial_state
+                        fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
-                        # check that all neural net parameters have gradients
-                        for param in module.parameters():
-                            pass
-                            self.assertIsNotNone(param.grad)
+                    # forward train
+                    # before training make sure module is on the right device and in
+                    # training mode
+                    module.to("cpu")
+                    module.train()
+                    fwd_out = module.forward_train(fwd_in)
+                    loss = get_ppo_loss(fwd_in, fwd_out)
+                    loss.backward()
+
+                    # check that all neural net parameters have gradients
+                    for param in module.parameters():
+                        pass
+                        self.assertIsNotNone(param.grad)
 
 
 if __name__ == "__main__":
