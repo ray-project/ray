@@ -1,8 +1,10 @@
 from pettingzoo import AECEnv
-from pettingzoo.classic.chess.chess_env import env as chess_v5
+from pettingzoo.classic.chess.chess_env import raw_env as chess_v5
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from typing import Dict, Any
+import chess as ch
+import numpy as np
 
 
 class MultiAgentChess(MultiAgentEnv):
@@ -77,10 +79,12 @@ class MultiAgentChess(MultiAgentEnv):
         # TODO (avnishn): Remove this after making petting zoo env compatible with
         #  check_env.
         self._skip_env_checking = True
-        if config is None:
-            self.config = {"random_start": 4}
-        else:
-            self.config = config
+
+        self.config = config
+        try:
+            self.config["random_start"] = self.config["random_start"]
+        except KeyError:
+            self.config["random_start"] = 4
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
 
@@ -106,6 +110,12 @@ class MultiAgentChess(MultiAgentEnv):
         )
         self._agent_ids = set(self.env.agents)
 
+    def random_start(self, random_moves):
+        self.env.board = ch.Board()
+        for i in range(random_moves):
+            self.env.board.push(np.random.choice(list(self.env.board.legal_moves)))
+        return self.env.board
+
     def observe(self):
         return {
             self.env.agent_selection: self.env.observe(self.env.agent_selection),
@@ -114,8 +124,8 @@ class MultiAgentChess(MultiAgentEnv):
 
     def reset(self):
         self.env.reset()
-        # if self.config["random_start"] > 0:
-        #    self.env.random_start(self.config["random_start"])
+        if self.config["random_start"] > 0:
+            self.random_start(self.config["random_start"])
         return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
 
     def step(self, action):
@@ -123,6 +133,10 @@ class MultiAgentChess(MultiAgentEnv):
             self.env.step(action[self.env.agent_selection])
         except (KeyError, IndexError):
             self.env.step(action)
+        except AssertionError:
+            # Illegal action
+            print(action)
+            raise AssertionError("Illegal action")
 
         obs_d = {}
         rew_d = {}
@@ -136,7 +150,6 @@ class MultiAgentChess(MultiAgentEnv):
             done_d[a] = done
             info_d[a] = info
             if self.env.dones[self.env.agent_selection]:
-
                 self.env.step(None)
                 done_d["__all__"] = True
             else:
