@@ -14,10 +14,12 @@ class RefBundle:
     Operators take in and produce streams of RefBundles.
 
     Most commonly an RefBundle consists of a single block object reference.
-    In some cases, e.g., due to block splitting, or for a SortReduce task, there may
+    In some cases, e.g., due to block splitting, or for a reduce task, there may
     be more than one block.
 
-    Block bundles have ownership semantics, i.e., shared_ptr vs unique_ptr. This
+    Block bundles have ownership semantics, i.e., shared ownership (similar to C++
+    shared_ptr, multiple operators share the same block bundle), or unique ownership
+    (similar to C++ unique_ptr, only one operator owns the block bundle). This
     allows operators to know whether they can destroy blocks when they don't need
     them. Destroying blocks eagerly is more efficient than waiting for Python GC /
     Ray reference counting to kick in.
@@ -239,7 +241,7 @@ class Executor:
 
     Subclasses:
         BulkExecutor
-        PipelinedExecutor
+        StreamingExecutor
     """
 
     def __init__(self, options: ExecutionOptions):
