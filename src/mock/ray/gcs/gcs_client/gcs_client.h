@@ -51,7 +51,6 @@ class MockGcsClient : public GcsClient {
     GcsClient::actor_accessor_.reset(mock_actor_accessor);
     GcsClient::node_accessor_.reset(mock_node_accessor);
     GcsClient::node_resource_accessor_.reset(mock_node_resource_accessor);
-    GcsClient::stats_accessor_.reset(mock_stats_accessor);
     GcsClient::error_accessor_.reset(mock_error_accessor);
     GcsClient::worker_accessor_.reset(mock_worker_accessor);
     GcsClient::placement_group_accessor_.reset(mock_placement_group_accessor);

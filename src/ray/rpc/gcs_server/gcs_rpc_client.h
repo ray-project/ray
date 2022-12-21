@@ -367,8 +367,6 @@ class GcsRpcClient {
                              heartbeat_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-
-
   /// Add task events info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
                              AddTaskEventData,

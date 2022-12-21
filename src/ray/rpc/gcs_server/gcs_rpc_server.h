@@ -54,7 +54,6 @@ namespace rpc {
                       HANDLER,                   \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService,      \
                       HANDLER,                   \
@@ -349,7 +348,6 @@ class HeartbeatInfoGrpcService : public GrpcService {
   /// The service handler that actually handle the requests.
   HeartbeatInfoGcsServiceHandler &service_handler_;
 };
-
 
 class WorkerInfoGcsServiceHandler {
  public:

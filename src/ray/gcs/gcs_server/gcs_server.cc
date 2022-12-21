@@ -164,7 +164,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs worker manager.
   InitGcsWorkerManager();
 
-
   // Init GCS task manager.
   InitGcsTaskManager();
 
