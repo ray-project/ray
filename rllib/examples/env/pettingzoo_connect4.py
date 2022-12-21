@@ -104,7 +104,6 @@ class MultiAgentConnect4(MultiAgentEnv):
         )
         self._agent_ids = set(self.env.agents)
 
-
     def observe(self):
         return {
             self.env.agent_selection: self.env.observe(self.env.agent_selection),
