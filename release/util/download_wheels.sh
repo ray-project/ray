@@ -39,7 +39,7 @@ echo "Downloading Ray core Windows wheels"
 download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-win_amd64.whl"
 download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-win_amd64.whl"
 download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-win_amd64.whl"
-# download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-win_amd64.whl"
+download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-win_amd64.whl"
 
 # Linux CPP.
 echo "Downloading Ray CPP Linux wheels"

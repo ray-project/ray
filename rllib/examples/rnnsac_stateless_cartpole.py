@@ -102,7 +102,7 @@ if __name__ == "__main__":
     state = algo.get_policy().get_initial_state()
     prev_action = 0
     prev_reward = 0
-    obs = env.reset()
+    obs, info = env.reset()
 
     eps = 0
     ep_reward = 0
@@ -114,7 +114,7 @@ if __name__ == "__main__":
             prev_reward=prev_reward,
             full_fetch=True,
         )
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         prev_action = action
         prev_reward = reward
         ep_reward += reward
@@ -122,12 +122,12 @@ if __name__ == "__main__":
             env.render()
         except Exception:
             pass
-        if done:
+        if terminated or truncated:
             eps += 1
             print("Episode {}: {}".format(eps, ep_reward))
             ep_reward = 0
             state = algo.get_policy().get_initial_state()
             prev_action = 0
             prev_reward = 0
-            obs = env.reset()
+            obs, info = env.reset()
     ray.shutdown()

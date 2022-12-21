@@ -1,12 +1,12 @@
-sac-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
+sac-halfcheetah-v4:
+    env: HalfCheetah-v4
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 200000
+        episode_reward_mean: 500.0
+        timesteps_total: 400000
     stop:
-        time_total_s: 1800
+        time_total_s: 3600
     config:
         q_model_config:
             fcnet_activation: relu
@@ -16,7 +16,6 @@ sac-halfcheetahbulletenv-v0:
             fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: false
         n_step: 3
         rollout_fragment_length: auto
         train_batch_size: 256
