@@ -29,6 +29,9 @@ class TestLeelaChessZero(unittest.TestCase):
             lz.LeelaChessZeroConfig()
             .environment(env="ChessMultiAgent")
             .training(
+                sgd_minibatch_size=256,
+                train_batch_size=256,
+                num_sgd_iter=1,
                 model={"custom_model": LeelaChessZeroModel},
                 mcts_config={"num_simulations": 2},
             )
