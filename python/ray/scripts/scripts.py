@@ -765,11 +765,6 @@ def start(
                         cf.bold("  {}=true ray start"),
                         ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
                     )
-                    cli_logger.newline()
-                    cli_logger.print(
-                        "`{}=true` must also be passed to any Ray clients.",
-                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
-                    )
                 cli_logger.newline()
             else:
                 cli_logger.print("To add another node to this Ray cluster, run")

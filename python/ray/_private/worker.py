@@ -1345,22 +1345,24 @@ def init(
                 job_config = ray.job_config.JobConfig()
             job_config.set_runtime_env(runtime_env)
 
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
-
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
-    if not ray_constants.ENABLE_RAY_CLUSTER:
-        logger.warn(
-            "Ray clusters are not supported on OSX and Windows. "
-            "If you would like to proceed anyway, rerun with the "
-            "environment variable `%s=true`.",
-            ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
-        )
+        if not ray_constants.env_set(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR):
+            # If the cluster already exists, then assume it's safe to connect
+            # to the cluster even if we're on Windows or OSX (unless the user
+            # explicitly set the flag).
+            ray_constants.ENABLE_RAY_CLUSTER = True
+
+    # NOTE(swang): We must set the node IP address *after* we determine whether
+    # this is an existing cluster or not. For Windows and OSX, the resolved IP
+    # is localhost for new clusters and the usual public IP for existing
+    # clusters.
+    if _node_ip_address is not None:
+        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+    raylet_ip_address = node_ip_address
 
     if local_mode:
         driver_mode = LOCAL_MODE

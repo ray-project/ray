@@ -32,6 +32,10 @@ def env_bool(key, default):
     return default
 
 
+def env_set(key):
+    return key in os.environ
+
+
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
