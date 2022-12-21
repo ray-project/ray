@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
@@ -64,6 +65,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
+class GcsTaskManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -127,6 +129,9 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
+
+  /// Initialize gcs task manager.
+  void InitGcsTaskManager();
 
   /// Initialize stats handler.
   void InitStatsHandler();
@@ -250,6 +255,10 @@ class GcsServer {
   /// GCS PubSub handler and service.
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
   std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
+  /// GCS Task info manager for managing task states change events.
+  std::unique_ptr<GcsTaskManager> gcs_task_manager_;
+  /// Independent task info service from the main grpc service.
+  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

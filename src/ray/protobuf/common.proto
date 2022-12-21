@@ -67,7 +67,8 @@ message DefaultSchedulingStrategy {}
 
 message SpreadSchedulingStrategy {}
 
-// Update std::hash<SchedulingStrategy> in task_spec.h when this is changed.
+// Update std::hash<SchedulingStrategy> and operator== in task_spec.h when this is
+// changed.
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.

@@ -379,6 +379,12 @@ class GcsRpcClient {
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Add task events info to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             GetTaskEvents,
+                             task_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Report a worker failure to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
                              ReportWorkerFailure,
@@ -535,10 +541,20 @@ class GcsRpcClient {
       if (!gcs_is_down_) {
         gcs_is_down_ = true;
       } else {
-        RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
-                  ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
-            << "Failed to connect to GCS within "
-            << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds";
+        if (absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) >=
+            ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
+          RAY_LOG(ERROR) << "Failed to connect to GCS within "
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                         << " seconds. "
+                         << "GCS may have been killed. It's either GCS is terminated by "
+                            "`ray stop` or "
+                         << "is killed unexpectedly. If it is killed unexpectedly, "
+                         << "see the log file gcs_server.out. "
+                         << "https://docs.ray.io/en/master/ray-observability/"
+                            "ray-logging.html#logging-directory-structure. "
+                         << "The program will terminate.";
+          std::_Exit(EXIT_FAILURE);
+        }
       }
       break;
     case GRPC_CHANNEL_SHUTDOWN:

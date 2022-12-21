@@ -139,6 +139,21 @@ class TestCheckpointSerializedAttrs:
 
         assert recovered_checkpoint.foo == "bar"
 
+    def test_directory_move_instead_of_copy(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        path = checkpoint.to_directory()
+        recovered_checkpoint = StubCheckpoint.from_directory(path)
+        tmpdir = tempfile.mkdtemp()
+        new_path = recovered_checkpoint._move_directory(tmpdir)
+        new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
+
+        assert recovered_checkpoint._local_path == tmpdir
+        assert new_recovered_checkpoint.foo == "bar"
+        assert not list(Path(path).glob("*"))
+
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
         assert "foo" in checkpoint._SERIALIZED_ATTRS

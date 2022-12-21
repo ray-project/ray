@@ -811,6 +811,19 @@ Status TaskInfoAccessor::AsyncAddTaskEventData(
   return Status::OK();
 }
 
+Status TaskInfoAccessor::AsyncGetTaskEvents(
+    const MultiItemCallback<rpc::TaskEvents> &callback) {
+  RAY_LOG(DEBUG) << "Getting all task events info.";
+  RAY_CHECK(callback);
+  rpc::GetTaskEventsRequest request;
+  client_impl_->GetGcsRpcClient().GetTaskEvents(
+      request, [callback](const Status &status, const rpc::GetTaskEventsReply &reply) {
+        callback(status, VectorFromProtobuf(reply.events_by_task()));
+      });
+
+  return Status::OK();
+}
+
 ErrorInfoAccessor::ErrorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

@@ -313,13 +313,17 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
+        _, autoscaler_metric_names, autoscaler_samples = fetch_prometheus(
+            [autoscaler_export_addr]
+        )  # noqa
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
             assert any(
                 name.startswith(metric) for name in autoscaler_metric_names
             ), f"{metric} not in {autoscaler_metric_names}"
+            for sample in autoscaler_samples:
+                assert sample.labels["SessionName"] == session_name
 
         # Dashboard metrics
         _, dashboard_metric_names, _ = fetch_prometheus([dashboard_export_addr])

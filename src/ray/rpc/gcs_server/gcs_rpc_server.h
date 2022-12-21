@@ -550,6 +550,10 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAddTaskEventData(AddTaskEventDataRequest request,
                                       AddTaskEventDataReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                                   rpc::GetTaskEventsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -570,6 +574,7 @@ class TaskInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
   }
 
  private:
@@ -627,6 +632,7 @@ using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
+using TaskInfoHandler = TaskInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

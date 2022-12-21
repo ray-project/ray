@@ -3,7 +3,7 @@ and use it in a serving/inference setting.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 from pathlib import Path
 
 from ray.rllib.policy.policy import Policy
@@ -37,10 +37,10 @@ def run(checkpoint_path):
 
     # Run CartPole.
     env = gym.make("CartPole-v1")
-    obs = env.reset()
-    done = False
+    obs, info = env.reset()
+    terminated = truncated = False
     step = 0
-    while not done:
+    while not terminated and not truncated:
         step += 1
 
         # Use local_policy_inference() to run inference, so we do not have to
@@ -52,7 +52,7 @@ def run(checkpoint_path):
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
-        obs, _, done, _ = env.step(action)
+        obs, _, terminated, truncated, _ = env.step(action)
     # __sphinx_doc_end__
 
 

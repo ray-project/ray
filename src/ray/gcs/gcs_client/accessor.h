@@ -533,6 +533,12 @@ class TaskInfoAccessor {
   virtual Status AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
                                        StatusCallback callback);
 
+  /// Get all info/events of all tasks stored in GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetTaskEvents(const MultiItemCallback<rpc::TaskEvents> &callback);
+
  private:
   GcsClient *client_impl_;
 };
