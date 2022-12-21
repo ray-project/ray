@@ -311,7 +311,11 @@ class ExecutionPlan:
             context = DatasetContext.get_current()
 
             # Read stage is handled with the legacy execution impl for now.
-            if context.new_execution_backend and not self.is_read_stage_equivalent():
+            if (
+                context.new_execution_backend
+                and not self.is_read_stage_equivalent()
+                and self._stages_after_snapshot
+            ):
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.interfaces import ExecutionOptions
                 from ray.data._internal.execution.legacy_compat import (
@@ -322,8 +326,8 @@ class ExecutionPlan:
                 blocks = execute_to_legacy_block_list(
                     executor, self, allow_clear_input_blocks=allow_clear_input_blocks
                 )
-                # TODO(ekl) this is confusing; we should be able to get rid of owned
-                # by consumer flag in favor of just properly setting "owns_blocks".
+                # TODO(ekl) we shouldn't need to set this; it should be set correctly
+                # by execute_to_legacy_block_list based on owns_blocks, but it isn't.
                 blocks._owned_by_consumer = self._run_by_consumer
                 stats = executor.get_stats()
 

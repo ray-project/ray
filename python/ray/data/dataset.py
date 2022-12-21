@@ -3697,7 +3697,6 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            assert False
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
             read_stage = None
