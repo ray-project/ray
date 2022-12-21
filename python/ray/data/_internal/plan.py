@@ -324,7 +324,10 @@ class ExecutionPlan:
 
                 executor = BulkExecutor(ExecutionOptions())
                 blocks = execute_to_legacy_block_list(
-                    executor, self, allow_clear_input_blocks=allow_clear_input_blocks
+                    executor,
+                    self,
+                    allow_clear_input_blocks=allow_clear_input_blocks,
+                    dataset_uuid=self._dataset_uuid,
                 )
                 # TODO(ekl) we shouldn't need to set this; it should be set correctly
                 # by execute_to_legacy_block_list based on owns_blocks, but it isn't.
@@ -350,7 +353,7 @@ class ExecutionPlan:
                     else:
                         stats = stats_builder.build(blocks)
 
-            stats.dataset_uuid = uuid.uuid4().hex
+            stats.dataset_uuid = self._dataset_uuid
             stats_summary_string = stats.summary_string(include_parent=False)
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
@@ -358,7 +361,6 @@ class ExecutionPlan:
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:
