@@ -21,8 +21,8 @@ class Node:
         self.children = {}
 
         self.action_space_size = self.env.action_space.n
-        self.child_total_value = (
-            np.ones([self.action_space_size], dtype=np.float32) * 1e4
+        self.child_total_value = np.zeros(
+            [self.action_space_size], dtype=np.float32
         )  # Q
         self.child_priors = np.zeros([self.action_space_size], dtype=np.float32)  # P
         self.child_number_visits = np.zeros(
@@ -41,10 +41,13 @@ class Node:
                 multi_agent = True
         if multi_agent:
             current_agent = self.state.agent_selection
-            self.reward = self.reward[current_agent]
-            self.done = self.done[current_agent]
-            self.valid_actions = obs[current_agent]["action_mask"].astype(bool)
-            self.obs = obs[current_agent]
+            if type(self.reward) == dict:
+                self.reward = self.reward[current_agent]
+            if type(self.done) == dict:
+                self.done = self.done[current_agent]
+            if type(self.obs) == dict:
+                self.valid_actions = obs[current_agent]["action_mask"].astype(bool)
+                self.obs = obs[current_agent]
         else:
             self.valid_actions = obs["action_mask"].astype(bool)
             self.obs = obs
@@ -86,16 +89,20 @@ class Node:
         """
         child_score = self.child_Q() + self.mcts.c_puct * self.child_U()
         masked_child_score = child_score
-        masked_child_score[~self.valid_actions] = -1e12
         if self.mcts.exploit_child_value:
+            masked_child_score[~self.valid_actions] = -1e22
             action = np.argmax(masked_child_score)
             assert self.valid_actions[action] == 1
             return action
         else:
-            masked_child_score += 1e28
+            masked_child_score[~self.valid_actions] = 0
+            masked_child_score[self.valid_actions] += 1 + abs(
+                np.min(masked_child_score)
+            )
+            p = masked_child_score / np.sum(masked_child_score)
             action = np.random.choice(
                 np.arange(len(masked_child_score)),
-                p=masked_child_score / np.sum(masked_child_score),
+                p=p,
             )
             assert self.valid_actions[action] == 1
             return action
@@ -172,7 +179,7 @@ class MCTS:
             node.env.set_state(copy.deepcopy(initial_state))
             leaf = node.select()
             if leaf.done:
-                value = leaf.reward * 10
+                value = -leaf.reward * 10
             else:
                 child_priors, value = self.model.compute_priors_and_value(leaf.obs)
                 if self.add_dirichlet_noise:
