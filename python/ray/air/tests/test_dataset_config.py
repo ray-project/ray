@@ -389,32 +389,42 @@ def iterate_twice(trainer, dataset, prep=None, **kwargs):
 
 def test_per_epoch_preprocessor(ray_start_4_cpus):
     trainer = DummyTrainer.remote()
-    def check(results):
-        assert len(results[0]) == 5, results
-        assert results[0] == results[1], results
-        assert all(x % 2 == 0 for x in results[0]), results
+    ds = ray.data.range_table(5)
 
     def multiply(x):
         return x * 2
 
-    ds = ray.data.range_table(5)
-    results = iterate_twice(
-            trainer, ds,
-            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
-            randomize_block_order=False)
-    check(results)
-    results = iterate_twice(
-            trainer, ds,
-            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
-            max_object_store_memory_fraction=1,
-            randomize_block_order=False)
-    check(results)
-    results = iterate_twice(
-            trainer, ds,
-            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
-            max_object_store_memory_fraction=0.3,
-            randomize_block_order=False)
-    check(results)
+    for max_object_store_memory_fraction in [None, 1, 0.3]:
+        results = iterate_twice(
+                trainer, ds,
+                # Randomized preprocessor to check whether it is applied once
+                # per job or once on each epoch.
+                prep=BatchMapper(lambda x: x * int(10 * random.random()), batch_format="pandas"),
+                randomize_block_order=False,
+                per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+                max_object_store_memory_fraction=max_object_store_memory_fraction)
+
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        if max_object_store_memory_fraction == 1 or max_object_store_memory_fraction is None:
+            # Windowed pipelined ingest also reapplies the base preprocessor on
+            # every epoch.
+            assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert all(x % 2 == 0 for x in results[0]), (max_object_store_memory_fraction, results)
+
+    # Use randomized per-epoch preprocessor to check that it gets applied once
+    # per epoch.
+    def rand(x):
+        return x * random.random()
+
+    for max_object_store_memory_fraction in [None, 1, 0.3]:
+        results = iterate_twice(
+                trainer, ds,
+                randomize_block_order=False,
+                per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
+                max_object_store_memory_fraction=max_object_store_memory_fraction)
+
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        assert results[0] != results[1], (max_object_store_memory_fraction, results)
 
 
 if __name__ == "__main__":
