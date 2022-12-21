@@ -2,7 +2,7 @@
 # See https://app.wandb.ai/zplizzi/test/runs/ayuuhixr?workspace=user-zplizzi
 # for training curves.
 pong-apex:
-    env: PongNoFrameskip-v4
+    env: ALE/Pong-v5
     run: APEX
     stop:
         episode_reward_mean: 19.0
@@ -10,6 +10,8 @@ pong-apex:
     config:
         # Works for both torch and tf.
         framework: tf
+        env_config:
+            frameskip: 1  # no frameskip
         target_network_update_freq: 20000
         num_workers: 4
         num_envs_per_worker: 8

@@ -224,10 +224,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
-  // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(
-      worker_context_, options_.node_ip_address, io_service_, gcs_client_);
-
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
   task_event_buffer_ =
@@ -2291,8 +2287,9 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const {
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
-    const std::string &event_type) {
-  return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
+    const std::string &event_name) {
+  return std::make_unique<worker::ProfileEvent>(
+      *task_event_buffer_, worker_context_, options_.node_ip_address, event_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
