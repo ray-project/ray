@@ -1,9 +1,9 @@
-import unittest
-
 import numpy as np
+import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
+
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
