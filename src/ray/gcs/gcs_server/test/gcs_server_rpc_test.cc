@@ -174,16 +174,6 @@ class GcsServerTest : public ::testing::Test {
     return resources;
   }
 
-  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
-    std::promise<bool> promise;
-    client_->AddProfileData(
-        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
     std::promise<bool> promise;
     client_->ReportWorkerFailure(
