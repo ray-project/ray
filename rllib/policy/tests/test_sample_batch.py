@@ -277,7 +277,7 @@ class TestSampleBatch(unittest.TestCase):
             {
                 "a": np.array([0, 1, 2, 3, 4, 5]),
                 "eps_id": np.array([0, 0, 0, 0, 1, 1]),
-                "dones": np.array([0, 0, 0, 1, 0, 1]),
+                "terminateds": np.array([0, 0, 0, 1, 0, 1]),
             }
         )
         true_split = [np.array([0, 1, 2, 3]), np.array([4, 5])]
@@ -296,16 +296,16 @@ class TestSampleBatch(unittest.TestCase):
 
         # Check that splitting by DONES works correctly
         del s["eps_id"]
-        dones_split = [b["a"] for b in s.split_by_episode()]
-        check(true_split, dones_split)
+        terminateds_split = [b["a"] for b in s.split_by_episode()]
+        check(true_split, terminateds_split)
 
         # Check that splitting without the EPS_ID or DONES key raise an error
-        del s["dones"]
+        del s["terminateds"]
         with self.assertRaises(KeyError):
             s.split_by_episode()
 
         # Check that splitting with DONES always False returns the whole batch
-        s["dones"] = np.array([0, 0, 0, 0, 0, 0])
+        s["terminateds"] = np.array([0, 0, 0, 0, 0, 0])
         batch_split = [b["a"] for b in s.split_by_episode()]
         check(s["a"], batch_split[0])
 
