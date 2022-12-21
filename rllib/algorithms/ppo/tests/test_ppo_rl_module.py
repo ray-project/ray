@@ -11,7 +11,13 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     get_ppo_loss,
     PPOModuleConfig,
 )
-from ray.rllib.core.rl_module.encoder import FCConfig, IdentityConfig, LSTMConfig
+from ray.rllib.core.rl_module.encoder import (
+    FCConfig,
+    IdentityConfig,
+    LSTMConfig,
+    STATE_IN,
+    STATE_OUT,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
@@ -127,7 +133,7 @@ class TestPPO(unittest.TestCase):
                             state_in = tree.map_structure(
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
-                            batch["state_in"] = state_in
+                            batch[STATE_IN] = state_in
                             batch["seq_lens"] = torch.Tensor([1])
 
                         if fwd_fn == "forward_exploration":
@@ -169,7 +175,7 @@ class TestPPO(unittest.TestCase):
                             if lstm:
                                 input_batch = {
                                     SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                                    "state_in": state_in,
+                                    STATE_IN: state_in,
                                     SampleBatch.SEQ_LENS: np.array([1]),
                                 }
                             else:
@@ -189,7 +195,7 @@ class TestPPO(unittest.TestCase):
                                 SampleBatch.DONES: np.array(done),
                             }
                             if lstm:
-                                assert "state_out" in fwd_out
+                                assert STATE_OUT in fwd_out
                                 if tstep > 0:  # First states are already added
 
                                     # Extend nested batches of states
@@ -198,7 +204,7 @@ class TestPPO(unittest.TestCase):
                                         output_states,
                                         state_in,
                                     )
-                                state_in = fwd_out["state_out"]
+                                state_in = fwd_out[STATE_OUT]
                             batches.append(output_batch)
                             obs = new_obs
                             tstep += 1
@@ -211,7 +217,7 @@ class TestPPO(unittest.TestCase):
                             for k, v in batch.items()
                         }
                         if lstm:
-                            fwd_in["state_in"] = output_states
+                            fwd_in[STATE_IN] = output_states
                             fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([1] * 10)
 
                         # forward train
