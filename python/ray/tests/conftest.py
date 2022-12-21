@@ -140,31 +140,29 @@ def get_default_fixture_ray_kwargs():
 def _setup_redis(request):
     # Setup external Redis and env var for initialization.
     param = getattr(request, "param", {})
-
-    external_redis_ports = param.get("external_redis_ports")
-    if external_redis_ports is None:
+    redis_ports = []
+    for _ in range(3):
         with socket.socket() as s:
             s.bind(("", 0))
             port = s.getsockname()[1]
-        external_redis_ports = [port]
-    else:
-        del param["external_redis_ports"]
+        redis_ports.append(port)
+
     processes = []
     enable_tls = "RAY_REDIS_CA_CERT" in os.environ
-    for port in external_redis_ports:
+    leader_port = None
+    for port in redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
         port, proc = start_redis_instance(
             temp_dir,
             port,
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
             enable_tls=enable_tls,
+            replica_of=leader_port,
         )
+        if leader_port is None:
+            leader_port = redis_ports[0]
         processes.append(proc)
     scheme = "rediss://" if enable_tls else ""
-    address_str = ",".join(
-        map(lambda x: f"{scheme}127.0.0.1:{x}", external_redis_ports)
-    )
-
+    address_str = f"{scheme}127.0.0.1:{redis_ports[2]}"
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
     yield

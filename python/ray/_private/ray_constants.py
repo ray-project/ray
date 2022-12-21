@@ -280,9 +280,7 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
-# The default password to prevent redis port scanning attack.
-# Hex for ray.
-REDIS_DEFAULT_PASSWORD = "5241590000000000"
+REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"

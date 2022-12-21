@@ -81,7 +81,6 @@ def enable_external_redis():
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
-
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -95,6 +94,7 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
+    replica_of = None,
 ):
     """Start a single Redis server.
 
@@ -144,7 +144,8 @@ def start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-
+    if replica_of is not None:
+        command += ["--replicaof", "127.0.0.1", str(replica_of)]
     if enable_tls:
         import socket
 
@@ -176,6 +177,7 @@ def start_redis_instance(
         command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
+
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
