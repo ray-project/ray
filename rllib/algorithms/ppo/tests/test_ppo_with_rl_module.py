@@ -31,8 +31,19 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
-# Get a model config that we expect from the catalog
-def get_expected_model_config(env, lstm, shared_encoder):
+def get_expected_model_config(env, lstm, shared_encoder) -> PPOModuleConfig:
+    """Get a PPOModuleConfig that we would expect from the catalog otherwise.
+
+    Args:
+        env: Environment for which we build the model later
+        lstm: If True, build recurrent pi encoder
+        shared_encoder: If True, build a shared encoder for pi and vf, where pi
+            encoder and vf encoder will be identity. If False, the shared encoder
+            will be identity.
+
+    Returns:
+         A PPOModuleConfig containing the relevant configs to build PPORLModule
+    """
     assert not len(env.observation_space.shape) == 3, "Implement VisionNet first!"
     obs_dim = env.observation_space.shape[0]
 
