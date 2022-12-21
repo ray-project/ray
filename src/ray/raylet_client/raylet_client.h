@@ -37,7 +37,6 @@ using ray::TaskID;
 using ray::WorkerID;
 
 using ray::Language;
-using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =

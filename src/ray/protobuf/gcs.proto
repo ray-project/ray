@@ -35,7 +35,6 @@ enum TablePrefix {
   TASK_RECONSTRUCTION = 8;
   RESOURCE_USAGE_BATCH = 9;
   JOB = 10;
-  PROFILE = 11;
   TASK_LEASE = 12;
   NODE_RESOURCE = 13;
   DIRECT_ACTOR = 14;
@@ -170,34 +169,6 @@ message ErrorTableData {
 
 message ScheduleData {
   map<string, bytes> schedule_plan = 1;
-}
-
-message ProfileTableData {
-  // Represents a profile event.
-  message ProfileEvent {
-    // The type of the event.
-    string event_type = 1;
-    // The start time of the event.
-    double start_time = 2;
-    // The end time of the event. If the event is a point event, then this
-    // should be the same as the start time.
-    double end_time = 3;
-    // Additional data associated with the event. This data must be serialized
-    // using JSON.
-    string extra_data = 4;
-  }
-
-  // The type of the component that generated the event, e.g., worker or
-  // object_manager, or node_manager.
-  string component_type = 1;
-  // An identifier for the component that generated the event.
-  bytes component_id = 2;
-  // An identifier for the node that generated the event.
-  string node_ip_address = 3;
-  // This is a batch of profiling events. We batch these together for
-  // performance reasons because a single task may generate many events, and
-  // we don't want each event to require a GCS command.
-  repeated ProfileEvent profile_events = 4;
 }
 
 message ProfileEventEntry {

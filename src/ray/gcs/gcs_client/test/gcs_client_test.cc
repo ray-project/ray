@@ -384,14 +384,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resources;
   }
 
-  bool AddProfileData(const std::shared_ptr<rpc::ProfileTableData> &profile_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
-        profile_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
@@ -703,13 +695,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) 
   EXPECT_EQ(resources1[0].resources_available_size(), 2);
   EXPECT_EQ((*resources1[0].mutable_resources_available())["CPU"], 1.0);
   EXPECT_EQ((*resources1[0].mutable_resources_available())["GPU"], 10.0);
-}
-
-TEST_P(GcsClientTest, TestStats) {
-  // Add profile data to GCS.
-  NodeID node_id = NodeID::FromRandom();
-  auto profile_table_data = Mocker::GenProfileTableData(node_id);
-  ASSERT_TRUE(AddProfileData(profile_table_data));
 }
 
 TEST_P(GcsClientTest, TestWorkerInfo) {
