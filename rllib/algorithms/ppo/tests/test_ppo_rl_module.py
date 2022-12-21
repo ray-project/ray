@@ -6,8 +6,11 @@ import torch
 import tree
 
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule, \
-    get_ppo_loss, PPOModuleConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    PPOTorchRLModule,
+    get_ppo_loss,
+    PPOModuleConfig,
+)
 from ray.rllib.core.rl_module.encoder import FCConfig, IdentityConfig, LSTMConfig
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -26,8 +29,9 @@ def get_expected_model_config(env, lstm, shared_encoder) -> PPOModuleConfig:
     Returns:
          A PPOModuleConfig containing the relevant configs to build PPORLModule
     """
-    assert len(env.observation_space.shape) == 1, "No multidimensional obs space " \
-                                                  "supported."
+    assert len(env.observation_space.shape) == 1, (
+        "No multidimensional obs space " "supported."
+    )
     obs_dim = env.observation_space.shape[0]
 
     if shared_encoder:
@@ -131,7 +135,6 @@ class TestPPO(unittest.TestCase):
                         elif fwd_fn == "forward_inference":
                             module.forward_inference(batch)
 
-
     def test_forward_train(self):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
@@ -224,4 +227,3 @@ class TestPPO(unittest.TestCase):
                         for param in module.parameters():
                             pass
                             self.assertIsNotNone(param.grad)
-

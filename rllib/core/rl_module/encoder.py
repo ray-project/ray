@@ -159,8 +159,12 @@ class LSTMEncoder(Encoder):
             {
                 ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
                 "state_out": {
-                    "h": TorchTensorSpec("b, h", h=config.hidden_dim),
-                    "c": TorchTensorSpec("b, h", h=config.hidden_dim),
+                    "h": TorchTensorSpec(
+                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                    ),
+                    "c": TorchTensorSpec(
+                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                    ),
                 },
             }
         )
