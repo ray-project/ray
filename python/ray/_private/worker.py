@@ -1350,7 +1350,7 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
-        if not ray_constants.env_set(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR):
+        if not ray_constants.env_set_by_user(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR):
             # If the cluster already exists, then assume it's safe to connect
             # to the cluster even if we're on Windows or OSX (unless the user
             # explicitly set the flag).

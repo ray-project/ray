@@ -26,8 +26,7 @@ or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 
     Multi-node Ray clusters are only supported on Linux. At your own risk, you
     may deploy Windows and OSX clusters by setting the environment variable
-    ``RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1`` during deployment and when running
-    Ray applications.
+    ``RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1`` during deployment.
 
 What's next?
 ------------

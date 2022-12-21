@@ -355,9 +355,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
 
       if (relevant_client_index < 0 && head_node_client_index >= 0) {
         RAY_LOG(INFO) << "This node has an IP address of " << node_ip_address
-                      << ", while we can not find the matched Raylet address. "
-                      << "This maybe come from when you connect the Ray cluster "
-                      << "with a different IP address or connect a container.";
+                      << ", but we cannot find a local Raylet with the same address. "
+                      << "This can happen when you connect to the Ray cluster "
+                      << "with a different IP address or when connecting to a container.";
         relevant_client_index = head_node_client_index;
       }
       if (relevant_client_index < 0) {
