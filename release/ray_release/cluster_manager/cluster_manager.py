@@ -94,8 +94,9 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_compute)}"
         )
 
-    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> str:
-        assert cluster_compute and "cloud_id" in cluster_compute
+    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> Optional[str]:
+        if not cluster_compute or "cloud_id" not in cluster_compute:
+            return None
         try:
             return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
         except Exception as e:
