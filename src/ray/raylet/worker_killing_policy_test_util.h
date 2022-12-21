@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
-
 #include <sys/sysinfo.h>
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
+#include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {
 
@@ -26,9 +25,8 @@ namespace raylet {
 
 class WorkerKillerTest : public ::testing::Test {
  protected:
-  instrumented_io_context io_context_;
   int32_t port_ = 2389;
-  RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
+  instrumented_io_context io_context_;
 
   std::shared_ptr<WorkerInterface> CreateActorWorker(int32_t max_restarts) {
     rpc::TaskSpec message;
@@ -52,10 +50,12 @@ class WorkerKillerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries,
+                                                    int32_t depth = 1) {
     rpc::TaskSpec message;
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
+    message.set_depth(depth);
     TaskSpecification task_spec(message);
     RayTask task(task_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
@@ -112,8 +112,3 @@ TEST_F(WorkerKillerTest,
 }  // namespace raylet
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

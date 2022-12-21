@@ -336,6 +336,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
+      worker_killing_policy_(
+          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -2903,7 +2905,7 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
-// Picks the worker with the latest submitted task and kills the process
+// Picks the worker according to the killing policy and kills the process
 // if the memory usage is above the threshold. Allows one in-flight
 // process kill at a time as killing a process could sometimes take
 // seconds.
@@ -2940,7 +2942,6 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill_and_should_retry =
             worker_killing_policy.SelectWorkerToKill(workers, system_memory);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;

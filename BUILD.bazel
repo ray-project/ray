@@ -1654,10 +1654,28 @@ cc_test(
 )
 
 cc_test(
-    name = "worker_killing_policy_test",
+    name = "worker_killing_policy_test_lifo",
     size = "small",
     srcs = [
-        "src/ray/raylet/worker_killing_policy_test.cc",
+        "src/ray/raylet/worker_killing_policy_test_lifo.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "worker_killing_policy_test_by_depth",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_test_by_depth.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],

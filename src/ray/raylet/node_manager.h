@@ -39,6 +39,7 @@
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/wait_manager.h"
+#include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -864,6 +865,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
+
+  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
