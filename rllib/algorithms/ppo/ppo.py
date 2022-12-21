@@ -368,7 +368,7 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.config.get("enable_trainer_runner", False):
+                if self.config.get("_enable_trainer_runner", False):
                     weights = self.trainer_runner.get_weights()
                     self.workers.foreach_worker(
                         lambda worker: worker.set_weights(weights),
@@ -379,7 +379,7 @@ class PPO(Algorithm):
                         global_vars=global_vars,
                     )
 
-        if self.config.get("enable_trainer_runner", False):
+        if self.config.get("_enable_trainer_runner", False):
             kl_dict = {
                 pid: pinfo[LEARNER_STATS_KEY].get("kl")
                 for pid, pinfo in train_results.items()

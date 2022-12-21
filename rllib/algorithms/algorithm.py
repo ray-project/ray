@@ -670,7 +670,7 @@ class Algorithm(Trainable):
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
 
-        # create the trainer_runner
+        # TODO (Kourosh/Avnish) create the trainer_runner
         self.trainer_runner = None
         if self.config.get("_enable_trainer_runner", False):
             # create remote trainers
