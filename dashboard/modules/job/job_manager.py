@@ -231,8 +231,8 @@ class JobSupervisor:
                 preexec_fn=lambda: signal.pthread_sigmask(
                     signal.SIG_UNBLOCK, {signal.SIGINT}
                 )
-                if os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
-                and sys.platform != "win32"
+                if sys.platform != "win32"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
                 else None,
             )
             parent_pid = os.getpid()
