@@ -753,7 +753,7 @@ def start(
                     )
                 else:
                     cli_logger.print(
-                        "Ray clusters are not supported on OSX and Windows."
+                        "Multi-node Ray clusters are not supported on OSX and Windows."
                     )
                     cli_logger.print(
                         "If you would like to proceed anyway, restart Ray with:"
@@ -845,6 +845,19 @@ def start(
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
+        if not ray_constants.ENABLE_RAY_CLUSTER:
+            cli_logger.abort(
+                "Multi-node Ray clusters are not supported on Windows and OSX. "
+                "Restart the Ray cluster with the environment variable `{}=1` "
+                "to proceed anyway.",
+                cf.bold(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR),
+            )
+            raise Exception(
+                "Multi-node Ray clusters are not supported on Windows and OSX. "
+                "Restart the Ray cluster with the environment variable "
+                f"`{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1` to proceed "
+                "anyway.",
+            )
 
         # Ensure `--address` flag is specified.
         if address is None:
