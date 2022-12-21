@@ -1,6 +1,8 @@
 import os
 
 import ray
+from memray import Tracker, FileDestination
+from pathlib import Path
 
 
 class _NullLogSpan:
@@ -56,17 +58,13 @@ def profile(event_type, extra_data=None):
     return worker.core_worker.profile_event(event_type.encode("ascii"), extra_data)
 
 
-from contextlib import contextmanager
-from memray import Tracker, FileDestination
-from pathlib import Path
-
 def memory_profile(**kwargs):
     assert ray.is_initialized()
     log_path = Path(ray._private.worker._global_node.get_logs_dir_path())
     print(log_path)
     pid = os.getpid()
-    profile_file_path = (
-        log_path / "profile" / f"flamegraph_{pid}_memory_profiling.bin"
-    )
+    profile_file_path = log_path / "profile" / f"flamegraph_{pid}_memory_profiling.bin"
     print(profile_file_path)
-    return Tracker(destination=FileDestination(path=profile_file_path, overwrite=True), **kwargs)
+    return Tracker(
+        destination=FileDestination(path=profile_file_path, overwrite=True), **kwargs
+    )

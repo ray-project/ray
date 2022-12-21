@@ -186,9 +186,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
             return aiohttp.web.Response(
                 body=reply.output,
-                headers={
-                    "Content-Type": "text/html"
-                },
+                headers={"Content-Type": "text/html"},
             )
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)

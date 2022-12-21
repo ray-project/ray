@@ -116,39 +116,39 @@ export const JobRow = ({
         {logsLink}
       </TableCell>
       <TableCell align="center">
-                  {driver_info && ipLogMap[driver_info.node_ip_address] && (
-                    <React.Fragment>
-                      <br />
-                      <a
-                        href={`/worker/traceback?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&native=0`}
-                        target="_blank"
-                        title="Sample the current Python stack trace for this worker."
-                        rel="noreferrer"
-                      >
-                        Stack&nbsp;Trace
-                      </a>
-                      <br />
-                      <a
-                        href={`/worker/cpu_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0`}
-                        target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-                        rel="noreferrer"
-                      >
-                        CPU&nbsp;Flame&nbsp;Graph
-                      </a>
-                      <br />
-                      <a
-                        href={`/worker/memory_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0`}
-                        target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a memory flame graph."
-                        rel="noreferrer"
-                      >
-                        Memory&nbsp;Flame&nbsp;Graph
-                      </a>
-                      <br />
-                    </React.Fragment>
-                  )}
-                </TableCell>
+        {driver_info && ipLogMap[driver_info.node_ip_address] && (
+          <React.Fragment>
+            <br />
+            <a
+              href={`/worker/traceback?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&native=0`}
+              target="_blank"
+              title="Sample the current Python stack trace for this worker."
+              rel="noreferrer"
+            >
+              Stack&nbsp;Trace
+            </a>
+            <br />
+            <a
+              href={`/worker/cpu_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0`}
+              target="_blank"
+              title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+              rel="noreferrer"
+            >
+              CPU&nbsp;Flame&nbsp;Graph
+            </a>
+            <br />
+            <a
+              href={`/worker/memory_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0`}
+              target="_blank"
+              title="Profile the Python worker for 5 seconds (default) and display a memory flame graph."
+              rel="noreferrer"
+            >
+              Memory&nbsp;Flame&nbsp;Graph
+            </a>
+            <br />
+          </React.Fragment>
+        )}
+      </TableCell>
       <TableCell align="center">
         {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}
       </TableCell>

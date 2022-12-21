@@ -26,11 +26,13 @@ Alternatively, you can start Ray with passwordless sudo / root permissions.
 {stderr.decode("utf-8")}
 """
 
+
 def _format_failed_memray_command(cmd, stdout, stderr) -> str:
     return f"""Failed to execute `{cmd}`.
 
-Note that this command requires `memray >= 1.5` to be installed with root permissions. You
-can install `memray` and give it root permissions as follows:
+Note that this command requires `memray >= 1.5` to be installed
+with root permissions. You can install `memray` and give it
+root permissions as follows:
   $ pip install memray
   $ sudo chown root:root `which memray`
   $ sudo chmod u+s `which memray`
@@ -122,10 +124,7 @@ class CpuProfilingManager:
         logger.info(f"File exits: {profile_file_path.exists()}")
         if not profile_file_path.exists():
             # handle this case. The memory profile file already exists.
-            cmd = (
-                f"$(which memray) attach "
-                f"-o {profile_file_path} {pid}"
-            )
+            cmd = f"$(which memray) attach " f"-o {profile_file_path} {pid}"
 
             if sys.platform == "linux" and native:
                 cmd += " --native"
@@ -140,7 +139,7 @@ class CpuProfilingManager:
             stdout, stderr = await process.communicate()
             if process.returncode != 0:
                 return False, _format_failed_memray_command(cmd, stdout, stderr)
-        
+
         print("sleep")
         await asyncio.sleep(duration)
 
@@ -148,7 +147,8 @@ class CpuProfilingManager:
             self.profile_dir_path / f"{format}_{pid}_memory_profiling.html"
         )
         cmd = (
-            f"$(which memray) flamegraph -o {result_file_path} --force {profile_file_path}"
+            f"$(which memray) flamegraph -o {result_file_path} "
+            f"--force {profile_file_path}"
         )
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd
@@ -162,6 +162,7 @@ class CpuProfilingManager:
         if process.returncode != 0:
             return False, _format_failed_memray_command(cmd, stdout, stderr)
         return True, open(result_file_path, "rb").read()
+
 
 # async def main():
 #     c = CpuProfilingManager("/tmp")
