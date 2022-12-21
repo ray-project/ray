@@ -220,8 +220,13 @@ def test_owner_assign_inner_object(shutdown_only):
         spill_objects_dir = os.path.join(tmpdir, DEFAULT_OBJECT_PREFIX)
 
         def check_reference_clean():
+            if not os.path.exists(spill_objects_dir):
+                return True
             return len(os.listdir(spill_objects_dir)) == 0
 
+        # in client mode
+        if os.environ.get("RAY_CLIENT_MODE", None):
+            ray.shutdown()
         wait_for_condition(check_reference_clean)
 
 
