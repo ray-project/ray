@@ -23,7 +23,6 @@ RELEASE_AWS_ANYSCALE_SECRET_ARN = DeferredEnvVar(
 RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING = [
     "instance",
     "volume",
-    "host-reservation",
 ]
 
 

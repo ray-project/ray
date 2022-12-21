@@ -277,10 +277,6 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "TagSpecifications": [
                 {"ResourceType": "instance", "Tags": [{"Key": "foo", "Value": "bar"}]},
                 {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
-                {
-                    "ResourceType": "host-reservation",
-                    "Tags": [{"Key": "foo", "Value": "bar"}],
-                },
             ]
         }
         self.assertEqual(
@@ -312,10 +308,6 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     ],
                 },
                 {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
-                {
-                    "ResourceType": "host-reservation",
-                    "Tags": [{"Key": "foo", "Value": "bar"}],
-                },
             ]
         }
         self.assertEqual(
