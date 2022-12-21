@@ -79,6 +79,29 @@ def test_reopen_changed_inode(tmp_path):
     assert file_info.file_handle.tell() == orig_file_pos
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_deleted_file_does_not_throw_error(tmp_path):
+    filename = tmp_path / "file"
+
+    Path(filename).touch()
+
+    file_info = LogFileInfo(
+        filename=filename,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+
+    os.remove(filename)
+
+    file_info.reopen_if_necessary()
+
+
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100
@@ -98,6 +121,63 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
     config = worker_node.logging_config
     assert config["log_rotation_max_bytes"] == 0
     assert config["log_rotation_backup_count"] == 0
+
+
+def test_log_file_exists(shutdown_only):
+    """Verify all log files exist as specified in
+    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    """
+    ray.init(num_cpus=1)
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_rotating_component = [
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
+        # Below components are not log rotating now.
+        (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    def component_and_suffix_exists(component, paths):
+        component, suffixes = component
+        for path in paths:
+            filename = path.stem
+            suffix = path.suffix
+            if component in filename:
+                # core-worker log also contains "worker keyword". We ignore this case.
+                if (
+                    component == ray_constants.PROCESS_TYPE_WORKER
+                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
+                ):
+                    continue
+                if suffix in suffixes:
+                    return True
+                else:
+                    # unexpected suffix.
+                    return False
+
+        return False
+
+    for component in log_rotating_component:
+        assert component_and_suffix_exists(component, paths), (component, paths)
 
 
 def test_log_rotation(shutdown_only, monkeypatch):

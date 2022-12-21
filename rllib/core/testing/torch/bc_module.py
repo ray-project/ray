@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Any, Mapping, Union
 
 import torch.nn as nn
@@ -84,15 +84,6 @@ class DiscreteBCTorchModule(TorchRLModule):
         }
 
         return cls(**config)
-
-    @classmethod
-    def from_env(cls, env):
-        """This is used for testing purposes."""
-        return cls.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
-        )
 
     def _default_inputs(self) -> dict:
         return {
