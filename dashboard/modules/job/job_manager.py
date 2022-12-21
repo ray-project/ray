@@ -232,6 +232,7 @@ class JobSupervisor:
                     signal.SIG_UNBLOCK, {signal.SIGINT}
                 )
                 if os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                and sys.platform != "win32"
                 else None,
             )
             parent_pid = os.getpid()
