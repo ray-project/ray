@@ -233,3 +233,10 @@ class TestPPO(unittest.TestCase):
                         for param in module.parameters():
                             pass
                             self.assertIsNotNone(param.grad)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
