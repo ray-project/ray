@@ -221,13 +221,6 @@ struct Mocker {
     return actor_table_data;
   }
 
-  static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const NodeID &node_id) {
-    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    profile_table_data->set_component_id(node_id.Binary());
-    return profile_table_data;
-  }
-
   static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
     auto error_table_data = std::make_shared<rpc::ErrorTableData>();
     error_table_data->set_job_id(job_id.Binary());

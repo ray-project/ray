@@ -29,7 +29,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
-#include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
@@ -164,9 +163,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs worker manager.
   InitGcsWorkerManager();
-
-  // Init stats handler.
-  InitStatsHandler();
 
   // Init GCS task manager.
   InitGcsTaskManager();
@@ -536,14 +532,6 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
     gcs_ray_syncer_->Initialize(gcs_init_data);
     gcs_ray_syncer_->Start();
   }
-}
-
-void GcsServer::InitStatsHandler() {
-  RAY_CHECK(gcs_table_storage_);
-  stats_handler_.reset(new rpc::DefaultStatsHandler(gcs_table_storage_));
-  // Register service.
-  stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
-  rpc_server_.RegisterService(*stats_service_);
 }
 
 void GcsServer::InitFunctionManager() {
