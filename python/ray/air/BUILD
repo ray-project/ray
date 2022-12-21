@@ -107,6 +107,30 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_manager_fixed",
+    size = "small",
+    srcs = ["tests/test_resource_manager_fixed.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_manager_placement_group",
+    size = "small",
+    srcs = ["tests/test_resource_manager_placement_group.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_request",
+    size = "small",
+    srcs = ["tests/test_resource_request.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
