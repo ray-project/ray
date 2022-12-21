@@ -26,21 +26,6 @@ namespace ray {
 
 namespace raylet {
 
-/// Groups worker by its owner id if it is a task. Each actor belongs to its own group.
-/// The inter-group policy prioritizes killing groups that are retriable first, then in LIFO order,
-/// where each group's priority is based on the time of its earliest submitted member.
-/// The intra-group policy prioritizes killing in LIFO order.
-/// 
-/// It will set the task to-be-killed to be non-retriable if it is the last member of the group.
-/// Otherwise the task is set to be retriable.
-class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
- public:
-  GroupByOwnerIdWorkerKillingPolicy();
-  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
-};
-
 struct GroupKey {
   GroupKey(const TaskID& owner_id, bool retriable): owner_id(owner_id), retriable(retriable) {}
   const TaskID& owner_id;
@@ -50,15 +35,16 @@ struct GroupKey {
 class Group {
  public:
   Group(const TaskID& owner_id, bool retriable): owner_id_(owner_id), retriable_(retriable) {}
+  TaskID OwnerId() const;
   bool IsRetriable() const;
   const std::chrono::steady_clock::time_point GetAssignedTaskTime() const;
   const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
-  int32_t WorkerCount() const;
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkers() const;
   void AddToGroup(std::shared_ptr<WorkerInterface> worker);
   
  private:
   /// Tasks belonging to this group.
-  absl::flat_hash_set<std::shared_ptr<WorkerInterface>> workers_;
+  std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
   /// The earliest creation time of the tasks.
   std::chrono::steady_clock::time_point time_ = std::chrono::steady_clock::now();
@@ -84,6 +70,23 @@ unsigned long group_key_hashing_func(const GroupKey& key) {
 bool group_key_equal_fn(const GroupKey& left, const GroupKey& right) {
   return left.owner_id == right.owner_id && left.retriable == right.retriable;
 }
+
+/// Groups worker by its owner id if it is a task. Each actor belongs to its own group.
+/// The inter-group policy prioritizes killing groups that are retriable first, then in LIFO order,
+/// where each group's priority is based on the time of its earliest submitted member.
+/// The intra-group policy prioritizes killing in LIFO order.
+/// 
+/// It will set the task to-be-killed to be non-retriable if it is the last member of the group.
+/// Otherwise the task is set to be retriable.
+class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
+ public:
+  GroupByOwnerIdWorkerKillingPolicy();
+  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      const MemorySnapshot &system_memory) const;
+ private:
+  static std::string PolicyDebugString(const std::vector<Group> &groups, const MemorySnapshot &system_memory);
+};
 
 }  // namespace raylet
 

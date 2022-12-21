@@ -79,15 +79,53 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   
   Group selected_group = sorted.front();
   auto worker_to_kill = selected_group.SelectWorkerToKill();
-  bool should_retry = selected_group.WorkerCount() > 1;
+  bool should_retry = selected_group.GetAllWorkers().size() > 1;
 
-  // const static int32_t max_to_print = 10;
-  // RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
-  //               << WorkersDebugString(sorted, max_to_print, system_memory);
-
-  // return std::make_pair(sorted.front(), /*should retry*/ true);
+  RAY_LOG(INFO) << "The top 10 groups to be killed based on the worker killing policy:\n"
+                << PolicyDebugString(sorted, system_memory);
 
   return std::make_pair(worker_to_kill, should_retry);
+}
+
+std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(const std::vector<Group> &groups, const MemorySnapshot &system_memory) {
+  std::stringstream result;
+  int32_t group_index = 0;
+  for (auto &group : groups) {
+    result << "Group (retriable: " << group.IsRetriable() << ") (owner id: " <<  group.OwnerId() << ") (time counter: " << group.GetAssignedTaskTime().time_since_epoch().count() << "):\n";
+
+    int64_t worker_index = 0;
+    for (auto &worker : group.GetAllWorkers()) {
+      auto pid = worker->GetProcess().GetId();
+      int64_t used_memory = 0;
+      const auto pid_entry = system_memory.process_used_bytes.find(pid);
+      if (pid_entry != system_memory.process_used_bytes.end()) {
+        used_memory = pid_entry->second;
+      } else {
+        RAY_LOG_EVERY_MS(INFO, 60000)
+            << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+      }
+      result << "Worker time counter "
+            << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
+            << worker->WorkerId() << " memory used " << used_memory << " task spec "
+            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+
+      worker_index += 1;
+      if (worker_index > 10) {
+        break;
+      }
+    }
+
+    group_index += 1;
+    if (group_index > 10) {
+      break;
+    }
+  }
+
+  return result.str();
+}
+
+TaskID Group::OwnerId() const {
+  return owner_id_;
 }
 
 bool Group::IsRetriable() const {
@@ -107,7 +145,7 @@ void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
   } else {
     RAY_CHECK_EQ(retriable_, worker->GetAssignedTask().GetTaskSpecification().IsRetriable());
   }
-  workers_.insert(worker);
+  workers_.push_back(worker);
 }
 
 const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
@@ -132,8 +170,8 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
   return sorted.front();
 }
 
-int32_t Group::WorkerCount() const {
-  return workers_.size();
+const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const{
+  return workers_;
 }
 
 }  // namespace raylet
