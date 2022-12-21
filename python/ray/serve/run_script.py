@@ -3,7 +3,6 @@ import pathlib
 import sys
 import time
 import yaml
-from typing import Optional, Union
 
 from ray import serve
 from ray._private.utils import import_attr
