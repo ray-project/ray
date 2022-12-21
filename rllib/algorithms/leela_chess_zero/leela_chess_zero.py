@@ -4,7 +4,14 @@ from typing import List, Optional, Type, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    train_one_step,
+)
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -12,8 +19,17 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
 
+from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_model import (
+    LeelaChessZeroModel,
+)
 from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_policy import (
     LeelaChessZeroPolicy,
 )
@@ -91,42 +107,45 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         # LeelaChessZero specific config settings:
         self.sgd_minibatch_size = 256
         self.shuffle_sequences = True
-        self.num_sgd_iter = 1
+        self.num_sgd_iter = 30
         self.replay_buffer_config = {
-            "type": "ReplayBuffer",
-            # Size of the replay buffer in batches (not timesteps!).
-            "capacity": 1000,
-            # Choosing `fragments` here makes it so that the buffer stores entire
-            # batches, instead of sequences, episodes or timesteps.
-            "storage_unit": "fragments",
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentReplayBuffer",
+            "underlying_replay_buffer_config": {
+                "type": PrioritizedReplayBuffer,
+                "capacity": 10000, "storage_unit": "episodes",
+                "prioritized_replay_alpha": 0.6, "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+            },
         }
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
-        self.num_steps_sampled_before_learning_starts = 1
+        self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
         self.mcts_config = {
-            "puct_coefficient": 1.0,
-            "num_simulations": 150,
+            "puct_coefficient": 2**0.5,
+            "num_simulations": 25,
             "temperature": 1.5,
             "dirichlet_epsilon": 0.25,
             "dirichlet_noise": 0.03,
-            "argmax_tree_policy": False,
+            "argmax_tree_policy": True,
             "add_dirichlet_noise": True,
             "epsilon": 0.05,
             "turn_based_flip": True,
             "argmax_child_value": True,
         }
+        self.model = {"custom_model" : LeelaChessZeroModel}
 
         # Override some of AlgorithmConfig's default values with AlphaZero-specific
         # values.
         self.framework_str = "torch"
         self.callbacks_class = LeelaChessZeroDefaultCallbacks
-        self.lr = 5e-5
-        self.num_rollout_workers = 2
+        self.lr = 1e-3
+        self.num_rollout_workers = 8
         self.rollout_fragment_length = 200
-        self.train_batch_size = 256
+        self.train_batch_size = 2048
         self.batch_mode = "complete_episodes"
         # Extra configuration for eval that disables exploration.
         self.evaluation(evaluation_config={
@@ -144,7 +163,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
     def callbacks(
         self, *, callbacks_class: Optional[DefaultCallbacks] = NotProvided, **kwargs
     ) -> "LeelaChessZeroConfig":
-        super().callbacks(**kwargs)
+        super().callbacks(callbacks_class, **kwargs)
 
         if callbacks_class is not NotProvided:
             self.callbacks_class = callbacks_class
@@ -158,10 +177,12 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         shuffle_sequences: Optional[bool] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
+        lr: Optional[float] = NotProvided,
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         vf_share_layers: Optional[bool] = NotProvided,
         mcts_config: Optional[dict] = NotProvided,
         num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
+        model: Optional[dict] = NotProvided,
         **kwargs,
     ) -> "LeelaChessZeroConfig":
         """Sets the training related configuration.
@@ -231,6 +252,8 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
+        if lr is not NotProvided:
+            self.lr = lr
         if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
         if vf_share_layers is not NotProvided:
@@ -243,6 +266,8 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
+        if model is not NotProvided:
+            self.model = model
 
         return self
 
@@ -318,8 +343,69 @@ class LeelaChessZero(Algorithm):
         return LeelaChessZeroConfig()
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+    def get_default_policy_class(self, *args, **kwargs) -> Optional[Type[Policy]]:
         return LeelaChessZeroPolicyWrapperClass
+
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
+        """TODO:
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+
+        # Sample n MultiAgentBatches from n workers.
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
+        )
+
+        for batch in new_sample_batches:
+            # Update sampling step counters.
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+            # Store new samples in the replay buffer
+            if self.local_replay_buffer is not None:
+                self.local_replay_buffer.add(batch)
+
+        if self.local_replay_buffer is not None:
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            if cur_ts > self.config.num_steps_sampled_before_learning_starts:
+                train_batch = self.local_replay_buffer.sample(
+                    self.config.train_batch_size
+                )
+            else:
+                train_batch = None
+        else:
+            train_batch = concat_samples(new_sample_batches)
+
+        # Learn on the training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        train_results = {}
+        if train_batch is not None:
+            train_results = train_one_step(self, train_batch)
+
+        # TODO: Move training steps counter update outside of `train_one_step()` method.
+        # # Update train step counters.
+        # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+        # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
+
+        # Return all collected metrics for the iteration.
+        return train_results
 
 
 DEFAULT_CONFIG = LeelaChessZeroConfig().to_dict()
