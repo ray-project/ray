@@ -672,7 +672,7 @@ class Algorithm(Trainable):
 
         # create the trainer_runner
         self.trainer_runner = None
-        if self.config.get("enable_trainer_runner", False):
+        if self.config.get("_enable_trainer_runner", False):
             # create remote trainers
             trainers = []
             # create the fault tolerant trainer runner
@@ -1320,7 +1320,7 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("enable_trainer_runner", False):
+            if self.config.get("_enable_trainer_runner", False):
                 train_results = self.trainer_runner.update_sync(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1336,7 +1336,7 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config.get("enable_trainer_runner", False):
+            if self.config.get("_enable_trainer_runner", False):
                 weights = self.trainer_runner.get_weights()
                 self.workers.foreach_worker(
                     lambda worker: worker.set_weights(weights),

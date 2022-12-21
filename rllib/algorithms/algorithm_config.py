@@ -423,6 +423,7 @@ class AlgorithmConfig:
         # `self.rl_module()`
         self.rl_module_class = None
         self._enable_rl_module_api = False
+        self._enable_trainer_runner = False
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -2107,6 +2108,7 @@ class AlgorithmConfig:
         *,
         rl_module_class: Optional[Type["RLModule"]] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
+        _enable_trainer_runner: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
@@ -2114,8 +2116,9 @@ class AlgorithmConfig:
             rl_module_class: The RLModule class to use for this config.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(rl_module=MyRLModule)`, the
-                RLModule API will be enabled. If you want to disable it, you can call
-                `config.rl_module(_enable_rl_module_api=False)`.
+                RLModule API will NOT be enabled. If you want to enable it, you can call
+                `config.rl_module(_enable_rl_module_api=True)`.
+            _enable_trainer_runner: Whether to enable the TrainerRunner for training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2132,6 +2135,9 @@ class AlgorithmConfig:
                 "have not enabled the RLModule API. To enable it, call "
                 "`config.rl_module(_enable_rl_module_api=True)`."
             )
+
+        if _enable_trainer_runner is not NotProvided:
+            self._enable_trainer_runner = _enable_trainer_runner
 
         return self
 
