@@ -26,7 +26,7 @@ namespace ray {
 
 namespace raylet {
 
-constexpr char kGroupByDepthPolicy[] = "group_by_depth";
+
 constexpr char kLifoPolicy[] = "retriable_lifo";
 constexpr char kGroupByOwner[] = "group_by_owner";
 
@@ -65,16 +65,6 @@ class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   RetriableLIFOWorkerKillingPolicy();
   const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
-};
-
-/// Kills the worker with the greatest depth such that all depths have at least one
-/// worker.
-class GroupByDepthWorkerKillingPolicy : public WorkerKillingPolicy {
- public:
-  GroupByDepthWorkerKillingPolicy();
-  const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 };

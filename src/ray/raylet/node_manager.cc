@@ -2943,7 +2943,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         auto worker_to_kill_and_should_retry =
-            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;
         bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
