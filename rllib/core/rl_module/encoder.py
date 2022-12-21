@@ -74,7 +74,7 @@ class Encoder(nn.Module):
         self._input_spec = self.input_spec()
         self._output_spec = self.output_spec()
 
-    def get_inital_state(self):
+    def get_initial_state(self):
         return []
 
     def input_spec(self):
@@ -128,7 +128,7 @@ class LSTMEncoder(Encoder):
         )
         self.linear = nn.Linear(config.hidden_dim, config.output_dim)
 
-    def get_inital_state(self):
+    def get_initial_state(self):
         config = self.config
         return {
             "h": torch.zeros(config.num_layers, config.hidden_dim),

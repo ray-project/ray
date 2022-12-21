@@ -202,9 +202,9 @@ class PPOTorchRLModule(TorchRLModule):
 
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.shared_encoder, LSTMEncoder):
-            return self.shared_encoder.get_inital_state()
+            return self.shared_encoder.get_initial_state()
         elif isinstance(self.pi_encoder, LSTMEncoder):
-            return self.pi_encoder.get_inital_state()
+            return self.pi_encoder.get_initial_state()
         else:
             return NestedDict({})
 
