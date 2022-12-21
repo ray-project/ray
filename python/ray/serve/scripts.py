@@ -250,7 +250,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--host",
     "-h",
-    default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
     help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
@@ -258,7 +257,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--port",
     "-p",
-    default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
     help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",

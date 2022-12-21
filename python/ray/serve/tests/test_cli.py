@@ -473,6 +473,45 @@ def test_run_runtime_env(ray_start_stop, address):
     p.wait()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port1(ray_start_stop):
+    """Test that `serve run` defaults to port 8000."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port2(ray_start_stop):
+    """If config file specifies a port, the default port value should not be used."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port3(ray_start_stop):
+    """If port is specified as argument to `serve run`, it should override config."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
+        timeout=15,
+    )
+
+
 @serve.deployment
 def global_f(*args):
     return "wonderful world"

@@ -8,6 +8,10 @@ from ray import serve
 from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve._private import api as _private_api
+from ray.serve._private.constants import (
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+)
 from ray.serve.schema import ServeApplicationSchema
 
 
@@ -34,9 +38,24 @@ def main():
         cli_logger.print(f"Deploying from config file: '{config_path}'.")
 
         with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+            config_dict = yaml.safe_load(config_file)
+            # If host or port is specified as a CLI argument, they should take priority
+            # over config values.
+            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
+            if host is not None:
+                config_dict["host"] = host
+
+            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
+            if port is not None:
+                config_dict["port"] = port
+
+            config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
+        if host is None:
+            host = DEFAULT_HTTP_HOST
+        if port is None:
+            port = DEFAULT_HTTP_PORT
         import_path = args.config_or_import_path
         cli_logger.print(f"Deploying from import path: '{import_path}'.")
         node = import_attr(import_path)
