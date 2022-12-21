@@ -568,7 +568,6 @@ def enable_mac_large_object_store():
 def two_node_cluster():
     system_config = {
         "object_timeout_milliseconds": 200,
-        "health_check_failure_threshold": 10,
     }
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
@@ -739,9 +738,6 @@ def _ray_start_chaos_cluster(request):
     config = param.pop("_system_config", {})
     config.update(
         {
-            "health_check_failure_threshold": 10,
-            "health_check_initial_delay_ms": 0,
-            "health_check_period_ms": 100,
             "task_retry_delay_ms": 100,
         }
     )
