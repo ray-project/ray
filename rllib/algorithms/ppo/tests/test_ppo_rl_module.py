@@ -223,7 +223,6 @@ class TestPPO(unittest.TestCase):
 
                     # check that all neural net parameters have gradients
                     for param in module.parameters():
-                        pass
                         self.assertIsNotNone(param.grad)
 
 
