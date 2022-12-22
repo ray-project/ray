@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-import gym
+import gymnasium as gym
 from typing import Mapping, Any, Union
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
@@ -209,12 +209,12 @@ class PPOTorchRLModule(TorchRLModule):
             return NestedDict({})
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
-        return ModelSpec({SampleBatch.ACTION_DIST: TorchDeterministic})
+    def output_specs_inference(self) -> SpecDict:
+        return SpecDict({SampleBatch.ACTION_DIST: TorchDeterministic})
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -238,7 +238,7 @@ class PPOTorchRLModule(TorchRLModule):
         return self.shared_encoder.input_spec()
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecDict:
         specs = {SampleBatch.ACTION_DIST: self.__get_action_dist_type()}
         if self._is_discrete:
             specs[SampleBatch.ACTION_DIST_INPUTS] = {
@@ -250,7 +250,7 @@ class PPOTorchRLModule(TorchRLModule):
                 "scale": TorchTensorSpec("b, h", h=self.config.action_space.shape[0]),
             }
 
-        return ModelSpec(specs)
+        return SpecDict(specs)
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -282,7 +282,7 @@ class PPOTorchRLModule(TorchRLModule):
         return output
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecDict:
         if self._is_discrete:
             action_spec = TorchTensorSpec("b")
         else:
@@ -293,12 +293,12 @@ class PPOTorchRLModule(TorchRLModule):
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
-        spec = ModelSpec(spec_dict)
+        spec = SpecDict(spec_dict)
         return spec
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
-        spec = ModelSpec(
+    def output_specs_train(self) -> SpecDict:
+        spec = SpecDict(
             {
                 SampleBatch.ACTION_DIST: self.__get_action_dist_type(),
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),

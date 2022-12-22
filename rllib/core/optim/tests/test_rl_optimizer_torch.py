@@ -1,6 +1,6 @@
 # TODO (avnishn): Merge with the tensorflow version of this test once the
 # RLTrainer has been merged.
-import gym
+import gymnasium as gym
 import pytest
 import torch
 from typing import Any, Mapping, Union

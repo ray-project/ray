@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.primitives import FCNet
 
@@ -78,12 +79,13 @@ class Encoder(nn.Module):
         return []
 
     def input_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
     def output_spec(self):
-        return ModelSpec()
+        return SpecDict()
 
-    @check_specs(input_spec="_input_spec", output_spec="_output_spec")
+    @check_input_specs("_input_spec")
+    @check_output_specs("_output_spec")
     def forward(self, input_dict):
         return self._forward(input_dict)
 
@@ -103,12 +105,12 @@ class FullyConnectedEncoder(Encoder):
         )
 
     def input_spec(self):
-        return ModelSpec(
+        return SpecDict(
             {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
         )
 
     def output_spec(self):
-        return ModelSpec(
+        return SpecDict(
             {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
 
@@ -137,7 +139,7 @@ class LSTMEncoder(Encoder):
 
     def input_spec(self):
         config = self.config
-        return ModelSpec(
+        return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
                 SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
@@ -154,7 +156,7 @@ class LSTMEncoder(Encoder):
 
     def output_spec(self):
         config = self.config
-        return ModelSpec(
+        return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
                 STATE_OUT: {
