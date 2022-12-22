@@ -44,6 +44,24 @@ class RandomBytesReader(Reader):
         ]
 
 
+def test_disable_in_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    # Import of ray.data.context module, and this triggers the initialization of
+    # default configuration values in DatasetContext.
+    from ray.data.context import DatasetContext
+
+    assert DatasetContext.get_current().block_splitting_enabled
+
+    # Verify Ray client disabling dynamic block splitting.
+    ray.init(address)
+    assert not DatasetContext.get_current().block_splitting_enabled
+
+
 def test_dataset(
     ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
 ):

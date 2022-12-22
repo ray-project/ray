@@ -199,6 +199,10 @@ class DatasetContext:
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                 )
 
+            # Check if using Ray client and disable dynamic block splitting.
+            if ray.util.client.ray.is_connected():
+                _default_context.block_splitting_enabled = False
+
             return _default_context
 
     @staticmethod
