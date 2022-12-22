@@ -1,8 +1,6 @@
 import os
 
 import ray
-from memray import Tracker, FileDestination
-from pathlib import Path
 
 
 class _NullLogSpan:
@@ -59,6 +57,9 @@ def profile(event_type, extra_data=None):
 
 
 def memory_profile(**kwargs):
+    from memray import Tracker, FileDestination
+    from pathlib import Path
+
     assert ray.is_initialized()
     log_path = Path(ray._private.worker._global_node.get_logs_dir_path())
     print(log_path)
