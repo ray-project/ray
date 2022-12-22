@@ -221,25 +221,6 @@ class MockTaskInfoAccessor : public TaskInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockStatsInfoAccessor : public StatsInfoAccessor {
- public:
-  MOCK_METHOD(Status,
-              AsyncAddProfileData,
-              (const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncGetAll,
-              (const MultiItemCallback<rpc::ProfileTableData> &callback),
-              (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
   MOCK_METHOD(Status,

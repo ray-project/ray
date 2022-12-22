@@ -543,34 +543,6 @@ class TaskInfoAccessor {
   GcsClient *client_impl_;
 };
 
-/// \class StatsInfoAccessor
-/// `StatsInfoAccessor` is a sub-interface of `GcsClient`.
-/// This class includes all the methods that are related to accessing
-/// stats in the GCS.
-class StatsInfoAccessor {
- public:
-  StatsInfoAccessor() = default;
-  explicit StatsInfoAccessor(GcsClient *client_impl);
-  virtual ~StatsInfoAccessor() = default;
-  /// Add profile data to GCS asynchronously.
-  ///
-  /// \param data_ptr The profile data that will be added to GCS.
-  /// \param callback Callback that will be called when add is complete.
-  /// \return Status
-  virtual Status AsyncAddProfileData(
-      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-      const StatusCallback &callback);
-
-  /// Get all profile info from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback);
-
- private:
-  GcsClient *client_impl_;
-};
-
 /// \class WorkerInfoAccessor
 /// `WorkerInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing

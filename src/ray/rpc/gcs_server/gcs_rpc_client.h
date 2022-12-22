@@ -217,8 +217,6 @@ class GcsRpcClient {
     node_resource_info_grpc_client_ =
         std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
-    stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(channel_, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
@@ -359,18 +357,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllResourceUsage,
                              node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Add profile data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             AddProfileData,
-                             stats_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Get information of all profiles from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             GetAllProfileInfo,
-                             stats_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Add task events info to GCS Service.
@@ -592,7 +578,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;

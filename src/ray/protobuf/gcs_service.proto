@@ -222,29 +222,6 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message AddProfileDataRequest {
-  ProfileTableData profile_data = 1;
-}
-
-message AddProfileDataReply {
-  GcsStatus status = 1;
-}
-
-message GetAllProfileInfoRequest {}
-
-message GetAllProfileInfoReply {
-  GcsStatus status = 1;
-  repeated ProfileTableData profile_info_list = 2;
-}
-
-// Service for stats access.
-service StatsGcsService {
-  // Add profile data to GCS Service.
-  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
-  // Get information of all profiles from GCS Service.
-  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
-}
-
 message ReportWorkerFailureRequest {
   WorkerTableData worker_failure = 1;
 }
