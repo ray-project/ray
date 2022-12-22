@@ -1649,6 +1649,7 @@ cc_test(
     deps = [
         ":ray_common",
         "@boost//:filesystem",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
