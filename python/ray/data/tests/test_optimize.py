@@ -63,6 +63,7 @@ def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
+    ds.fully_executed()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
     # Sanity check spilling is happening as expected.
@@ -291,18 +292,6 @@ def _assert_has_stages(stages, stage_names):
 
 
 def test_stage_linking(ray_start_regular_shared):
-    # NOTE: This tests the internals of `ExecutionPlan`, which is bad practice. Remove
-    # this test once we have proper unit testing of `ExecutionPlan`.
-    # Test eager dataset.
-    ds = ray.data.range(10)
-    assert len(ds._plan._stages_before_snapshot) == 0
-    assert len(ds._plan._stages_after_snapshot) == 0
-    assert len(ds._plan._last_optimized_stages) == 0
-    ds = ds.map(lambda x: x + 1)
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
-    assert len(ds._plan._stages_after_snapshot) == 0
-    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
-
     # Test lazy dataset.
     ds = ray.data.range(10).lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
