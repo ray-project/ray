@@ -202,7 +202,7 @@ class _ExperimentCheckpointManager:
         self._trial_num_checkpoints_since_last_sync[trial] += 1
         if (
             self._trial_num_checkpoints_since_last_sync[trial]
-            > self._sync_every_n_trial_checkpoints
+            >= self._sync_every_n_trial_checkpoints
         ):
             self._should_force_cloud_sync = True
 
