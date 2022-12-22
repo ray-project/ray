@@ -230,7 +230,7 @@ class TensorflowCheckpoint(Checkpoint):
                 DeprecationWarning,
             )
             model = model_definition
-        if callable(model) and self._flavor is not self.Flavor.MODEL_WEIGHTS:
+        if model is not None and self._flavor is not self.Flavor.MODEL_WEIGHTS:
             warnings.warn(
                 "TensorflowCheckpoint was created from "
                 "TensorflowCheckpoint.from_saved_model` or "
