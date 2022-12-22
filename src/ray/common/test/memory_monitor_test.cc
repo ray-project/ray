@@ -130,8 +130,8 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted)
                         -1 /*min_memory_free_bytes*/,
                         1 /*refresh_interval_ms*/,
                         [has_checked_once](bool is_usage_above_threshold,
-                                        MemorySnapshot system_memory,
-                                        float usage_threshold) {
+                                           MemorySnapshot system_memory,
+                                           float usage_threshold) {
                           ASSERT_EQ(1.0f, usage_threshold);
                           ASSERT_GT(system_memory.total_bytes, 0);
                           ASSERT_GT(system_memory.used_bytes, 0);
@@ -148,8 +148,8 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
                         -1 /*min_memory_free_bytes*/,
                         1 /*refresh_interval_ms*/,
                         [has_checked_once](bool is_usage_above_threshold,
-                                        MemorySnapshot system_memory,
-                                        float usage_threshold) {
+                                           MemorySnapshot system_memory,
+                                           float usage_threshold) {
                           ASSERT_EQ(0.4f, usage_threshold);
                           ASSERT_GT(system_memory.total_bytes, 0);
                           ASSERT_GT(system_memory.used_bytes, 0);
@@ -167,8 +167,8 @@ TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
                         0 /*min_memory_free_bytes*/,
                         1 /*refresh_interval_ms*/,
                         [has_checked_once](bool is_usage_above_threshold,
-                                        MemorySnapshot system_memory,
-                                        float usage_threshold) {
+                                           MemorySnapshot system_memory,
+                                           float usage_threshold) {
                           ASSERT_EQ(1.0f, usage_threshold);
                           ASSERT_GT(system_memory.total_bytes, 0);
                           ASSERT_GT(system_memory.used_bytes, 0);
