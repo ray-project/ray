@@ -1,5 +1,5 @@
+import pytest
 import sys
-import unittest
 
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
@@ -20,47 +20,48 @@ debian_packages:
 """  # noqa: E501
 
 
-class TemplateTest(unittest.TestCase):
-    def testPythonVersionDefaultCPU(self):
-        test = Test()
+def test_python_version_default_cpu():
+    test = Test()
 
-        env = populate_cluster_env_variables(test, ray_wheels_url="")
-        result = render_yaml_template(TEST_APP_CONFIG_CPU, env=env)
+    env = populate_cluster_env_variables(test, ray_wheels_url="")
+    result = render_yaml_template(TEST_APP_CONFIG_CPU, env=env)
 
-        assert result["base_image"] == "anyscale/ray:nightly-py37"
+    assert result["base_image"] == "anyscale/ray:nightly-py37"
 
-    def testPythonVersion39CPU(self):
-        test = Test(python="3.9")
 
-        env = populate_cluster_env_variables(test, ray_wheels_url="")
-        result = render_yaml_template(TEST_APP_CONFIG_CPU, env=env)
+def test_python_version_39_cpu():
+    test = Test(python="3.9")
 
-        assert result["base_image"] == "anyscale/ray:nightly-py39"
+    env = populate_cluster_env_variables(test, ray_wheels_url="")
+    result = render_yaml_template(TEST_APP_CONFIG_CPU, env=env)
 
-    def testPythonVersionDefaultGPU(self):
-        test = Test()
+    assert result["base_image"] == "anyscale/ray:nightly-py39"
 
-        env = populate_cluster_env_variables(test, ray_wheels_url="")
-        result = render_yaml_template(TEST_APP_CONFIG_GPU, env=env)
 
-        assert result["base_image"] == "anyscale/ray-ml:nightly-py37-gpu"
+def test_python_version_default_gpu():
+    test = Test()
 
-    def testPythonVersion39GPU(self):
-        test = Test(python="3.9")
+    env = populate_cluster_env_variables(test, ray_wheels_url="")
+    result = render_yaml_template(TEST_APP_CONFIG_GPU, env=env)
 
-        env = populate_cluster_env_variables(test, ray_wheels_url="")
-        result = render_yaml_template(TEST_APP_CONFIG_GPU, env=env)
+    assert result["base_image"] == "anyscale/ray-ml:nightly-py37-gpu"
 
-        assert result["base_image"] == "anyscale/ray-ml:nightly-py39-gpu"
 
-    def testPythonVersionInvalid(self):
-        test = Test(python="3.x")
+def test_python_version_39_gpu():
+    test = Test(python="3.9")
 
-        with self.assertRaises(ReleaseTestConfigError):
-            populate_cluster_env_variables(test, ray_wheels_url="")
+    env = populate_cluster_env_variables(test, ray_wheels_url="")
+    result = render_yaml_template(TEST_APP_CONFIG_GPU, env=env)
+
+    assert result["base_image"] == "anyscale/ray-ml:nightly-py39-gpu"
+
+
+def test_python_version_invalid():
+    test = Test(python="3.x")
+
+    with pytest.raises(ReleaseTestConfigError):
+        populate_cluster_env_variables(test, ray_wheels_url="")
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))
