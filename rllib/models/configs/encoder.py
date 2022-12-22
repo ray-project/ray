@@ -2,7 +2,7 @@ import abc
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Tuple
 
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.torch.encoders.vector import TorchVectorEncoder
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class EncoderConfig:
     framework_str: str = "torch"
 
     @abc.abstractmethod
-    def build(self, input_spec: ModelSpec, **kwargs) -> "Encoder":
+    def build(self, input_spec: SpecDict, **kwargs) -> "Encoder":
         """Builds the EncoderConfig into an Encoder instance"""
 
 
@@ -56,7 +56,7 @@ class VectorEncoderConfig(EncoderConfig):
     hidden_layer_sizes: Tuple[int, ...] = (128, 128)
     output_key: str = "encoding"
 
-    def build(self, input_spec: ModelSpec) -> TorchVectorEncoder:
+    def build(self, input_spec: SpecDict) -> TorchVectorEncoder:
         """Build the config into a VectorEncoder model instance.
 
         Args:
