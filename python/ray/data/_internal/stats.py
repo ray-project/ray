@@ -14,6 +14,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
+StatsDict = Dict[str, List[BlockMetadata]]
+
 
 def fmt(seconds: float) -> str:
     if seconds > 1:
@@ -57,9 +59,7 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
-    def build_multistage(
-        self, stages: Dict[str, List[BlockMetadata]]
-    ) -> "DatasetStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             if i == 0:
@@ -168,7 +168,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: Dict[str, List[BlockMetadata]],
+        stages: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
@@ -189,7 +189,7 @@ class DatasetStats:
             base_name: The name of the base operation for a multi-stage operation.
         """
 
-        self.stages: Dict[str, List[BlockMetadata]] = stages
+        self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent
