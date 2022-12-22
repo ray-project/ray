@@ -4,7 +4,9 @@
 How to write code snippets
 ==========================
 
-Docstrings and user guides should contain examples that illustrate Ray's APIs.
+Users learn from example. So, whether you're writing a docstring or a user guide,
+include examples that illustrate relevant APIs. These examples should run
+out-of-the-box so that users can copy them and adapt them to their own needs.
 
 This page describes how to write code snippets so that they're tested in CI.
 
@@ -93,7 +95,8 @@ They're rendered like this:
 Which type of example should you write?
 ---------------------------------------
 
-If you're writing a small example that emphasizes object representations, use *doctest-style*. ::
+If you're writing a small example that emphasizes object representations, or if you
+want to print intermediate objects, use *doctest-style*. ::
 
     .. doctest::
 
@@ -102,7 +105,7 @@ If you're writing a small example that emphasizes object representations, use *d
         >>> dataset.input_files()
         ['air-example-data/iris.csv']
 
-If you're writing a longer example, or if object represenations aren't relevant to your example, use *code-block-style*. ::
+If you're writing a longer example, or if object representations aren't relevant to your example, use *code-block-style*. ::
 
     .. testcode::
 
