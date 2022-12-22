@@ -5,7 +5,7 @@ How to write code snippets
 ==========================
 
 Users learn from example. So, whether you're writing a docstring or a user guide,
-include examples that illustrate relevant APIs. These examples should run
+include examples that illustrate the relevant APIs. Your examples should run
 out-of-the-box so that users can copy them and adapt them to their own needs.
 
 This page describes how to write code snippets so that they're tested in CI.
