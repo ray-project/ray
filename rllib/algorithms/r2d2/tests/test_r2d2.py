@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -57,6 +58,10 @@ class TestR2D2(unittest.TestCase):
         """Test whether R2D2 can be built on all frameworks."""
         config = (
             r2d2.R2D2Config()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .training(

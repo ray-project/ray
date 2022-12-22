@@ -1,4 +1,5 @@
 import pyspiel
+import os
 import unittest
 
 import ray
@@ -28,6 +29,10 @@ class TestAlphaStar(unittest.TestCase):
         """Test whether AlphaStar can be built with all frameworks."""
         config = (
             alpha_star.AlphaStarConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env="connect_four")
             .training(
                 gamma=1.0,

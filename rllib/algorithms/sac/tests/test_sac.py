@@ -1,6 +1,7 @@
 import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
+import os
 import re
 import unittest
 
@@ -76,6 +77,10 @@ class TestSAC(unittest.TestCase):
         """Tests whether SAC can be built with all frameworks."""
         config = (
             sac.SACConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .training(
                 n_step=3,
                 twin_q=True,
@@ -169,6 +174,10 @@ class TestSAC(unittest.TestCase):
         """Tests SAC loss function results across all frameworks."""
         config = (
             sac.SACConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(
                 SimpleEnv,
                 env_config={"simplex_actions": True},
@@ -535,6 +544,10 @@ class TestSAC(unittest.TestCase):
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (
             sac.SACConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("nested")
             .training(
                 replay_buffer_config={

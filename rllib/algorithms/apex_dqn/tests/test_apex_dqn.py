@@ -1,4 +1,5 @@
 import pytest
+import os
 import unittest
 
 import ray
@@ -23,9 +24,12 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
-            .resources(num_gpus=0)
             .training(
                 num_steps_sampled_before_learning_starts=0,
                 optimizer={
@@ -49,9 +53,12 @@ class TestApexDQN(unittest.TestCase):
         """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=3)
-            .resources(num_gpus=0)
             .training(
                 num_steps_sampled_before_learning_starts=0,
                 optimizer={
@@ -89,12 +96,15 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_lr_schedule(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,
             )
-            .resources(num_gpus=0)
             .training(
                 train_batch_size=10,
                 optimizer={

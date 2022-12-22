@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -26,6 +27,10 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = (
             dqn.dqn.DQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
             .training(num_steps_sampled_before_learning_starts=0)
@@ -65,6 +70,10 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = (
             dqn.dqn.DQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("Taxi-v3")
             .rollouts(num_rollout_workers=2)
             .training(num_steps_sampled_before_learning_starts=0)
@@ -101,10 +110,15 @@ class TestDQN(unittest.TestCase):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
         config = (
             dqn.dqn.DQNConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("FrozenLake-v1")
             .rollouts(num_rollout_workers=0)
             .environment(env_config={"is_slippery": False, "map_name": "4x4"})
-        ).training(num_steps_sampled_before_learning_starts=0)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
 
         obs = np.array(0)
 

@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -17,21 +18,27 @@ class TestES(unittest.TestCase):
 
     def test_es_compilation(self):
         """Test whether an ESAlgorithm can be built on all frameworks."""
-        config = es.ESConfig()
-        # Keep it simple.
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": None,
-            },
-            noise_size=2500000,
-            episodes_per_batch=10,
-            train_batch_size=100,
+        config = (
+            es.ESConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            # Keep it simple.
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": None,
+                },
+                noise_size=2500000,
+                episodes_per_batch=10,
+                train_batch_size=100,
+            )
+            .rollouts(num_rollout_workers=1)
+            # Test eval workers ("normal" WorkerSet, unlike ES' list of
+            # RolloutWorkers used for collecting train batches).
+            .evaluation(evaluation_interval=1, evaluation_num_workers=2)
         )
-        config.rollouts(num_rollout_workers=1)
-        # Test eval workers ("normal" WorkerSet, unlike ES' list of
-        # RolloutWorkers used for collecting train batches).
-        config.evaluation(evaluation_interval=1, evaluation_num_workers=2)
 
         num_iterations = 1
 
@@ -48,18 +55,24 @@ class TestES(unittest.TestCase):
 
     def test_es_weights(self):
         """Test whether an ESAlgorithm can be built on all frameworks."""
-        config = es.ESConfig()
-        # Keep it simple.
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": None,
-            },
-            noise_size=2500000,
-            episodes_per_batch=10,
-            train_batch_size=100,
+        config = (
+            es.ESConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            # Keep it simple.
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": None,
+                },
+                noise_size=2500000,
+                episodes_per_batch=10,
+                train_batch_size=100,
+            )
+            .rollouts(num_rollout_workers=1)
         )
-        config.rollouts(num_rollout_workers=1)
 
         for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")

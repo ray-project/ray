@@ -1,4 +1,5 @@
 import copy
+import os
 import re
 import unittest
 
@@ -36,6 +37,10 @@ class TestDDPG(unittest.TestCase):
         """Test whether DDPG can be built with both frameworks."""
         config = (
             ddpg.DDPGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .training(num_steps_sampled_before_learning_starts=0)
             .rollouts(num_rollout_workers=0, num_envs_per_worker=2)
             .exploration(exploration_config={"random_timesteps": 100})
@@ -65,6 +70,10 @@ class TestDDPG(unittest.TestCase):
 
         core_config = (
             ddpg.DDPGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("Pendulum-v1")
             .rollouts(num_rollout_workers=0)
             .training(num_steps_sampled_before_learning_starts=0)
@@ -130,7 +139,14 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
-        config = ddpg.DDPGConfig().training(num_steps_sampled_before_learning_starts=0)
+        config = (
+            ddpg.DDPGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
 
         # Run locally.
         config.seed = 42

@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -63,6 +64,10 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
@@ -134,6 +139,10 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},

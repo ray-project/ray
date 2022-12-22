@@ -1,5 +1,6 @@
-import unittest
 import pytest
+import os
+import unittest
 
 import ray
 import ray.rllib.algorithms.ddppo as ddppo
@@ -14,6 +15,9 @@ from ray.rllib.utils.test_utils import (
 
 
 class TestDDPPO(unittest.TestCase):
+
+    use_gpus = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -24,7 +28,10 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_compilation(self):
         """Test whether DDPPO can be built with both frameworks."""
-        config = ddppo.DDPPOConfig().resources(num_gpus_per_worker=0)
+        config = (
+            ddppo.DDPPOConfig()
+            .resources(num_gpus_per_worker=0.5 if self.use_gpus else 0)
+        )
 
         num_iterations = 2
 
@@ -45,7 +52,7 @@ class TestDDPPO(unittest.TestCase):
     def test_ddppo_schedule(self):
         """Test whether lr_schedule will anneal lr to 0"""
         config = ddppo.DDPPOConfig()
-        config.resources(num_gpus_per_worker=0)
+        config.resources(num_gpus_per_worker=0.5 if self.use_gpus else 0)
         config.training(lr_schedule=[[0, config.lr], [1000, 0.0]])
 
         num_iterations = 10

@@ -1,4 +1,5 @@
 from gymnasium.spaces import Box
+import os
 import unittest
 
 import ray
@@ -18,18 +19,24 @@ class TestDreamer(unittest.TestCase):
 
     def test_dreamer_compilation(self):
         """Test whether Dreamer can be built with all frameworks."""
-        config = dreamer.DreamerConfig()
-        config.environment(
-            env=RandomEnv,
-            env_config={
-                "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
-                "action_space": Box(-1.0, 1.0, (3,)),
-            },
+        config = (
+            dreamer.DreamerConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .environment(
+                env=RandomEnv,
+                env_config={
+                    "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
+                    "action_space": Box(-1.0, 1.0, (3,)),
+                },
+            )
+            # Num episode chunks per batch.
+            # Length (ts) of an episode chunk in a batch.
+            # Sub-iterations per .train() call.
+            .training(batch_size=2, batch_length=20, dreamer_train_iters=4)
         )
-        # Num episode chunks per batch.
-        # Length (ts) of an episode chunk in a batch.
-        # Sub-iterations per .train() call.
-        config.training(batch_size=2, batch_length=20, dreamer_train_iters=4)
 
         num_iterations = 1
 

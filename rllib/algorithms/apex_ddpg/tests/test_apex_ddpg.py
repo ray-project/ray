@@ -1,4 +1,5 @@
 import pytest
+import os
 import unittest
 
 import ray
@@ -22,6 +23,10 @@ class TestApexDDPG(unittest.TestCase):
         """Test whether APEX-DDPG can be built on all frameworks."""
         config = (
             apex_ddpg.ApexDDPGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env="Pendulum-v1")
             .rollouts(num_rollout_workers=2)
             .reporting(min_sample_timesteps_per_iteration=100)

@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -23,7 +24,14 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
-        config = appo.APPOConfig().rollouts(num_rollout_workers=1)
+        config = (
+            appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .rollouts(num_rollout_workers=1)
+        )
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -57,7 +65,13 @@ class TestAPPO(unittest.TestCase):
     def test_appo_compilation_use_kl_loss(self):
         """Test whether APPO can be built with kl_loss enabled."""
         config = (
-            appo.APPOConfig().rollouts(num_rollout_workers=1).training(use_kl_loss=True)
+            appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .rollouts(num_rollout_workers=1)
+            .training(use_kl_loss=True)
         )
         num_iterations = 2
 
@@ -75,6 +89,10 @@ class TestAPPO(unittest.TestCase):
         # config["_tf_policy_handles_more_than_one_loss"] = True
         config = (
             appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=1)
             .training(_separate_vf_optimizer=True, _lr_vf=0.002)
         )
@@ -98,6 +116,10 @@ class TestAPPO(unittest.TestCase):
         # Initial lr, doesn't really matter because of the schedule below.
         config = (
             appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(
                 num_rollout_workers=1,
                 batch_mode="truncate_episodes",
@@ -153,6 +175,10 @@ class TestAPPO(unittest.TestCase):
     def test_appo_learning_rate_schedule(self):
         config = (
             appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(
                 num_rollout_workers=1,
                 batch_mode="truncate_episodes",
@@ -200,6 +226,10 @@ class TestAPPO(unittest.TestCase):
     def test_appo_model_variables(self):
         config = (
             appo.APPOConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(
                 num_rollout_workers=1,
                 batch_mode="truncate_episodes",

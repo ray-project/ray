@@ -46,6 +46,10 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=2)
             .environment(env="CartPole-v1")
             .evaluation(
@@ -108,6 +112,10 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=1)
             .evaluation(
                 evaluation_num_workers=1,
@@ -147,6 +155,10 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=0)
             .offline_data(input_=[data_file])
         )  # Learn from offline data.

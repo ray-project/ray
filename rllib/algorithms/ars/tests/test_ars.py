@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -16,19 +17,24 @@ class TestARS(unittest.TestCase):
 
     def test_ars_compilation(self):
         """Test whether an ARSAlgorithm can be built on all frameworks."""
-        config = ars.ARSConfig()
-
-        # Keep it simple.
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": None,
-            },
-            noise_size=2500000,
+        config = (
+            ars.ARSConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            # Keep it simple.
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": None,
+                },
+                noise_size=2500000,
+            )
+            # Test eval workers ("normal" WorkerSet, unlike ARS' list of
+            # RolloutWorkers used for collecting train batches).
+            .evaluation(evaluation_interval=1, evaluation_num_workers=1)
         )
-        # Test eval workers ("normal" WorkerSet, unlike ARS' list of
-        # RolloutWorkers used for collecting train batches).
-        config.evaluation(evaluation_interval=1, evaluation_num_workers=1)
 
         num_iterations = 2
 

@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -23,6 +24,10 @@ class TestAlphaZero(unittest.TestCase):
         """Test whether AlphaZero can be built with all frameworks."""
         config = (
             az.AlphaZeroConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env=CartPoleSparseRewards)
             .training(model={"custom_model": DenseModel})
         )

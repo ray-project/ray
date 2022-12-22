@@ -1,5 +1,6 @@
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -35,13 +36,19 @@ class TestPG(unittest.TestCase):
 
     def test_pg_compilation(self):
         """Test whether PG can be built with all frameworks."""
-        config = pg.PGConfig()
-
-        # Test with filter to see whether they work w/o preprocessing.
-        config.rollouts(
-            num_rollout_workers=1,
-            observation_filter="MeanStdFilter",
-        ).training(train_batch_size=500)
+        config = (
+            pg.PGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            # Test with filter to see whether they work w/o preprocessing.
+            .rollouts(
+                num_rollout_workers=1,
+                observation_filter="MeanStdFilter",
+            )
+            .training(train_batch_size=500)
+        )
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
@@ -98,6 +105,10 @@ class TestPG(unittest.TestCase):
         """Tests the PG loss function math."""
         config = (
             pg.PGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=0)
             .training(
                 gamma=0.99,
@@ -184,22 +195,28 @@ class TestPG(unittest.TestCase):
 
     def test_pg_lr(self):
         """Test PG with learning rate schedule."""
-        config = pg.PGConfig()
-        config.reporting(
-            min_sample_timesteps_per_iteration=10,
-            # Make sure that results contain info on default policy
-            min_train_timesteps_per_iteration=10,
-            # 0 metrics reporting delay, this makes sure timestep,
-            # which lr depends on, is updated after each worker rollout.
-            min_time_s_per_iteration=0,
-        )
-        config.rollouts(
-            num_rollout_workers=1,
-        )
-        config.training(
-            lr=0.2,
-            lr_schedule=[[0, 0.2], [500, 0.001]],
-            train_batch_size=50,
+        config = (
+            pg.PGConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .reporting(
+                min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
+                # 0 metrics reporting delay, this makes sure timestep,
+                # which lr depends on, is updated after each worker rollout.
+                min_time_s_per_iteration=0,
+            )
+            .rollouts(
+                num_rollout_workers=1,
+            )
+            .training(
+                lr=0.2,
+                lr_schedule=[[0, 0.2], [500, 0.001]],
+                train_batch_size=50,
+            )
         )
 
         def _step_n_times(algo, n: int):

@@ -52,6 +52,10 @@ class TestDT(unittest.TestCase):
 
         config = (
             DTConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(
                 env="Pendulum-v1",
                 clip_actions=True,

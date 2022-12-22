@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -29,8 +30,11 @@ class TestIMPALA(unittest.TestCase):
         """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment("CartPole-v1")
-            .resources(num_gpus=0)
             .training(
                 model={
                     "lstm_use_prev_action": True,
@@ -71,7 +75,10 @@ class TestIMPALA(unittest.TestCase):
         # The first lr should be 0.05.
         config = (
             impala.ImpalaConfig()
-            .resources(num_gpus=0)
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .training(
                 lr=0.1,
                 lr_schedule=[

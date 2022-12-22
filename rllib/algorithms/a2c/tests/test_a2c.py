@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -20,7 +21,14 @@ class TestA2C(unittest.TestCase):
 
     def test_a2c_compilation(self):
         """Test whether an A2C can be built with both frameworks."""
-        config = a2c.A2CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        config = (
+            a2c.A2CConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        )
 
         num_iterations = 1
 
@@ -39,6 +47,10 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl(self):
         config = (
             a2c.A2CConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
         )
@@ -54,6 +66,10 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl_microbatch(self):
         config = (
             a2c.A2CConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
             .training(microbatch_size=10)

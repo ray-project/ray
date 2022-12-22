@@ -1,6 +1,6 @@
-import unittest
-
 import numpy as np
+import os
+import unittest
 
 import ray
 import ray.rllib.algorithms.simple_q as simple_q
@@ -38,6 +38,10 @@ class TestSimpleQ(unittest.TestCase):
         # Run locally and with compression
         config = (
             simple_q.SimpleQConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .rollouts(num_rollout_workers=0, compress_observations=True)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -58,15 +62,23 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
-        config = simple_q.SimpleQConfig().rollouts(num_rollout_workers=0)
-        # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            },
-            num_steps_sampled_before_learning_starts=0,
-        ).environment("CartPole-v1")
+        config = (
+            simple_q.SimpleQConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .rollouts(num_rollout_workers=0)
+            # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                },
+                num_steps_sampled_before_learning_starts=0,
+            )
+            .environment("CartPole-v1")
+        )
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
@@ -152,20 +164,26 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_lr_schedule(self):
         """Test PG with learning rate schedule."""
-        config = simple_q.SimpleQConfig()
-        config.reporting(
-            min_sample_timesteps_per_iteration=10,
-            # Make sure that results contain info on default policy
-            min_train_timesteps_per_iteration=10,
-            # 0 metrics reporting delay, this makes sure timestep,
-            # which lr depends on, is updated after each worker rollout.
-            min_time_s_per_iteration=0,
+        config = (
+            simple_q.SimpleQConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
+            .reporting(
+                min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
+                # 0 metrics reporting delay, this makes sure timestep,
+                # which lr depends on, is updated after each worker rollout.
+                min_time_s_per_iteration=0,
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                rollout_fragment_length=50,
+            )
+            .training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
         )
-        config.rollouts(
-            num_rollout_workers=1,
-            rollout_fragment_length=50,
-        )
-        config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
 
         def _step_n_times(algo, n: int):
             """Step trainer n times.

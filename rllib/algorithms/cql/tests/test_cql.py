@@ -40,6 +40,10 @@ class TestCQL(unittest.TestCase):
 
         config = (
             cql.CQLConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(
                 env="Pendulum-v1",
             )
@@ -67,7 +71,7 @@ class TestCQL(unittest.TestCase):
                 evaluation_num_workers=2,
             )
             .rollouts(num_rollout_workers=0)
-            .reporting(min_time_s_per_iteration=0.0)
+            .reporting(min_time_s_per_iteration=0)
         )
         num_iterations = 4
 

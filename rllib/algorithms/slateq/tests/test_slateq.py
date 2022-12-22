@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -25,6 +26,10 @@ class TestSlateQ(unittest.TestCase):
         """Test whether SlateQ can be built with both frameworks."""
         config = (
             slateq.SlateQConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env=InterestEvolutionRecSimEnv)
             .training(num_steps_sampled_before_learning_starts=1000)
         )

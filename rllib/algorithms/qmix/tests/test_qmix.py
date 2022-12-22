@@ -1,5 +1,6 @@
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -98,6 +99,10 @@ class TestQMix(unittest.TestCase):
 
         config = (
             QMixConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .framework(framework="torch")
             .environment(
                 env="action_mask_test",

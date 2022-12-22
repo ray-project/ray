@@ -1,6 +1,7 @@
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
 import numpy as np
+import os
 import unittest
 
 import ray
@@ -43,6 +44,10 @@ class TestBandits(unittest.TestCase):
         """Test whether BanditLinTS can be built on all frameworks."""
         config = (
             BanditLinTSConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env=SimpleContextualBandit)
             .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
         )
@@ -67,6 +72,10 @@ class TestBandits(unittest.TestCase):
         """Test whether BanditLinUCB can be built on all frameworks."""
         config = (
             BanditLinUCBConfig()
+            .resources(
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            )
             .environment(env=SimpleContextualBandit)
             .rollouts(num_envs_per_worker=2)
         )
@@ -98,6 +107,10 @@ class TestBandits(unittest.TestCase):
         for config_cls in [BanditLinUCBConfig, BanditLinTSConfig]:
             config = (
                 config_cls()
+                .resources(
+                    # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                    num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                )
                 .debugging(seed=0)
                 .environment(
                     env=NonContextualBanditEnv,
