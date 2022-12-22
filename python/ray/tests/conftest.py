@@ -166,6 +166,7 @@ def _setup_redis(request):
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
     import uuid
+
     ns = str(uuid.uuid4())
     old_ns = os.environ.get("RAY_external_storage_namespace")
     os.environ["RAY_external_storage_namespace"] = ns
