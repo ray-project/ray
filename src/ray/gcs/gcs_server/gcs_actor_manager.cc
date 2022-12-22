@@ -1182,6 +1182,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
+  liftime_num_created_actors_++;
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
@@ -1552,6 +1553,10 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
+                                                 liftime_num_created_actors_);
+  }
   actor_state_counter_->FlushOnChangeCallbacks();
 }
 
