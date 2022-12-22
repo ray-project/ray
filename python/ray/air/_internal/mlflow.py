@@ -68,6 +68,7 @@ class _MLflowLoggerUtil:
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
+            tracking_token: Tracking token used to authenticate with MLflow.
             create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
                 exist. Defaults to True.

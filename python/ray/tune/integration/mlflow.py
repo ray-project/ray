@@ -34,6 +34,13 @@ class MLflowLoggerCallback(_MLflowLoggerCallback):
         )
 
 
+# Deprecate: Remove in 2.4
+@Deprecated(
+    message=(
+        "The MlflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead."
+    )
+)
 def mlflow_mixin(func: Callable):
     """mlflow_mixin
 
@@ -147,6 +154,12 @@ def mlflow_mixin(func: Callable):
     return func
 
 
+@Deprecated(
+    message=(
+        "The MlflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead."
+    )
+)
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
         self.mlflow_util = _MLflowLoggerUtil()

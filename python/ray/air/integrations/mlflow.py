@@ -1,6 +1,6 @@
 import logging
-from typing import Dict, Optional
-
+from types import ModuleType
+from typing import Dict, Optional, Union
 
 import ray
 from ray.air import session
@@ -12,27 +12,27 @@ from ray.tune.experiment import Trial
 from ray.util.annotations import PublicAPI
 
 try:
-    from mlflow.tracking import MlflowClient
-except Exception:
-    MlflowClient = object
+    import mlflow
+except ImportError:
+    mlflow = None
 
 
 logger = logging.getLogger(__name__)
 
 
-class _NoopClient(MlflowClient):
+def _noop(*args, **kwargs):
     pass
+
+
+class _NoopModule:
+    def __getattr__(self, item):
+        return _noop
 
 
 @PublicAPI(stability="alpha")
 def setup_mlflow(
-    tracking_uri: Optional[str] = None,
-    registry_uri: Optional[str] = None,
-    experiment_id: Optional[str] = None,
-    experiment_name: Optional[str] = None,
-    tags: Optional[Dict] = None,
-    rank_zero_only: bool = True,
-) -> MlflowClient:
+    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+) -> Union[ModuleType, _NoopModule]:
     """Set up a MLflow session.
 
     This function can be used to initialize an Mlflow session in a
@@ -40,7 +40,8 @@ def setup_mlflow(
 
     By default, the Mlflow experiment ID is the Ray trial ID and the
     MLlflow experiment name is the Ray trial name. These settings can be overwritten by
-    passing the respective arguments to this function.
+    entries in the ``mlflow`` key of the ``config`` dict.
+    Any keyword arguments will be merged into this configuration.
 
     In distributed training with Ray Train, only the zero-rank worker will initialize
     mlflow. All other workers will return a noop client, so that logging is not
@@ -49,6 +50,15 @@ def setup_mlflow(
     worker.
 
     Args:
+        config: Configuration dict to be logged to weights and biases. Can contain
+            mlflow experiment setting under a ``mlflow`` key.
+        rank_zero_only: If True, will return an initialized session only for the
+            rank 0 worker in distributed training. If False, will initialize a
+            session for all workers.
+        kwargs: Will be merged with the settings obtained from the ``mlflow`` config
+            key.
+
+    Config keys:
         tracking_uri: The tracking URI for the MLflow tracking
                 server.
         registry_uri: The registry URI for the MLflow model registry.
@@ -63,10 +73,8 @@ def setup_mlflow(
             is used to determine the experiment name.
             If the experiment with the name already exists with MLflow,
             it will be reused.
-        tags (Optional[Dict]): Tags to set for the new run.~
-        rank_zero_only: If True, will return an initialized session only for the
-            rank 0 worker in distributed training. If False, will initialize a
-            session for all workers.
+        tracking_token: Tracking token used to authenticate with MLflow.
+        tags (Optional[Dict]): Tags to set for the new run.
 
     Example:
 
@@ -80,7 +88,7 @@ def setup_mlflow(
                 mlflow_client.log_metric(key="loss", val=0.123, step=0)
 
     """
-    if MlflowClient == object:
+    if not mlflow:
         raise RuntimeError(
             "mlflow was not found - please install with `pip install mlflow`"
         )
@@ -89,7 +97,7 @@ def setup_mlflow(
         # Do a try-catch here if we are not in a train session
         _session = session._get_session(warn=False)
         if _session and rank_zero_only and session.get_world_rank() != 0:
-            return _NoopClient()
+            return _NoopModule()
 
         default_trial_id = session.get_trial_id()
         default_trial_name = session.get_trial_name()
@@ -98,17 +106,52 @@ def setup_mlflow(
         default_trial_id = None
         default_trial_name = None
 
+    mlflow_config = config.get("mlflow", {}).copy()
+
+    # Valid parameters we can pass to _MLflowLoggerUtil.setup_mlflow():
+    valid_kwarg_keys = [
+        "tracking_uri",
+        "registry_uri",
+        "experiment_id",
+        "experiment_name",
+        "tracking_token",
+        "tags",
+    ]
+
+    # Check if **kwargs contain invalid keys
+    if any(key not in valid_kwarg_keys for key in kwargs):
+        raise RuntimeError(
+            "An invalid key was found in the keyword arguments passed to "
+            f"`setup_mlflow`. Only these keys are allowed: {valid_kwarg_keys}. Found: "
+            f"{list(kwargs.keys())}"
+        )
+
+    # Get keys from config. Merge with kwargs.
+    setup_kwargs = {key: mlflow_config.get(key, None) for key in valid_kwarg_keys}
+    setup_kwargs.update(kwargs)
+
+    # Set some default values
+    setup_kwargs["experiment_id"] = setup_kwargs["experiment_id"] or default_trial_id
+    setup_kwargs["experiment_name"] = (
+        setup_kwargs["experiment_name"] or default_trial_name
+    )
+
+    # The `tags` key actually gets passed to start_run
+    tags = setup_kwargs.pop("tags", None)
+
+    # Setup mlflow
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
-        tracking_uri=tracking_uri,
-        registry_uri=registry_uri,
-        experiment_id=experiment_id or default_trial_id,
-        experiment_name=experiment_name or default_trial_name,
+        **setup_kwargs,
         create_experiment_if_not_exists=True,
     )
-    return mlflow_util.start_run(
-        run_name=experiment_name or default_trial_name, tags=tags, set_active=True
+
+    mlflow_util.start_run(
+        run_name=setup_kwargs["experiment_name"] or default_trial_name,
+        tags=tags,
+        set_active=True,
     )
+    return mlflow_util._mlflow
 
 
 class MLflowLoggerCallback(LoggerCallback):
@@ -133,6 +176,7 @@ class MLflowLoggerCallback(LoggerCallback):
             that name.
         tags: An optional dictionary of string keys and values to set
             as tags on the run
+        tracking_token: Tracking token used to authenticate with MLflow.
         save_artifact: If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
@@ -163,9 +207,11 @@ class MLflowLoggerCallback(LoggerCallback):
     def __init__(
         self,
         tracking_uri: Optional[str] = None,
+        *,
         registry_uri: Optional[str] = None,
         experiment_name: Optional[str] = None,
         tags: Optional[Dict] = None,
+        tracking_token: Optional[str] = None,
         save_artifact: bool = False,
     ):
 
@@ -173,6 +219,7 @@ class MLflowLoggerCallback(LoggerCallback):
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
         self.tags = tags
+        self.tracking_token = tracking_token
         self.should_save_artifact = save_artifact
 
         self.mlflow_util = _MLflowLoggerUtil()
@@ -193,6 +240,7 @@ class MLflowLoggerCallback(LoggerCallback):
             tracking_uri=self.tracking_uri,
             registry_uri=self.registry_uri,
             experiment_name=self.experiment_name,
+            tracking_token=self.tracking_token,
         )
 
         if self.tags is None:
