@@ -47,49 +47,57 @@ from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="tf",
-    help="The DL framework specifier.",
-)
-parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument(
-    "--from-checkpoint",
-    type=str,
-    default=None,
-    help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.",
-)
-parser.add_argument(
-    "--env",
-    type=str,
-    default="markov_soccer",
-    choices=["markov_soccer", "connect_four"],
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=1000, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--win-rate-threshold",
-    type=float,
-    default=0.85,
-    help="Win-rate at which we setup another opponent by freezing the "
-    "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.",
-)
-parser.add_argument(
-    "--num-episodes-human-play",
-    type=int,
-    default=10,
-    help="How many episodes to play against the user on the command "
-    "line after training has finished.",
-)
-args = parser.parse_args()
+
+def get_cli_args():
+    """Create CLI parser and return parsed arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="tf",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument(
+        "--from-checkpoint",
+        type=str,
+        default=None,
+        help="Full path to a checkpoint file for restoring a previously saved "
+        "Trainer state.",
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="markov_soccer",
+        choices=["markov_soccer", "connect_four"],
+    )
+    parser.add_argument(
+        "--stop-iters", type=int, default=1000, help="Number of iterations to train."
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=10000000,
+        help="Number of timesteps to train.",
+    )
+    parser.add_argument(
+        "--win-rate-threshold",
+        type=float,
+        default=0.85,
+        help="Win-rate at which we setup another opponent by freezing the "
+        "current main policy and playing against a uniform distribution "
+        "of previously frozen 'main's from here on.",
+    )
+    parser.add_argument(
+        "--num-episodes-human-play",
+        type=int,
+        default=10,
+        help="How many episodes to play against the user on the command "
+        "line after training has finished.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+    return args
 
 
 class LeagueBasedSelfPlayCallback(DefaultCallbacks):
@@ -277,6 +285,8 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
+
+    args = get_cli_args()
     ray.init(
         num_cpus=args.num_cpus or None,
         include_dashboard=False,

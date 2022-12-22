@@ -187,7 +187,7 @@ if __name__ == "__main__":
             print("Finished training. Running manual test/inference loop.")
             # prepare env
             env = RepeatAfterMeEnv(config["env_config"])
-            obs = env.reset()
+            obs, info = env.reset()
             done = False
             total_reward = 0
             # start with all zeros as state
@@ -197,7 +197,7 @@ if __name__ == "__main__":
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
                 action, state_out, _ = algo.compute_single_action(obs, state)
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _, _ = env.step(action)
                 print(f"Obs: {obs}, Action: {action}, Reward: {reward}")
                 obs = next_obs
                 total_reward += reward
