@@ -11,7 +11,7 @@ in Ray. This is just to debug the eager deletion protocol which is more efficien
 """
 
 from io import StringIO
-from typing import Dict
+from typing import Dict, List
 
 import ray
 from ray.data.context import DatasetContext
@@ -27,11 +27,12 @@ def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
     ctx = DatasetContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()
+        # TODO: it would be nice to determine loc automatically based on the stack.
         ray.get(tracer.trace_alloc.remote([ref], loc))
 
 
 def trace_deallocation(ref: ray.ObjectRef, loc: str, free: bool = True) -> None:
-    """Record that an object has been deleted (and delete if if free=True).
+    """Record that an object has been deleted (and delete if free=True).
 
     Args:
         ref: The object we no longer need.
@@ -52,7 +53,7 @@ def leak_report() -> str:
     return ray.get(tracer.leak_report.remote())
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class _MemActor:
     def __init__(self):
         self.allocated: Dict[ray.ObjectRef, dict] = {}
@@ -61,8 +62,8 @@ class _MemActor:
         self.peak_mem = 0
         self.cur_mem = 0
 
-    def trace_alloc(self, ref, loc):
-        ref = ref[0]
+    def trace_alloc(self, ref: List[ray.ObjectRef], loc: str):
+        ref = ref[0]  # Avoid Ray materializing the ref.
         if ref not in self.allocated:
             meta = ray.experimental.get_object_locations([ref])
             size_bytes = meta.get("object_size", 0)
@@ -85,16 +86,15 @@ class _MemActor:
             self.cur_mem += size_bytes
             self.peak_mem = max(self.cur_mem, self.peak_mem)
 
-    def trace_dealloc(self, ref, loc, freed):
-        ref = ref[0]
+    def trace_dealloc(self, ref: List[ray.ObjectRef], loc: str, freed: bool):
+        ref = ref[0]  # Avoid Ray materializing the ref.
         size_bytes = self.allocated.get(ref, {}).get("size_bytes", 0)
         if freed:
             print(f"[mem_tracing] Freed {size_bytes} bytes at {loc}: {ref}")
             if ref in self.allocated:
                 self.cur_mem -= size_bytes
-                self.deallocated[ref] = self.allocated[ref]
+                self.deallocated[ref] = self.allocated.pop(ref)
                 self.deallocated[ref]["dealloc_loc"] = loc
-                del self.allocated[ref]
             else:
                 print(f"[mem_tracing] WARNING: allocation of {ref} was not traced!")
         else:
