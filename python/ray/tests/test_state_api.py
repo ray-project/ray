@@ -209,7 +209,7 @@ def generate_task_event(
     state_updates = TaskStateUpdate(
         node_id=node_id,
     )
-    state_updates[TaskStatus.Name(state).lower() + "_ts"] = 1
+    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
     return TaskEvents(
         task_id=id,
         job_id=job_id,
