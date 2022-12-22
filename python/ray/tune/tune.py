@@ -736,6 +736,9 @@ def run(
 
     try:
         runner.checkpoint(force=True)
+        # Wait for the final remote directory sync to finish before exiting
+        if runner._syncer:
+            runner._syncer.wait()
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
