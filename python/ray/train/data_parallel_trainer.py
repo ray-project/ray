@@ -8,7 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -43,10 +43,10 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        if isinstance(checkpoint.dir_or_data, dict):
-            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
-        else:
-            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
+        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
+            air_checkpoint, self.preprocessor
+        )
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -282,23 +282,6 @@ class DataParallelTrainer(BaseTrainer):
     def _validate_attributes(self):
         super()._validate_attributes()
 
-        if not self.scaling_config.use_gpu and "GPU" in ray.available_resources():
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for this trainer. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "in your scaling config."
-            )
-
-        if self.scaling_config.num_workers is None:
-            raise ValueError("You must specify the 'num_workers' in scaling_config.")
-
-        if self.scaling_config.num_workers <= 0:
-            raise ValueError(
-                "'num_workers' in `scaling_config` must be a positive "
-                f"integer. Received {self.scaling_config.num_workers}"
-            )
-
         self._validate_train_loop_per_worker(
             self._train_loop_per_worker, "train_loop_per_worker"
         )
@@ -319,6 +302,37 @@ class DataParallelTrainer(BaseTrainer):
                 f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
+
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        scaling_config = super(DataParallelTrainer, cls)._validate_scaling_config(
+            scaling_config
+        )
+
+        # This validation happens after the scaling config is updated from
+        # its specification in the Tuner `param_space`
+        if not scaling_config.use_gpu and "GPU" in ray.available_resources():
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
+
+        if scaling_config.num_workers is None:
+            raise ValueError(
+                "You must specify the 'num_workers' in `scaling_config` as either an "
+                f"argument of `{cls.__name__}` or through the `param_space` of a "
+                "`Tuner` (if performing hyperparameter tuning)."
+            )
+
+        if scaling_config.num_workers <= 0:
+            raise ValueError(
+                "'num_workers' in `scaling_config` must be a positive "
+                f"integer. Received {scaling_config.num_workers}"
+            )
+
+        return scaling_config
 
     def _report(self, training_iterator: TrainingIterator) -> None:
         for results in training_iterator:
@@ -343,6 +357,7 @@ class DataParallelTrainer(BaseTrainer):
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
         )
 

@@ -1,0 +1,22 @@
+# Can expect improvement to -140 reward in ~300-500k timesteps.
+pendulum-ppo:
+    env: Pendulum-v1
+    run: PPO
+    stop:
+        episode_reward_mean: -400
+        timesteps_total: 400000
+    config:
+        # TODO (Kourosh): Works only for torch.
+        framework: torch
+        train_batch_size: 512
+        vf_clip_param: 10.0
+        num_workers: 0
+        num_envs_per_worker: 20
+        lambda: 0.1
+        gamma: 0.95
+        lr: 0.0003
+        sgd_minibatch_size: 64
+        observation_filter: MeanStdFilter
+        seed: 42
+        enable_connectors: true
+        _enable_rl_module_api: true

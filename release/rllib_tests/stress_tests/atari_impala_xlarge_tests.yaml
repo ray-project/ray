@@ -4,10 +4,10 @@
 atari-impala:
     env:
         grid_search:
-            - BreakoutNoFrameskip-v4
-            - BeamRiderNoFrameskip-v4
-            - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4
+            - ALE/Breakout-v5
+            - ALE/BeamRider-v5
+            - ALE/Qbert-v5
+            - ALE/SpaceInvaders-v5
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -16,6 +16,8 @@ atari-impala:
         time_total_s: 3600
     frameworks: [ "tf" ]
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         num_gpus: 1
         num_cpus_for_driver: 0
         rollout_fragment_length: 50

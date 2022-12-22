@@ -29,7 +29,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
-#include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
@@ -165,8 +164,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs worker manager.
   InitGcsWorkerManager();
 
-  // Init stats handler.
-  InitStatsHandler();
+  // Init GCS task manager.
+  InitGcsTaskManager();
 
   // Install event listeners.
   InstallEventListeners();
@@ -180,6 +179,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // since we need to know the port the rpc server listens on.
   InitUsageStatsClient();
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
@@ -234,6 +235,8 @@ void GcsServer::Stop() {
     } else {
       gcs_ray_syncer_->Stop();
     }
+
+    gcs_task_manager_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -531,14 +534,6 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsServer::InitStatsHandler() {
-  RAY_CHECK(gcs_table_storage_);
-  stats_handler_.reset(new rpc::DefaultStatsHandler(gcs_table_storage_));
-  // Register service.
-  stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
-  rpc_server_.RegisterService(*stats_service_);
-}
-
 void GcsServer::InitFunctionManager() {
   function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
 }
@@ -618,6 +613,14 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitGcsTaskManager() {
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
+  // Register service.
+  task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
+                                                        *gcs_task_manager_));
+  rpc_server_.RegisterService(*task_info_service_);
 }
 
 void GcsServer::InstallEventListeners() {
@@ -734,6 +737,7 @@ void GcsServer::InstallEventListeners() {
 void GcsServer::RecordMetrics() const {
   gcs_actor_manager_->RecordMetrics();
   gcs_placement_group_manager_->RecordMetrics();
+  gcs_task_manager_->RecordMetrics();
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
@@ -756,7 +760,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
-         << runtime_env_manager_->DebugString() << "\n\n";
+         << runtime_env_manager_->DebugString() << "\n\n"
+         << gcs_task_manager_->DebugString() << "\n\n";
   if (gcs_ray_syncer_) {
     stream << gcs_ray_syncer_->DebugString();
   }

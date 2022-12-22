@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import requests
 import pytest
 from jsonschema import validate
 
@@ -21,6 +22,9 @@ from ray._private.test_utils import (
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.util.placement_group import (
+    placement_group,
+)
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -182,7 +186,10 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "key": "val",
             "_test1": "val1",
             "_test2": "val2",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
         }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
@@ -194,6 +201,9 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val3",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
         }
 
 
@@ -233,6 +243,62 @@ def test_worker_crash_increment_stats():
 
         assert "worker_crash_oom" in result
         assert result["worker_crash_oom"] == "1"
+
+
+def test_actor_stats():
+    @ray.remote
+    class Actor:
+        pass
+
+    with ray.init(
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "1",
+            timeout=5,
+        )
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "2",
+            timeout=5,
+        )
+        del actor
+
+
+def test_pg_stats():
+    with ray.init(
+        num_cpus=3,
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "1",
+            timeout=5,
+        )
+        pg1 = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg1.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "2",
+            timeout=5,
+        )
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -1061,6 +1127,10 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
+        assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
+        payload["extra_usage_tags"]["actor_num_created"] = "0"
+        payload["extra_usage_tags"]["pg_num_created"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
@@ -1069,7 +1139,10 @@ provider:
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
+            "dashboard_used": "False",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1408,6 +1481,9 @@ def test_usage_stats_tags(
                 "dashboard_metrics_grafana_enabled": "False",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
             }
             assert num_nodes == 2
             return True
@@ -1461,6 +1537,54 @@ def test_usages_stats_available_when_dashboard_not_included(
             return read_file(temp_dir, "usage_stats")["seq_number"] > 2
 
         wait_for_condition(verify)
+
+
+def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stats):
+    """
+    Test dashboard usage metrics are correctly reported.
+    This is tested on both minimal / non minimal ray.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        addr = ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        temp_dir = pathlib.Path(ray._private.worker._global_node.get_session_dir_path())
+        webui_url = format_web_url(addr["webui_url"])
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify_dashboard_not_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
+            ]
+            return dashboard_used == "False"
+
+        wait_for_condition(verify_dashboard_not_used)
+
+        if os.environ.get("RAY_MINIMAL") == "1":
+            # In the minimal Ray, dashboard is not available.
+            return
+
+        # Open the dashboard will set the dashboard_used == "True".
+        resp = requests.get(webui_url)
+        resp.raise_for_status()
+
+        def verify_dashboard_used():
+            dashboard_used = read_file(temp_dir, "usage_stats")["extra_usage_tags"][
+                "dashboard_used"
+            ]
+            if os.environ.get("RAY_MINIMAL") == "1":
+                return dashboard_used == "False"
+            else:
+                return dashboard_used == "True"
+
+        wait_for_condition(verify_dashboard_used)
 
 
 if __name__ == "__main__":

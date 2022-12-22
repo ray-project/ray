@@ -5,10 +5,10 @@ const basicTheme: ThemeOptions = {
   typography: {
     fontSize: 12,
     fontFamily: [
+      "Roboto",
       "-apple-system",
       "BlinkMacSystemFont",
       '"Segoe UI"',
-      "Roboto",
       '"Helvetica Neue"',
       "Arial",
       "sans-serif",
@@ -16,6 +16,19 @@ const basicTheme: ThemeOptions = {
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
     ].join(","),
+    h1: {
+      fontSize: "2rem",
+    },
+    h2: {
+      fontSize: "1.5rem",
+    },
+    h3: {
+      fontSize: "1rem",
+      fontWeight: 500,
+    },
+    h4: {
+      fontSize: "1rem",
+    },
     body1: {
       fontSize: "0.75rem",
     },
@@ -23,6 +36,13 @@ const basicTheme: ThemeOptions = {
   props: {
     MuiPaper: {
       elevation: 0,
+    },
+  },
+  overrides: {
+    MuiPaper: {
+      outlined: {
+        borderColor: "#D2DCE6",
+      },
     },
   },
 };

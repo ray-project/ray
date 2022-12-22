@@ -15,7 +15,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
 
@@ -57,6 +57,7 @@ class Node:
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
         connect_only: bool = False,
+        default_worker: bool = False,
     ):
         """Start a node.
 
@@ -71,6 +72,7 @@ class Node:
                 other spawned processes if this process dies unexpectedly.
             connect_only: If true, connect to the node without starting
                 new processes.
+            default_worker: Whether it's running from a ray worker or not
         """
         if shutdown_at_exit:
             if connect_only:
@@ -78,7 +80,7 @@ class Node:
                     "'shutdown_at_exit' and 'connect_only' cannot both be true."
                 )
             self._register_shutdown_hooks()
-
+        self._default_worker = default_worker
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
@@ -135,7 +137,9 @@ class Node:
             resources={},
             temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "workers/default_worker.py"
+                os.path.dirname(os.path.abspath(__file__)),
+                "workers",
+                "default_worker.py",
             ),
             setup_worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
@@ -179,13 +183,18 @@ class Node:
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
             self._session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            session_name = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "session_name",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._session_name = ray._private.utils.decode(session_name)
+            if ray_params.session_name is None:
+                assert not self._default_worker
+                session_name = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "session_name",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._session_name = ray._private.utils.decode(session_name)
+            else:
+                # worker mode
+                self._session_name = ray_params.session_name
             # setup gcs client
             self.get_gcs_client()
 
@@ -193,7 +202,13 @@ class Node:
         if head:
             self._webui_url = None
         else:
-            self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
+            if ray_params.webui is None:
+                assert not self._default_worker
+                self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
+            else:
+                self._webui_url = (
+                    f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
+                )
 
         self._init_temp()
 
@@ -201,9 +216,11 @@ class Node:
         if head:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
-            storage._init_storage(
-                ray._private.services.get_storage_uri_from_internal_kv(), is_head=False
-            )
+            if not self._default_worker:
+                storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
+            else:
+                storage_uri = ray_params.storage
+            storage._init_storage(storage_uri, is_head=False)
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -267,41 +284,6 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            # Make sure GCS is up.
-            self.get_gcs_client().internal_kv_put(
-                b"session_name",
-                self._session_name.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            self.get_gcs_client().internal_kv_put(
-                b"session_dir",
-                self._session_dir.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            self.get_gcs_client().internal_kv_put(
-                b"temp_dir",
-                self._temp_dir.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
-            if ray_params.storage is not None:
-                self.get_gcs_client().internal_kv_put(
-                    b"storage",
-                    ray_params.storage.encode(),
-                    True,
-                    ray_constants.KV_NAMESPACE_SESSION,
-                )
-            # Add tracing_startup_hook to redis / internal kv manually
-            # since internal kv is not yet initialized.
-            if ray_params.tracing_startup_hook:
-                self.get_gcs_client().internal_kv_put(
-                    b"tracing_startup_hook",
-                    ray_params.tracing_startup_hook.encode(),
-                    True,
-                    ray_constants.KV_NAMESPACE_TRACING,
-                )
 
         if not connect_only:
             self.start_ray_processes()
@@ -355,6 +337,9 @@ class Node:
 
         cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
+            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
+
+        if not cluster_metadata:
             return
         ray._private.utils.check_version_info(cluster_metadata)
 
@@ -382,26 +367,34 @@ class Node:
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "temp_dir",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._temp_dir = ray._private.utils.decode(temp_dir)
+            if self._ray_params.temp_dir is None:
+                assert not self._default_worker
+                temp_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "temp_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._temp_dir = ray._private.utils.decode(temp_dir)
+            else:
+                self._temp_dir = self._ray_params.temp_dir
 
         try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
-            session_dir = ray._private.utils.internal_kv_get_with_retry(
-                self.get_gcs_client(),
-                "session_dir",
-                ray_constants.KV_NAMESPACE_SESSION,
-                num_retries=NUM_REDIS_GET_RETRIES,
-            )
-            self._session_dir = ray._private.utils.decode(session_dir)
+            if self._temp_dir is None or self._session_name is None:
+                assert not self._default_worker
+                session_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "session_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=NUM_REDIS_GET_RETRIES,
+                )
+                self._session_dir = ray._private.utils.decode(session_dir)
+            else:
+                self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -669,7 +662,13 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_handles(self, name: str, unique: bool = False):
+    def get_log_file_handles(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ) -> Tuple[Optional[IO[AnyStr]], Optional[IO[AnyStr]]]:
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
@@ -678,40 +677,52 @@ class Node:
             name: descriptive string for this log file.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
 
         Returns:
-            A tuple of two file handles for redirecting (stdout, stderr), or
-            `(None, None)` if output redirection is disabled.
+            A tuple of two file handles for redirecting optional (stdout, stderr),
+            or `(None, None)` if output redirection is disabled.
         """
         if not self.should_redirect_logs():
             return None, None
 
-        log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
-        return open_log(log_stdout), open_log(log_stderr)
+        log_stdout = None
+        log_stderr = None
 
-    def _get_log_file_names(self, name: str, unique: bool = False):
+        if create_out:
+            log_stdout = open_log(self._get_log_file_name(name, "out", unique=unique))
+        if create_err:
+            log_stderr = open_log(self._get_log_file_name(name, "err", unique=unique))
+        return log_stdout, log_stderr
+
+    def _get_log_file_name(
+        self,
+        name: str,
+        suffix: str,
+        unique: bool = False,
+    ) -> str:
         """Generate partially randomized filenames for log files.
 
         Args:
             name: descriptive string for this log file.
+            suffix: suffix of the file. Usually it is .out of .err.
             unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
             A tuple of two file names for redirecting (stdout, stderr).
         """
+        # strip if the suffix is something like .out.
+        suffix = suffix.strip(".")
 
         if unique:
-            log_stdout = self._make_inc_temp(
-                suffix=".out", prefix=name, directory_name=self._logs_dir
-            )
-            log_stderr = self._make_inc_temp(
-                suffix=".err", prefix=name, directory_name=self._logs_dir
+            filename = self._make_inc_temp(
+                suffix=f".{suffix}", prefix=name, directory_name=self._logs_dir
             )
         else:
-            log_stdout = os.path.join(self._logs_dir, f"{name}.out")
-            log_stderr = os.path.join(self._logs_dir, f"{name}.err")
-        return log_stdout, log_stderr
+            filename = os.path.join(self._logs_dir, f"{name}.{suffix}")
+        return filename
 
     def _get_unused_port(self, allocated_ports=None):
         if allocated_ports is None:
@@ -842,6 +853,11 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles(
+            "log_monitor", unique=True, create_out=False
+        )
         process_info = ray._private.services.start_log_monitor(
             self._logs_dir,
             self.gcs_address,
@@ -849,6 +865,8 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -866,6 +884,11 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
+        # Only redirect logs to .err. .err file is only useful when the
+        # component has an unexpected output to stdout/stderr.
+        _, stderr_file = self.get_log_file_handles(
+            "dashboard", unique=True, create_out=False
+        )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
             raise_on_failure,
@@ -879,6 +902,8 @@ class Node:
             backup_count=self.backup_count,
             port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
+            stdout_file=stderr_file,
+            stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -981,6 +1006,7 @@ class Node:
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
+            webui=self._webui_url,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1041,6 +1067,41 @@ class Node:
         import ray._private.usage.usage_lib as ray_usage_lib
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        # Make sure GCS is up.
+        self.get_gcs_client().internal_kv_put(
+            b"session_name",
+            self._session_name.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        self.get_gcs_client().internal_kv_put(
+            b"session_dir",
+            self._session_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        self.get_gcs_client().internal_kv_put(
+            b"temp_dir",
+            self._temp_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        if self._ray_params.storage is not None:
+            self.get_gcs_client().internal_kv_put(
+                b"storage",
+                self._ray_params.storage.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+        # Add tracing_startup_hook to redis / internal kv manually
+        # since internal kv is not yet initialized.
+        if self._ray_params.tracing_startup_hook:
+            self.get_gcs_client().internal_kv_put(
+                b"tracing_startup_hook",
+                self._ray_params.tracing_startup_hook.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_TRACING,
+            )
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -1299,7 +1360,7 @@ class Node:
                 dead.
         """
         self._kill_process_type(
-            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive
+            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive, wait=True
         )
         # Clear GCS client and address to indicate no GCS server is running.
         self._gcs_address = None

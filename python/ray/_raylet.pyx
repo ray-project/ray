@@ -198,6 +198,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise GetTimeoutError(message)
     elif status.IsNotFound():
         raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
+        raise ValueError(message)
     else:
         raise RaySystemError(message)
 
@@ -421,6 +425,8 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -429,11 +435,13 @@ cdef prepare_args_internal(
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -1521,6 +1529,9 @@ cdef class CoreWorker:
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
 
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
+
     def get_current_job_id(self):
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
@@ -1562,8 +1573,9 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1767,8 +1779,9 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2319,16 +2332,20 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, &c_owner_address)
+        check_status(op_status)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

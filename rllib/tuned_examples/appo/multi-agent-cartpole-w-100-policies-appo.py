@@ -10,7 +10,7 @@ register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 # Number of policies overall in the PolicyMap.
 num_policies = 100
 # Number of those policies that should be trained. These are a subset of `num_policies`.
-num_trainable = 50
+num_trainable = 20
 
 num_envs_per_worker = 5
 
@@ -56,21 +56,20 @@ config = (
     # On the eval track, always let policy 0 play so we get its results in each results
     # dict.
     .evaluation(
-        evaluation_config={
-            "policy_mapping_fn": (
+        evaluation_config=APPOConfig.overrides(
+            policy_mapping_fn=(
                 lambda aid, eps, worker, **kw: "pol"
                 + str(0 if aid == 0 else np.random.randint(num_trainable, num_policies))
             ),
-        },
-        # Only play 5 episodes on eval track.
-        evaluation_duration=5,
-        evaluation_num_workers=1,
+        ),
+        evaluation_num_workers=2,
         evaluation_interval=1,
+        evaluation_parallel_to_training=True,
     )
 )
 
 # Define some stopping criteria.
 stop = {
     "evaluation/policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 400000,
+    "timesteps_total": 500000,
 }
