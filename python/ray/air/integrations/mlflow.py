@@ -82,12 +82,28 @@ def setup_mlflow(
 
     Example:
 
+        Per default, you can just call ``setup_mlflow`` and continue to use
+        Mlflow like you would normally do:
+
         .. code-block: python
 
-            from ray.air.integrations.mlflow import mlflow_setup
+            from ray.air.integrations.mlflow import setup_mflow
 
             def training_loop(config):
-                mlflow = mlflow_setup()
+                setup_mflow()
+                # ...
+                mlflow.log_metric(key="loss", val=0.123, step=0)
+
+        In distributed data parallel training, you can utilize the return value of
+        ``setup_mlflow``. This will make sure it is only invoked on the first worker
+        in distributed training runs.
+
+        .. code-block: python
+
+            from ray.air.integrations.mlflow import setup_mflow
+
+            def training_loop(config):
+                mlflow = setup_mflow()
                 # ...
                 mlflow.log_metric(key="loss", val=0.123, step=0)
 
