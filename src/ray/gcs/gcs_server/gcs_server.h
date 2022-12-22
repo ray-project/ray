@@ -134,9 +134,6 @@ class GcsServer {
   /// Initialize gcs task manager.
   void InitGcsTaskManager();
 
-  /// Initialize stats handler.
-  void InitStatsHandler();
-
   /// Initialize usage stats client.
   void InitUsageStatsClient();
 
@@ -229,9 +226,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Stats handler and service.
-  std::unique_ptr<rpc::StatsHandler> stats_handler_;
-  std::unique_ptr<rpc::StatsGrpcService> stats_service_;
 
   /// Synchronization service for ray.
   /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out

@@ -1,4 +1,4 @@
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2

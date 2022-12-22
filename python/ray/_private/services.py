@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, IO, AnyStr
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -39,22 +39,24 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 RUN_RAYLET_PROFILER = False
 
 # Location of the redis server.
-RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
+RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(RAY_PATH, "core/src/ray/raylet/raylet" + EXE_SUFFIX)
+RAYLET_EXECUTABLE = os.path.join(
+    RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
+)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX
+    RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
@@ -946,6 +948,8 @@ def start_log_monitor(
     max_bytes: int = 0,
     backup_count: int = 0,
     redirect_logging: bool = True,
+    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
 ):
     """Start a log monitor process.
 
@@ -960,6 +964,10 @@ def start_log_monitor(
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -975,11 +983,8 @@ def start_log_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if redirect_logging:
-        # Avoid hanging due to fd inheritance.
-        stdout_file = subprocess.DEVNULL
-        stderr_file = subprocess.DEVNULL
-    else:
+
+    if not redirect_logging:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -1014,6 +1019,8 @@ def start_api_server(
     max_bytes: int = 0,
     backup_count: int = 0,
     redirect_logging: bool = True,
+    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
 ):
     """Start a API server process.
 
@@ -1039,6 +1046,10 @@ def start_api_server(
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1072,7 +1083,6 @@ def start_api_server(
                     )
                 else:
                     raise e
-
         # Make sure the process can start.
         minimal = not ray._private.utils.check_dashboard_dependencies_installed()
         # Start the dashboard process.
@@ -1097,11 +1107,7 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
         ]
 
-        if redirect_logging:
-            # Avoid hanging due to fd inheritance.
-            stdout_file = subprocess.DEVNULL
-            stderr_file = subprocess.DEVNULL
-        else:
+        if not redirect_logging:
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
@@ -1110,7 +1116,8 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-            # Inherit stdout/stderr streams.
+            # Inherit stdout/stderr streams so that
+            # logs are redirected to stderr.
             stdout_file = None
             stderr_file = None
         if minimal:
@@ -1150,37 +1157,73 @@ def start_api_server(
             # This is often on the critical path of ray.init() and ray start,
             # so we need to poll often.
             time.sleep(0.1)
+
+        # Dashboard couldn't be started.
         if dashboard_url is None:
             returncode_str = (
                 f", return code {dashboard_returncode}"
                 if dashboard_returncode is not None
                 else ""
             )
-            # TODO(sang): Change it to the API server.
-            err_msg = "Failed to start the dashboard" + returncode_str
-            if logdir:
-                dashboard_log = os.path.join(logdir, "dashboard.log")
-                # Read last n lines of dashboard log. The log file may be large.
-                n = 10
-                lines = []
-                try:
-                    with open(dashboard_log, "rb") as f:
-                        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                            end = mm.size()
-                            for _ in range(n):
-                                sep = mm.rfind(b"\n", 0, end - 1)
-                                if sep == -1:
-                                    break
-                                lines.append(mm[sep + 1 : end].decode("utf-8"))
-                                end = sep
-                    lines.append(f" The last {n} lines of {dashboard_log}:")
-                except Exception as e:
-                    raise Exception(err_msg + f"\nFailed to read dashboard log: {e}")
+            logger.error(f"Failed to start the dashboard {returncode_str}")
 
-                last_log_str = "\n" + "\n".join(reversed(lines[-n:]))
-                raise Exception(err_msg + last_log_str)
+            def read_log(filename, lines_to_read):
+                """Read a log file and return the last 20 lines."""
+                dashboard_log = os.path.join(logdir, filename)
+                # Read last n lines of dashboard log. The log file may be large.
+                lines_to_read = 20
+                lines = []
+                with open(dashboard_log, "rb") as f:
+                    with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                        end = mm.size()
+                        for _ in range(lines_to_read):
+                            sep = mm.rfind(b"\n", 0, end - 1)
+                            if sep == -1:
+                                break
+                            lines.append(mm[sep + 1 : end].decode("utf-8"))
+                            end = sep
+                lines.append(
+                    f"The last {lines_to_read} lines of {dashboard_log} "
+                    "(it contains the error message from the dashboard): "
+                )
+                return lines
+
+            if logdir:
+                lines_to_read = 20
+                logger.error(
+                    "Error should be written to 'dashboard.log' or "
+                    "'dashboard.err'. We are printing the last "
+                    f"{lines_to_read} lines for you. See "
+                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
+                    "to find where the log file is."
+                )
+                try:
+                    lines = read_log("dashboard.log", lines_to_read=lines_to_read)
+                except Exception as e:
+                    logger.error(
+                        f"Couldn't read dashboard.log file. Error: {e}. "
+                        "It means the dashboard is broken even before it "
+                        "initializes the logger (mostly dependency issues). "
+                        "Reading the dashboard.err file which contains stdout/stderr."
+                    )
+                    # If we cannot read the .log file, we fallback to .err file.
+                    # This is the case where dashboard couldn't be started at all
+                    # and couldn't even initialize the logger to write logs to .log
+                    # file.
+                    try:
+                        lines = read_log("dashboard.err", lines_to_read=lines_to_read)
+                    except Exception as e:
+                        raise Exception(
+                            f"Failed to read dashboard.err file: {e}. "
+                            "It is unexpected. Please report an issue to "
+                            "Ray github. "
+                            "https://github.com/ray-project/ray/issues"
+                        )
+                last_log_str = "\n" + "\n".join(reversed(lines[-lines_to_read:]))
+                raise Exception(last_log_str)
             else:
-                raise Exception(err_msg)
+                # Is it reachable?
+                raise Exception("Failed to start a dashboard.")
 
         if minimal:
             # If it is the minimal installation, the web url (dashboard url)
@@ -1191,9 +1234,7 @@ def start_api_server(
         if raise_on_failure:
             raise e from e
         else:
-            # TODO(sang): Change it to the API server.
-            logger.error(f"Failed to start the dashboard: {e}")
-            logger.exception(e)
+            logger.error(e)
             return None, None
 
 
