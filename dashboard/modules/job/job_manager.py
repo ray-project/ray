@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import os
+import psutil
 import random
 import signal
 import string
@@ -199,7 +200,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, logs_path: str) -> psutil.Process:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -220,7 +221,7 @@ class JobSupervisor:
                 terminated or killed upon user calling stop().
         """
         with open(logs_path, "w") as logs_file:
-            child_process = subprocess.Popen(
+            shell_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
                 start_new_session=True,
@@ -236,7 +237,7 @@ class JobSupervisor:
                 else None,
             )
             parent_pid = os.getpid()
-            child_pid = child_process.pid
+            child_pid = shell_process.pid
             # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
@@ -244,7 +245,7 @@ class JobSupervisor:
                     child_pgid = os.getpgid(child_pid)
                 except ProcessLookupError:
                     # Process died before we could get its pgid.
-                    return child_process
+                    return shell_process
 
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
@@ -281,7 +282,11 @@ class JobSupervisor:
                 )
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
-            return child_process
+            shell_process = psutil.Process(shell_process.pid)
+            children = shell_process.children()
+            # The shell process should create exactly one process: the job to run
+            assert len(children) == 1
+            return children[0]
 
     def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
@@ -315,14 +320,30 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process: subprocess.Popen) -> int:
+    async def _polling(self, child_process: psutil.Process) -> int:
         while child_process is not None:
-            return_code = child_process.poll()
-            if return_code is not None:
+            (finished, _) = psutil.wait_procs(child_process, timeout=0)
+            if finished:
                 # subprocess finished with return code
-                return return_code
+                return finished[0].returncode
             else:
                 # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+
+    async def _poll_group(self, pgid: int):
+        process_group = []
+        for proc in psutil.process_iter():
+            try:
+                if os.getpgid(proc.pid) == pgid:
+                    process_group.append(proc)
+            except:
+                pass
+
+        while True:
+            (_, alive) = psutil.wait_procs(process_group, timeout=0)
+            if len(alive) == 0:
+                return
+            else:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     async def run(
@@ -374,6 +395,7 @@ class JobSupervisor:
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
+            child_pgid = os.getpgid(child_process.pid)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -381,53 +403,47 @@ class JobSupervisor:
             )
 
             if self._stop_event.is_set():
+                polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
-                    polling_task.cancel()
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
+                    os.killpg(child_pgid, getattr(signal, signal.SIGTERM))
+                    # Wait for job to terminate gracefully, otherwise kill process
+                    # forcefully after timeout.
+                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                    if stop_signal not in self.VALID_STOP_SIGNALS:
+                        logger.warning(
+                            f"{stop_signal} not a valid stop signal. Terminating "
+                            "job with SIGTERM."
+                        )
+                        stop_signal = "SIGTERM"
+                    os.killpg(
+                        os.getpgid(child_process.pid),
+                        getattr(signal, stop_signal),
+                    )
+                    # Wait for job to exit gracefully, otherwise kill process
+                    # forcefully after timeout.
                     try:
-                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
-                        if stop_signal not in self.VALID_STOP_SIGNALS:
-                            logger.warning(
-                                f"{stop_signal} not a valid stop signal. Terminating "
-                                "job with SIGTERM."
+                        stop_job_wait_time = int(
+                            os.environ.get(
+                                "RAY_JOB_STOP_WAIT_TIME_S",
+                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
                             )
-                            stop_signal = "SIGTERM"
-                        os.killpg(
-                            os.getpgid(child_process.pid),
-                            getattr(signal, stop_signal),
                         )
-                    except ProcessLookupError:
-                        # Process already completed.
+                        poll_group_task = create_task(self._poll_group(child_pgid))
+                        await asyncio.wait_for(poll_group_task, stop_job_wait_time)
                         logger.info(
-                            f"Job {self._job_id} completed on its own before it could "
-                            "be manually terminated."
+                            f"Job {self._job_id} has been terminated gracefully "
+                            f"with {stop_signal}."
                         )
-                        pass
-                    else:
-                        # Wait for job to exit gracefully, otherwise kill process
-                        # forcefully after timeout.
-                        try:
-                            stop_job_wait_time = int(
-                                os.environ.get(
-                                    "RAY_JOB_STOP_WAIT_TIME_S",
-                                    self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
-                                )
-                            )
-                            await asyncio.wait_for(polling_task, stop_job_wait_time)
-                            logger.info(
-                                f"Job {self._job_id} has been terminated gracefully "
-                                f"with {stop_signal}."
-                            )
-                        except asyncio.TimeoutError:
-                            logger.warning(
-                                f"Attempt to gracefully terminate job {self._job_id} "
-                                f"through {stop_signal} has timed out after "
-                                f"{stop_job_wait_time} seconds. Job is now being "
-                                "force-killed."
-                            )
-                            polling_task.cancel()
-                            child_process.kill()
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Attempt to gracefully terminate job {self._job_id} "
+                            f"through {stop_signal} has timed out after "
+                            f"{stop_job_wait_time} seconds. Job is now being "
+                            "force-killed."
+                        )
+                        os.killpg(child_pgid, getattr(signal, signal.SIGKILL))
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
