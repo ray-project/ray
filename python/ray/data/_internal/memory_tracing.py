@@ -1,6 +1,55 @@
+"""Utility for debugging object store memory eager deletion in Datasets.
+
+Enable with RAY_DATASET_TRACE_ALLOCATIONS=1.
+
+Basic usage is to call `trace_allocation` each time a new object is created, and call
+`trace_deallocation` when an object should be disposed of. When the workload is
+complete, call `leak_report` to view possibly leaked objects.
+
+Note that so called "leaked" objects will be reclaimed eventually by reference counting
+in Ray. This is just to debug the eager deletion protocol which is more efficient.
+"""
+
+from io import StringIO
 from typing import Dict
 
 import ray
+from ray.data.context import DatasetContext
+
+
+def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
+    """Record that an object has been created.
+
+    Args:
+        ref: The object created.
+        loc: A human-readable string identifying the call site.
+    """
+    ctx = DatasetContext.get_current()
+    if ctx.trace_allocations:
+        tracer = _get_mem_actor()
+        ray.get(tracer.trace_alloc.remote([ref], loc))
+
+
+def trace_deallocation(ref: ray.ObjectRef, loc: str, free: bool = True) -> None:
+    """Record that an object has been deleted (and delete if if free=True).
+
+    Args:
+        ref: The object we no longer need.
+        loc: A human-readable string identifying the call site.
+        free: Whether to eagerly destroy the object instead of waiting for Ray
+            reference counting to kick in.
+    """
+    if free:
+        ray._private.internal_api.free(ref, local_only=False)
+    ctx = DatasetContext.get_current()
+    if ctx.trace_allocations:
+        tracer = _get_mem_actor()
+        ray.get(tracer.trace_dealloc.remote([ref], loc, free))
+
+
+def leak_report() -> str:
+    tracer = _get_mem_actor()
+    return ray.get(tracer.leak_report.remote())
 
 
 @ray.remote
@@ -52,59 +101,40 @@ class _MemActor:
             print(f"[mem_tracing] Skipped freeing {size_bytes} bytes at {loc}: {ref}")
             self.skip_dealloc[ref] = loc
 
-    def leak_report(self):
-        print("[mem_tracing] ===== Leaked objects =====")
+    def leak_report(self) -> str:
+        output = StringIO()
+        output.write("[mem_tracing] ===== Leaked objects =====\n")
         for ref in self.allocated:
             size_bytes = self.allocated[ref].get("size_bytes")
             loc = self.allocated[ref].get("loc")
             if ref in self.skip_dealloc:
                 dealloc_loc = self.skip_dealloc[ref]
-                print(
+                output.write(
                     f"[mem_tracing] Leaked object, created at {loc}, size "
-                    f"{size_bytes}, skipped dealloc at {dealloc_loc}: {ref}"
+                    f"{size_bytes}, skipped dealloc at {dealloc_loc}: {ref}\n"
                 )
             else:
-                print(
+                output.write(
                     f"[mem_tracing] Leaked object, created at {loc}, "
-                    f"size {size_bytes}: {ref}"
+                    f"size {size_bytes}: {ref}\n"
                 )
-        print("[mem_tracing] ===== End leaked objects =====")
-        print("[mem_tracing] ===== Freed objects =====")
+        output.write("[mem_tracing] ===== End leaked objects =====\n")
+        output.write("[mem_tracing] ===== Freed objects =====\n")
         for ref in self.deallocated:
             size_bytes = self.deallocated[ref].get("size_bytes")
             loc = self.deallocated[ref].get("loc")
             dealloc_loc = self.deallocated[ref].get("dealloc_loc")
-            print(
-                f"[mem_tracing] Freed obj from {loc} at {dealloc_loc}, "
-                f"size {size_bytes}: {ref}"
+            output.write(
+                f"[mem_tracing] Freed object from {loc} at {dealloc_loc}, "
+                f"size {size_bytes}: {ref}\n"
             )
-        print("[mem_tracing] ===== End freed objects =====")
-        print(f"[mem_tracing] Peak size bytes {self.peak_mem}")
-        print(f"[mem_tracing] Current size bytes {self.cur_mem}")
+        output.write("[mem_tracing] ===== End freed objects =====\n")
+        output.write(f"[mem_tracing] Peak size bytes {self.peak_mem}\n")
+        output.write(f"[mem_tracing] Current size bytes {self.cur_mem}\n")
+        return output.getvalue()
 
 
 def _get_mem_actor():
     return _MemActor.options(
         name="mem_tracing_actor", get_if_exists=True, lifetime="detached"
     ).remote()
-
-
-def _trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
-    ctx = DatasetContext.get_current()
-    if ctx.trace_allocations:
-        tracer = _get_mem_actor()
-        ray.get(tracer.trace_alloc.remote([ref], loc))
-
-
-def _trace_deallocation(ref: ray.ObjectRef, loc: str, freed: bool = True) -> None:
-    if freed:
-        ray._private.internal_api.free(ref, local_only=False)
-    ctx = DatasetContext.get_current()
-    if ctx.trace_allocations:
-        tracer = _get_mem_actor()
-        ray.get(tracer.trace_dealloc.remote([ref], loc, freed))
-
-
-def _leak_report() -> None:
-    tracer = _get_mem_actor()
-    ray.get(tracer.leak_report.remote())
