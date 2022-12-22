@@ -38,7 +38,8 @@ class TaskEventBufferTest : public ::testing::Test {
         R"(
 {
   "task_events_report_interval_ms": 1000,
-  "task_events_max_num_task_events_in_buffer": 100
+  "task_events_max_num_task_events_in_buffer": 100,
+  "task_events_report_status_events": 1 
 }
   )");
 
