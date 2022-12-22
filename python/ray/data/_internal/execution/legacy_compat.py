@@ -9,6 +9,7 @@ from typing import Iterator
 import ray
 from ray.data.block import Block, BlockMetadata, List
 from ray.data._internal.stats import StatsDict, DatasetStats
+from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import get_compute
@@ -58,9 +59,8 @@ def _to_operator_dag(
             # Always clear lazy input blocks since they can be recomputed.
             owns_blocks = True
         else:
-            # Otherwise, we have non-lazy input blocks that's the source of this
-            # execution plan, so we don't clear these.
-            owns_blocks = False
+            # Otherwise, defer to the block's ownership status.
+            owns_blocks = blocks._owned_by_consumer
     else:
         owns_blocks = False
     operator = _blocks_to_input_buffer(blocks, owns_blocks)
@@ -166,10 +166,14 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         stage_name = stage.name
 
         def bulk_fn(refs: List[RefBundle]) -> (List[RefBundle], StatsDict):
-            owns_blocks = all(b.owns_blocks for b in refs)
+            input_owned = all(b.owns_blocks for b in refs)
+            if isinstance(stage, RandomizeBlocksStage):
+                output_owned = input_owned  # Passthrough ownership hack.
+            else:
+                output_owned = True
             block_list = _bundles_to_block_list(refs)
-            block_list, stats_dict = fn(block_list, owns_blocks, block_udf, remote_args)
-            output = _block_list_to_bundles(block_list, owns_blocks=True)
+            block_list, stats_dict = fn(block_list, input_owned, block_udf, remote_args)
+            output = _block_list_to_bundles(block_list, owns_blocks=output_owned)
             if not stats_dict:
                 stats_dict = {stage_name: block_list.get_metadata()}
             return output, stats_dict

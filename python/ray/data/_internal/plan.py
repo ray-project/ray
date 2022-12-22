@@ -329,9 +329,12 @@ class ExecutionPlan:
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                 )
-                # TODO(ekl) we shouldn't need to set this; it should be set correctly
-                # by execute_to_legacy_block_list based on owns_blocks, but it isn't.
-                blocks._owned_by_consumer = self._run_by_consumer
+                # TODO(ekl) we shouldn't need to set this in the future once we move
+                # to a fully lazy execution model, unless .cache() is used. The reason
+                # we need it right now is since the user may iterate over a Dataset
+                # multiple times after fully executing it once.
+                if not self._run_by_consumer:
+                    blocks._owned_by_consumer = False
                 stats = executor.get_stats()
 
             else:
