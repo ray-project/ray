@@ -975,7 +975,6 @@ void TaskManager::RecordTaskStatusEvent(const TaskSpecification &spec,
     UNREACHABLE;
   }
   }
-
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 

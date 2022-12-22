@@ -461,7 +461,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
 
-  /// Set the TaskStatus on task status change.
+  /// Set the TaskStatus
   ///
   /// Sets the task status on the TaskEntry, and record the task status change events in
   /// the TaskEventBuffer if enabled.
@@ -491,14 +491,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
-  /// This will set the task status, and update the attempt number for the task.
+  /// This will set the task status, update the attempt number for the task, and increment
+  /// the retry counter.
   ///
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnResubmit(TaskEntry &task_entry);
 
   /// Update the task entry for the task attempt to reflect retry on failure.
   ///
-  /// This will set the task status, and update the attempt number for the task.
+  /// This will set the task status, update the attempt number for the task, and increment
+  /// the retry counter.
   ///
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry);
