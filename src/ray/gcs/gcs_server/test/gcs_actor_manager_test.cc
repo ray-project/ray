@@ -113,11 +113,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()),
-        delayed_to_run_(nullptr),
-        delay_(0),
-        skip_delay_(true),
-        periodical_runner_(io_service_) {
+      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -157,15 +153,6 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
-          if (skip_delay_) {
-            fn();
-          } else {
-            absl::MutexLock lock(&mutex_);
-            delay_ = delay;
-            delayed_to_run_ = fn;
-          }
-        },
         [this](const rpc::Address &addr) { return worker_client_; });
 
     for (int i = 1; i <= 10; i++) {
@@ -266,12 +253,9 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
-  std::function<void(void)> delayed_to_run_;
   absl::Mutex mutex_;
-  boost::posix_time::milliseconds delay_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  bool skip_delay_;
   PeriodicalRunner periodical_runner_;
 };
 

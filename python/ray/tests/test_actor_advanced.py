@@ -1425,6 +1425,75 @@ def test_resource_leak_when_cancel_actor_in_phase_of_creating(ray_start_cluster)
     wait_for_condition(lambda: ray.available_resources()["CPU"] == 2)
 
 
+def test_actor_gc(monkeypatch, shutdown_only):
+    MAX_DEAD_ACTOR_CNT = 5
+    with monkeypatch.context() as m:
+        m.setenv("RAY_maximum_gcs_destroyed_actor_cached_count", MAX_DEAD_ACTOR_CNT)
+        ray.init()
+
+        @ray.remote
+        class Actor:
+            def ready(self):
+                pass
+
+        actors = [Actor.remote() for _ in range(10)]
+        ray.get([actor.ready.remote() for actor in actors])
+        alive_actors = 0
+        for a in ray.experimental.state.api.list_actors():
+            if a["state"] == "ALIVE":
+                alive_actors += 1
+        assert alive_actors == 10
+        # Kill actors
+        del actors
+
+        def verify_cached_dead_actor_cleaned():
+            return (
+                len(ray.experimental.state.api.list_actors()) == MAX_DEAD_ACTOR_CNT
+            )  # noqa
+
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+
+        # Test detached actors
+        actors = [Actor.options(lifetime="detached").remote() for _ in range(10)]
+        ray.get([actor.ready.remote() for actor in actors])
+        alive_actors = 0
+        for a in ray.experimental.state.api.list_actors():
+            if a["state"] == "ALIVE":
+                alive_actors += 1
+        assert alive_actors == 10
+        # Kill actors
+        for actor in actors:
+            ray.kill(actor)
+
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+
+        # Test actors created by a driver.
+
+        driver = """
+import ray
+from ray.experimental.state.api import list_actors
+ray.init("auto")
+
+@ray.remote
+class A:
+    def ready(self):
+        pass
+
+actors = [A.remote() for _ in range(10)]
+ray.get([actor.ready.remote() for actor in actors])
+alive_actors = 0
+for a in list_actors():
+    if a["state"] == "ALIVE":
+        alive_actors += 1
+assert alive_actors == 10
+"""
+
+        run_string_as_driver(driver)
+        # Driver exits, so dead actors must be cleaned.
+        wait_for_condition(verify_cached_dead_actor_cleaned)
+        print(ray.experimental.state.api.list_actors())
+
+
 if __name__ == "__main__":
     import pytest
 
