@@ -521,6 +521,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
+      RAY_LOG(DEBUG) << "Runtime env for task " << spec.TaskId() << " is "
+                     << spec.RuntimeEnvDebugString();
     }
   }
 
