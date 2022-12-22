@@ -420,25 +420,6 @@ class TestAlgorithm(unittest.TestCase):
         bc.train()
         bc.stop()
 
-    def test_counters_after_checkpoint(self):
-        # We expect algorithm to no start counters from zero after loading a
-        # checkpoint on a fresh Algorithm instance
-        config = pg.PGConfig().environment(env="CartPole-v1")
-        algo = config.build()
-
-        self.assertTrue(all(c == 0 for c in algo._counters.values()))
-        algo.step()
-        self.assertTrue((all(c != 0 for c in algo._counters.values())))
-        counter_values = list(algo._counters.values())
-        state = algo.__getstate__()
-        algo.stop()
-
-        algo2 = config.build()
-        self.assertTrue(all(c == 0 for c in algo2._counters.values()))
-        algo2.__setstate__(state)
-        counter_values2 = list(algo2._counters.values())
-        self.assertEqual(counter_values, counter_values2)
-
 
 if __name__ == "__main__":
     import pytest

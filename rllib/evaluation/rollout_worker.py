@@ -1630,6 +1630,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             "is_policy_to_train": self.is_policy_to_train,
             # TODO: Filters will be replaced by connectors.
             "filters": filters,
+            # Global variables.
+            "global_vars": self.get_global_vars(),
         }
 
     @DeveloperAPI
@@ -1698,6 +1700,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             self.set_policy_mapping_fn(state["policy_mapping_fn"])
         if state.get("is_policy_to_train") is not None:
             self.set_is_policy_to_train(state["is_policy_to_train"])
+
+        # Also restore global vars for this worker.
+        if state.get("global_vars") is not None:
+            self.set_global_vars(state["global_vars"])
 
     @DeveloperAPI
     def get_weights(

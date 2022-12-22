@@ -4,6 +4,7 @@ import shutil
 import unittest
 
 import ray
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -81,7 +82,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     shutil.rmtree(export_dir)
 
 
-class TestAlgorithmSave(unittest.TestCase):
+class TestAlgorithmCheckpointing(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
@@ -97,6 +98,34 @@ class TestAlgorithmSave(unittest.TestCase):
     def test_save_ppo(self):
         for fw in framework_iterator():
             save_test("PPO", fw)
+
+    def test_counters_and_global_timestep_after_checkpoint(self):
+        # We expect algorithm to not start counters from zero after loading a
+        # checkpoint on a fresh Algorithm instance.
+        config = pg.PGConfig().environment(env="CartPole-v1")
+        algo = config.build()
+
+        self.assertTrue(all(c == 0 for c in algo._counters.values()))
+        algo.train()
+        self.assertTrue((all(c != 0 for c in algo._counters.values())))
+        self.assertTrue(algo.workers.local_worker().global_vars["timestep"] > 0)
+        self.assertTrue(algo.get_policy().global_timestep > 0)
+        counter_values = list(algo._counters.values())
+        state = algo.__getstate__()
+        algo.stop()
+
+        algo2 = config.build()
+        self.assertTrue(all(c == 0 for c in algo2._counters.values()))
+        self.assertTrue(algo2.workers.local_worker().global_vars["timestep"] == 0)
+        algo2.__setstate__(state)
+        counter_values2 = list(algo2._counters.values())
+        self.assertEqual(counter_values, counter_values2)
+        # Also check global_vars `timesteps`.
+        self.assertEqual(
+            algo.workers.local_worker().global_vars["timestep"],
+            algo2.workers.local_worker().global_vars["timestep"],
+        )
+        self.assertTrue(algo2.get_policy().global_timestep > 0)
 
 
 if __name__ == "__main__":
