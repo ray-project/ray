@@ -467,27 +467,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the TaskEventBuffer if enabled.
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
-  /// \param status new status.
-  /// \param include_task_info True if TaskInfoEntry will be included when recording
-  /// status task event change for RecordTaskStatusEvent.
-  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
-  void SetTaskStatus(TaskEntry &task_entry,
-                     rpc::TaskStatus status,
-                     bool include_task_info = false,
-                     absl::optional<NodeID> node_id = absl::nullopt);
+  /// \param status the changed status.
+  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Update task status change in TaskEventBuffer
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status the changed status.
-  /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
-  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
-  void RecordTaskStatusEvent(const TaskSpecification &spec,
-                             rpc::TaskStatus status,
-                             bool include_task_info,
-                             absl::optional<NodeID> node_id = absl::nullopt);
+  void RecordTaskStatusEvent(const TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
