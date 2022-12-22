@@ -10,7 +10,6 @@ from ray._private.ray_constants import env_integer
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import binary_to_hex
 from ray.core.generated.common_pb2 import (
     TaskStatus,
     NIL,
@@ -398,9 +397,9 @@ class StateAPIManager:
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
                 (state_updates, ["node_id"]),
             ]
-            for src, fields in mappings:
-                for field in fields:
-                    task_state[field] = src.get(field)
+            for src, keys in mappings:
+                for key in keys:
+                    task_state[key] = src.get(key)
 
             # Get the most updated scheduling_state by state transition ordering.
             if len(state_updates["status_events"]) > 0:

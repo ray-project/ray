@@ -190,7 +190,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                     : 0;
     }
   }
-
+  // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
+  // on a single task retry(attempt) rather than the actual events.
+  // https://github.com/ray-project/ray/issues/31280
   reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_ +
                                              num_profile_event_limit);
   reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_ +
@@ -216,7 +218,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
     total_num_task_events_reported_++;
     auto task_id = TaskID::FromBinary(events_by_task.task_id());
     // TODO(rickyx): add logic to handle too many profile events for a single task
-    // attempt.
+    // attempt.  https://github.com/ray-project/ray/issues/31279
     auto replaced_task_events =
         task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
 

@@ -21,7 +21,7 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 from ray.cluster_utils import cluster_not_supported
-from ray._raylet import NodeID, JobID
+from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
     Address,
     CoreWorkerStats,
@@ -2002,6 +2002,43 @@ def test_list_get_tasks(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_list_get_task_multiple_attempt(shutdown_only):
+    ray.init(num_cpus=2)
+    job_id = ray.get_runtime_context().get_job_id()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    @ray.remote(retry_exceptions=True, max_retries=2)
+    def f():
+        raise ValueError("f is expected to failed")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(f.remote())
+
+    def verify(task_attempts):
+        assert len(task_attempts) == 3  # 2 retries + 1 initial run
+        for task_attempt in task_attempts:
+            assert task_attempt["job_id"] == job_id
+            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["node_id"] == node_id
+
+        assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
+            0,
+            1,
+            2,
+        }, "Attempt number should be 0,1,2"
+
+        assert (
+            len({task_attempt["task_id"] for task_attempt in task_attempts}) == 1
+        ), "Same task id"
+        return True
+
+    wait_for_condition(lambda: verify(list_tasks()))
+
+    # Test get with task id returns multiple task attempts
+    task_id = list_tasks()[0]["task_id"]
+    wait_for_condition(lambda: verify(get_task(task_id)))
 
 
 def test_list_actor_tasks(shutdown_only):

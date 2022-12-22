@@ -20,7 +20,7 @@ else:
     from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.tests.test_state_api import (
     generate_task_data,
     generate_task_event,

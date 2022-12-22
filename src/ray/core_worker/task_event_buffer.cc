@@ -97,6 +97,7 @@ void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   if (!enabled_) {
     return;
   }
+  RAY_LOG(INFO) << task_events.DebugString();
   absl::MutexLock lock(&mutex_);
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();

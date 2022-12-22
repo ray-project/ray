@@ -461,20 +461,47 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
 
-  /// Set the TaskStatus
+  /// Set the TaskStatus on task status change.
   ///
   /// Sets the task status on the TaskEntry, and record the task status change events in
   /// the TaskEventBuffer if enabled.
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
-  /// \param status the changed status.
-  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
+  /// \param status new status.
+  /// \param include_task_info True if TaskInfoEntry will be included when recording
+  /// status task event change for RecordTaskStatusEvent.
+  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
+  /// for SUBMITTED_TO_WORKER status change.
+  void SetTaskStatus(TaskEntry &task_entry,
+                     rpc::TaskStatus statujs,
+                     bool include_task_info = false,
+                     absl::optional<NodeID> node_id = absl::nullopt);
 
   /// Update task status change in TaskEventBuffer
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status the changed status.
-  void RecordTaskStatusEvent(const TaskEntry &task_entry, rpc::TaskStatus status);
+  /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
+  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
+  /// for SUBMITTED_TO_WORKER status change.
+  void RecordTaskStatusEvent(const TaskSpecification &spec,
+                             rpc::TaskStatus status,
+                             bool include_task_info,
+                             absl::optional<NodeID> node_id = absl::nullopt);
+
+  /// Update the task entry for the task attempt to reflect retry on resubmit.
+  ///
+  /// This will set the task status, and update the attempt number for the task.
+  ///
+  /// \param task_entry Task entry for the corresponding task attempt
+  void MarkTaskRetryOnResubmit(TaskEntry &task_entry);
+
+  /// Update the task entry for the task attempt to reflect retry on failure.
+  ///
+  /// This will set the task status, and update the attempt number for the task.
+  ///
+  /// \param task_entry Task entry for the corresponding task attempt
+  void MarkTaskRetryOnFailed(TaskEntry &task_entry);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
