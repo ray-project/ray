@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -60,12 +60,13 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         #     "conv_type", "atari")
 
         # Build the CNN(s) given obs_space's image components.
-        self.cnns = {}
-        self.one_hot = {}
+        self.cnns = nn.ModuleDict()
+        self.one_hot = nn.ModuleDict()
         self.flatten_dims = {}
-        self.flatten = {}
+        self.flatten = nn.ModuleDict()
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
+            i = str(i)
             # Image space.
             if len(component.shape) == 3:
                 config = {
@@ -185,6 +186,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         # (CNNs, one-hot + FC, etc..).
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):
+            i = str(i)
             if i in self.cnns:
                 cnn_out, _ = self.cnns[i](SampleBatch({SampleBatch.OBS: component}))
                 outs.append(cnn_out)
@@ -198,7 +200,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 ]:
                     one_hot_in = {
                         SampleBatch.OBS: one_hot(
-                            component, self.flattened_input_space[i]
+                            component, self.flattened_input_space[int(i)]
                         )
                     }
                 else:

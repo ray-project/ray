@@ -40,9 +40,11 @@ def deprecation_warning(
     )
 
     if error:
-        if issubclass(error, Exception):
+        if not type(error) is bool and issubclass(error, Exception):
+            # error is an Exception
             raise error(msg)
         else:
+            # error is a boolean, construct ValueError ourselves
             raise ValueError(msg)
     else:
         logger.warning(

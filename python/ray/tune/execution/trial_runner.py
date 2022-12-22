@@ -261,11 +261,18 @@ class _ExperimentCheckpointManager:
 
         synced = False
         if self._syncer:
-            # Todo: Implement sync_timeout for experiment-level syncing
-            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
-                self._syncer.wait()
+                try:
+                    self._syncer.wait()
+                except TimeoutError as e:
+                    logger.warning(
+                        "The previous sync of the experiment checkpoint to the cloud "
+                        f"timed out: {str(e)}. Tune will continue to retry syncing. "
+                        "If this warning keeps showing up, consider diagnosing the "
+                        "reason behind the hanging sync operation, or increase the "
+                        "`sync_timeout` in `SyncConfig`."
+                    )
                 synced = self._syncer.sync_up(
                     local_dir=self._local_dir,
                     remote_dir=self._remote_dir,
@@ -968,7 +975,7 @@ class TrialRunner:
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self.get_trials())
+            self.trial_executor.on_step_begin()
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials
@@ -998,7 +1005,7 @@ class TrialRunner:
         self._reconcile_live_trials()
 
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self.get_trials())
+            self.trial_executor.on_step_end()
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(iteration=self._iteration, trials=self._trials)
 
@@ -1015,7 +1022,9 @@ class TrialRunner:
 
         assert next_trial is not None
         logger.debug(f"Trying to start trial: {next_trial}")
-        if not _start_trial(next_trial) and next_trial.status != Trial.ERROR:
+
+        trial_started = _start_trial(next_trial)
+        if not trial_started and next_trial.status != Trial.ERROR:
             # Only try to start another trial if previous trial startup
             # did not error (e.g. it just didn't start because its
             # placement group is not ready, yet).
@@ -1023,15 +1032,11 @@ class TrialRunner:
             # test_trial_runner_pg.py::
             # TrialRunnerPlacementGroupHeterogeneousTest::
             # testResourceDeadlock
-            next_trial = self.trial_executor.get_staged_trial()
+            next_trial = self.trial_executor.get_ready_trial()
+
             if next_trial is not None:
                 # Must be able to start.
                 assert _start_trial(next_trial)
-            else:
-                logger.debug(f"Reconciling resource requests: {self.get_trials()}")
-                self.trial_executor._pg_manager.reconcile_placement_groups(
-                    self.get_trials()
-                )
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
         with warn_if_slow("process_trial_save") as _profile:
@@ -1585,7 +1590,7 @@ class TrialRunner:
                 )
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self.get_trials())
+        self.trial_executor.cleanup()
 
     def cleanup(self):
         """Cleanup trials and callbacks."""

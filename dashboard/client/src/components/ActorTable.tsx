@@ -31,9 +31,11 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 const ActorTable = ({
   actors = {},
   workers = [],
+  jobId = null,
 }: {
   actors: { [actorId: string]: Actor };
   workers?: Worker[];
+  jobId?: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter();
@@ -94,7 +96,7 @@ const ActorTable = ({
           alive.
           <br />
           - Stack Trace: Get a stacktrace of the alive actor.
-          <br />- Flame Graph: Get a flamegraph for the next 5 seconds of an
+          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of an
           alive actor.
         </Typography>
       ),
@@ -152,6 +154,19 @@ const ActorTable = ({
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="State" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          defaultValue={jobId}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.jobId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("jobId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Job Id" />
           )}
         />
         <Autocomplete
@@ -329,10 +344,10 @@ const ActorTable = ({
                       <a
                         href={`/worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
                         target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+                        title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
                         rel="noreferrer"
                       >
-                        Flame&nbsp;Graph
+                        CPU&nbsp;Flame&nbsp;Graph
                       </a>
                       <br />
                     </React.Fragment>

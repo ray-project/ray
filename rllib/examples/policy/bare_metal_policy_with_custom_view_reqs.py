@@ -1,5 +1,5 @@
 import numpy as np
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
