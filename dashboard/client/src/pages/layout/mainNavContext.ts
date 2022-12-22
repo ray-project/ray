@@ -91,9 +91,6 @@ export const useMainNavState = (): MainNavContextType => {
   };
 };
 
-/**
- * Call this hook at the start of your page render if your page should belong in the MainNav
- */
 const useMainNavPage = (pageInfo: MainNavPage) => {
   const { addPage, updatePage, removePage } = useContext(MainNavContext);
 
