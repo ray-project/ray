@@ -626,7 +626,9 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
             local_dir=str(tmp_path),
             stop={"training_iteration": 3},
             failure_config=FailureConfig(max_failures=0),
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            checkpoint_config=CheckpointConfig(
+                checkpoint_frequency=0 if use_function_trainable else 1
+            ),
         ),
         param_space={"fail_marker": fail_marker},
     )
