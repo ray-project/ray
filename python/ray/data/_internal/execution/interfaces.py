@@ -16,10 +16,12 @@ class RefBundle:
     Operators take in and produce streams of RefBundles.
 
     Most commonly an RefBundle consists of a single block object reference.
-    In some cases, e.g., due to block splitting, or for a SortReduce task, there may
+    In some cases, e.g., due to block splitting, or for a reduce task, there may
     be more than one block.
 
-    Block bundles have ownership semantics, i.e., shared_ptr vs unique_ptr. This
+    Block bundles have ownership semantics, i.e., shared ownership (similar to C++
+    shared_ptr, multiple operators share the same block bundle), or unique ownership
+    (similar to C++ unique_ptr, only one operator owns the block bundle). This
     allows operators to know whether they can destroy blocks when they don't need
     them. Destroying blocks eagerly is more efficient than waiting for Python GC /
     Ray reference counting to kick in.
@@ -75,13 +77,18 @@ class RefBundle:
 
 @dataclass
 class ExecutionOptions:
-    """Common options that should be supported by all Executor implementations."""
+    """Common options for execution.
 
-    # Max number of in flight tasks. This is a soft limit.
+    Some options may not be supported on all executors (e.g., parallelism limit).
+    """
+
+    # Max number of in flight tasks. This is a soft limit, and is not supported in
+    # bulk execution mode.
     parallelism_limit: Optional[int] = None
 
     # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB. This is a soft limit.
+    # memory usage to 1GB. This is a soft limit, and is not supported in
+    # bulk execution mode.
     memory_limit_bytes: Optional[int] = None
 
     # Set this to prefer running tasks on the same node as the output
@@ -249,7 +256,7 @@ class Executor:
 
     Subclasses:
         BulkExecutor
-        PipelinedExecutor
+        StreamingExecutor
     """
 
     def __init__(self, options: ExecutionOptions):

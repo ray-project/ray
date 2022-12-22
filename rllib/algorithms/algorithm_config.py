@@ -1,6 +1,7 @@
 import copy
 import logging
 import math
+import os
 from typing import (
     Any,
     Callable,
@@ -773,6 +774,12 @@ class AlgorithmConfig:
                 "Please enable connectors via "
                 "`config.rollouts(enable_connectors=True)`."
             )
+
+        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
+            # enable RLModule API and connectors if env variable is set
+            # (to be used in unittesting)
+            self._enable_rl_module_api = True
+            self.enable_connectors = True
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.

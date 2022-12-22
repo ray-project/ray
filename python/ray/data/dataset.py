@@ -3210,7 +3210,9 @@ class Dataset(Generic[T]):
             if isinstance(columns, str):
                 return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
             return {
-                convert_ndarray_to_tf_tensor(batch[column], type_spec=type_spec[column])
+                column: convert_ndarray_to_tf_tensor(
+                    batch[column], type_spec=type_spec[column]
+                )
                 for column in columns
             }
 

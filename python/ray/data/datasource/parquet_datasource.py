@@ -375,13 +375,14 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
+    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
             use_threads=use_threads,
             columns=columns,
             schema=schema,
-            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            batch_size=batch_size,
             **reader_args,
         )
         for batch in batches:
@@ -462,6 +463,9 @@ def _sample_piece(
     batch_size = max(
         min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
     )
+    # Use the batch_size calculated above, and ignore the one specified by user if set.
+    # This is to avoid sampling too few or too many rows.
+    reader_args.pop("batch_size", None)
     batches = piece.to_batches(
         columns=columns,
         schema=schema,

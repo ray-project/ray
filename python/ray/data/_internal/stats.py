@@ -59,10 +59,7 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
-    def build_multistage(
-        self,
-        stages: StatsDict,
-    ) -> "DatasetStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             if len(stages) > 1:
