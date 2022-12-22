@@ -122,9 +122,7 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   static rpc::TaskStateUpdate GenStateUpdate() {
     rpc::TaskStateUpdate status_update;
-    auto status_event = status_update.add_status_events();
-    status_event->set_timestamp(1);
-    status_event->set_status(rpc::TaskStatus::RUNNING);
+    status_update.set_running_ts(1);
     return status_update;
   }
 

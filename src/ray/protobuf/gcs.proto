@@ -227,17 +227,20 @@ message ProfileEvents {
 
 // Represents task states which could be changed during task execution.
 message TaskStateUpdate {
-  // Node id updated when the task's status changes to RUNNING.
+  // Node that runs the task.
   optional bytes node_id = 1;
-
-  message StatusEventEntry {
-    // Timestamp of the status change.
-    int64 timestamp = 1;
-    // Task status
-    TaskStatus status = 2;
-  }
-  // Task status events.
-  repeated StatusEventEntry status_events = 2;
+  // Timestamp when status changes to PENDING_ARGS_AVAIL.
+  optional int64 pending_args_avail_ts = 2;
+  // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
+  optional int64 pending_node_assignment_ts = 3;
+  // Timestamp when status changes to SUBMITTED_TO_WORKER.
+  optional int64 submitted_to_worker_ts = 4;
+  // Timestamp when status changes to RUNNING.
+  optional int64 running_ts = 5;
+  // Timestamp when status changes to FINISHED.
+  optional int64 finished_ts = 6;
+  // Timestamp when status changes to FAILED.
+  optional int64 failed_ts = 7;
 }
 
 // Represents events and state changes from a single task run.

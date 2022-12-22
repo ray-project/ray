@@ -313,13 +313,18 @@ class StateApiClient(SubmissionClient):
         if len(result) == 0:
             return None
 
-        if resource == StateResource.OBJECTS or resource == StateResource.TASKS:
+        if resource == StateResource.OBJECTS:
             # NOTE(rickyyx):
             # There might be multiple object entries for a single object id
             # because a single object could be referenced at different places
             # e.g. pinned as local variable, used as parameter
+            return result
+
+        if resource == StateResource.TASKS:
             # There might be multiple task attempts given a task id due to
             # task retries.
+            if len(result) == 1:
+                return result[0]
             return result
 
         # For the rest of the resources, there should only be a single entry

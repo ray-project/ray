@@ -2360,9 +2360,7 @@ Status CoreWorker::ExecuteTask(
       task_event.set_job_id(task_spec.JobId().Binary());
 
       auto state_updates = task_event.mutable_state_updates();
-      auto status_event = state_updates->add_status_events();
-      status_event->set_status(rpc::TaskStatus::RUNNING);
-      status_event->set_timestamp(absl::GetCurrentTimeNanos());
+      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
 

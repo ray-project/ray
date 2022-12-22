@@ -473,7 +473,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
   /// for SUBMITTED_TO_WORKER status change.
   void SetTaskStatus(TaskEntry &task_entry,
-                     rpc::TaskStatus statujs,
+                     rpc::TaskStatus status,
                      bool include_task_info = false,
                      absl::optional<NodeID> node_id = absl::nullopt);
 

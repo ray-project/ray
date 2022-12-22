@@ -935,10 +935,6 @@ void TaskManager::RecordTaskStatusEvent(const TaskSpecification &spec,
   task_event.set_job_id(spec.JobId().Binary());
   task_event.set_attempt_number(spec.AttemptNumber());
   auto state_updates = task_event.mutable_state_updates();
-  auto status_event = state_updates->add_status_events();
-  status_event->set_timestamp(absl::GetCurrentTimeNanos());
-  status_event->set_status(status);
-
   if (include_task_info) {
     // Initialize a new TaskInfoEntry
     auto task_info = MakeTaskInfoEntry(spec);
@@ -950,6 +946,34 @@ void TaskManager::RecordTaskStatusEvent(const TaskSpecification &spec,
     RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Only SUBMITTED_TO_WORKER status change has node id update.";
     state_updates->set_node_id(node_id->Binary());
+  }
+
+  switch (status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
+    break;
+  }
+  default: {
+    // NOTE: Other task status (e.g. TaskStatus::RUNNING_IN_XXX), should not be set by the
+    // TaskManager.
+    UNREACHABLE;
+  }
   }
 
   task_event_buffer_.AddTaskEvent(std::move(task_event));

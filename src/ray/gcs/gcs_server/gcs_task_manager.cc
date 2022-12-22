@@ -185,9 +185,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     } else {
       num_profile_event_limit +=
           task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
-      num_status_event_limit += task_event.has_state_updates()
-                                    ? task_event.state_updates().status_events_size()
-                                    : 0;
+      num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
     }
   }
   // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
@@ -224,8 +222,10 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 
     if (replaced_task_events) {
       if (replaced_task_events->has_state_updates()) {
-        total_num_status_task_events_dropped_ +=
-            replaced_task_events->state_updates().status_events_size();
+        // TODO(rickyx): should we un-flatten the status updates into a list of
+        // StatusEvents? so that we could get an accurate number of status change
+        // events being dropped like profile events.
+        total_num_status_task_events_dropped_++;
       }
       if (replaced_task_events->has_profile_events()) {
         total_num_profile_task_events_dropped_ +=

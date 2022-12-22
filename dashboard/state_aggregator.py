@@ -10,10 +10,7 @@ from ray._private.ray_constants import env_integer
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated.common_pb2 import (
-    TaskStatus,
-    NIL,
-)
+import ray.core.generated.common_pb2 as common_pb2
 
 from ray.experimental.state.common import (
     ActorState,
@@ -402,14 +399,15 @@ class StateAPIManager:
                     task_state[key] = src.get(key)
 
             # Get the most updated scheduling_state by state transition ordering.
-            if len(state_updates["status_events"]) > 0:
-                current_status = max(
-                    state_updates["status_events"],
-                    key=lambda e: TaskStatus.Value(e["status"]),
-                )
-                task_state["scheduling_state"] = current_status["status"]
-            else:
-                task_state["scheduling_state"] = TaskStatus.Name(NIL)
+            def _get_most_recent_status(task_state: dict) -> str:
+                # Reverse the order as defined in protobuf for the most recent state.
+                for status_name in reversed(common_pb2.TaskStatus.keys()):
+                    key = f"{status_name.lower()}_ts"
+                    if state_updates.get(key):
+                        return status_name
+                return common_pb2.TaskStatus.Name(common_pb2.NIL)
+
+            task_state["scheduling_state"] = _get_most_recent_status(state_updates)
 
             return task_state
 
