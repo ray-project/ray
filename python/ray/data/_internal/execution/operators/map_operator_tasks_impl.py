@@ -80,7 +80,11 @@ class MapOperatorTasksImpl:
                 return float("inf")
             return bundle.num_rows()
 
-        num_rows = get_num_rows(self._block_bundle) + get_num_rows(bundle)
+        bundle_rows = get_num_rows(bundle)
+        if bundle_rows == 0:
+            return
+
+        num_rows = get_num_rows(self._block_bundle) + bundle_rows
         if num_rows > self._target_block_size:
             if self._block_bundle:
                 self._create_task(self._block_bundle)
