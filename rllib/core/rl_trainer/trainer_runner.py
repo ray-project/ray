@@ -1,7 +1,10 @@
 import numpy as np
+from typing import Any, Mapping, Type
 
 import ray
 
+from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
@@ -103,4 +106,43 @@ class TrainerRunner:
                 new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
                 refs.append(worker.update.remote(new_batch))
 
+        return ray.get(refs)
+
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module_cls: Type[RLModule],
+        module_config: Mapping[str, Any],
+        optimizer_cls: Type[RLOptimizer],
+        optimizer_config: Mapping[str, Any],
+    ) -> None:
+        """Add a module to the trainer."""
+        refs = []
+        for worker in self.workers:
+            ref = worker.add_module.remote(
+                module_id, module_cls, module_config, optimizer_cls, optimizer_config
+            )
+            refs.append(ref)
+        ray.get(refs)
+
+    def remove_module(self, module_id: ModuleID) -> None:
+        """Remove a module from the trainer."""
+        refs = []
+        for worker in self.workers:
+            ref = worker.remove_module.remote(module_id)
+            refs.append(ref)
+        ray.get(refs)
+
+    def get_state(self):
+        """ """
+        refs = []
+        for worker in self.workers:
+            refs.append(worker.get_state.remote())
+        return ray.get(refs)
+
+    def set_state(self, state: Mapping[ModuleID, Mapping[str, Any]]):
+        """Sets the state of the MultiAgentRLModule and the optimizer on each worker."""
+        refs = []
+        for worker in self.workers:
+            refs.append(worker.set_state.remote(state))
         return ray.get(refs)

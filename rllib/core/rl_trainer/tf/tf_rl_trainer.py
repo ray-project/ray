@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Mapping, Union
+from typing import Any, Mapping, Union, Type
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,13 +15,6 @@ tf1.enable_eager_execution()
 class TfRLTrainer(RLTrainer):
     """Base class for RLlib TF algorithm trainers."""
 
-    def remove_module(self, module_id: ModuleID):
-        self._module.remove_module(module_id)
-
-    def add_module(self, module_id: ModuleID, module: RLModule):
-        self._module.add_module(module_id, module)
-
-    @tf.function
     def _do_update_fn(self, batch: SampleBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
@@ -46,13 +39,15 @@ class TfRLTrainer(RLTrainer):
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
         # to unwanted consequences. We'll need to further investigate this.
+        if not hasattr(self, "traced_update_fn"):
+            self.traced_update_fn = tf.function(self._do_update_fn)
         batch = NestedDict(batch.policy_batches)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         if self.distributed:
-            infos = self.strategy.run(self._do_update_fn, args=(batch,))
+            infos = self.strategy.run(self.traced_update_fn, args=(batch,))
         else:
-            infos = self._do_update_fn(batch)
+            infos = self.traced_update_fn(batch)
         loss = infos["loss"]
         fwd_out = infos["fwd_out"]
         post_processed_gradients = infos["post_processed_gradients"]
@@ -133,7 +128,7 @@ class TfRLTrainer(RLTrainer):
                     mean_grads[module_id][network].append(grad.mean())
                 mean_grads[module_id][network] = np.mean(mean_grads[module_id][network])
         ret = {
-            **loss_numpy,
+            "loss": loss_numpy,
             "mean_gradient": mean_grads,
         }
         module_avg_weights = {}
@@ -148,3 +143,36 @@ class TfRLTrainer(RLTrainer):
                 module_avg_weights[module_id] = avg_weights
             ret["mean_weight"] = module_avg_weights
         return ret
+
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module_cls: Type[RLModule],
+        module_config,
+        optimizer_cls,
+        optimizer_config,
+    ) -> None:
+        """Add a module to this trainer."""
+        if self.distributed:
+            with self.strategy.scope():
+                super().add_module(
+                    module_id,
+                    module_cls,
+                    module_config,
+                    optimizer_cls,
+                    optimizer_config,
+                )
+        else:
+            super().add_module(
+                module_id, module_cls, module_config, optimizer_cls, optimizer_config
+            )
+        self.traced_update_fn = tf.function(self._do_update_fn)
+
+    def remove_module(self, module_id: ModuleID) -> None:
+        """Remove a module from this trainer."""
+        if self.distributed:
+            with self.strategy.scope():
+                super().remove_module(module_id)
+        else:
+            super().remove_module(module_id)
+        self.traced_update_fn = tf.function(self._do_update_fn)

@@ -4,6 +4,7 @@ from typing import Any, Mapping
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 
 
 class BCTFOptimizer(RLOptimizer):
@@ -20,7 +21,8 @@ class BCTFOptimizer(RLOptimizer):
 
     def get_state(self):
         return {
-            key: optim.get_weights() for key, optim in self.get_optimizers().items()
+            key: convert_to_numpy(optim.variables())
+            for key, optim in self.get_optimizers().items()
         }
 
     def set_state(self, state: Mapping[str, Any]) -> None:

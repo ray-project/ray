@@ -72,6 +72,12 @@ class MultiAgentRLOptimizer(RLOptimizer):
     def as_multi_agent(self) -> "MultiAgentRLOptimizer":
         return self
 
+    def add_optimizer(self, module_id: ModuleID, optimizer: RLOptimizer) -> None:
+        self._optimizers[module_id] = optimizer
+
+    def remove_optimizer(self, module_id: ModuleID) -> None:
+        del self._optimizers[module_id]
+
     def _configure_optimizers(self) -> None:
         # Do not implement as this will not be used
         assert False

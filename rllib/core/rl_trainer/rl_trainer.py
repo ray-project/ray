@@ -1,7 +1,7 @@
 import abc
 from typing import Any, Mapping, Union, Type
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -128,6 +128,25 @@ class RLTrainer:
             "module_state": self._module.get_state(),
             "optimizer_state": self._rl_optimizer.get_state(),
         }
+
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module_cls: Type[RLModule],
+        module_config,
+        optimizer_cls,
+        optimizer_config,
+    ) -> None:
+        """Add a module to the trainer."""
+        module = module_cls.from_model_config(**module_config)
+        self._module.add_module(module_id, module)
+        optimizer = optimizer_cls(module, optimizer_config)
+        self._rl_optimizer.add_optimizer(module_id, optimizer)
+
+    def remove_module(self, module_id: ModuleID) -> None:
+        """Remove a module from the trainer."""
+        self._module.remove_module(module_id)
+        self._rl_optimizer.remove_optimizer(module_id)
 
     def init_trainer(self) -> None:
         """Initialize the model."""
