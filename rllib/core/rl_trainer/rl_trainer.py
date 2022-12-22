@@ -7,12 +7,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.utils.framework import try_import_tf
-
-
-tf1, tf, tfv = try_import_tf()
-
-tf1.enable_eager_execution()
 
 
 class RLTrainer:
