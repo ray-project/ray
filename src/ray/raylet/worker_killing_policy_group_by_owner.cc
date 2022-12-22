@@ -40,7 +40,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     return std::make_pair(nullptr, /*should retry*/ false);
   }
 
-  GroupMap group_map(10, group_key_hashing_func, group_key_equal_fn);
+  GroupMap group_map(10, GroupKeyHash, GroupKeyEquals);
 
   for (auto worker : workers) {
     TaskID owner_id = worker->GetAssignedTask().GetTaskSpecification().ParentTaskId();
@@ -172,6 +172,17 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
 
 const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const{
   return workers_;
+}
+
+unsigned long GroupByOwnerIdWorkerKillingPolicy::GroupKeyHash(const GroupKey &key) {
+  unsigned long hash = 0;
+  boost::hash_combine(hash, key.owner_id.Hex());
+  boost::hash_combine(hash, key.retriable);
+  return hash;
+}
+
+bool GroupByOwnerIdWorkerKillingPolicy::GroupKeyEquals(const GroupKey &left, const GroupKey &right) {
+  return left.owner_id == right.owner_id && left.retriable == right.retriable;
 }
 
 }  // namespace raylet

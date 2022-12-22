@@ -60,17 +60,6 @@ typedef std::unordered_map<GroupKey, Group,
     std::function<unsigned long(const GroupKey&)>,
     std::function<bool(const GroupKey&, const GroupKey&)>> GroupMap;
 
-unsigned long group_key_hashing_func(const GroupKey& key) {
-    unsigned long hash = 0;
-    // for(size_t i=0; i<key.size(); i++)
-    //   hash += (71*hash + key[i]) % 5;
-    return hash;
-}
-
-bool group_key_equal_fn(const GroupKey& left, const GroupKey& right) {
-  return left.owner_id == right.owner_id && left.retriable == right.retriable;
-}
-
 /// Groups worker by its owner id if it is a task. Each actor belongs to its own group.
 /// The inter-group policy prioritizes killing groups that are retriable first, then in LIFO order,
 /// where each group's priority is based on the time of its earliest submitted member.
@@ -86,6 +75,8 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
       const MemorySnapshot &system_memory) const;
  private:
   static std::string PolicyDebugString(const std::vector<Group> &groups, const MemorySnapshot &system_memory);
+  static unsigned long GroupKeyHash(const GroupKey& key);
+  static bool GroupKeyEquals(const GroupKey& left, const GroupKey& right);
 };
 
 }  // namespace raylet

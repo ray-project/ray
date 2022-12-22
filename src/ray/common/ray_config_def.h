@@ -113,6 +113,8 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// supported.
 RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
+RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 

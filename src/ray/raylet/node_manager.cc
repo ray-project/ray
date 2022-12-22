@@ -336,6 +336,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
+      worker_killing_policy_(CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -2940,9 +2941,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill_and_should_retry =
-            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;
         bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
