@@ -2,16 +2,18 @@ import os
 import tempfile
 import unittest
 from collections import namedtuple
+from types import ModuleType
 from unittest.mock import patch
 
 from mlflow.tracking import MlflowClient
 
+from ray.train._internal.session import init_session
 from ray.tune.trainable import wrap_function
 from ray.tune.integration.mlflow import (
     MLflowTrainableMixin,
     mlflow_mixin,
 )
-from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
+from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
@@ -257,6 +259,22 @@ class MLflowTest(unittest.TestCase):
 
         trial_config["mlflow"]["experiment_name"] = "existing_experiment"
         setup_mlflow(trial_config)
+
+    def testMlFlowSetupRankNonRankZero(self):
+        """Assert that non-rank-0 workers get a noop module"""
+        init_session(
+            training_func=None,
+            world_rank=1,
+            local_rank=1,
+            node_rank=1,
+            local_world_size=2,
+            world_size=2,
+        )
+        mlflow = setup_mlflow({})
+        assert isinstance(mlflow, _NoopModule)
+
+        mlflow.log_metrics()
+        mlflow.sklearn.save_model(None, "model_directory")
 
 
 if __name__ == "__main__":

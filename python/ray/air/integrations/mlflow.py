@@ -20,13 +20,12 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _noop(*args, **kwargs):
-    pass
-
-
 class _NoopModule:
     def __getattr__(self, item):
-        return _noop
+        return _NoopModule()
+
+    def __call__(self, *args, **kwargs):
+        return None
 
 
 @PublicAPI(stability="alpha")
