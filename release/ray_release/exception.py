@@ -65,6 +65,10 @@ class ClusterStartupError(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_STARTUP_ERROR
 
 
+class CloudInfoError(ClusterManagerError):
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
+
+
 class ClusterStartupTimeout(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_STARTUP_TIMEOUT
 
