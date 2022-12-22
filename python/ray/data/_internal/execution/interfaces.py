@@ -216,6 +216,9 @@ class PhysicalOperator:
         """Returns when a downstream output is available.
 
         When this returns true, it is safe to call `get_next()`.
+
+        When both this and `get_work_refs` return empty, the operator execution is
+        guaranteed to be completed.
         """
         raise NotImplementedError
 
@@ -231,6 +234,9 @@ class PhysicalOperator:
 
         When a reference becomes ready, the executor must call
         `notify_work_completed(ref)` to tell this operator of the state change.
+
+        When both this and `get_next` return empty, the operator execution is
+        guaranteed to be completed.
         """
         return []
 
