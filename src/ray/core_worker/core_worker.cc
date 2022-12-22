@@ -2365,7 +2365,8 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
     // Make task event
-    if (task_event_buffer_->Enabled()) {
+    if (task_event_buffer_->Enabled() &&
+        RayConfig::instance().task_events_report_status_events()) {
       rpc::TaskEvents task_event;
       task_event.set_task_id(task_spec.TaskId().Binary());
       task_event.set_attempt_number(task_spec.AttemptNumber());

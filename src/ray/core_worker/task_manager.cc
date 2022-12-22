@@ -881,7 +881,8 @@ void TaskManager::RecordMetrics() {
 
 void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
                                         rpc::TaskStatus status) {
-  if (!task_event_buffer_.Enabled()) {
+  if (!task_event_buffer_.Enabled() ||
+      !RayConfig::instance().task_events_report_status_events()) {
     return;
   }
   // Make task event
