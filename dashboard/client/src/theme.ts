@@ -19,6 +19,16 @@ const basicTheme: ThemeOptions = {
     h1: {
       fontSize: "2rem",
     },
+    h2: {
+      fontSize: "1.5rem",
+    },
+    h3: {
+      fontSize: "1rem",
+      fontWeight: 500,
+    },
+    h4: {
+      fontSize: "1rem",
+    },
     body1: {
       fontSize: "0.75rem",
     },
@@ -41,6 +51,11 @@ const basicTheme: ThemeOptions = {
         "@media (min-width: 600px)": {
           margin: "0 8px",
         },
+      },
+    },
+    MuiPaper: {
+      outlined: {
+        borderColor: "#D2DCE6",
       },
     },
   },

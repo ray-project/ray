@@ -1,7 +1,7 @@
 # Code in this file is adapted from:
 # https://github.com/openai/evolution-strategies-starter.
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
