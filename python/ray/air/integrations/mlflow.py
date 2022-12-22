@@ -148,7 +148,7 @@ def setup_mlflow(
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
         **setup_kwargs,
-        create_experiment_if_not_exists=True,
+        create_experiment_if_not_exists=False,
     )
 
     mlflow_util.start_run(

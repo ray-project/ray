@@ -11,9 +11,7 @@ from ray.tune.integration.mlflow import (
     MLflowTrainableMixin,
     mlflow_mixin,
 )
-from ray.air.integrations.mlflow import (
-    MLflowLoggerCallback,
-)
+from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
@@ -221,10 +219,44 @@ class MLflowTest(unittest.TestCase):
             wrap_function(train_fn)(trial_config)
 
         # Set to experiment that does not already exist.
-        # New experiment should be created.
+        # This will fail because the experiment has to be created explicitly first.
+        trial_config["mlflow"]["tracking_uri"] = self.tracking_uri
         trial_config["mlflow"]["experiment_name"] = "new_experiment"
         with self.assertRaises(ValueError):
             wrap_function(train_fn)(trial_config)
+
+        # This should now pass
+        trial_config["mlflow"]["experiment_name"] = "existing_experiment"
+        wrap_function(train_fn)(trial_config)
+
+    def testMlFlowSetupConfig(self):
+        clear_env_vars()
+        trial_config = {"par1": 4, "par2": 9.0}
+
+        # No MLflow config passed in.
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config)
+
+        trial_config.update({"mlflow": {}})
+        # No tracking uri or experiment_id/name passed in.
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config)
+
+        # Invalid experiment-id
+        trial_config["mlflow"].update({"experiment_id": "500"})
+        # No tracking uri or experiment_id/name passed in.
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config)
+
+        # Set to experiment that does not already exist.
+        # New experiment should be created.
+        trial_config["mlflow"]["tracking_uri"] = self.tracking_uri
+        trial_config["mlflow"]["experiment_name"] = "new_experiment"
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config)
+
+        trial_config["mlflow"]["experiment_name"] = "existing_experiment"
+        setup_mlflow(trial_config)
 
 
 if __name__ == "__main__":
