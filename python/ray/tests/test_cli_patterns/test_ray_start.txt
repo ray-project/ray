@@ -7,22 +7,24 @@ Ray runtime started.
 --------------------
 
 Next steps
-  To connect to this Ray runtime from another node, run
+  To add another node to this Ray cluster, run
     ray start --address='.+'
 
-  Alternatively, use the following Python code:
+  To connect to this Ray cluster, run `ray\.init()` as usual:
     import ray
     ray\.init\(address='auto'\)
 
-  To connect to this Ray runtime from outside of the cluster, for example to
-  connect to a remote cluster from your laptop directly, use the following
-  Python code:
-    import ray
-    ray\.init\(address='ray://.*'\)
+  To connect to this Ray instance from outside of the cluster, for example
+  when connecting to a remote cluster from your laptop, make sure the
+  dashboard (.*) is accessible and use the Ray Jobs API\. For example:
+    RAY_ADDRESS='http://<dashboard URL>:8265' ray job submit --working-dir \. -- python my_script\.py
+
+  See https://docs\.ray\.io/en/latest/cluster/running-applications/job-submission/index\.html
+  for more information on connecting to the Ray cluster from a remote client\.
 
   To see the status of the cluster, use
     ray status
-  To monitor and debug Ray, view the dashboard at 
+  To monitor and debug Ray, view the dashboard at
     127.0.0.1:8265
 
   If connection fails, check your firewall settings and network configuration.
