@@ -665,7 +665,6 @@ ray.init(address="{}")
 ray_usage_lib.record_library_usage("post_init")
 ray.workflow.init()
 ray.data.range(10)
-
 from ray import serve
 
 serve.start()
