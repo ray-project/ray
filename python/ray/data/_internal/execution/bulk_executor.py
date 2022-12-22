@@ -98,4 +98,5 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
     # remaining outputs.
     while op.has_next():
         output.append(op.get_next())
+    assert not op.get_work_refs(), "Should not have any remaining work"
     return output
