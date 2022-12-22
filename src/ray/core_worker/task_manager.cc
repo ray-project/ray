@@ -127,7 +127,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      MarkTaskRetryOnResubmit(it->second);
+      SetTaskStatus(
+          it->second, rpc::TaskStatus::PENDING_ARGS_AVAIL, /* include_task_info */ true);
+      it->second.MarkRetryOnResubmit();
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -183,7 +185,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                  << spec.AttemptNumber() << ": " << spec.DebugString();
+                  << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
     retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
   }
 
@@ -452,7 +454,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      MarkTaskRetryOnFailed(it->second);
+      SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      it->second.MarkRetryOnFailed();
     }
   }
 
@@ -791,44 +794,6 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
                 rpc::TaskStatus::SUBMITTED_TO_WORKER,
                 /* include_task_info */ false,
                 node_id);
-}
-
-void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
-  // Record the old attempt status as FINISHED.
-  RecordTaskStatusEvent(
-      task_entry.spec, rpc::TaskStatus::FINISHED, /* include_task_info */ false);
-  task_entry.MarkRetryOnResubmit();
-
-  // Increment attempt number.
-  // TODO(rickyx): This reassignment is to bypass the `const` constrain on the
-  // TaskSpecification in TaskEntry. This has been how we are incrementing the attempt
-  // number, using a new TaskSpecification wrapper variable which points to the same
-  // underlying message in fact. Maybe we should have unique_ptr<TaskSpecification> to be
-  // passed around?
-  TaskSpecification spec = task_entry.spec;
-  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-
-  // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
-  RecordTaskStatusEvent(
-      task_entry.spec, rpc::TaskStatus::PENDING_ARGS_AVAIL, /* include_task_info */ true);
-}
-
-void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
-  // Record the old attempt status as FAILED.
-  RecordTaskStatusEvent(
-      task_entry.spec, rpc::TaskStatus::FAILED, /* include_task_info */ false);
-  task_entry.MarkRetryOnFailed();
-
-  // Increment attempt number.
-  TaskSpecification spec = task_entry.spec;
-  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-
-  // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  RecordTaskStatusEvent(task_entry.spec,
-                        rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
-                        /* include_task_info */ true);
 }
 
 void TaskManager::SetTaskStatus(TaskEntry &task_entry,

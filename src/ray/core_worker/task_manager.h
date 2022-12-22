@@ -489,22 +489,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                              bool include_task_info,
                              absl::optional<NodeID> node_id = absl::nullopt);
 
-  /// Update the task entry for the task attempt to reflect retry on resubmit.
-  ///
-  /// This will set the task status, update the attempt number for the task, and increment
-  /// the retry counter.
-  ///
-  /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnResubmit(TaskEntry &task_entry);
-
-  /// Update the task entry for the task attempt to reflect retry on failure.
-  ///
-  /// This will set the task status, update the attempt number for the task, and increment
-  /// the retry counter.
-  ///
-  /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnFailed(TaskEntry &task_entry);
-
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 

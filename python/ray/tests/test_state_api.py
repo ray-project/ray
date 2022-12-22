@@ -2004,6 +2004,12 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.skip(
+    reason=(
+        "This requires CoreWorker changes to record status change "
+        "to individual task attempt"
+    )
+)
 def test_list_get_task_multiple_attempt(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
