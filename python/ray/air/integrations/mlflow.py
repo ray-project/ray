@@ -34,10 +34,10 @@ def setup_mlflow(
 ) -> Union[ModuleType, _NoopModule]:
     """Set up a MLflow session.
 
-    This function can be used to initialize an Mlflow session in a
+    This function can be used to initialize an MLflow session in a
     (distributed) training or tuning run.
 
-    By default, the Mlflow experiment ID is the Ray trial ID and the
+    By default, the MLflow experiment ID is the Ray trial ID and the
     MLlflow experiment name is the Ray trial name. These settings can be overwritten by
     entries in the ``mlflow`` key of the ``config`` dict.
     Any keyword arguments will be merged into this configuration.
@@ -83,7 +83,7 @@ def setup_mlflow(
     Example:
 
         Per default, you can just call ``setup_mlflow`` and continue to use
-        Mlflow like you would normally do:
+        MLflow like you would normally do:
 
         .. code-block: python
 
