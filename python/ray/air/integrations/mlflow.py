@@ -49,6 +49,11 @@ def setup_mlflow(
     ``rank_zero_only=False``, which will then initialize mlflow in every training
     worker.
 
+    This function will return the ``mlflow`` module or a noop module for
+    non-rank zero workers ``if rank_zero_only=True``. By using
+    ``mlflow = setup_mlflow(config)`` you can ensure that only the rank zero worker
+    calls the mlflow API.
+
     Args:
         config: Configuration dict to be logged to weights and biases. Can contain
             mlflow experiment setting under a ``mlflow`` key.
@@ -83,9 +88,9 @@ def setup_mlflow(
             from ray.air.integrations.mlflow import mlflow_setup
 
             def training_loop(config):
-                mlflow_client = mlflow_setup()
+                mlflow = mlflow_setup()
                 # ...
-                mlflow_client.log_metric(key="loss", val=0.123, step=0)
+                mlflow.log_metric(key="loss", val=0.123, step=0)
 
     """
     if not mlflow:

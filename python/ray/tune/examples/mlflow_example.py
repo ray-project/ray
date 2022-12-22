@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Examples using MLfowLoggerCallback and mlflow_mixin.
+"""Examples using MLfowLoggerCallback and setup_mlflow.
 """
 import os
 import tempfile
@@ -55,7 +55,7 @@ def tune_with_callback(mlflow_tracking_uri, finish_fast=False):
 
 
 def train_function_mlflow(config):
-    mlflow = setup_mlflow(config)
+    setup_mlflow(config)
 
     # Hyperparameters
     width, height = config["width"], config["height"]
