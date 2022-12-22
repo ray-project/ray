@@ -122,7 +122,7 @@ class TestPPO(unittest.TestCase):
                         config = get_expected_model_config(env, lstm, shared_encoder)
                         module = PPOTorchRLModule(config)
 
-                        obs = env.reset()
+                        obs, _ = env.reset()
 
                         batch = {
                             SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
@@ -161,7 +161,7 @@ class TestPPO(unittest.TestCase):
 
                     # collect a batch of data
                     batches = []
-                    obs = env.reset()
+                    obs, _ = env.reset()
                     tstep = 0
                     if lstm:
                         state_in = module.get_initial_state()
@@ -184,13 +184,14 @@ class TestPPO(unittest.TestCase):
                         action = convert_to_numpy(
                             fwd_out["action_dist"].sample().squeeze(0)
                         )
-                        new_obs, reward, done, _ = env.step(action)
+                        new_obs, reward, terminated, truncated, _ = env.step(action)
                         output_batch = {
                             SampleBatch.OBS: obs,
                             SampleBatch.NEXT_OBS: new_obs,
                             SampleBatch.ACTIONS: action,
                             SampleBatch.REWARDS: np.array(reward),
-                            SampleBatch.DONES: np.array(done),
+                            SampleBatch.TERMINATEDS: np.array(terminated),
+                            SampleBatch.TRUNCATEDS: np.array(truncated),
                         }
                         if lstm:
                             state_in = fwd_out["state_out_0"]

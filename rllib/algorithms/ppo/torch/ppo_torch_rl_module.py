@@ -22,6 +22,7 @@ from ray.rllib.core.rl_module.encoder import (
     IdentityConfig,
     LSTMEncoder,
 )
+from rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.models.base_model import BaseModelIOKeys
 
 
@@ -93,7 +94,10 @@ class PPOTorchRLModule(TorchRLModule):
             activation=self.config.vf_config.activation,
         )
 
-        self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
+        self._is_discrete = isinstance(
+            convert_old_gym_space_to_gymnasium_space(self.config.action_space),
+            gym.spaces.Discrete,
+        )
 
     @classmethod
     @override(RLModule)
