@@ -19,11 +19,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 
 class TestTfRLTrainer(unittest.TestCase):
     @classmethod
-    def setUpClass(cls) -> None:
+    def setUp(cls) -> None:
         ray.init()
 
     @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(cls) -> None:
         ray.shutdown()
 
     def test_update_multigpu(self):

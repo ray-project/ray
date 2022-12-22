@@ -1821,7 +1821,7 @@ py_test(
 
 py_test(
     name = "test_tf_rl_trainer",
-    tags = ["team:rllib", "multi_gpu"],
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "medium",
     srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
 )

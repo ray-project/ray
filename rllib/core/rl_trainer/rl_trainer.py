@@ -2,6 +2,7 @@ import abc
 from typing import Any, Mapping, Union, Type
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -18,12 +19,11 @@ class RLTrainer:
         optimizer_class: The optimizer class to use.
         optimizer_config: The config for the optimizer.
 
-
     """
 
     def __init__(
         self,
-        module_class: Type[RLModule],
+        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_config: Mapping[str, Any],
         optimizer_class: Type[RLOptimizer],
         optimizer_config: Mapping[str, Any],

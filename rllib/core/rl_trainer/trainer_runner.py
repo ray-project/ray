@@ -4,6 +4,7 @@ from typing import Any, Mapping, Type
 import ray
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
@@ -13,7 +14,7 @@ from ray.train.tensorflow import TensorflowConfig
 
 
 class TrainerRunner:
-    """Coordinator of RLTrainer workers.
+    """Coordinator of RLTrainers.
     Public API:
         .update()
         .get_state() -> returns the state of the model on worker 0 which should
@@ -24,7 +25,13 @@ class TrainerRunner:
         >>> trainer_runner.apply(lambda w: w.get_weights())
     """
 
-    def __init__(self, trainer_class, trainer_config, compute_config, framework="tf"):
+    def __init__(
+        self,
+        trainer_class: Type[RLTrainer],
+        trainer_config: Mapping[str, Any],
+        compute_config: Mapping[str, Any],
+        framework: str = "tf",
+    ):
         """ """
         self._trainer_config = trainer_config
         self._compute_config = compute_config
@@ -82,7 +89,7 @@ class TrainerRunner:
 
         return {"num_workers": num_workers, "use_gpu": bool(num_gpus)}
 
-    def update(self, batch=None, **kwargs):
+    def update(self, batch: MultiAgentBatch = None, **kwargs):
         """TODO: account for **kwargs
         Example in DQN:
             >>> trainer_runner.update(batch) # updates the gradient
