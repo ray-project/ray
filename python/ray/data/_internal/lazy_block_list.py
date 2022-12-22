@@ -1,6 +1,6 @@
 import math
 import uuid
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -34,9 +34,7 @@ class LazyBlockList(BlockList):
         self,
         tasks: List[ReadTask],
         block_partition_refs: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
-        block_partition_meta_refs: Optional[
-            List[ObjectRef[BlockPartitionMetadata]]
-        ] = None,
+        block_partition_meta_refs: Optional[List[ObjectRef[BlockMetadata]]] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         stats_uuid: str = None,
@@ -53,7 +51,9 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs: An optional list of block partition metadata
                 refs. This should be the same length as the tasks argument.
             cached_metadata: An optional list of already computed AND fetched metadata.
-                This serves as a cache of fetched block metadata.
+                This serves as a cache of fetched block metadata. Note that each entry
+                in cached_metadata represents the list of output blocks metadata per
+                the read task. One task can produce multiple output blocks.
             ray_remote_args: Ray remote arguments for the read tasks.
             stats_uuid: UUID for the dataset stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
@@ -101,12 +101,13 @@ class LazyBlockList(BlockList):
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
             # Always return fetched metadata if we already have it.
-            metadata = self._cached_metadata
+            metadata = self._flatten_metadata(self._cached_metadata)
         elif not fetch_if_missing:
             metadata = [
-                m if m is not None else t.get_metadata()
+                m if m is not None else [t.get_metadata()]
                 for m, t in zip(self._cached_metadata, self._tasks)
             ]
+            metadata = self._flatten_metadata(metadata)
         else:
             _, metadata = self._get_blocks_with_metadata()
         return metadata
@@ -114,7 +115,8 @@ class LazyBlockList(BlockList):
     def stats(self) -> DatasetStats:
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
-            stages={"read": self.get_metadata(fetch_if_missing=False)},
+            # Make a copy of metadata, as the DatasetStats may mutate it in-place.
+            stages={"read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
@@ -303,18 +305,28 @@ class LazyBlockList(BlockList):
             block_refs.append(block_ref)
             meta_refs.append(meta_ref)
         if context.block_splitting_enabled:
-            # If block splitting is enabled, fetch the partitions.
-            parts = ray.get(block_refs)
-            block_refs, metadata = [], []
-            for part in parts:
-                for block_ref, meta in part:
-                    block_refs.append(block_ref)
-                    metadata.append(meta)
-            self._cached_metadata = metadata
-            return block_refs, metadata
+            # If block splitting is enabled, fetch the partitions through generator.
+            read_progress_bar = ProgressBar("Read progress", total=len(block_refs))
+            # Handle duplicates (e.g. due to unioning the same dataset).
+            unique_refs = list(set(block_refs))
+            generators = read_progress_bar.fetch_until_complete(unique_refs)
+
+            ref_to_blocks = {}
+            ref_to_metadata = {}
+            for ref, generator in zip(unique_refs, generators):
+                refs_list = list(generator)
+                meta = ray.get(refs_list.pop(-1))
+                ref_to_blocks[ref] = refs_list
+                ref_to_metadata[ref] = meta
+
+            output_block_refs = []
+            for idx, ref in enumerate(block_refs):
+                output_block_refs += ref_to_blocks[ref]
+                self._cached_metadata[idx] = ref_to_metadata[ref]
+            return output_block_refs, self._flatten_metadata(self._cached_metadata)
         if all(meta is not None for meta in self._cached_metadata):
             # Short-circuit on cached metadata.
-            return block_refs, self._cached_metadata
+            return block_refs, self._flatten_metadata(self._cached_metadata)
         if not meta_refs:
             # Short-circuit on empty set of block partitions.
             assert not block_refs, block_refs
@@ -327,9 +339,8 @@ class LazyBlockList(BlockList):
         ref_to_data = {
             meta_ref: data for meta_ref, data in zip(unique_meta_refs, metadata)
         }
-        metadata = [ref_to_data[meta_ref] for meta_ref in meta_refs]
-        self._cached_metadata = metadata
-        return block_refs, metadata
+        self._cached_metadata = [[ref_to_data[meta_ref]] for meta_ref in meta_refs]
+        return block_refs, self._flatten_metadata(self._cached_metadata)
 
     def compute_to_blocklist(self) -> BlockList:
         """Launch all tasks and return a concrete BlockList."""
@@ -364,14 +375,22 @@ class LazyBlockList(BlockList):
         # Otherwise, we trigger computation (if needed), wait until the task completes,
         # and fetch the block partition metadata.
         try:
-            _, metadata_ref = next(self._iter_block_partition_refs())
+            block_partition_ref, metadata_ref = next(self._iter_block_partition_refs())
         except (StopIteration, ValueError):
             # Dataset is empty (no blocks) or was manually cleared.
             pass
         else:
             # This blocks until the underlying read task is finished.
-            metadata = ray.get(metadata_ref)
-            self._cached_metadata[0] = metadata
+            if DatasetContext.get_current().block_splitting_enabled:
+                # If block splitting is enabled, get metadata as the last element
+                # in generator.
+                generator = ray.get(block_partition_ref)
+                blocks_ref = list(generator)
+                metadata = ray.get(blocks_ref[-1])
+                self._cached_metadata[0] = metadata
+            else:
+                metadata = ray.get(metadata_ref)
+                self._cached_metadata[0] = [metadata]
         return metadata
 
     def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
@@ -407,7 +426,8 @@ class LazyBlockList(BlockList):
         pre-read metadata from the ReadTasks given to this LazyBlockList so it doesn't
         have to block on the execution of the read tasks. Therefore, the metadata may be
         under-specified, e.g. missing schema or the number of rows. If fully-specified
-        block metadata is required, pass block_for_metadata=True.
+        block metadata is required, pass block_for_metadata=True. When dynamic block
+        splitting is enabled, always block on the execution of the read tasks.
 
         The length of this iterator is not known until execution.
 
@@ -434,8 +454,15 @@ class LazyBlockList(BlockList):
                 while not self._buffer:
                     self._pos += 1
                     if context.block_splitting_enabled:
-                        part_ref, _ = next(self._base_iter)
-                        partition = ray.get(part_ref)
+                        generator_ref, _ = next(self._base_iter)
+                        generator = ray.get(generator_ref)
+                        refs = list(generator)
+                        # This blocks until the read task completes, returning
+                        # fully-specified block metadata for each output block.
+                        metadata = ray.get(refs.pop(-1))
+                        assert len(metadata) == len(refs)
+                        for block_ref, meta in zip(refs, metadata):
+                            self._buffer.append((block_ref, meta))
                     else:
                         block_ref, metadata_ref = next(self._base_iter)
                         if block_for_metadata:
@@ -446,8 +473,6 @@ class LazyBlockList(BlockList):
                             # This does not block, returning (possibly under-specified)
                             # pre-read block metadata.
                             metadata = outer._tasks[self._pos].get_metadata()
-                        partition = [(block_ref, metadata)]
-                    for block_ref, metadata in partition:
                         self._buffer.append((block_ref, metadata))
                 return self._buffer.pop(0)
 
@@ -492,7 +517,10 @@ class LazyBlockList(BlockList):
     def _iter_block_partition_refs(
         self,
     ) -> Iterator[
-        Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]
+        Tuple[
+            ObjectRef[MaybeBlockPartition],
+            Union[None, ObjectRef[BlockMetadata]],
+        ]
     ]:
         """Iterate over the block futures and their corresponding metadata futures.
 
@@ -518,7 +546,7 @@ class LazyBlockList(BlockList):
     def _get_or_compute(
         self,
         i: int,
-    ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
+    ) -> Tuple[ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockMetadata]]]:
         assert i < len(self._tasks), i
         # Check if we need to compute more block_partition_refs.
         if not self._block_partition_refs[i]:
@@ -532,13 +560,24 @@ class LazyBlockList(BlockList):
                         self._block_partition_meta_refs[j],
                     ) = self._submit_task(j)
             assert self._block_partition_refs[i], self._block_partition_refs
-            assert self._block_partition_meta_refs[i], self._block_partition_meta_refs
+            if not DatasetContext.get_current().block_splitting_enabled:
+                # Only check block metadata object reference if dynamic block
+                # splitting is off.
+                assert self._block_partition_meta_refs[
+                    i
+                ], self._block_partition_meta_refs
         return self._block_partition_refs[i], self._block_partition_meta_refs[i]
 
     def _submit_task(
         self, task_idx: int
-    ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
-        """Submit the task with index task_idx."""
+    ) -> Tuple[ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockMetadata]]]:
+        """Submit the task with index task_idx.
+
+        NOTE: When dynamic block splitting is enabled, returns
+        Tuple[ObjectRef[ObjectRefGenerator], None] instead of
+        Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]], and the blocks metadata will
+        be fetched as the last element in ObjectRefGenerator.
+        """
         if self._stats_actor is None:
             self._stats_actor = _get_or_create_stats_actor()
         stats_actor = self._stats_actor
@@ -546,17 +585,32 @@ class LazyBlockList(BlockList):
             stats_actor.record_start.remote(self._stats_uuid)
             self._execution_started = True
         task = self._tasks[task_idx]
-        return (
-            cached_remote_fn(_execute_read_task)
-            .options(num_returns=2, **self._remote_args)
-            .remote(
-                i=task_idx,
-                task=task,
-                context=DatasetContext.get_current(),
-                stats_uuid=self._stats_uuid,
-                stats_actor=stats_actor,
+        context = DatasetContext.get_current()
+        if context.block_splitting_enabled:
+            return (
+                cached_remote_fn(_execute_read_task_split)
+                .options(num_returns="dynamic", **self._remote_args)
+                .remote(
+                    i=task_idx,
+                    task=task,
+                    context=DatasetContext.get_current(),
+                    stats_uuid=self._stats_uuid,
+                    stats_actor=stats_actor,
+                ),
+                None,
             )
-        )
+        else:
+            return (
+                cached_remote_fn(_execute_read_task_nosplit)
+                .options(num_returns=2, **self._remote_args)
+                .remote(
+                    i=task_idx,
+                    task=task,
+                    context=DatasetContext.get_current(),
+                    stats_uuid=self._stats_uuid,
+                    stats_actor=stats_actor,
+                )
+            )
 
     def _num_computed(self) -> int:
         i = 0
@@ -565,26 +619,71 @@ class LazyBlockList(BlockList):
                 i += 1
         return i
 
+    def _flatten_metadata(
+        self, metadata: List[BlockPartitionMetadata]
+    ) -> List[BlockMetadata]:
+        """Flatten the metadata of computed blocks into a list.
 
-def _execute_read_task(
+        This is required because dynamic block splitting can produce multiple output
+        blocks from each task.
+        """
+        return [meta for meta_list in metadata for meta in meta_list]
+
+
+def _execute_read_task_nosplit(
     i: int,
     task: ReadTask,
     context: DatasetContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
-) -> Tuple[MaybeBlockPartition, BlockPartitionMetadata]:
+) -> Tuple[Block, BlockMetadata]:
     DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
 
-    # Execute the task.
-    block = task()
+    # Execute the task. Expect only one block returned when dynamic block splitting is
+    # not enabled.
+    blocks = list(task())
+    assert len(blocks) == 1
+    block = blocks[0]
 
     metadata = task.get_metadata()
-    if context.block_splitting_enabled:
-        metadata.exec_stats = stats.build()
-    else:
-        metadata = BlockAccessor.for_block(block).get_metadata(
-            input_files=metadata.input_files, exec_stats=stats.build()
-        )
-    stats_actor.record_task.remote(stats_uuid, i, metadata)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=metadata.input_files, exec_stats=stats.build()
+    )
+    stats_actor.record_task.remote(stats_uuid, i, [metadata])
     return block, metadata
+
+
+def _execute_read_task_split(
+    i: int,
+    task: ReadTask,
+    context: DatasetContext,
+    stats_uuid: str,
+    stats_actor: ray.actor.ActorHandle,
+) -> Iterable[Union[Block, List[BlockMetadata]]]:
+    """Execute read task with dynamic block splitting.
+
+    Returns an Iterable of blocks followed by their metadata.
+    Example of return value for 3 blocks:
+    (Block1, Block2, Block3, [BlockMetadata1, BlockMetadata2, BlockMetadata3])
+    """
+    DatasetContext._set_current(context)
+
+    # Execute the task.
+    blocks = task()
+
+    input_files = task.get_metadata().input_files
+    blocks_metadata = []
+    block_exec_stats = BlockExecStats.builder()
+    for block in blocks:
+        metadata = BlockAccessor.for_block(block).get_metadata(
+            input_files=input_files,
+            exec_stats=block_exec_stats.build(),
+        )
+        yield block
+        blocks_metadata.append(metadata)
+        block_exec_stats = BlockExecStats.builder()
+
+    stats_actor.record_task.remote(stats_uuid, i, blocks_metadata)
+    # Return metadata of blocks as a list at the end.
+    yield blocks_metadata

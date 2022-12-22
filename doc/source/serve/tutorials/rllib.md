@@ -47,8 +47,8 @@ def train_ppo_model():
     # Train for one iteration.
     algo.train()
     # Save state of the trained Algorithm in a checkpoint.
-    algo.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
+    checkpoint_dir = algo.save("/tmp/rllib_checkpoint")
+    return checkpoint_dir
 
 
 checkpoint_path = train_ppo_model()

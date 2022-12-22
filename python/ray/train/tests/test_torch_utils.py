@@ -6,6 +6,7 @@ import torch
 from ray.air._internal.torch_utils import (
     convert_pandas_to_torch_tensor,
     load_torch_model,
+    contains_tensor,
 )
 
 data_batch = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
@@ -93,6 +94,16 @@ class TestLoadTorchModel:
         with pytest.raises(ValueError):
             # model_definition is required to load state dict.
             load_torch_model(torch_module.state_dict())
+
+
+def test_contains_tensor():
+    t = torch.tensor([0])
+    assert contains_tensor(t)
+    assert contains_tensor([1, 2, 3, t, 5, 6])
+    assert contains_tensor([1, 2, 3, {"dict": t}, 5, 6])
+    assert contains_tensor({"outer": [1, 2, 3, {"dict": t}, 5, 6]})
+    assert contains_tensor({t: [1, 2, 3, {"dict": 2}, 5, 6]})
+    assert not contains_tensor([4, 5, 6])
 
 
 if __name__ == "__main__":

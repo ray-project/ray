@@ -11,7 +11,7 @@ parser.add_argument("--train-iterations", type=int, default=10)
 
 def experiment(config):
     iterations = config.pop("train-iterations")
-    algo = ppo.PPO(config=config, env="CartPole-v0")
+    algo = ppo.PPO(config=config, env="CartPole-v1")
     checkpoint = None
     train_results = {}
 
@@ -25,7 +25,7 @@ def experiment(config):
 
     # Manual Eval
     config["num_workers"] = 0
-    eval_algo = ppo.PPO(config=config, env="CartPole-v0")
+    eval_algo = ppo.PPO(config=config, env="CartPole-v1")
     eval_algo.restore(checkpoint)
     env = eval_algo.workers.local_worker().env
 
@@ -45,13 +45,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=3)
-    config = ppo.DEFAULT_CONFIG.copy()
+    config = ppo.PPOConfig().environment("CartPole-v1")
+    config = config.to_dict()
     config["train-iterations"] = args.train_iterations
 
-    config["env"] = "CartPole-v0"
-
-    tune.run(
-        experiment,
-        config=config,
-        resources_per_trial=ppo.PPO.default_resource_request(config),
-    )
+    tune.Tuner(
+        tune.with_resources(experiment, ppo.PPO.default_resource_request(config)),
+        param_space=config,
+    ).fit()

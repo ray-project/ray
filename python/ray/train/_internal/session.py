@@ -1,6 +1,8 @@
 import os
+import logging
 import platform
 import queue
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -9,17 +11,17 @@ from enum import Enum, auto
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
+from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.utils import PropagatingThread
 from ray.train.constants import (
     DATE,
     DETAILED_AUTOFILLED_KEYS,
     HOSTNAME,
     NODE_IP,
     PID,
-    RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
@@ -34,6 +36,9 @@ class TrainingResultType(Enum):
     CHECKPOINT = auto()
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class TrialInfo:
     """The trial information to propagate to TrainSession."""
@@ -42,12 +47,14 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    experiment_name: Optional[str] = None
 
 
 @dataclass
 class TrainingResult:
     type: TrainingResultType
-    data: Dict
+    data: Union[Dict, Checkpoint]
+    metadata: Optional[Dict] = None
 
 
 # TODO(xwjiang): This needs a better name.
@@ -59,26 +66,29 @@ class _TrainSession:
         training_func: Callable,
         world_rank: int,
         local_rank: int,
+        node_rank: int,
+        local_world_size: int,
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        checkpoint: Optional[Union[Dict, Checkpoint]] = None,
-        encode_data_fn: Callable = None,
+        checkpoint: Optional[Checkpoint] = None,
+        # Deprecated
+        encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
     ):
 
         self.dataset_shard = dataset_shard
 
-        # The Thread object that is running the training function.
-        self.training_thread = PropagatingThread(target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.node_rank = node_rank
+        self.local_world_size = local_world_size
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
+        self.loaded_checkpoint = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -101,6 +111,16 @@ class _TrainSession:
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
+
+        # Queue for raising exceptions from runner thread to main thread.
+        # The error queue has a max size of one to prevent stacking error and force
+        # error reporting to block until finished.
+        self.error_queue = queue.Queue(1)
+
+        # The Thread object that is running the training function.
+        self.training_thread = RunnerThread(
+            target=training_func, daemon=True, error_queue=self.error_queue
+        )
 
         # Autofilled metrics attributes.
         self.detailed_autofilled_metrics = detailed_autofilled_metrics
@@ -152,7 +172,9 @@ class _TrainSession:
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
             try:
-                result = self.result_queue.get(block=True, timeout=RESULT_FETCH_TIMEOUT)
+                result = self.result_queue.get(
+                    block=True, timeout=_RESULT_FETCH_TIMEOUT
+                )
             except queue.Empty:
                 pass
 
@@ -163,10 +185,23 @@ class _TrainSession:
             # termination of the thread runner.
             try:
                 result = self.result_queue.get(
-                    block=False, timeout=RESULT_FETCH_TIMEOUT
+                    block=False, timeout=_RESULT_FETCH_TIMEOUT
                 )
             except queue.Empty:
                 pass
+
+        # check if error occurred inside the thread runner.
+        if result is None:
+            # only raise an error from the runner if all results are consumed
+            self._report_thread_runner_error(block=True)
+        else:
+            if not self.error_queue.empty():
+                logger.debug(
+                    (
+                        "Runner error waiting to be raised in main thread. "
+                        "Logging all available results first."
+                    )
+                )
 
         # Release the lock to trigger training to continue.
         self.continue_lock.release()
@@ -213,9 +248,9 @@ class _TrainSession:
         if self.ignore_report:
             return
 
-        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
+        kwargs = self._auto_fill_metrics(kwargs)
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs)
+        result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -235,22 +270,33 @@ class _TrainSession:
         result.update(auto_filled_metrics)
         return result
 
-    def checkpoint(self, **kwargs):
+    def _report_thread_runner_error(self, block=False):
+        try:
+            e = self.error_queue.get(block=block, timeout=_ERROR_FETCH_TIMEOUT)
+            raise StartTraceback from e
+        except queue.Empty:
+            pass
+
+    def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
 
         # Update session checkpoint to latest checkpoint.
-        self.loaded_checkpoint = kwargs
+        self.loaded_checkpoint = checkpoint
 
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
-            kwargs = {}
-        else:
-            kwargs = self._encode_data_fn(self._auto_fill_checkpoint_metrics(kwargs))
+            checkpoint = None
+        elif checkpoint:
+            checkpoint = self._encode_data_fn(checkpoint)
 
-        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=checkpoint,
+            metadata=self._auto_fill_checkpoint_metrics({}),
+        )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
 
@@ -260,9 +306,23 @@ class _TrainSession:
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
+
+        # Special case: early fail for Torch tensors
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "store your Torch objects."
+                )
+
         if checkpoint:
-            checkpoint_dict = checkpoint.to_dict()
-            self.checkpoint(**checkpoint_dict)
+            self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
 
@@ -290,7 +350,9 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():

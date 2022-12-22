@@ -134,9 +134,6 @@ class TestValidateExcludes:
         assert RuntimeEnv(excludes=[]) == {}
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Conda option not supported on Windows."
-)
 class TestValidateConda:
     def test_validate_conda_invalid_types(self):
         with pytest.raises(TypeError):
@@ -175,9 +172,6 @@ class TestValidateConda:
         assert parse_and_validate_conda(CONDA_DICT) == CONDA_DICT
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Pip option not supported on Windows."
-)
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):
         with pytest.raises(TypeError):
@@ -229,9 +223,6 @@ class TestParsedRuntimeEnv:
     def test_empty(self):
         assert RuntimeEnv() == {}
 
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Pip option not supported on Windows."
-    )
     def test_serialization(self):
         env1 = RuntimeEnv(pip=["requests"], env_vars={"hi1": "hi1", "hi2": "hi2"})
 
@@ -254,10 +245,6 @@ class TestParsedRuntimeEnv:
         with pytest.raises(ValueError):
             RuntimeEnv(pip=["requests"], conda="env_name")
 
-    @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="Conda and pip options not supported on Windows.",
-    )
     def test_ray_commit_injection(self):
         # Should not be injected if no pip and conda.
         result = RuntimeEnv(env_vars={"hi": "hi"})

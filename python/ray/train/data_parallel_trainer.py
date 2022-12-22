@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from tabulate import tabulate
@@ -9,6 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -21,6 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
+from ray.widgets.util import ensure_notebook_deps
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -42,7 +43,10 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        if isinstance(checkpoint.dir_or_data, dict):
+            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        else:
+            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -220,6 +224,11 @@ class DataParallelTrainer(BaseTrainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
+    # Exposed here for testing purposes. Should never need
+    # to be overriden.
+    _backend_executor_cls: Type[BackendExecutor] = BackendExecutor
+    _training_iterator_cls: Type[TrainingIterator] = TrainingIterator
+
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
@@ -311,6 +320,12 @@ class DataParallelTrainer(BaseTrainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
+    def _report(self, training_iterator: TrainingIterator) -> None:
+        for results in training_iterator:
+            # TODO(ml-team): add ability to report results from multiple workers.
+            first_worker_results = results[0]
+            tune.report(**first_worker_results)
+
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
 
@@ -327,10 +342,11 @@ class DataParallelTrainer(BaseTrainer):
             name=session.get_trial_name(),
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
-            logdir=os.getcwd(),
+            logdir=session.get_trial_dir(),
+            experiment_name=session.get_experiment_name(),
         )
 
-        backend_executor = BackendExecutor(
+        backend_executor = self._backend_executor_cls(
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
@@ -347,7 +363,7 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
-        training_iterator = TrainingIterator(
+        training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
@@ -357,11 +373,7 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_strategy=None,
         )
 
-        for results in training_iterator:
-            # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_results = results[0]
-
-            tune.report(**first_worker_results)
+        self._report(training_iterator)
 
         # Shutdown workers.
         backend_executor.shutdown()
@@ -374,54 +386,38 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
+    @ensure_notebook_deps(
+        ["tabulate", None],
+        ["ipywidgets", "8"],
+    )
     def _ipython_display_(self):
-        try:
-            from ipywidgets import HTML, VBox, Tab, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
-
+        from ipywidgets import HTML, VBox, Tab, Layout
         from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
-        tab = Tab()
-        children = []
-
-        tab.set_title(0, "Datasets")
-        children.append(self._datasets_repr_() if self.datasets else None)
-
-        tab.set_title(1, "Dataset Config")
-        children.append(
-            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None
-        )
-
-        tab.set_title(2, "Train Loop Config")
-        children.append(
+        children = [
+            self._datasets_repr_() if self.datasets else None,
+            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None,
             HTML(self._train_loop_config_repr_html_())
             if self._train_loop_config
-            else None
-        )
+            else None,
+            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None,
+            HTML(self.run_config._repr_html_()) if self.run_config else None,
+            HTML(self._backend_config._repr_html_()) if self._backend_config else None,
+        ]
 
-        tab.set_title(3, "Scaling Config")
-        children.append(
-            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None
+        tab = Tab(
+            children,
+            titles=[
+                "Datasets",
+                "Dataset Config",
+                "Train Loop Config",
+                "Scaling Config",
+                "Run Config",
+                "Backend Config",
+            ],
         )
-
-        tab.set_title(4, "Run Config")
-        children.append(
-            HTML(self.run_config._repr_html_()) if self.run_config else None
-        )
-
-        tab.set_title(5, "Backend Config")
-        children.append(
-            HTML(self._backend_config._repr_html_()) if self._backend_config else None
-        )
-
-        tab.children = children
         display(VBox([title, tab], layout=Layout(width="100%")))
 
     def _train_loop_config_repr_html_(self) -> str:
@@ -460,34 +456,31 @@ class DataParallelTrainer(BaseTrainer):
 
         return Template("rendered_html_common.html.j2").render(content=content)
 
+    @ensure_notebook_deps(["ipywidgets", "8"])
     def _datasets_repr_(self) -> str:
-        try:
-            from ipywidgets import HTML, VBox, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
+        from ipywidgets import HTML, VBox, Layout
+
         content = []
         if self.datasets:
             for name, config in self.datasets.items():
-                content.append(
-                    HTML(
-                        Template("title_data.html.j2").render(
-                            title=f"Dataset - <code>{name}</code>", data=None
+                tab = config._tab_repr_()
+                if tab:
+                    content.append(
+                        HTML(
+                            Template("title_data.html.j2").render(
+                                title=f"Dataset - <code>{name}</code>", data=None
+                            )
                         )
                     )
-                )
-                content.append(config._tab_repr_())
+                    content.append(config._tab_repr_())
 
         return VBox(content, layout=Layout(width="100%"))
 
 
-def _load_checkpoint(
+def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint.
+    """Load a Ray Train Checkpoint (dict based).
 
     This is a private API.
 

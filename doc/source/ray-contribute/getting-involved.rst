@@ -95,7 +95,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -r python/requirements.txt
+    pip install -c python/requirements.txt -r python/requirements_test.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

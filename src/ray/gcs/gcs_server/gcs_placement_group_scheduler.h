@@ -31,6 +31,7 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
+
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -441,6 +442,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \return True if the bundle is succesfully released. False otherwise.
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
+
+  /// Help function to check if the resource_name has the pattern
+  /// {original_resource_name}_group_{placement_group_id}, which means
+  /// wildcard resource.
+  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;

@@ -2,6 +2,11 @@
 # Tests from the python/ray/train/examples directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 py_test(
     name = "mlflow_fashion_mnist_example",
     size = "medium",
@@ -14,7 +19,7 @@ py_test(
 
 py_test(
     name = "mlflow_simple_example",
-    size = "medium",
+    size = "small",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
     tags = ["team:ml", "exclusive", "no_main"],
@@ -24,24 +29,24 @@ py_test(
 py_test(
     name = "tensorflow_quick_start",
     size = "medium",
-    main = "examples/tensorflow_quick_start.py",
-    srcs = ["examples/tensorflow_quick_start.py"],
+    main = "examples/tf/tensorflow_quick_start.py",
+    srcs = ["examples/tf/tensorflow_quick_start.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
 
 py_test(
     name = "torch_quick_start",
-    size = "medium",
-    main = "examples/torch_quick_start.py",
-    srcs = ["examples/torch_quick_start.py"],
+    size = "small",
+    main = "examples/pytorch/torch_quick_start.py",
+    srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
 
 py_test(
     name = "transformers_example_gpu",
-    size = "large",
+    size = "medium",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
     tags = ["team:ml", "exclusive", "tune", "gpu_only"],
@@ -53,7 +58,7 @@ py_test(
 
 py_test(
     name = "transformers_example_cpu",
-    size = "large",
+    size = "medium",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
     tags = ["team:ml", "exclusive", "tune"],
@@ -66,19 +71,141 @@ py_test(
 py_test(
     name = "tune_cifar_torch_pbt_example",
     size = "medium",
-    main = "examples/tune_cifar_torch_pbt_example.py",
-    srcs = ["examples/tune_cifar_torch_pbt_example.py"],
+    main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
+    srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
     tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
 
 py_test(
-    name = "tune_linear_example",
-    size = "medium",
-    main = "examples/tune_linear_example.py",
-    srcs = ["examples/tune_linear_example.py"],
+    name = "tune_torch_regression_example",
+    size = "small",
+    main = "examples/pytorch/tune_torch_regression_example.py",
+    srcs = ["examples/pytorch/tune_torch_regression_example.py"],
     tags = ["team:ml", "exclusive", "tune"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+# Formerly AIR examples
+
+py_test(
+    name = "distributed_sage_example",
+    size = "small",
+    main = "examples/pytorch_geometric/distributed_sage_example.py",
+    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"],
+    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
+)
+
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "small",
+    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_pytorch_example",
+    size = "small",
+    srcs = ["examples/horovod/horovod_pytorch_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+    args = ["--num-epochs=1"]
+)
+
+py_test(
+    name = "horovod_tune_example",
+    size = "small",
+    srcs = ["examples/horovod/horovod_tune_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test (
+    name = "huggingface_basic_language_modeling_example",
+    size = "medium",
+    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
+    args = ["--smoke-test", "--num-epochs 3"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "tensorflow_regression_example",
+    size = "medium",
+    main = "examples/tf/tensorflow_regression_example.py",
+    srcs = ["examples/tf/tensorflow_regression_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+# This is tested in test_examples!
+# py_test(
+#     name = "tensorflow_mnist_example",
+#     size = "medium",
+#     main = "examples/tf/tensorflow_mnist_example.py",
+#     srcs = ["examples/tf/tensorflow_mnist_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":train_lib"],
+#     args = ["--smoke-test"]
+# )
+
+# This is tested in test_examples!
+# py_test(
+#     name = "torch_fashion_mnist_example",
+#     size = "medium",
+#     main = "examples/pytorch/torch_fashion_mnist_example.py",
+#     srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":train_lib"],
+#     args = ["--smoke-test"]
+# )
+
+# This is tested in test_gpu_examples!
+# py_test(
+#     name = "torch_fashion_mnist_example_gpu",
+#     size = "medium",
+#     main = "examples/pytorch/torch_fashion_mnist_example.py",
+#     srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
+#     tags = ["team:ml", "exclusive", "gpu"],
+#     deps = [":train_lib"],
+#     args = ["--use-gpu"]
+# )
+
+py_test(
+    name = "torch_regression_example",
+    size = "medium",
+    main = "examples/pytorch/torch_regression_example.py",
+    srcs = ["examples/pytorch/torch_regression_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+# This is tested in test_examples!
+# py_test(
+#     name = "torch_linear_example",
+#     size = "small",
+#     main = "examples/pytorch/torch_linear_example.py",
+#     srcs = ["examples/pytorch/torch_linear_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":train_lib"],
+#     args = ["--smoke-test"]
+# )
+
+py_test(
+    name = "tune_tensorflow_mnist_example",
+    size = "medium",
+    main = "examples/tf/tune_tensorflow_mnist_example.py",
+    srcs = ["examples/tf/tune_tensorflow_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -90,7 +217,7 @@ py_test(
 
 py_test(
     name = "pytorch_pbt_failure",
-    size = "medium",
+    size = "small",
     srcs = ["tests/pytorch_pbt_failure.py"],
     tags = ["team:ml", "exlusive", "no_main"],
     deps = [":train_lib"],
@@ -102,7 +229,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_backend.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib",  ":conftest"]
 )
 
 py_test(
@@ -130,14 +257,6 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks",
-    size = "medium",
-    srcs = ["tests/test_callbacks.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -158,7 +277,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_examples.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -166,14 +285,38 @@ py_test(
     size = "large",
     srcs = ["tests/test_gpu.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_auto_transfer",
+    size = "medium",
+    srcs = ["tests/test_gpu_auto_transfer.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_examples",
+    size = "large",
+    srcs = ["tests/test_gpu_examples.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_amp",
+    size = "large",
+    srcs = ["tests/test_gpu_amp.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
     name = "test_torch_fsdp",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
-    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    tags = ["team:ml", "exclusive", "gpu_only", "torch_1_11"],
     deps = [":train_lib"]
 )
 
@@ -182,7 +325,15 @@ py_test(
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", "//python/ray/air:ml_lib"]
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_huggingface_checkpoint",
+    size = "small",
+    srcs = ["tests/test_huggingface_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -190,7 +341,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -210,11 +361,19 @@ py_test(
 )
 
 py_test(
+    name = "test_mosaic_trainer",
+    size = "medium",
+    srcs = ["tests/test_mosaic_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "torch_1_11"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -242,27 +401,19 @@ py_test(
 )
 
 py_test(
-    name = "test_results_preprocessors",
-    size = "small",
-    srcs = ["tests/test_results_preprocessors.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_rl_trainer",
     size = "medium",
     srcs = ["tests/test_rl_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
     name = "test_rl_predictor",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_rl_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -270,7 +421,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_session.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -278,7 +429,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -290,9 +441,9 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer",
-    size = "large",
-    srcs = ["tests/test_trainer.py"],
+    name = "test_tensorflow_checkpoint",
+    size = "small",
+    srcs = ["tests/test_tensorflow_checkpoint.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -302,7 +453,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -314,19 +465,11 @@ py_test(
 )
 
 py_test(
-    name = "test_tensorflow_utils",
-    size = "small",
-    srcs = ["tests/test_tensorflow_utils.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_torch_checkpoint",
     size = "small",
     srcs = ["tests/test_torch_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -334,7 +477,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -349,6 +492,14 @@ py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_training_iterator",
+    size = "large",
+    srcs = ["tests/test_training_iterator.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
@@ -382,7 +533,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

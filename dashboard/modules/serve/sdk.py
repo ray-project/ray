@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional, Union
+from ray._private.utils import split_address
 
 try:
     import aiohttp
@@ -30,6 +31,27 @@ class ServeSubmissionClient(SubmissionClient):
                 "The Serve CLI requires the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
+
+        invalid_address_message = (
+            "Got an unexpected address"
+            f'"{dashboard_agent_address}" while trying '
+            "to connect to the Ray dashboard agent. The Serve SDK/CLI requires the "
+            "Ray dashboard agent's HTTP(S) address (which should start with "
+            '"http://" or "https://". If this address '
+            "wasn't passed explicitly, it may be set in the RAY_AGENT_ADDRESS "
+            "environment variable."
+        )
+
+        if "://" not in dashboard_agent_address:
+            raise ValueError(invalid_address_message)
+
+        module_string, _ = split_address(dashboard_agent_address)
+
+        # If user passes in ray://, raise error. Serve submission should
+        # not use a Ray client address.
+        if module_string not in ["http", "https"]:
+            raise ValueError(invalid_address_message)
+
         super().__init__(
             address=dashboard_agent_address,
             create_cluster_if_needed=create_cluster_if_needed,

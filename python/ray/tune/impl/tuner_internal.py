@@ -21,11 +21,15 @@ from ray.tune.tune_config import TuneConfig
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
+    from ray.util.queue import Queue
+
 
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
+_CONVERTED_TRAINABLE_KEY = "_converted_trainable"
 _PARAM_SPACE_KEY = "_param_space"
+_EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
 
 
 class TunerInternal:
@@ -96,13 +100,15 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._is_restored = False
-        self._trainable = trainable
+        self.trainable = trainable
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
         )
+
+        self._experiment_analysis = None
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
@@ -119,8 +125,21 @@ class TunerInternal:
             pickle.dump(self, fp)
 
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-            pickle.dump(self._trainable, fp)
+            pickle.dump(self.trainable, fp)
         self._maybe_warn_resource_contention()
+
+    def get_run_config(self) -> RunConfig:
+        return self._run_config
+
+    # For Jupyter output with Ray Client
+    def set_run_config_and_remote_string_queue(
+        self, run_config: RunConfig, string_queue: "Queue"
+    ):
+        self._run_config = run_config
+        self._tuner_kwargs["_remote_string_queue"] = string_queue
+
+    def clear_remote_string_queue(self):
+        self._tuner_kwargs.pop("_remote_string_queue", None)
 
     def _expected_utilization(self, cpus_per_trial, cpus_total):
         num_samples = self._tune_config.num_samples
@@ -139,7 +158,7 @@ class TunerInternal:
         if not ray.is_initialized():
             return
 
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self.converted_trainable
 
         # This may not be precise, but we don't have a great way of
         # accessing the actual scaling config if it is being tuned.
@@ -201,12 +220,20 @@ class TunerInternal:
             self.__dict__.update(tuner.__dict__)
 
         self._is_restored = True
-        self._trainable = trainable
+        self.trainable = trainable
         self._resume_config = resume_config
 
         if not synced:
             # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
+            self._experiment_checkpoint_dir = os.path.abspath(
+                os.path.expanduser(path_or_uri)
+            )
+
+            # Update local_dir to use the parent of the experiment path
+            # provided to `Tuner.restore`
+            experiment_path = Path(self._experiment_checkpoint_dir)
+            self._run_config.local_dir = str(experiment_path.parent)
+            self._run_config.name = experiment_path.name
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -215,9 +242,18 @@ class TunerInternal:
                 self._setup_create_experiment_checkpoint_dir(self._run_config)
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
-                file_dir.rename(new_exp_path / file_dir.name)
+                file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+
+        try:
+            self._experiment_analysis = ExperimentAnalysis(
+                self._experiment_checkpoint_dir,
+                default_metric=self._tune_config.metric,
+                default_mode=self._tune_config.mode,
+            )
+        except Exception:
+            self._experiment_analysis = None
 
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
@@ -253,30 +289,44 @@ class TunerInternal:
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._convert_trainable(self._trainable),
+            self.converted_trainable,
             run_config.local_dir,
             run_config.name,
         )
         if not os.path.exists(path):
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    @staticmethod
-    def _convert_trainable(trainable: Any) -> Type[Trainable]:
+    @property
+    def trainable(self):
+        return self._trainable
+
+    @property
+    def converted_trainable(self):
+        return self._converted_trainable
+
+    @trainable.setter
+    def trainable(self, trainable):
+        self._trainable = trainable
+        self._converted_trainable = self._convert_trainable(trainable)
+
+    def _convert_trainable(self, trainable) -> Union[str, Callable, Type[Trainable]]:
+        """Converts an AIR Trainer to a Tune trainable and saves the converted
+        trainable. If not using an AIR Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
-        if isinstance(trainable, BaseTrainer):
-            trainable = trainable.as_trainable()
-        else:
-            trainable = trainable
-        return trainable
+        return (
+            trainable.as_trainable()
+            if isinstance(trainable, BaseTrainer)
+            else trainable
+        )
 
     def fit(self) -> ResultGrid:
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
         if not self._is_restored:
             param_space = copy.deepcopy(self._param_space)
@@ -284,7 +334,17 @@ class TunerInternal:
         else:
             analysis = self._fit_resume(trainable)
 
-        return ResultGrid(analysis)
+        self._experiment_analysis = analysis
+
+        return ResultGrid(self._experiment_analysis)
+
+    def get_results(self) -> ResultGrid:
+        if not self._experiment_analysis:
+            raise RuntimeError(
+                "Can't return results as experiment has not been run, yet. "
+                "Call `Tuner.fit()` to run the experiment first."
+            )
+        return ResultGrid(self._experiment_analysis)
 
     def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
@@ -360,6 +420,9 @@ class TunerInternal:
             reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
+            trial_name_creator=self._tune_config.trial_name_creator,
+            trial_dirname_creator=self._tune_config.trial_dirname_creator,
+            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -380,6 +443,7 @@ class TunerInternal:
         analysis = run(
             **args,
         )
+        self.clear_remote_string_queue()
         return analysis
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
@@ -407,12 +471,17 @@ class TunerInternal:
             **self._tuner_kwargs,
         }
         analysis = run(**args)
+        self.clear_remote_string_queue()
         return analysis
 
     def __getstate__(self):
         state = self.__dict__.copy()
+        state["_tuner_kwargs"] = state["_tuner_kwargs"].copy()
+        state["_tuner_kwargs"].pop("_remote_string_queue", None)
         state.pop(_TRAINABLE_KEY, None)
+        state.pop(_CONVERTED_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
+        state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
         return state
 
     def __setstate__(self, state):

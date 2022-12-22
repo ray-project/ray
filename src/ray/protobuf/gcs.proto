@@ -150,6 +150,11 @@ message ActorTableData {
   ActorDeathCause death_cause = 24;
   // Quantities of the different resources required by this actor.
   map<string, double> required_resources = 28;
+  // The node id of the actor once it is created.
+  // address field can contain an address although actor is not created
+  // so we have a separate field to track this.
+  // If the actor is restarting, the node id could be incorrect.
+  optional bytes node_id = 29;
 }
 
 message ErrorTableData {
@@ -295,6 +300,8 @@ message JobTableData {
   uint64 start_time = 7;
   // The timestamp the job was ended at.
   uint64 end_time = 8;
+  // The entrypoint of the job.
+  string entrypoint = 9;
 }
 
 message WorkerTableData {

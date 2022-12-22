@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request,
+    rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
@@ -87,9 +87,28 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   if (!status.ok()) {
     on_done(status);
   }
+
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    const char *key = "";
+    int count = 0;
+    if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
+      worker_crash_system_error_count_ += 1;
+      key = "extra_usage_tag_worker_crash_system_error";
+      count = worker_crash_system_error_count_;
+    } else if (request.worker_failure().exit_type() ==
+               rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+      worker_crash_oom_count_ += 1;
+      key = "extra_usage_tag_worker_crash_oom";
+      count = worker_crash_oom_count_;
+    }
+    /// TODO(clarng): migrate to usage lib client once it doesn't hang
+    kv_instance_->Put(
+        "usage_stats", key, std::to_string(count), true, [](bool newly_added) {});
+  }
 }
 
-void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
+void GcsWorkerManager::HandleGetWorkerInfo(rpc::GetWorkerInfoRequest request,
                                            rpc::GetWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
@@ -112,7 +131,7 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request,
+    rpc::GetAllWorkerInfoRequest request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto limit = request.has_limit() ? request.limit() : -1;
@@ -141,7 +160,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   }
 }
 
-void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
+void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
                                            rpc::AddWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();

@@ -360,7 +360,13 @@ def test_object_unpin(ray_start_cluster):
     head_node = cluster.add_node(
         num_cpus=0,
         object_store_memory=100 * 1024 * 1024,
-        _system_config={"num_heartbeats_timeout": 10, "subscriber_timeout_ms": 100},
+        _system_config={
+            "num_heartbeats_timeout": 5,
+            "subscriber_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 1000,
+            "health_check_failure_threshold": 5,
+        },
     )
     ray.init(address=cluster.address)
 
@@ -744,6 +750,32 @@ def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
     config = pickle.loads(serialized)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(config["actor"].ping.remote())
+
+
+def test_generators(one_worker_100MiB):
+    @ray.remote(num_returns="dynamic")
+    def remote_generator():
+        for _ in range(3):
+            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    gen = ray.get(remote_generator.remote())
+    refs = list(gen)
+    for r in refs:
+        _fill_object_store_and_get(r)
+
+    # Outer ID out of scope, we should still be able to get the dynamic
+    # objects.
+    del gen
+    for r in refs:
+        _fill_object_store_and_get(r)
+
+    # Inner IDs out of scope.
+    refs_oids = [r.binary() for r in refs]
+    del r
+    del refs
+
+    for r_oid in refs_oids:
+        _fill_object_store_and_get(r_oid, succeed=False)
 
 
 if __name__ == "__main__":

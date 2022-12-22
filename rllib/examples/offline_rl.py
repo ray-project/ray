@@ -52,7 +52,6 @@ if __name__ == "__main__":
         .framework(framework="torch")
         .rollouts(
             num_rollout_workers=0,
-            rollout_fragment_length=1,
             horizon=200,
             soft_horizon=True,
         )

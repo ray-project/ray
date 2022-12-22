@@ -40,7 +40,9 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.dashboard.utils import Dict as Dictionary
 from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
 from ray.experimental.state.exception import DataSourceUnavailable
 
@@ -274,6 +276,9 @@ class StateDataSourceClient:
             else:
                 logger.exception(e)
                 raise e
+
+    async def get_all_cluster_events(self) -> Dictionary:
+        return DataSource.events
 
     @handle_grpc_network_errors
     async def get_task_info(

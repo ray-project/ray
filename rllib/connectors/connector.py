@@ -3,7 +3,7 @@
 
 import abc
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gym
 
@@ -94,28 +94,35 @@ class Connector(abc.ABC):
     """
 
     def __init__(self, ctx: ConnectorContext):
-        # This gets flipped to False for inference.
+        # Default is training mode.
         self._is_training = True
 
-    def is_training(self, is_training: bool):
-        self._is_training = is_training
+    def in_training(self):
+        self._is_training = True
+
+    def in_eval(self):
+        self._is_training = False
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_state(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
         to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
+            String should match the name used to register the connector,
+            while state can be any single data structure that contains the
+            serialized state of the connector. If a connector is stateless,
+            state can simply be None.
         """
         # Must implement by each connector.
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.
@@ -314,6 +321,17 @@ class ActionConnector(Connector):
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 
+    def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
+        self.connectors = connectors
+
+    def in_training(self):
+        for c in self.connectors:
+            c.in_training()
+
+    def in_eval(self):
+        for c in self.connectors:
+            c.in_eval()
+
     def remove(self, name: str):
         """Remove a connector by <name>
 
@@ -321,14 +339,15 @@ class ConnectorPipeline(abc.ABC):
             name: name of the connector to be removed.
         """
         idx = -1
-        for idx, c in enumerate(self.connectors):
+        for i, c in enumerate(self.connectors):
             if c.__class__.__name__ == name:
+                idx = i
                 break
-        if idx < 0:
-            raise ValueError(f"Can not find connector {name}")
-        del self.connectors[idx]
-
-        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        if idx >= 0:
+            del self.connectors[idx]
+            logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        else:
+            logger.warning(f"Trying to remove a non-existent connector {name}.")
 
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
@@ -403,6 +422,45 @@ class ConnectorPipeline(abc.ABC):
             [" " * indentation + self.__class__.__name__]
             + [c.__str__(indentation + 4) for c in self.connectors]
         )
+
+    def __getitem__(self, key: Union[str, int, type]):
+        """Returns a list of connectors that fit 'key'.
+
+        If key is a number n, we return a list with the nth element of this pipeline.
+        If key is a Connector class or a string matching the class name of a
+        Connector class, we return a list of all connectors in this pipeline matching
+        the specified class.
+
+        Args:
+            key: The key to index by
+
+        Returns: The Connector at index `key`.
+        """
+        # In case key is a class
+        if not isinstance(key, str):
+            if isinstance(key, slice):
+                raise NotImplementedError(
+                    "Slicing of ConnectorPipeline is currently not supported."
+                )
+            elif isinstance(key, int):
+                return [self.connectors[key]]
+            elif isinstance(key, type):
+                results = []
+                for c in self.connectors:
+                    if issubclass(c.__class__, key):
+                        results.append(c)
+                return results
+            else:
+                raise NotImplementedError(
+                    "Indexing by {} is currently not supported.".format(type(key))
+                )
+
+        results = []
+        for c in self.connectors:
+            if c.__class__.__name__ == key:
+                results.append(c)
+
+        return results
 
 
 @PublicAPI(stability="alpha")

@@ -1,6 +1,7 @@
 import fnmatch
 import os
 import urllib.parse
+from pkg_resources import packaging
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
@@ -112,6 +113,26 @@ def get_fs_and_path(
 
     fsspec_handler = pyarrow.fs.FSSpecHandler
     if parsed.scheme in ["gs", "gcs"]:
+
+        # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
+        #  resolved.
+        try:
+            import gcsfs
+
+            # For minimal install that only needs python3-setuptools
+            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+                "2022.7.1"
+            ):
+                raise RuntimeError(
+                    "`gcsfs` versions greater than '2022.7.1' are not "
+                    f"compatible with pyarrow. You have gcsfs version "
+                    f"{gcsfs.__version__}. Please downgrade your gcsfs "
+                    f"version. See more details in "
+                    f"https://github.com/fsspec/gcsfs/issues/498."
+                )
+        except ImportError:
+            pass
+
         # GS doesn't support `create_parents` arg in `create_dir()`
         fsspec_handler = _CustomGCSHandler
 
@@ -136,6 +157,21 @@ def delete_at_uri(uri: str):
         fs.delete_dir(bucket_path)
     except Exception as e:
         logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
+
+
+def read_file_from_uri(uri: str) -> bytes:
+    _assert_pyarrow_installed()
+
+    fs, file_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not download from URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    with fs.open_input_file(file_path) as file:
+        return file.read()
 
 
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):
@@ -202,6 +238,26 @@ def _upload_to_uri_with_exclude(
             pyarrow.fs.copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
+
+
+def list_at_uri(uri: str) -> List[str]:
+    _assert_pyarrow_installed()
+
+    fs, bucket_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not upload to URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    selector = pyarrow.fs.FileSelector(
+        bucket_path, allow_not_found=True, recursive=False
+    )
+    return [
+        os.path.relpath(file_info.path.lstrip("/"), start=bucket_path.lstrip("/"))
+        for file_info in fs.get_file_info(selector)
+    ]
 
 
 def _ensure_directory(uri: str):

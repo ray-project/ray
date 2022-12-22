@@ -168,6 +168,7 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
+        status=200 if success else 500,
     )
 
 
@@ -270,12 +271,12 @@ def init_ray_and_catch_exceptions() -> Callable:
                         ray.init(
                             address=address,
                             log_to_driver=False,
+                            configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

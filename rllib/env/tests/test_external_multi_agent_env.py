@@ -1,8 +1,8 @@
-import gym
 import numpy as np
 import unittest
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.tests.test_external_env import make_simple_serving
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -26,9 +26,13 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+                batch_mode="complete_episodes",
+                enable_connectors=False,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -39,9 +43,12 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+                enable_connectors=False,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -50,16 +57,20 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
     def test_external_multi_agent_env_sample(self):
         agents = 2
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
-            },
-            policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid % 2),
-            rollout_fragment_length=50,
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig()
+            .rollouts(
+                rollout_fragment_length=50,
+                num_rollout_workers=0,
+                batch_mode="complete_episodes",
+                enable_connectors=False,
+            )
+            .multi_agent(
+                policies={"p0", "p1"},
+                policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id % 2),
+            ),
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)

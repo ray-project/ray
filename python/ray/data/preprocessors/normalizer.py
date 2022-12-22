@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class Normalizer(Preprocessor):
     r"""Scales each sample to have unit norm.
 

@@ -29,9 +29,10 @@ class ARSTFPolicy(Policy):
             self.config["observation_filter"], self.preprocessor.shape
         )
 
-        self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
-            self.sess = make_session(single_threaded=self.single_threaded)
+            self.sess = make_session(
+                single_threaded=self.config.get("tf_single_threaded", True)
+            )
 
             # Set graph-level seed.
             if config.get("seed") is not None:
@@ -46,12 +47,13 @@ class ARSTFPolicy(Policy):
                 tf1.enable_eager_execution()
             self.sess = self.inputs = None
             if config.get("seed") is not None:
-                # Tf2.x.
+                # Non-static-graph TF.
                 if config.get("framework") == "tf2":
-                    tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
-                    tf1.set_random_seed(config["seed"])
+                    # Tf1.x.
+                    if tf1:
+                        tf1.set_random_seed(config["seed"])
+                    else:
+                        tf.random.set_seed(config["seed"])
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(

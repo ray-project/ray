@@ -10,7 +10,8 @@ RLlib: Industry-Grade Reinforcement Learning
 .. image:: images/rllib-logo.png
     :align: center
 
-**RLlib** is an open-source library for reinforcement learning (RL), offering support for
+**RLlib** is an open-source library for reinforcement learning (RL),
+offering support for
 production-level, highly distributed RL workloads while maintaining
 unified and simple APIs for a large variety of industry applications.
 Whether you would like to train your agents in a **multi-agent** setup,
@@ -23,7 +24,8 @@ If you either have your problem coded (in python) as an
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
-RLlib is already used in production by industry leaders in many different verticals, such as
+RLlib is already used in production by industry leaders in many different verticals,
+such as
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
 `industrial control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
 `manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
@@ -39,59 +41,50 @@ RLlib in 60 seconds
 
 .. figure:: images/rllib-index-header.svg
 
-
-It only takes a few steps to get your first RLlib workload up and running on your laptop:
-
-**TensorFlow or PyTorch**:
+It only takes a few steps to get your first RLlib workload
+up and running on your laptop.
 
 RLlib does not automatically install a deep-learning framework, but supports
-TensorFlow (both 1.x with static-graph and 2.x with eager mode) as well as
-PyTorch. Depending on your needs, make sure to install either TensorFlow or
-PyTorch (or both as shown below):
+**TensorFlow** (both 1.x with static-graph and 2.x with eager mode) as well as
+**PyTorch**.
+Depending on your needs, make sure to install either TensorFlow or
+PyTorch (or both, as shown below):
 
-.. code-block:: bash
+.. raw:: html
 
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow torch
+    <div class="termynal" data-termynal>
+        <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
+    </div>
 
-Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
-`here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
+.. margin::
 
-To be able to run our Atari examples, you should also install:
+    For installation on computers running Apple Silicon (such as M1), please follow instructions
+    `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`._
+    To be able to run our Atari examples, you should also install
+    `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 
-.. code-block:: bash
+This is all you need to start coding against RLlib.
+Here is an example of running a PPO Algorithm on the
+`Taxi domain <https://www.gymlibrary.dev/environments/toy_text/taxi/>`_.
+We first create a `config` for the algorithm, which sets the right environment, and
+defines all training parameters we want.
+Next, we `build` the algorithm and `train` it for a total of `5` iterations.
+A training iteration includes parallel sample collection by the environment workers, as well as loss calculation on the collected batch and a model update.
+As a last step, we `evaluate` the trained Algorithm:
 
-    $ pip install "gym[atari]" "gym[accept-rom-license]" atari_py
-
-After these quick pip installs, you can start coding against RLlib.
-
-Here is an example of running a PPO Trainer on the `Taxi domain <https://www.gymlibrary.dev/environments/toy_text/taxi/>`_
-for a few training iterations, then perform a single evaluation loop
-(with rendering enabled):
-
-.. literalinclude:: ../../../rllib/examples/documentation/rllib_in_60s.py
+.. literalinclude:: doc_code/rllib_in_60s.py
     :language: python
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-`See here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
+Note that you can use any OpenAI gym as `env`.
+In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
+The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
+You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
 
-Feature Overview
-----------------
-
-You can read about:
-
-- `RLlib Key Concepts <core-concepts.html>`_
-
-- `RLlib Algorithms <rllib-algorithms.html>`_
-
-- `RLlib Environments <rllib-env.html>`_
-
-The following is a summary of RLlib's most striking features.
-Click on the images below to see an example script for each of the listed features:
-
-.. include:: feature_overview.rst
+If you want to learn more about the RLlib training API,
+`you can learn more about it here <rllib-training-api>`_.
+Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
 click on the dropdowns below:
@@ -174,6 +167,52 @@ click on the dropdowns below:
        -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
     *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+
+Feature Overview
+----------------
+
+.. panels::
+    :container: text-center
+    :column: col-lg-4 px-2 py-2
+    :card:
+
+    **RLlib Key Concepts**
+    ^^^
+    Learn more about the core concepts of RLlib, such as environments, algorithms and
+    policies.
+    +++
+    .. link-button:: rllib-core-concepts
+        :type: ref
+        :text: Key Concepts
+        :classes: btn-outline-info btn-block
+    ---
+
+    **RLlib Algorithms**
+    ^^^
+    Check out the many available RL algorithms of RLlib for model-free and model-based
+    RL, on-policy and off-policy training, multi-agent RL, and more.
+    +++
+    .. link-button:: rllib-algorithms-doc
+        :type: ref
+        :text: Algorithms
+        :classes: btn-outline-info btn-block
+    ---
+
+    **RLlib Environments**
+    ^^^
+    Get started with environments supported by RLlib, such as OpenAI Gym, Petting Zoo,
+    and many custom formats for vectorized and multi-agent environments.
+    +++
+    .. link-button:: rllib-environments-doc
+        :type: ref
+        :text: Environments
+        :classes: btn-outline-info btn-block
+
+
+The following is a summary of RLlib's most striking features.
+Click on the images below to see an example script for each of the listed features:
+
+.. include:: feature_overview.rst
 
 
 Customizing RLlib

@@ -22,8 +22,12 @@
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, true)
+
+/// Whether to enbale Ray event stats metrics export.
+/// Note that enabling this adds high overhead to
+/// Ray metrics agent.
+RAY_CONFIG(bool, event_stats_metrics, false)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -76,13 +80,38 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
-/// Threshold when the node is beyond the memory capacity.
+/// Threshold when the node is beyond the memory capacity. If the memory is above the
+/// memory_usage_threshold_fraction and free space is below the min_memory_free_bytes then
+/// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
+
+/// The minimum amount of free space. If the memory is above the
+/// memory_usage_threshold_fraction and free space is below min_memory_free_bytes then it
+/// will start killing processes to free up the space. Disabled if it is -1.
+///
+/// This value is useful for larger host where the memory_usage_threshold_fraction could
+/// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
+/// means 6.4 GB of the memory will not be usable.
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)512 * 1024 * 1024)
+
+/// The TTL for when the task failure entry is considered
+/// eligble for garbage colletion.
+RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
+
+/// The number of retries for the task or actor when
+/// it fails due to the process being killed when the memory is running low on the node.
+/// The process killing is done by memory monitor, which is enabled via
+/// memory_monitor_interval_ms. If the task or actor is not retriable then this value is
+/// ignored. This retry counter is only used when the process is killed due to memory, and
+/// the retry counter of the task or actor is only used when it fails in other ways
+/// that is not related to running out of memory. Note infinite retry (-1) is not
+/// supported.
+RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
@@ -367,6 +396,10 @@ RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
+/// The base retry delay for exponential backoff when the task fails due to OOM.
+/// No delay if this value is zero.
+RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 0)
+
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
@@ -405,6 +438,10 @@ RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 10
 
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
+/// Due to the protocol drawback, raylet needs to refresh the message if
+/// no message is received for a while.
+/// Refer to https://tinyurl.com/n6kvsp87 for more details
+RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
@@ -655,9 +692,25 @@ RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
 
+/// Location of Redis TLS credentials
+/// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
+RAY_CONFIG(std::string, REDIS_CA_CERT, "")
+RAY_CONFIG(std::string, REDIS_CA_PATH, "")
+
+RAY_CONFIG(std::string, REDIS_CLIENT_CERT, "")
+RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
+RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
+
 /// grpc delay testing flags
 ///  To use this, simply do
 ///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+/// A feature flag to enable pull based health check.
+RAY_CONFIG(bool, pull_based_healthcheck, true)
+RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+RAY_CONFIG(int64_t, health_check_failure_threshold, 5)

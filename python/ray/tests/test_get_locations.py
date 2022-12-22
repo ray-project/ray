@@ -126,7 +126,7 @@ def test_location_pending(ray_start_cluster):
     assert location["node_ids"] == []
     # TODO(chenshen): this is a result of converting int -1 to unsigned int;
     # should be fix by https://github.com/ray-project/ray/issues/16321
-    assert location["object_size"] == 2 ** 64 - 1
+    assert location["object_size"] == 2**64 - 1
 
 
 if __name__ == "__main__":

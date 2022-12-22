@@ -116,11 +116,13 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     req = gcs_service_pb2.CheckAliveRequest()
     try:
         channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
         traceback.print_exc()
         return False
+    finally:
+        channel.close()
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
 
@@ -412,10 +414,13 @@ class GcsAioClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
-        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             self._channel.channel()
         )
         self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._channel.channel()
+        )
+        self._actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._channel.channel()
         )
 
@@ -424,7 +429,7 @@ class GcsAioClient:
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
         req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
-        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+        reply = await self._node_info_stub.CheckAlive(req, timeout=timeout)
 
         if reply.status.code != GcsCode.OK:
             raise RuntimeError(
@@ -530,6 +535,19 @@ class GcsAioClient:
     ) -> gcs_service_pb2.GetAllJobInfoReply:
         req = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
+
+    @_auto_reconnect
+    async def get_named_actor_info(
+        self,
+        actor_name: str,
+        ray_namespace: str = "",
+        timeout: Optional[float] = None,
+    ) -> gcs_service_pb2.GetNamedActorInfoReply:
+        req = gcs_service_pb2.GetNamedActorInfoRequest(
+            name=actor_name, ray_namespace=ray_namespace
+        )
+        reply = await self._actor_info_stub.GetNamedActorInfo(req, timeout=timeout)
         return reply
 
 

@@ -3,7 +3,7 @@ py_test(
     size = "medium",
     srcs = ["test_horovod.py"],
     deps = ["//:ray_lib"],
-    tags = ["team:ml", "exclusive"]
+    tags = ["team:ml", "compat", "compat_py36", "exclusive"]
 )
 
 

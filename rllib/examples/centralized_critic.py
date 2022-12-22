@@ -20,7 +20,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.ppo.ppo import PPO
+from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
     PPOTF2Policy,
@@ -50,7 +50,7 @@ OPPONENT_ACTION = "opponent_action"
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -232,8 +232,9 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
 
 
 class CentralizedCritic(PPO):
+    @classmethod
     @override(PPO)
-    def get_default_policy_class(self, config):
+    def get_default_policy_class(cls, config):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
         elif config["framework"] == "tf":
@@ -253,14 +254,14 @@ if __name__ == "__main__":
         else CentralizedCriticModel,
     )
 
-    config = {
-        "env": TwoStepGame,
-        "batch_mode": "complete_episodes",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "multiagent": {
-            "policies": {
+    config = (
+        PPOConfig()
+        .environment(TwoStepGame)
+        .framework(args.framework)
+        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .training(model={"custom_model": "cc_model"})
+        .multi_agent(
+            policies={
                 "pol1": (
                     None,
                     Discrete(6),
@@ -278,13 +279,13 @@ if __name__ == "__main__":
                     },
                 ),
             },
-            "policy_mapping_fn": (lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
-        },
-        "model": {
-            "custom_model": "cc_model",
-        },
-        "framework": args.framework,
-    }
+            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -294,7 +295,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         CentralizedCritic,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()

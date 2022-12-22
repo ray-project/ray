@@ -31,7 +31,7 @@ namespace core {
 struct MemoryStoreStats {
   int32_t num_in_plasma = 0;
   int32_t num_local_objects = 0;
-  int64_t used_object_store_memory = 0;
+  int64_t num_local_objects_bytes = 0;
 };
 
 class GetRequest;
@@ -163,6 +163,9 @@ class CoreWorkerMemoryStore {
   /// never trigger the deletion hook for task errors that prints them.
   void NotifyUnhandledErrors();
 
+  /// Record CoreWorker heap memory related metrics.
+  void RecordMetrics();
+
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
 
@@ -226,9 +229,10 @@ class CoreWorkerMemoryStore {
   int32_t num_in_plasma_ GUARDED_BY(mu_) = 0;
   /// Number of objects that don't exist in the plasma store.
   int32_t num_local_objects_ GUARDED_BY(mu_) = 0;
-  /// Number of object store memory used by this memory store. (It doesn't include plasma
-  /// store memory usage).
-  int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
+  /// Number of bytes used by this memory store on heap, including both
+  /// placeholder values for objects in plasma and inlined small returned
+  /// objects from task.
+  int64_t num_local_objects_bytes_ GUARDED_BY(mu_) = 0;
 
   /// This lambda is used to allow language frontend to allocate the objects
   /// in the memory store.

@@ -33,21 +33,29 @@ def pbt_function(config):
     faster convergence. Training will not converge without PBT.
     """
     lr = config["lr"]
+    checkpoint_interval = config.get("checkpoint_interval", 1)
+
     accuracy = 0.0  # end = 1000
-    start = 0
+
+    # NOTE: See below why step is initialized to 1
+    step = 1
     if session.get_checkpoint():
         state = session.get_checkpoint().to_dict()
         accuracy = state["acc"]
-        start = state["step"]
+        last_step = state["step"]
+        # Current step should be 1 more than the last checkpoint step
+        step = last_step + 1
 
-    midpoint = 100  # lr starts decreasing after acc > midpoint
-    q_tolerance = 3  # penalize exceeding lr by more than this multiple
-    noise_level = 2  # add gaussian noise to the acc increase
     # triangle wave:
     #  - start at 0.001 @ t=0,
     #  - peak at 0.01 @ t=midpoint,
     #  - end at 0.001 @ t=midpoint * 2,
-    for step in range(start, 100):
+    midpoint = 100  # lr starts decreasing after acc > midpoint
+    q_tolerance = 3  # penalize exceeding lr by more than this multiple
+    noise_level = 2  # add gaussian noise to the acc increase
+
+    # Let `stop={"done": True}` in the configs below handle trial stopping
+    while True:
         if accuracy < midpoint:
             optimal_lr = 0.01 * accuracy / midpoint
         else:
@@ -64,8 +72,14 @@ def pbt_function(config):
         accuracy = max(0, accuracy)
 
         checkpoint = None
-        if step % 3 == 0:
-            checkpoint = Checkpoint.from_dict({"acc": accuracy, "step": start})
+        if step % checkpoint_interval == 0:
+            # Checkpoint every `checkpoint_interval` steps
+            # NOTE: if we initialized `step=0` above, our checkpointing and perturbing
+            # would be out of sync by 1 step.
+            # Ex: if `checkpoint_interval` = `perturbation_interval` = 3
+            # step:                0 (checkpoint)  1     2            3 (checkpoint)
+            # training_iteration:  1               2     3 (perturb)  4
+            checkpoint = Checkpoint.from_dict({"acc": accuracy, "step": step})
 
         session.report(
             {
@@ -77,15 +91,17 @@ def pbt_function(config):
             },
             checkpoint=checkpoint,
         )
+        step += 1
 
 
-def run_tune_pbt():
+def run_tune_pbt(smoke_test=False):
+    perturbation_interval = 5
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        perturbation_interval=4,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             # distribution for resampling
-            "lr": lambda: random.uniform(0.0001, 0.02),
+            "lr": tune.uniform(0.0001, 0.02),
             # allow perturbations within this set of categorical values
             "some_other_factor": [1, 2],
         },
@@ -94,13 +110,20 @@ def run_tune_pbt():
     tuner = tune.Tuner(
         pbt_function,
         run_config=air.RunConfig(
-            name="pbt_test",
+            name="pbt_function_api_example",
             verbose=False,
             stop={
-                "training_iteration": 30,
+                # Stop when done = True or at some # of train steps
+                # (whichever comes first)
+                "done": True,
+                "training_iteration": 10 if smoke_test else 1000,
             },
             failure_config=air.FailureConfig(
                 fail_fast=True,
+            ),
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
             ),
         ),
         tune_config=tune.TuneConfig(
@@ -111,9 +134,21 @@ def run_tune_pbt():
         ),
         param_space={
             "lr": 0.0001,
-            # note: this parameter is perturbed but has no effect on
+            # Note: `some_other_factor` is perturbed because it is specified under
+            # the PBT scheduler's `hyperparam_mutations` argument, but has no effect on
             # the model training in this example
             "some_other_factor": 1,
+            # Note: `checkpoint_interval` will not be perturbed (since it's not
+            # included above), and it will be used to determine how many steps to take
+            # between each checkpoint.
+            # We recommend matching `perturbation_interval` and `checkpoint_interval`
+            # (e.g. checkpoint every 4 steps, and perturb on those same steps)
+            # or making `perturbation_interval` a multiple of `checkpoint_interval`
+            # (e.g. checkpoint every 2 steps, and perturb every 4 steps).
+            # This is to ensure that the lastest checkpoints are being used by PBT
+            # when trials decide to exploit. If checkpointing and perturbing are not
+            # aligned, then PBT may use a stale checkpoint to resume from.
+            "checkpoint_interval": perturbation_interval,
         },
     )
     results = tuner.fit()
@@ -124,7 +159,10 @@ def run_tune_pbt():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing"
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing",
     )
     parser.add_argument(
         "--server-address",
@@ -142,4 +180,4 @@ if __name__ == "__main__":
         else:
             ray.init()
 
-    run_tune_pbt()
+    run_tune_pbt(smoke_test=args.smoke_test)

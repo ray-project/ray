@@ -113,7 +113,10 @@ class WorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_io_workers whether or not if this method will filter io workers
+  /// non-retriable workers that are still registered.
+  ///
+  /// \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
@@ -357,39 +360,24 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
-  /// Get all the workers which are running tasks for a given job.
-  ///
-  /// \param job_id The job ID.
-  /// \return A list containing all the workers which are running tasks for the job.
-  std::vector<std::shared_ptr<WorkerInterface>> GetWorkersRunningTasksForJob(
-      const JobID &job_id) const;
-
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_io_workers whether or not if this method will filter io workers
+  /// non-retriable workers that are still registered.
+  ///
+  /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const;
 
   /// Get all the registered drivers.
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
-  /// that are still registered. \return A list containing all the drivers.
+  /// that are still registered.
+  ///
+  /// \return A list containing all the drivers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
-
-  /// Whether there is a pending worker for the given task.
-  /// Note that, this is only used for actor creation task with dynamic options.
-  /// And if the worker registered but isn't assigned a task,
-  /// the worker also is in pending state, and this'll return true.
-  ///
-  /// \param language The required language.
-  /// \param task_id The task that we want to query.
-  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
-
-  /// Get the set of active object IDs from all workers in the worker pool.
-  /// \return A set containing the active object IDs.
-  std::unordered_set<ObjectID> GetActiveObjectIDs() const;
 
   /// Returns debug string for class.
   ///
@@ -419,8 +407,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param runtime_env_hash The hash of runtime env.
   /// \param serialized_runtime_env_context The context of runtime env.
-  /// \param allocated_instances_serialized_json The allocated resource instances
-  //  json string.
   /// \param runtime_env_info The raw runtime env info.
   /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
@@ -432,7 +418,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
-      const std::string &allocated_instances_serialized_json = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo());
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -494,6 +479,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     PopWorkerCallback callback;
   };
 
+  /// Represents a PopWorker call.
+  struct PopWorkerRequest {
+    TaskSpecification task_spec;
+    PopWorkerCallback callback;
+    std::string allocated_instances_serialized_json;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -528,6 +520,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// processes.
     absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
+    /// Pop worker requests that are pending due to maximum_startup_concurrency_.
+    std::deque<PopWorkerRequest> pending_pop_worker_requests;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -583,6 +577,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param worker_type The worker type. It is currently either spill worker or restore
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
+
+  /// Try to fulfill pending PopWorker requests.
+  /// This happens when we have more room to start workers or an idle worker is pushed.
+  /// \param language The language of the PopWorker requests.
+  void TryPendingPopWorkerRequests(const Language &language);
 
   /// Get all workers of the given process.
   ///
@@ -692,6 +691,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.
   void AdjustWorkerOomScore(pid_t pid) const;
+
+  std::pair<std::vector<std::string>, ProcessEnvironment> BuildProcessCommandArgs(
+      const Language &language,
+      rpc::JobConfig *job_config,
+      const rpc::WorkerType worker_type,
+      const JobID &job_id,
+      const std::vector<std::string> &dynamic_options,
+      const int runtime_env_hash,
+      const std::string &serialized_runtime_env_context,
+      const WorkerPool::State &state) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

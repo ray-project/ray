@@ -113,6 +113,7 @@ class NonTerminatedNodes:
     """Class to extract and organize information on non-terminated nodes."""
 
     def __init__(self, provider: NodeProvider):
+        start_time = time.time()
         # All non-terminated nodes
         self.all_node_ids = provider.non_terminated_nodes({})
 
@@ -128,8 +129,19 @@ class NonTerminatedNodes:
             elif node_kind == NODE_KIND_HEAD:
                 self.head_id = node
 
-        # Note: For typical use-cases,
-        # self.all_node_ids == self.worker_ids + [self.head_id]
+        # Note: For typical use-cases, self.all_node_ids == self.worker_ids +
+        # [self.head_id]. The difference being in the case of unmanaged nodes.
+
+        # Record the time of the non_terminated nodes call. This typically
+        # translates to a "describe" or "list" call on most cluster managers
+        # which can be quite expensive. Note that we include the processing
+        # time because on some clients, there may be pagination and the
+        # underlying api calls may be done lazily.
+        self.non_terminated_nodes_time = time.time() - start_time
+        logger.info(
+            f"The autoscaler took {round(self.non_terminated_nodes_time, 3)}"
+            " seconds to fetch the list of non-terminated nodes."
+        )
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
         """Remove nodes we're in the process of terminating from internal
@@ -349,13 +361,7 @@ class StandardAutoscaler:
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
-            # Don't abort the autoscaler if the K8s API server is down.
-            # https://github.com/ray-project/ray/issues/12255
-            is_k8s_connection_error = self.config["provider"][
-                "type"
-            ] == "kubernetes" and isinstance(e, MaxRetryError)
-            if not is_k8s_connection_error:
-                self.num_failures += 1
+            self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
@@ -375,6 +381,14 @@ class StandardAutoscaler:
 
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
+
+        # Back off the update if the provider says it's not safe to proceed.
+        if not self.provider.safe_to_scale():
+            logger.info(
+                "Backing off of autoscaler update."
+                f" Will try again in {self.update_interval_s} seconds."
+            )
+            return
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
@@ -421,15 +435,24 @@ class StandardAutoscaler:
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
+            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
         self._report_pending_infeasible(unfulfilled)
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
 
+        # Execute optional end-of-update logic.
+        # Keep this method call at the end of autoscaler._update().
+        self.provider.post_process()
+
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
         update_time = time.time() - self.last_update_time
+        logger.info(
+            f"The autoscaler took {round(update_time, 3)}"
+            " seconds to complete the update iteration."
+        )
         self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):

@@ -14,8 +14,11 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
+import uuid
+from ray._raylet import Config
 
 import grpc
 import numpy as np
@@ -23,6 +26,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -42,6 +46,12 @@ from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
+
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+REDIS_EXECUTABLE = os.path.join(
+    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
+)
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -70,6 +80,111 @@ def enable_external_redis():
     import os
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
+def start_redis_instance(
+    session_dir_path: str,
+    port: int,
+    redis_max_clients: Optional[int] = None,
+    num_retries: int = 20,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    password: Optional[str] = None,
+    redis_max_memory: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    port_denylist: Optional[List[int]] = None,
+    listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
+):
+    """Start a single Redis server.
+
+    Notes:
+        We will initially try to start the Redis instance at the given port,
+        and then try at most `num_retries - 1` times to start the Redis
+        instance at successive random ports.
+
+    Args:
+        session_dir_path: Path to the session directory of
+            this Ray cluster.
+        port: Try to start a Redis server at this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
+        num_retries: The number of times to attempt to start Redis at
+            successive ports.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        password: Prevents external clients without the password
+            from connecting to Redis if provided.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
+        port_denylist: A set of denylist ports that shouldn't
+            be used when allocating a new port.
+        listen_to_localhost_only: Redis server only listens to
+            localhost (127.0.0.1) if it's true,
+            otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
+
+    Returns:
+        A tuple of the port used by Redis and ProcessInfo for the process that
+            was started. If a port is passed in, then the returned port value
+            is the same.
+
+    Raises:
+        Exception: An exception is raised if Redis could not be started.
+    """
+
+    assert os.path.isfile(REDIS_EXECUTABLE)
+
+    # Construct the command to start the Redis server.
+    command = [REDIS_EXECUTABLE]
+    if password:
+        if " " in password:
+            raise ValueError("Spaces not permitted in redis password.")
+        command += ["--requirepass", password]
+
+    if enable_tls:
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("", 0))
+            free_port = s.getsockname()[1]
+        command += [
+            "--tls-port",
+            str(port),
+            "--loglevel",
+            "warning",
+            "--port",
+            str(free_port),
+        ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
+
+    if listen_to_localhost_only:
+        command += ["--bind", "127.0.0.1"]
+    pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+    command += ["--pidfile", pidfile]
+    if enable_tls:
+        if Config.REDIS_CA_CERT():
+            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
+        if Config.REDIS_CLIENT_CERT():
+            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
+        if Config.REDIS_CLIENT_KEY():
+            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
+        command += ["--tls-replication", "yes"]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
+    process_info = ray._private.services.start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    port = ray._private.services.new_port(denylist=port_denylist)
+    return port, process_info
 
 
 def _pid_alive(pid):
@@ -432,6 +547,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
     by a function contains the provided list of strings.
     Raises an exception if the stdout doesn't have the expected output in time.
 
+    Note: The decorated function should not block!
+    (It should return soon after being called.)
+
     Args:
         strings_to_match: Wait until stdout contains all of these string.
         timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
@@ -445,7 +563,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Redirect stdout to an in-memory stream.
                 out_stream = io.StringIO()
                 sys.stdout = out_stream
-                # Execute the func.
+                # Execute the func. (Make sure the function doesn't block!)
                 out = func(*args, **kwargs)
                 # Check out_stream once a second until the timeout.
                 # Raise a RuntimeError if we timeout.
@@ -460,6 +578,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # out_stream has the expected strings
                 success = True
                 return out
+            # Exception raised on failure.
             finally:
                 sys.stdout = sys.__stdout__
                 if success:
@@ -794,22 +913,29 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_prometheus(prom_addresses):
+def fetch_raw_prometheus(prom_addresses):
     # Local import so minimal dependency tests can run without requests
     import requests
 
-    components_dict = {}
-    metric_names = set()
-    metric_samples = []
     for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
         try:
             response = requests.get(f"http://{address}/metrics")
+            yield address, response.text
         except requests.exceptions.ConnectionError:
             continue
 
-        for line in response.text.split("\n"):
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses):
+        for line in response.split("\n"):
             for family in text_string_to_metric_families(line):
                 for sample in family.samples:
                     metric_names.add(sample.name)
@@ -817,6 +943,36 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
 
 
 def load_test_config(config_file_name):
@@ -1107,7 +1263,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = asyncio.get_event_loop().create_future()
+            self.done = ray._private.utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1236,7 +1392,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster):
+def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1244,16 +1400,13 @@ def check_local_files_gced(cluster):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
+            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (
-                len(
-                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-                )
-                > 0
-            ):
-                print(str(all_files))
+            items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+            if whitelist and set(items).issubset(whitelist):
+                continue
+            if len(items) > 0:
                 return False
-
     return True
 
 
@@ -1409,6 +1562,17 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     return reply
 
 
+# Send a RPC to the raylet to have it self-destruct its process.
+def kill_raylet(raylet, graceful=False):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    try:
+        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+    except _InactiveRpcError:
+        assert not graceful
+
+
 # Creates a state api client assuming the head node (gcs) is local.
 def get_local_state_client():
     hostname = ray.worker._global_node.gcs_address
@@ -1512,3 +1676,18 @@ def external_ray_cluster_activity_hook5():
             "timestamp": datetime.now().timestamp(),
         }
     }
+
+
+def get_gcs_memory_used():
+    import psutil
+
+    m = {
+        process.name(): process.memory_info().rss
+        for process in psutil.process_iter()
+        if (
+            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and process.name() in ("gcs_server", "redis-server")
+        )
+    }
+    assert "gcs_server" in m
+    return sum(m.values())

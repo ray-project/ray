@@ -19,8 +19,8 @@ def update_progress(result):
 
 
 num_redis_shards = 5
-redis_max_memory = 10 ** 8
-object_store_memory = 10 ** 8
+redis_max_memory = 10**8
+object_store_memory = 10**8
 num_nodes = 4
 
 message = (

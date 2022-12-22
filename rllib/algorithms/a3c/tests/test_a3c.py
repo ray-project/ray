@@ -27,19 +27,19 @@ class TestA3C(unittest.TestCase):
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config, with_eager_tracing=False):
             for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
                 print("env={}".format(env))
                 config.model["use_lstm"] = env == "CartPole-v1"
-                trainer = config.build(env=env)
+                algo = config.build(env=env)
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
                 check_compute_single_action(
-                    trainer, include_state=config.model["use_lstm"]
+                    algo, include_state=config.model["use_lstm"]
                 )
-                trainer.stop()
+                algo.stop()
 
     def test_a3c_entropy_coeff_schedule(self):
         """Test A3C entropy coeff schedule support."""
@@ -78,17 +78,17 @@ class TestA3C(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v1")
+            algo = config.build(env="CartPole-v1")
 
-            coeff = _step_n_times(trainer, 1)  # 20 timesteps
+            coeff = _step_n_times(algo, 1)  # 20 timesteps
             # Should be close to the starting coeff of 0.01
             self.assertGreaterEqual(coeff, 0.005)
 
-            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            coeff = _step_n_times(algo, 10)  # 200 timesteps
             # Should have annealed to the final coeff of 0.0001.
             self.assertLessEqual(coeff, 0.00011)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

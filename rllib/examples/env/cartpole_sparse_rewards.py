@@ -9,7 +9,7 @@ class CartPoleSparseRewards(gym.Env):
     """Wrapper for gym CartPole environment where reward is accumulated to the end."""
 
     def __init__(self, config=None):
-        self.env = gym.make("CartPole-v0")
+        self.env = gym.make("CartPole-v1")
         self.action_space = Discrete(2)
         self.observation_space = Dict(
             {

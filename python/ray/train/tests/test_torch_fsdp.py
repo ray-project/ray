@@ -5,7 +5,8 @@ from torch.distributed.fsdp import FullyShardedDataParallel
 import ray
 
 from ray import train
-from ray.train import Trainer
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 
 @pytest.fixture
@@ -31,10 +32,10 @@ def test_torch_fsdp(ray_start_4_cpus_2_gpus):
         # Make sure the model is on cuda.
         assert next(model.parameters()).is_cuda
 
-    trainer = Trainer("torch", num_workers=2, use_gpu=True)
-    trainer.start()
-    trainer.run(train_fn)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

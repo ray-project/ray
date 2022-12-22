@@ -4,6 +4,7 @@ import subprocess
 from collections import Counter
 import multiprocessing
 import os
+
 import pytest
 import shutil
 import tempfile
@@ -46,7 +47,7 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "checkpoint-1")[0]
+        self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
@@ -461,7 +462,7 @@ class TuneExampleTest(unittest.TestCase):
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
-        from tensorflow.python.keras.datasets import cifar10
+        from tensorflow.keras.datasets import cifar10
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
@@ -520,14 +521,17 @@ class SearcherTest(unittest.TestCase):
 
 class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
-        """Trainables should know the original working dir on driver through env
-        variable."""
+        """Trainables should know the original working dir through env variable."""
+
+        os.environ.pop("TUNE_ORIG_WORKING_DIR", None)
         working_dir = os.getcwd()
 
         def f(config):
             assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
 
+        ray.init(num_cpus=1)
         tune.run(f)
+        ray.shutdown()
 
 
 class TrainableCrashWithFailFast(unittest.TestCase):

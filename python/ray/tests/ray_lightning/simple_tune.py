@@ -7,11 +7,22 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pytorch_lightning as pl
 
-from ray_lightning import RayPlugin
 from ray_lightning.tune import TuneReportCallback, get_tune_resources
+
+from importlib_metadata import version
+from packaging.version import parse as v_parse
 
 num_cpus_per_actor = 1
 num_workers = 1
+
+rlt_use_master = v_parse(version("ray_lightning")) >= v_parse("0.3.0")
+
+if rlt_use_master:
+    # ray_lightning >= 0.3.0
+    from ray_lightning import RayStrategy
+else:
+    # ray_lightning < 0.3.0
+    from ray_lightning import RayPlugin as RayStrategy
 
 
 class LitAutoEncoder(pl.LightningModule):
@@ -53,7 +64,7 @@ def train(config):
     autoencoder = LitAutoEncoder(lr=config["lr"])
     trainer = pl.Trainer(
         callbacks=[TuneReportCallback(metrics, on="batch_end")],
-        plugins=[RayPlugin(num_workers=num_workers)],
+        plugins=[RayStrategy(num_workers=num_workers)],
         max_steps=10,
     )
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))

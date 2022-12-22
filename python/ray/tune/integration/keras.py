@@ -3,7 +3,7 @@ from collections import Counter
 from typing import Dict, List, Optional, Union
 
 from ray import tune
-from ray.air.callbacks.keras import _Callback as TuneCallback
+from ray.air.integrations.keras import _Callback as TuneCallback
 
 
 class TuneReportCallback(TuneCallback):

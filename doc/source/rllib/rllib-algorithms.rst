@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-algorithms-doc:
+
 Algorithms
 ==========
 
@@ -95,10 +97,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/bc/bc.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
+   :members: training
 
 .. _crr:
 
@@ -115,11 +115,9 @@ The key idea is to use a learned critic to filter-out the non-promising transiti
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v0-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
 
-.. literalinclude:: ../../../rllib/algorithms/crr/crr.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.crr.crr.CRRConfig
+   :members: training
+
 .. _cql:
 
 Conservative Q-Learning (CQL)
@@ -139,10 +137,8 @@ Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/mas
 
 **CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/cql/cql.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
+   :members: training
 
 .. _marwil:
 
@@ -160,11 +156,9 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/marwil/marwil.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
+   :members: training
+
 Model-free On-policy RL
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -189,10 +183,8 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/appo/appo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
+   :members: training
 
 .. _ddppo:
 
@@ -215,10 +207,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/ddppo/ddppo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ddppo.ddppo.DDPPOConfig
+   :members: training
 
 .. _ppo:
 
@@ -275,10 +265,8 @@ HalfCheetah    9664                       ~7700
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/ppo/ppo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
+   :members: training
 
 .. _impala:
 
@@ -324,11 +312,9 @@ SpaceInvaders  843                              ~300
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/impala/impala.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
+   :members: training
+
 .. _a2c:
 
 Advantage Actor-Critic (A2C)
@@ -361,11 +347,8 @@ SpaceInvaders  692                       ~600
 
 **A2C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/a2c/a2c.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
+.. autoclass:: ray.rllib.algorithms.a2c.a2c.A2CConfig
+   :members: training
 
 .. _a3c:
 
@@ -385,10 +368,8 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 
 **A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/a3c/a3c.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.a3c.a3c.A3CConfig
+   :members: training
 
 .. _pg:
 
@@ -407,10 +388,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/pg/pg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.pg.pg.PGConfig
+   :members: training
 
 .. _maml:
 
@@ -427,10 +406,8 @@ Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ra
 
 **MAML-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/maml/maml.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.maml.maml.MAMLConfig
+   :members: training
    
 Model-free Off-policy RL
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -478,11 +455,9 @@ SpaceInvaders  646                               ~300
 
 **Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/apex_dqn/apex_dqn.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig
+   :members: training
+
 .. _r2d2:
 
 Recurrent Replay Distributed DQN (R2D2)
@@ -533,10 +508,8 @@ SpaceInvaders  650                       1001                           1025    
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/dqn/dqn.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
+   :members: training
 
 .. _ddpg:
 
@@ -556,10 +529,8 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/ddpg/ddpg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ddpg.ddpg.DDPGConfig
+   :members: training
 
 .. _td3:
 
@@ -574,11 +545,9 @@ Tuned examples: `TD3 Pendulum-v1 <https://github.com/ray-project/ray/blob/master
 
 **TD3-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/td3/td3.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.td3.td3.TD3Config
+   :members: training
+
 .. _sac:
 
 Soft Actor Critic (SAC)
@@ -610,10 +579,8 @@ HalfCheetah    13000       ~15000
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/sac/sac.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
+   :members: training
 
 Model-based RL
 ~~~~~~~~~~~~~~
@@ -642,10 +609,8 @@ Cheetah-Run    640             ~800
 
 **Dreamer-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/dreamer/dreamer.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.dreamer.dreamer.DreamerConfig
+   :members: training
 
 .. _mbmpo:
 
@@ -676,11 +641,9 @@ Hopper         620           ~650
 
 **MBMPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/mbmpo/mbmpo.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   
+.. autoclass:: ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig
+   :members: training
+
 Derivative-free
 ~~~~~~~~~~~~~~~
 
@@ -696,10 +659,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/ars/ars.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.ars.ars.ARSConfig
+   :members: training
 
 .. _es:
 
@@ -720,10 +681,8 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **ES-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/es/es.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.es.es.ESConfig
+   :members: training
 
 RL for recommender systems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -741,11 +700,9 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 
 **SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/slateq/slateq.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
+.. autoclass:: ray.rllib.algorithms.slateq.slateq.SlateQConfig
+   :members: training
+   
 Contextual Bandits
 ~~~~~~~~~~~~~~~~~~
 
@@ -789,10 +746,8 @@ Tuned examples:
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.bandit.bandit.BanditLinUCBConfig
+   :members: training
 
 .. _lints:
 
@@ -814,10 +769,8 @@ Tuned examples:
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.bandit.bandit.BanditLinTSConfig
+   :members: training
 
 Multi-agent
 ~~~~~~~~~~~
@@ -842,10 +795,8 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/qmix/qmix.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.qmix.qmix.QMixConfig
+   :members: training
 
 .. _maddpg:
 
@@ -858,10 +809,9 @@ Multi-Agent Deep Deterministic Policy Gradient (MADDPG)
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
-.. literalinclude:: ../../../rllib/algorithms/maddpg/maddpg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig
+   :members: training
+
 
 .. _sc:
 
@@ -886,10 +836,9 @@ Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob
 
 **AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/alpha_zero/alpha_zero.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. autoclass:: ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig
+   :members: training
+
    
 .. _curiosity:
 
@@ -983,7 +932,7 @@ in the main Algorithm config and inheriting the `RE3UpdateCallbacks` as shown in
     config["exploration_config"] = {
     	"type": "RE3",
          # the dimensionality of the observation embedding vectors in latent space.
-         "embeds_dim": 128, 
+         "embeds_dim": 128,
          "rho": 0.1, # Beta decay factor, used for on-policy algorithm.
          "k_nn": 50, # Number of neighbours to set for K-NN entropy estimation.
          # Configuration for the encoder network, producing embedding vectors from observations.
@@ -994,11 +943,11 @@ in the main Algorithm config and inheriting the `RE3UpdateCallbacks` as shown in
              "fcnet_activation": "relu",
          },
          # Hyperparameter to choose between exploration and exploitation. A higher value of beta adds
-         # more importance to the intrinsic reward, as per the following equation 
+         # more importance to the intrinsic reward, as per the following equation
          # `reward = r + beta * intrinsic_reward`
          "beta": 0.2,
          # Schedule to use for beta decay, one of constant" or "linear_decay".
-         "beta_schedule": 'constant', 
+         "beta_schedule": 'constant',
          # Specify, which exploration sub-type to use (usually, the algo's "default"
          # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
          "sub_exploration": {

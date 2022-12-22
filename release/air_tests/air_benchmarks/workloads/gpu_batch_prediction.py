@@ -2,8 +2,9 @@ import click
 import time
 import json
 import os
-import pandas as pd
+import numpy as np
 
+import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 
@@ -11,42 +12,55 @@ import ray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
-from ray.data.datasource import ImageFolderDatasource
 
 
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess(image_batch: np.ndarray) -> np.ndarray:
     """
-    User Pytorch code to transform user image.
+    User Pytorch code to transform user image with outer dimension of batch size.
     """
     preprocess = transforms.Compose(
         [
-            transforms.ToTensor(),
-            transforms.Resize(256),
+            # Torchvision's ToTensor does not accept outer batch dimension
             transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
-    return df
+    # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
+    transposed_torch_tensor = torch.Tensor(image_batch.transpose(0, 3, 1, 2))
+    return preprocess(transposed_torch_tensor).numpy()
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
 @click.option("--data-size-gb", type=int, default=1)
-def main(data_size_gb: int):
-    data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
-    print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
-    start = time.time()
-    dataset = ray.data.read_datasource(
-        ImageFolderDatasource(), root=data_url, size=(256, 256)
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(data_size_gb: int, smoke_test: bool = False):
+    data_url = (
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     )
+
+    if smoke_test:
+        # Only read one image
+        data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(
+            f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}"
+        )
+
+    start = time.time()
+    dataset = ray.data.read_images(data_url, size=(256, 256))
 
     model = resnet18(pretrained=True)
 
-    preprocessor = BatchMapper(preprocess)
+    preprocessor = BatchMapper(preprocess, batch_format="numpy")
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-    predictor.predict(dataset, num_gpus_per_worker=1, feature_columns=["image"])
+    predictor.predict(
+        dataset,
+        num_gpus_per_worker=int(not smoke_test),
+        batch_size=512,
+    )
     total_time_s = round(time.time() - start, 2)
 
     # For structured output integration with internal tooling

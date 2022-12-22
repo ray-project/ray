@@ -152,9 +152,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             success=False,
             error_message=(
                 "Max number of in-progress requests="
-                f"{self.max_num_call_} reached."
+                f"{self.max_num_call_} reached. "
                 "To set a higher limit, set environment variable: "
-                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'."
+                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'. "
                 f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
             ),
             result=None,
@@ -308,6 +308,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
+    @routes.get("/api/v0/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_cluster_events(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -364,6 +371,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
+            suffix=req.query.get("suffix", None),
         )
 
         response = aiohttp.web.StreamResponse()
@@ -380,6 +388,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
+        except asyncio.CancelledError:
+            # This happens when the client side closes the connection.
+            # Fofce close the connection and do no-op.
+            response.force_close()
+            raise
         except Exception as e:
             logger.exception(e)
             error_msg = bytearray(b"0")

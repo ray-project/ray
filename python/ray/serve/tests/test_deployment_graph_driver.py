@@ -6,7 +6,9 @@ import requests
 import starlette.requests
 from starlette.testclient import TestClient
 
-from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, _load_http_adapter
+from ray.serve.drivers import DAGDriver
+from ray.serve.air_integrations import SimpleSchemaIngress
+from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.dag import InputNode
 from ray import serve
 import ray
@@ -18,15 +20,15 @@ def my_resolver(a: int):
 
 def test_loading_check():
     with pytest.raises(ValueError, match="callable"):
-        _load_http_adapter(["not function"])
+        load_http_adapter(["not function"])
     with pytest.raises(ValueError, match="type annotated"):
 
         def func(a):
             return a
 
-        _load_http_adapter(func)
+        load_http_adapter(func)
 
-    loaded_my_resolver = _load_http_adapter(
+    loaded_my_resolver = load_http_adapter(
         "ray.serve.tests.test_deployment_graph_driver.my_resolver"
     )
     assert (loaded_my_resolver == my_resolver) or (

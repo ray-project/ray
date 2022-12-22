@@ -15,6 +15,7 @@ from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
+    MAC_OS_ZIP_HIDDEN_DIR_NAME,
     Protocol,
     _dir_travel,
     _get_excludes,
@@ -47,7 +48,7 @@ def random_string(size: int = 10):
 
 
 @pytest.fixture
-def random_dir(tmp_path):
+def random_dir(tmp_path) -> Path:
     subdir = tmp_path / "subdir"
     subdir.mkdir()
     for _ in range(10):
@@ -100,6 +101,14 @@ def random_zip_file_with_top_level_dir(tmp_path):
         dir2 = next_level_dir / random_string(15)
         dir2.mkdir(parents=True)
         next_level_dir = dir2
+
+    # Add __MACOSX directory. This is a hidden directory that is created by
+    # macOS when zipping a directory.
+    macos_dir = path / MAC_OS_ZIP_HIDDEN_DIR_NAME
+    macos_dir.mkdir(parents=True)
+    with (macos_dir / "file").open("w") as f:
+        f.write("macos file")
+
     make_archive(
         path / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")],
         "zip",
@@ -285,7 +294,11 @@ class TestRemoveDirFromFilepaths:
         # Pytest fixture and the top level directory itself. This implies that
         # all files have been extracted from the top level directory and moved
         # into the tmp_path.
-        assert set(dcmp.left_only) == {ARCHIVE_NAME, TOP_LEVEL_DIR_NAME}
+        assert set(dcmp.left_only) == {
+            ARCHIVE_NAME,
+            TOP_LEVEL_DIR_NAME,
+            MAC_OS_ZIP_HIDDEN_DIR_NAME,
+        }
 
         # Make sure that all the subdirectories and files have been moved to
         # the target directory
@@ -371,6 +384,46 @@ class TestUnzipPackage:
             tmp_path,
             archive_path,
         )
+
+    def test_unzip_package_with_multiple_top_level_dirs(
+        self,
+        remove_top_level_directory,
+        unlink_zip,
+        random_zip_file_without_top_level_dir,
+    ):
+        """Test unzipping a package with multiple top level directories (not counting __MACOSX).
+
+        Tests that we don't remove the top level directory, regardless of the
+        value of remove_top_level_directory.
+        """
+        archive_path = random_zip_file_without_top_level_dir
+        tmp_path = archive_path[: archive_path.rfind(os.path.sep)]
+        target_dir = os.path.join(tmp_path, "target_dir")
+        print(os.listdir(tmp_path))
+
+        # tmp_path
+        # ├── target_dir
+        # └── archive.zip
+
+        unzip_package(
+            package_path=archive_path,
+            target_dir=target_dir,
+            remove_top_level_directory=remove_top_level_directory,
+            unlink_zip=unlink_zip,
+        )
+        print(os.listdir(target_dir))
+        dcmp = dircmp(tmp_path, target_dir)
+        print(dcmp.report())
+        # assert False
+        assert dcmp.left_only == ["target_dir"]
+        # A side effect of the test structure is that archive.zip is itself
+        # added to the zip file because it is in the same directory we're zipping.
+        assert dcmp.right_only == ([ARCHIVE_NAME] if unlink_zip else [])
+
+        if unlink_zip:
+            assert not Path(archive_path).is_file()
+        else:
+            assert Path(archive_path).is_file()
 
 
 class TestParseUri:

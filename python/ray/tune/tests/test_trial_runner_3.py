@@ -6,9 +6,12 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
+from ray.air import CheckpointConfig
 from ray.rllib import _register_all
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
@@ -25,6 +28,20 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
+
+
+class MyCallbacks(DefaultCallbacks):
+    def on_episode_start(
+        self,
+        *,
+        worker,
+        base_env,
+        policies,
+        episode,
+        env_index,
+        **kwargs,
+    ):
+        print("in callback")
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -429,7 +446,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 "__fake",
                 trial_id="trial_terminate",
                 stopping_criterion={"training_iteration": 1},
-                checkpoint_freq=1,
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             )
         ]
         runner.add_trial(trials[0])
@@ -443,7 +460,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 "__fake",
                 trial_id="trial_fail",
                 stopping_criterion={"training_iteration": 3},
-                checkpoint_freq=1,
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
                 config={"mock_error": True},
             )
         ]
@@ -462,7 +479,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 "__fake",
                 trial_id="trial_succ",
                 stopping_criterion={"training_iteration": 2},
-                checkpoint_freq=1,
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             )
         ]
         runner.add_trial(trials[2])
@@ -510,7 +527,9 @@ class TrialRunnerTest3(unittest.TestCase):
             Trial(
                 "__fake",
                 trial_id="checkpoint",
-                checkpoint_at_end=True,
+                checkpoint_config=CheckpointConfig(
+                    checkpoint_at_end=True,
+                ),
                 stopping_criterion={"training_iteration": 2},
             )
         )
@@ -544,12 +563,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": lambda i: i,
-                }
-            },
-            checkpoint_freq=1,
+            config={"callbacks": MyCallbacks},
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
@@ -560,7 +575,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
-        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
 
     def testCheckpointOverwrite(self):
         def count_checkpoints(cdir):
@@ -571,8 +585,16 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=2)
 
-        trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
+        # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
+        # to match the directory structure assumed by `TrialRunner.resume`.
+        # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
+        # for more details.
+        trial = Trial(
+            "__fake",
+            local_dir=tmpdir,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        )
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for _ in range(5):
@@ -601,7 +623,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=2)
 
-        trial = Trial("__fake", checkpoint_freq=3)
+        trial = Trial(
+            "__fake", checkpoint_config=CheckpointConfig(checkpoint_frequency=3)
+        )
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
 
@@ -634,7 +658,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         trial = Trial(
             "__fake",
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(
+                checkpoint_at_end=True,
+            ),
             stopping_criterion={"training_iteration": 4},
         )
         observer = TrialResultObserver()
@@ -681,7 +707,13 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=3)
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
-        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
+        # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
+        # to match the directory structure assumed by `TrialRunner.resume`.
+        # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
+        # for more details.
+        runner.add_trial(
+            Trial("__fake", local_dir=self.tmpdir, config={"user_checkpoint_freq": 2})
+        )
         trials = runner.get_trials()
 
         runner.step()  # Start trial
@@ -785,6 +817,71 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Run one step, this will trigger checkpointing
 
         self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period, 38.0)
+
+    @patch.dict(
+        os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
+    )
+    def testCloudCheckpointForceWithNumToKeep(self):
+        """Test that cloud syncing is forced if one of the trials has made more
+        than num_to_keep checkpoints since last sync."""
+        ray.init(num_cpus=3)
+
+        class CustomSyncer(Syncer):
+            def __init__(self, sync_period: float = float("inf")):
+                super(CustomSyncer, self).__init__(sync_period=sync_period)
+                self._sync_status = {}
+                self.sync_up_counter = 0
+
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                self.sync_up_counter += 1
+                return True
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                return True
+
+            def delete(self, remote_dir: str) -> bool:
+                pass
+
+        num_to_keep = 2
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep, checkpoint_frequency=1
+        )
+        syncer = CustomSyncer()
+
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            remote_checkpoint_dir="fake",
+            trial_checkpoint_config=checkpoint_config,
+        )
+
+        class CheckpointingTrial(Trial):
+            def should_checkpoint(self):
+                return True
+
+        trial = CheckpointingTrial(
+            "__fake",
+            checkpoint_config=checkpoint_config,
+            stopping_criterion={"training_iteration": 10},
+        )
+        runner.add_trial(trial)
+
+        # also check if the warning is printed
+        buffer = []
+        from ray.tune.execution.trial_runner import logger
+
+        with patch.object(logger, "warning", lambda x: buffer.append(x)):
+            while not runner.is_finished():
+                runner.step()
+        assert any("syncing has been triggered multiple" in x for x in buffer)
+
+        # we should sync 4 times - every 2 checkpoints, but the last sync will not
+        # happen as the experiment finishes before it is triggered
+        assert syncer.sync_up_counter == 4
 
 
 class SearchAlgorithmTest(unittest.TestCase):

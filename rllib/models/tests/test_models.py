@@ -60,21 +60,25 @@ class TestModels(unittest.TestCase):
         self.assertTrue("fc_net.base_model.value_out.bias:0" in vars)
 
     def test_modelv3(self):
-        config = {
-            "env": "CartPole-v0",
-            "model": {
-                "custom_model": RNNModel,
-                "custom_model_config": {
-                    "hiddens_size": 64,
-                    "cell_size": 128,
-                },
-            },
-            "num_workers": 0,
-        }
-        algo = ppo.PPO(config=config)
+        config = (
+            ppo.PPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=0)
+            .training(
+                model={
+                    "custom_model": RNNModel,
+                    "custom_model_config": {
+                        "hiddens_size": 64,
+                        "cell_size": 128,
+                    },
+                }
+            )
+        )
+        algo = config.build()
         for _ in range(2):
             results = algo.train()
             print(results)
+        algo.stop()
 
 
 if __name__ == "__main__":

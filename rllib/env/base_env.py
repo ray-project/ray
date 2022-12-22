@@ -236,7 +236,7 @@ class BaseEnv:
             if hasattr(env, "close"):
                 env.close()
 
-    @Deprecated(new="get_sub_environments", error=False)
+    @Deprecated(new="get_sub_environments", error=True)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
@@ -494,43 +494,7 @@ def convert_to_base_env(
     return env
 
 
-@Deprecated(
-    old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
-    new="ray.rllib.env.vector_env.VectorEnvWrapper",
-    error=True,
-)
-class _VectorEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._ExternalEnvToBaseEnv",
-    new="ray.rllib.env.external.ExternalEnvWrapper",
-    error=True,
-)
-class _ExternalEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
-    new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
-    error=True,
-)
-class _MultiAgentEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._MultiAgentEnvState",
-    new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
-    error=True,
-)
-class _MultiAgentEnvState:
-    pass
-
-
-@Deprecated(new="with_dummy_agent_id()", error=False)
+@Deprecated(new="with_dummy_agent_id()", error=True)
 def _with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:

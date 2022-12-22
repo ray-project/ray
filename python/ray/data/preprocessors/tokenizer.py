@@ -4,8 +4,10 @@ import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_split_tokenizer
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class Tokenizer(Preprocessor):
     """Replace each string with a list of tokens.
 

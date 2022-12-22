@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -33,7 +34,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -44,13 +45,14 @@ class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
-        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> from ray.rllib.algorithms.cql import CQLConfig
+        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
+        >>> config = config.resources(num_gpus=0)
+        >>> config = config.rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -76,15 +78,16 @@ class CQLConfig(SACConfig):
 
         self.timesteps_per_iteration = DEPRECATED_VALUE
 
+    @override(SACConfig)
     def training(
         self,
         *,
-        bc_iters: Optional[int] = None,
-        temperature: Optional[float] = None,
-        num_actions: Optional[int] = None,
-        lagrangian: Optional[bool] = None,
-        lagrangian_thresh: Optional[float] = None,
-        min_q_weight: Optional[float] = None,
+        bc_iters: Optional[int] = NotProvided,
+        temperature: Optional[float] = NotProvided,
+        num_actions: Optional[int] = NotProvided,
+        lagrangian: Optional[bool] = NotProvided,
+        lagrangian_thresh: Optional[float] = NotProvided,
+        min_q_weight: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CQLConfig":
         """Sets the training-related configuration.
@@ -103,59 +106,44 @@ class CQLConfig(SACConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if bc_iters is not None:
+        if bc_iters is not NotProvided:
             self.bc_iters = bc_iters
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if num_actions is not None:
+        if num_actions is not NotProvided:
             self.num_actions = num_actions
-        if lagrangian is not None:
+        if lagrangian is not NotProvided:
             self.lagrangian = lagrangian
-        if lagrangian_thresh is not None:
+        if lagrangian_thresh is not NotProvided:
             self.lagrangian_thresh = lagrangian_thresh
-        if min_q_weight is not None:
+        if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
 
         return self
 
-
-class CQL(SAC):
-    """CQL (derived from SAC)."""
-
-    @classmethod
-    @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CQLConfig().to_dict()
-
-    @override(SAC)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # First check, whether old `timesteps_per_iteration` is used. If so
-        # convert right away as for CQL, we must measure in training timesteps,
-        # never sampling timesteps (CQL does not sample).
-        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+    @override(SACConfig)
+    def validate(self) -> None:
+        # First check, whether old `timesteps_per_iteration` is used.
+        if self.timesteps_per_iteration != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
-            config["min_train_timesteps_per_iteration"] = config[
-                "timesteps_per_iteration"
-            ]
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Call super's validation method.
-        super().validate_config(config)
+        super().validate()
 
-        if config["num_gpus"] > 1:
+        if self.num_gpus > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
 
         # CQL-torch performs the optimizer steps inside the loss function.
         # Using the multi-GPU optimizer will therefore not work (see multi-GPU
         # check above) and we must use the simple optimizer for now.
-        if config["simple_optimizer"] is not True and config["framework"] == "torch":
-            config["simple_optimizer"] = True
+        if self.simple_optimizer is not True and self.framework_str == "torch":
+            self.simple_optimizer = True
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if self.framework_str in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run CQL! "
                 "Install it via `pip install tensorflow_probability`. Your "
@@ -164,8 +152,20 @@ class CQL(SAC):
             )
             try_import_tfp(error=True)
 
+
+class CQL(SAC):
+    """CQL (derived from SAC)."""
+
+    @classmethod
     @override(SAC)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CQLConfig()
+
+    @classmethod
+    @override(SAC)
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
@@ -194,10 +194,12 @@ class CQL(SAC):
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.config.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(
@@ -207,9 +209,10 @@ class CQL(SAC):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
         # Update remote workers's weights after learning on local worker
-        if self.workers.remote_workers():
+        # (only those policies that were actually trained).
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights()
+                self.workers.sync_weights(policies=list(train_results.keys()))
 
         # Return all collected metrics for the iteration.
         return train_results
@@ -222,7 +225,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

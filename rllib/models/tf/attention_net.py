@@ -360,10 +360,12 @@ class GTrXLNet(RecurrentNetwork):
 
         return out, [tf.reshape(m, [-1, self.attention_dim]) for m in memory_outs]
 
-    # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self) -> List[np.ndarray]:
-        return []
+        return [
+            tf.zeros(self.view_requirements["state_in_{}".format(i)].space.shape)
+            for i in range(self.num_transformer_units)
+        ]
 
     @override(ModelV2)
     def value_function(self) -> TensorType:

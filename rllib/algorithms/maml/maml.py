@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
@@ -13,7 +13,10 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import concat_samples
+from ray.rllib.policy.sample_batch import (
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
@@ -32,28 +35,30 @@ class MAMLConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MAMLConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     grad_clip=tune.grid_search([10.0, 40.0]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "MAML",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -78,6 +83,7 @@ class MAMLConfig(AlgorithmConfig):
         self.use_meta_env = True
 
         # Override some of AlgorithmConfig's default values with MAML-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.create_env_on_local_worker = True
         self.lr = 1e-3
@@ -98,19 +104,19 @@ class MAMLConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        vf_clip_param: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        kl_target: Optional[float] = None,
-        inner_adaptation_steps: Optional[int] = None,
-        maml_optimizer_steps: Optional[int] = None,
-        inner_lr: Optional[float] = None,
-        use_meta_env: Optional[bool] = None,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
+        inner_adaptation_steps: Optional[int] = NotProvided,
+        maml_optimizer_steps: Optional[int] = NotProvided,
+        inner_lr: Optional[float] = NotProvided,
+        use_meta_env: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "MAMLConfig":
         """Sets the training related configuration.
@@ -141,34 +147,58 @@ class MAMLConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if vf_loss_coeff is not None:
+        if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
+        if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if vf_clip_param is not None:
+        if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if inner_adaptation_steps is not None:
+        if inner_adaptation_steps is not NotProvided:
             self.inner_adaptation_steps = inner_adaptation_steps
-        if maml_optimizer_steps is not None:
+        if maml_optimizer_steps is not NotProvided:
             self.maml_optimizer_steps = maml_optimizer_steps
-        if inner_lr is not None:
+        if inner_lr is not NotProvided:
             self.inner_lr = inner_lr
-        if use_meta_env is not None:
+        if use_meta_env is not NotProvided:
             self.use_meta_env = use_meta_env
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MAML!")
+        if self.inner_adaptation_steps <= 0:
+            raise ValueError("Inner Adaptation Steps must be >=1!")
+        if self.maml_optimizer_steps <= 0:
+            raise ValueError("PPO steps for meta-update needs to be >=0!")
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >=0.0!")
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("`batch_mode`=truncate_episodes not supported!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("Must have at least 1 worker/task!")
+        if self.create_env_on_local_worker is False:
+            raise ValueError(
+                "Must have an actual Env created on the driver "
+                "(local) worker! Try setting `config.environment("
+                "create_env_on_local_worker=True)`."
+            )
 
 
 # @mluo: TODO
@@ -237,7 +267,7 @@ def post_process_metrics(adapt_iter, workers, metrics):
     name = "_adapt_" + str(adapt_iter) if adapt_iter > 0 else ""
 
     # Only workers are collecting data
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
 
     metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
     metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]
@@ -255,34 +285,14 @@ def inner_adaptation(workers, samples):
 class MAML(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MAMLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MAMLConfig()
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MAML!")
-        if config["inner_adaptation_steps"] <= 0:
-            raise ValueError("Inner Adaptation Steps must be >=1!")
-        if config["maml_optimizer_steps"] <= 0:
-            raise ValueError("PPO steps for meta-update needs to be >=0!")
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >=0.0!")
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("`batch_mode`=truncate_episodes not supported!")
-        if config["num_workers"] <= 0:
-            raise ValueError("Must have at least 1 worker/task!")
-        if config["create_env_on_driver"] is False:
-            raise ValueError(
-                "Must have an actual Env created on the driver "
-                "(local) worker! Set `create_env_on_driver` to True."
-            )
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 
@@ -332,10 +342,11 @@ class MAML(Algorithm):
                 # Processing Samples (Standardize Advantages)
                 split_lst = []
                 for sample in samples:
+                    sample = convert_ma_batch_to_sample_batch(sample)
                     sample["advantages"] = standardized(sample["advantages"])
                     split_lst.append(sample.count)
+                    buf.append(sample)
 
-                buf.extend(samples)
                 split.append(split_lst)
 
                 adapt_iter = len(split) - 1
@@ -378,7 +389,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maml.maml.MAMLConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

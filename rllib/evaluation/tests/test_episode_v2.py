@@ -1,6 +1,7 @@
 import unittest
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.mock_env import MockEnv3
@@ -42,7 +43,6 @@ class EpisodeEnv(MultiAgentEnv):
 
     def step(self, action_dict):
         obs, rew, done, info = {}, {}, {}, {}
-        print("ACTIONDICT IN ENV\n", action_dict)
         for i, action in action_dict.items():
             obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
             obs[i] = obs[i] + i
@@ -66,34 +66,37 @@ class TestEpisodeV2(unittest.TestCase):
     def test_singleagent_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
-            policy_spec=EchoPolicy,
+            default_policy_class=EchoPolicy,
+            config=AlgorithmConfig().rollouts(
+                enable_connectors=True,
+                num_rollout_workers=0,
+            ),
         )
         sample_batch = ev.sample()
-        self.assertEqual(sample_batch.count, 100)
-        # A batch of 100. 4 episodes, each 25.
-        self.assertEqual(len(set(sample_batch["eps_id"])), 4)
+        self.assertEqual(sample_batch.count, 200)
+        # EnvRunnerV2 always returns MultiAgentBatch, even for single-agent envs.
+        for agent_id, sample_batch in sample_batch.policy_batches.items():
+            # A batch of 100. 4 episodes, each 25.
+            self.assertEqual(len(set(sample_batch["eps_id"])), 8)
 
     def test_multiagent_env(self):
         temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)
         ev = RolloutWorker(
             env_creator=lambda _: temp_env,
-            policy_spec={
-                str(agent_id): (
-                    EchoPolicy,
-                    temp_env.observation_space,
-                    temp_env.action_space,
-                    {},
-                )
-                for agent_id in range(NUM_AGENTS)
-            },
-            policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
+            default_policy_class=EchoPolicy,
+            config=AlgorithmConfig()
+            .multi_agent(
+                policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
+                policy_mapping_fn=lambda agent_id, episode, **kwargs: str(agent_id),
+            )
+            .rollouts(enable_connectors=True, num_rollout_workers=0),
         )
         sample_batches = ev.sample()
         self.assertEqual(len(sample_batches.policy_batches), 4)
         for agent_id, sample_batch in sample_batches.policy_batches.items():
-            self.assertEqual(sample_batch.count, 100)
+            self.assertEqual(sample_batch.count, 200)
             # A batch of 100. 4 episodes, each 25.
-            self.assertEqual(len(set(sample_batch["eps_id"])), 4)
+            self.assertEqual(len(set(sample_batch["eps_id"])), 8)
 
 
 if __name__ == "__main__":

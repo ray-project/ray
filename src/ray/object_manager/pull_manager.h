@@ -31,6 +31,7 @@
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 
@@ -80,11 +81,13 @@ class PullManager {
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
+  /// \param task_name Name of the task for the pull, or empty string.
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 BundlePriority prio,
+                const std::string &task_name,
                 std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
@@ -167,6 +170,10 @@ class PullManager {
 
   void SetOutOfDisk(const ObjectID &object_id);
 
+  int64_t NumInactivePulls(const std::string &task_name) const {
+    return task_argument_bundles_.inactive_by_name.Get(task_name);
+  }
+
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
@@ -215,12 +222,15 @@ class PullManager {
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects)
-        : objects(std::move(requested_objects)) {}
+    BundlePullRequest(std::vector<ObjectID> requested_objects,
+                      const std::string &task_name)
+        : objects(std::move(requested_objects)), task_name(task_name) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
+    // The name of the task, if a task arg request, otherwise the empty string.
+    const std::string task_name;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);
@@ -237,7 +247,8 @@ class PullManager {
 
   /// A helper structure for tracking all the bundle pull requests for a particular bundle
   /// priority.
-  struct BundlePullRequestQueue {
+  class BundlePullRequestQueue {
+   public:
     // Key is the request id assigned to each bundle pull request.
     absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
     // A bundle pull request can be in one of the three stats:
@@ -264,6 +275,7 @@ class PullManager {
     // order of pull).
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
+    CounterMap<std::string> inactive_by_name;
 
     bool Empty() const { return requests.empty(); }
 
@@ -273,23 +285,34 @@ class PullManager {
       requests.emplace(request_id, request);
       if (request.IsPullable()) {
         inactive_requests.emplace(request_id);
+        inactive_by_name.Increment(request.task_name);
+        RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
       }
     }
 
     void ActivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(inactive_requests.erase(request_id), 1u);
       active_requests.emplace(request_id);
+      auto task_name = map_find_or_die(requests, request_id).task_name;
+      inactive_by_name.Decrement(task_name);
+      RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
     void DeactivateBundlePullRequest(uint64_t request_id) {
       RAY_CHECK_EQ(active_requests.erase(request_id), 1u);
       inactive_requests.emplace(request_id);
+      auto task_name = map_find_or_die(requests, request_id).task_name;
+      inactive_by_name.Increment(task_name);
+      RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
     void MarkBundleAsPullable(uint64_t request_id) {
       RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.emplace(request_id);
+      auto task_name = map_find_or_die(requests, request_id).task_name;
+      inactive_by_name.Increment(task_name);
+      RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
     void MarkBundleAsUnpullable(uint64_t request_id) {
@@ -297,13 +320,26 @@ class PullManager {
       // For a request to go from active to unpullable, it must be
       // deactivated first.
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
-      inactive_requests.erase(request_id);
+      auto it = inactive_requests.find(request_id);
+      if (it != inactive_requests.end()) {
+        inactive_requests.erase(it);
+        auto task_name = map_find_or_die(requests, request_id).task_name;
+        inactive_by_name.Decrement(task_name);
+        RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
+      }
     }
 
     void RemoveBundlePullRequest(uint64_t request_id) {
+      auto task_name = map_find_or_die(requests, request_id).task_name;
       requests.erase(request_id);
-      active_requests.erase(request_id);
-      inactive_requests.erase(request_id);
+      if (active_requests.find(request_id) != active_requests.end()) {
+        active_requests.erase(request_id);
+      }
+      if (inactive_requests.find(request_id) != inactive_requests.end()) {
+        inactive_requests.erase(request_id);
+        inactive_by_name.Decrement(task_name);
+      }
+      RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
     std::string DebugString() const {

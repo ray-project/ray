@@ -11,14 +11,16 @@ import requests
 from starlette.requests import Request
 
 import ray
-import ray.rllib.algorithms.dqn as dqn
+import ray.rllib.algorithms.algorithm as Algorithm
+import ray.rllib.algorithms.algorithm_config as AlgorithmConfig
+from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 from ray import serve
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -37,11 +39,9 @@ class ServeRLlibPolicy:
       (with a current observation).
     """
 
-    def __init__(self, config, checkpoint_path):
-        # Create the Trainer.
-        self.algo = dqn.DQN(config=config)
-        # Load an already trained state for the algo.
-        self.algo.restore(checkpoint_path)
+    def __init__(self, checkpoint_path):
+        # Create the Algorithm from the given checkpoint.
+        self.algo = Algorithm.from_checkpoint(checkpoint_path)
 
     async def __call__(self, request: Request):
         json_input = await request.json()
@@ -53,34 +53,34 @@ class ServeRLlibPolicy:
         return {"action": int(action)}
 
 
-def train_rllib_policy(config):
+def train_rllib_policy(config: AlgorithmConfig):
     """Trains a DQN on MsPacman-v0 for n iterations.
 
     Saves the trained Trainer to disk and returns the checkpoint path.
+
+    Args:
+        config: The algo config object for the Algorithm.
 
     Returns:
         str: The saved checkpoint to restore DQN from.
     """
     # Create algorithm from config.
-    algo = dqn.DQN(config=config)
+    algo = config.build()
 
-    # Train for n iterations, then save.
+    # Train for n iterations, then save, stop, and return the checkpoint path.
     for _ in range(args.train_iters):
         print(algo.train())
-    return algo.save()
+    checkpoint_path = algo.save()
+    algo.stop()
+    return checkpoint_path
 
 
 if __name__ == "__main__":
 
     # Config for the served RLlib Policy/Trainer.
-    config = {
-        "framework": args.framework,
-        # local mode -> local env inside Trainer not needed!
-        "num_workers": 0,
-        "env": "MsPacman-v0",
-    }
+    config = DQNConfig().environment("MsPacman-v0").framework(args.framework)
 
-    # Train the policy for some time, then save it and get the checkpoint path.
+    # Train the Algorithm for some time, then save it and get the checkpoint path.
     checkpoint_path = train_rllib_policy(config)
 
     ray.init(num_cpus=8)

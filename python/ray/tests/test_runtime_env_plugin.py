@@ -42,10 +42,13 @@ class MyPlugin(RuntimeEnvPlugin):
     ) -> None:
         plugin_config_dict = runtime_env[MY_PLUGIN_NAME]
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
-        ctx.command_prefix.append(
-            f"echo {plugin_config_dict['tmp_content']} > "
-            f"{plugin_config_dict['tmp_file']}"
-        )
+        ctx.command_prefix += [
+            "echo",
+            plugin_config_dict["tmp_content"],
+            ">",
+            plugin_config_dict["tmp_file"],
+            "&&",
+        ]
         ctx.py_executable = (
             plugin_config_dict["prefix_command"] + " " + ctx.py_executable
         )

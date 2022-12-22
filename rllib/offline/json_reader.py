@@ -26,6 +26,7 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     SampleBatch,
     concat_samples,
+    convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import unpack_if_needed
@@ -87,8 +88,8 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
 def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatchType:
     # Clip actions (from any values into env's bounds), if necessary.
     cfg = ioctx.config
-    # TODO(jungong) : we should not clip_action in input reader.
-    # Use connector to handle this.
+    # TODO(jungong): We should not clip_action in input reader.
+    #  Use connector to handle this.
     if cfg.get("clip_actions"):
         if ioctx.worker is None:
             raise ValueError(
@@ -306,6 +307,8 @@ class JsonReader(InputReader):
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
+
+        batch = convert_ma_batch_to_sample_batch(batch)
 
         if isinstance(batch, SampleBatch):
             out = []

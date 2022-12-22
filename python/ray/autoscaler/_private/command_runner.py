@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 import time
-import warnings
 from getpass import getuser
 from shlex import quote
 from typing import Dict, List
@@ -33,7 +32,6 @@ from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected,
 )
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -110,193 +108,6 @@ def _with_interactive(cmd):
         f"export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({cmd})"
     )
     return ["bash", "--login", "-c", "-i", quote(force_interactive)]
-
-
-class KubernetesCommandRunner(CommandRunnerInterface):
-    def __init__(self, log_prefix, namespace, node_id, auth_config, process_runner):
-
-        self.log_prefix = log_prefix
-        self.process_runner = process_runner
-        self.node_id = str(node_id)
-        self.namespace = namespace
-        self.kubectl = ["kubectl", "-n", self.namespace]
-        self._home_cached = None
-
-    def run(
-        self,
-        cmd=None,
-        timeout=120,
-        exit_on_fail=False,
-        port_forward=None,
-        with_output=False,
-        environment_variables: Dict[str, object] = None,
-        run_env="auto",  # Unused argument.
-        ssh_options_override_ssh_key="",  # Unused argument.
-        shutdown_after_run=False,
-    ):
-        if shutdown_after_run:
-            cmd += "; sudo shutdown -h now"
-        if cmd and port_forward:
-            raise Exception(
-                "exec with Kubernetes can't forward ports and execute"
-                "commands together."
-            )
-
-        if port_forward:
-            if not isinstance(port_forward, list):
-                port_forward = [port_forward]
-            port_forward_cmd = (
-                self.kubectl
-                + [
-                    "port-forward",
-                    self.node_id,
-                ]
-                + ["{}:{}".format(local, remote) for local, remote in port_forward]
-            )
-            logger.info("Port forwarding with: {}".format(" ".join(port_forward_cmd)))
-            port_forward_process = subprocess.Popen(port_forward_cmd)
-            port_forward_process.wait()
-            # We should never get here, this indicates that port forwarding
-            # failed, likely because we couldn't bind to a port.
-            pout, perr = port_forward_process.communicate()
-            exception_str = " ".join(port_forward_cmd) + " failed with error: " + perr
-            raise Exception(exception_str)
-        else:
-            final_cmd = self.kubectl + ["exec", "-it"]
-            final_cmd += [
-                self.node_id,
-                "--",
-            ]
-            if environment_variables:
-                cmd = _with_environment_variables(cmd, environment_variables)
-            cmd = _with_interactive(cmd)
-            cmd_prefix = " ".join(final_cmd)
-            final_cmd += cmd
-            # `kubectl exec` + subprocess w/ list of args has unexpected
-            # side-effects.
-            final_cmd = " ".join(final_cmd)
-            logger.info(self.log_prefix + "Running {}".format(final_cmd))
-            try:
-                if with_output:
-                    return self.process_runner.check_output(final_cmd, shell=True)
-                else:
-                    self.process_runner.check_call(final_cmd, shell=True)
-            except subprocess.CalledProcessError:
-                if exit_on_fail:
-                    quoted_cmd = cmd_prefix + quote(" ".join(cmd))
-                    logger.error(
-                        self.log_prefix
-                        + "Command failed: \n\n  {}\n".format(quoted_cmd)
-                    )
-                    sys.exit(1)
-                else:
-                    raise
-
-    def run_rsync_up(self, source, target, options=None):
-        options = options or {}
-        if options.get("rsync_exclude"):
-            if log_once("autoscaler_k8s_rsync_exclude"):
-                logger.warning(
-                    "'rsync_exclude' detected but is currently unsupported for k8s."
-                )
-        if options.get("rsync_filter"):
-            if log_once("autoscaler_k8s_rsync_filter"):
-                logger.warning(
-                    "'rsync_filter' detected but is currently unsupported for k8s."
-                )
-        if target.startswith("~"):
-            target = self._home + target[1:]
-
-        try:
-            flags = "-aqz" if is_rsync_silent() else "-avz"
-            self.process_runner.check_call(
-                [
-                    KUBECTL_RSYNC,
-                    flags,
-                    source,
-                    "{}@{}:{}".format(self.node_id, self.namespace, target),
-                ]
-            )
-        except Exception as e:
-            warnings.warn(
-                self.log_prefix
-                + "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
-                UserWarning,
-            )
-            if target.startswith("~"):
-                target = self._home + target[1:]
-
-            self.process_runner.check_call(
-                self.kubectl
-                + [
-                    "cp",
-                    source,
-                    "{}/{}:{}".format(self.namespace, self.node_id, target),
-                ]
-            )
-
-    def run_rsync_down(self, source, target, options=None):
-        if source.startswith("~"):
-            source = self._home + source[1:]
-
-        try:
-            flags = "-aqz" if is_rsync_silent() else "-avz"
-            self.process_runner.check_call(
-                [
-                    KUBECTL_RSYNC,
-                    flags,
-                    "{}@{}:{}".format(self.node_id, self.namespace, source),
-                    target,
-                ]
-            )
-        except Exception as e:
-            warnings.warn(
-                self.log_prefix
-                + "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
-                UserWarning,
-            )
-            if target.startswith("~"):
-                target = self._home + target[1:]
-
-            self.process_runner.check_call(
-                self.kubectl
-                + [
-                    "cp",
-                    "{}/{}:{}".format(self.namespace, self.node_id, source),
-                    target,
-                ]
-            )
-
-    def remote_shell_command_str(self):
-        return "{} exec -it {} -- bash".format(" ".join(self.kubectl), self.node_id)
-
-    @property
-    def _home(self):
-        if self._home_cached is not None:
-            return self._home_cached
-        for _ in range(MAX_HOME_RETRIES - 1):
-            try:
-                self._home_cached = self._try_to_get_home()
-                return self._home_cached
-            except Exception:
-                # TODO (Dmitri): Identify the exception we're trying to avoid.
-                logger.info(
-                    "Error reading container's home directory. "
-                    f"Retrying in {HOME_RETRY_DELAY_S} seconds."
-                )
-                time.sleep(HOME_RETRY_DELAY_S)
-        # Last try
-        self._home_cached = self._try_to_get_home()
-        return self._home_cached
-
-    def _try_to_get_home(self):
-        # TODO (Dmitri): Think about how to use the node's HOME variable
-        # without making an extra kubectl exec call.
-        cmd = self.kubectl + ["exec", "-it", self.node_id, "--", "printenv", "HOME"]
-        joined_cmd = " ".join(cmd)
-        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
-        home = raw_out.decode().strip("\n\r")
-        return home
 
 
 class SSHOptions:

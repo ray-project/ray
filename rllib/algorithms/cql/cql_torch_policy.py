@@ -19,14 +19,14 @@ from ray.rllib.algorithms.sac.sac_torch_policy import (
     build_sac_model_and_action_dist,
     optimizer_fn,
     ComputeTDErrorMixin,
-    TargetNetworkMixin,
     setup_late_mixins,
     action_distribution_fn,
 )
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY

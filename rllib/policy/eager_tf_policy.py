@@ -4,22 +4,27 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
+import os
 import threading
-from typing import Dict, List, Optional, Tuple
-
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -141,7 +146,7 @@ def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
-    framework=[tf2|tfe].
+    framework=tf2.
     """
 
     class TracedEagerPolicy(eager_policy_cls):
@@ -295,8 +300,8 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
-    it automatically be converted to an eager policy.
+    graph policy and use set `.framework("tf2", eager_tracing=False) in your
+    AlgorithmConfig to have it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
 
@@ -321,7 +326,7 @@ def _build_eager_tf_policy(
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            self.framework = config.get("framework", "tfe")
+            self.framework = config.get("framework", "tf2")
             EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
@@ -621,10 +626,20 @@ def _build_eager_tf_policy(
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
             postprocessed_batch.set_training(True)
             stats = self._learn_on_batch_helper(postprocessed_batch)
+            self.num_grad_updates += 1
+
             stats.update(
                 {
                     "custom_metrics": learn_stats,
                     NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates
+                        - 1
+                        - (postprocessed_batch.num_grad_updates or 0)
+                    ),
                 }
             )
             return convert_to_numpy(stats)
@@ -697,8 +712,10 @@ def _build_eager_tf_policy(
             return []
 
         @override(Policy)
-        def get_state(self):
+        def get_state(self) -> PolicyState:
+            # Legacy Policy state (w/o keras model and w/o PolicySpec).
             state = super().get_state()
+
             state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
@@ -707,7 +724,7 @@ def _build_eager_tf_policy(
             return state
 
         @override(Policy)
-        def set_state(self, state):
+        def set_state(self, state: PolicyState) -> None:
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
@@ -730,12 +747,50 @@ def _build_eager_tf_policy(
             super().set_state(state)
 
         @override(Policy)
-        def export_checkpoint(self, export_dir):
-            raise NotImplementedError  # TODO: implement this
+        def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+            """Exports the Policy's Model to local directory for serving.
 
-        @override(Policy)
-        def export_model(self, export_dir):
-            raise NotImplementedError  # TODO: implement this
+            Note: Since the TfModelV2 class that EagerTfPolicy uses is-NOT-a
+            tf.keras.Model, we need to assume that there is a `base_model` property
+            within this TfModelV2 class that is-a tf.keras.Model. This base model
+            will be used here for the export.
+            TODO (kourosh): This restriction will be resolved once we move Policy and
+             ModelV2 to the new RLTrainer/RLModule APIs.
+
+            Args:
+                export_dir: Local writable directory.
+                onnx: If given, will export model in ONNX format. The
+                    value of this parameter set the ONNX OpSet version to use.
+            """
+            if (
+                hasattr(self, "model")
+                and hasattr(self.model, "base_model")
+                and isinstance(self.model.base_model, tf.keras.Model)
+            ):
+                # Store model in ONNX format.
+                if onnx:
+                    try:
+                        import tf2onnx
+                    except ImportError as e:
+                        raise RuntimeError(
+                            "Converting a TensorFlow model to ONNX requires "
+                            "`tf2onnx` to be installed. Install with "
+                            "`pip install tf2onnx`."
+                        ) from e
+
+                    model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                        self.model.base_model,
+                        output_path=os.path.join(export_dir, "model.onnx"),
+                    )
+                # Save the tf.keras.Model (architecture and weights, so it can be
+                # retrieved w/o access to the original (custom) Model or Policy code).
+                else:
+                    try:
+                        self.model.base_model.save(export_dir, save_format="tf")
+                    except Exception:
+                        logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+            else:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
         def variables(self):
             """Return the list of all savable variables for this policy."""

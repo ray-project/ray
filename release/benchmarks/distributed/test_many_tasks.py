@@ -6,6 +6,12 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
+from ray.experimental.state.api import summarize_tasks
+from ray._private.state_api_test_utils import (
+    StateAPICallSpec,
+    periodic_invoke_state_apis_with_actor,
+)
+
 sleep_time = 300
 
 
@@ -66,6 +72,16 @@ def test(num_tasks, smoke_test):
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
+
+    def not_none(res):
+        return res is not None
+
+    api_caller = periodic_invoke_state_apis_with_actor(
+        apis=[StateAPICallSpec(summarize_tasks, not_none)],
+        call_interval_s=4,
+        print_result=True,
+    )
+
     start_time = time.time()
     test_max_running_tasks(num_tasks)
     end_time = time.time()
@@ -73,6 +89,9 @@ def test(num_tasks, smoke_test):
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
     print(f"Peak memory usage per processes:\n {usage}")
+    ray.get(api_caller.stop.remote())
+
+    del api_caller
     del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
 

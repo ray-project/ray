@@ -150,7 +150,7 @@ class QMixLoss(nn.Module):
         masked_td_error = td_error * mask
 
         # Normal L2 loss, take mean over actual data
-        loss = (masked_td_error ** 2).sum() / mask.sum()
+        loss = (masked_td_error**2).sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 

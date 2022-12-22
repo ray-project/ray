@@ -3,23 +3,20 @@ import os
 import pytest
 
 import ray
-import ray.train as train
 from ray import tune
-from ray.tune import TuneError
 from ray.air import Checkpoint, session
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.torch_fashion_mnist_example import (
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-from ray.train.trainer import Trainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -219,82 +216,6 @@ def test_retry(ray_start_4_cpus):
     )
 
     analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
-    assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
-
-
-def test_tune_error_legacy(ray_start_4_cpus):
-    def train_func(config):
-        raise RuntimeError("Error in training function!")
-
-    trainer = Trainer(TestConfig(), num_workers=1)
-    TestTrainable = trainer.to_tune_trainable(train_func)
-
-    with pytest.raises(TuneError):
-        tune.run(TestTrainable)
-
-
-def test_tune_checkpoint_legacy(ray_start_4_cpus):
-    def train_func():
-        for i in range(10):
-            train.report(test=i)
-        train.save_checkpoint(hello="world")
-
-    trainer = Trainer(TestConfig(), num_workers=1)
-    TestTrainable = trainer.to_tune_trainable(train_func)
-
-    [trial] = tune.run(TestTrainable).trials
-    checkpoint_path = trial.checkpoint.dir_or_data
-    assert os.path.exists(checkpoint_path)
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
-    assert checkpoint["hello"] == "world"
-
-
-def test_reuse_checkpoint_legacy(ray_start_4_cpus):
-    def train_func(config):
-        itr = 0
-        ckpt = train.load_checkpoint()
-        if ckpt is not None:
-            itr = ckpt["iter"] + 1
-
-        for i in range(itr, config["max_iter"]):
-            train.save_checkpoint(iter=i)
-            train.report(test=i, training_iteration=i)
-
-    trainer = Trainer(TestConfig(), num_workers=1)
-    TestTrainable = trainer.to_tune_trainable(train_func)
-
-    [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
-    checkpoint_path = trial.checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
-    assert checkpoint["iter"] == 4
-    analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=checkpoint_path)
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 5
-
-
-def test_retry_legacy(ray_start_4_cpus):
-    def train_func():
-        ckpt = train.load_checkpoint()
-        restored = bool(ckpt)  # Does a previous checkpoint exist?
-        itr = 0
-        if ckpt:
-            itr = ckpt["iter"] + 1
-
-        for i in range(itr, 4):
-            if i == 2 and not restored:
-                raise Exception("try to fail me")
-            train.save_checkpoint(iter=i)
-            train.report(test=i, training_iteration=i)
-
-    trainer = Trainer(TestConfig(), num_workers=1)
-    TestTrainable = trainer.to_tune_trainable(train_func)
-
-    analysis = tune.run(TestTrainable, max_failures=3)
     checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["iter"] == 3

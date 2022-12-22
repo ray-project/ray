@@ -281,7 +281,7 @@ cc_binary(
 cc_test(
     name = "simple_kv_store",
     srcs = glob([
-        "src/ray/test/examples/*.cc",
+        "src/ray/test/examples/simple_kv_store.cc",
     ]),
     args = [
         "--ray_code_search_path=$(location simple_kv_store.so)",
@@ -302,8 +302,41 @@ cc_binary(
     name = "simple_kv_store.so",
     testonly = True,
     srcs = glob([
-        "src/ray/test/examples/*.cc",
+        "src/ray/test/examples/simple_kv_store.cc",
     ]),
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
+    ],
+)
+
+cc_binary(
+    name = "simple_job",
+    srcs = [
+        "src/ray/test/examples/simple_job.cc",
+    ],
+    copts = COPTS,
+    data = [
+        "simple_job.so",
+    ],
+    linkstatic = True,
+    tags = ["team:core"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
+cc_binary(
+    name = "simple_job.so",
+    srcs = [
+        "src/ray/test/examples/simple_job.cc",
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
@@ -330,4 +363,19 @@ py_test_module_list(
         "team:core",
     ],
     deps = [],
+)
+
+py_test(
+    name = "test_submit_cpp_job",
+    size = "medium",
+    srcs = ["test_submit_cpp_job.py"],
+    data = [
+        "simple_job",
+        "simple_job.so",
+    ],
+    env = {
+        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
+        "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
+    },
+    tags = ["team:core"],
 )

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -11,8 +12,9 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
+from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
@@ -24,6 +26,21 @@ from ray.tune import Callback, TuneError, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def chdir_tmpdir(tmpdir):
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    yield tmpdir
+    os.chdir(old_cwd)
 
 
 class DummyTrainer(BaseTrainer):
@@ -88,6 +105,12 @@ def gen_dataset_func_eager():
 
 class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
+
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
@@ -272,7 +295,7 @@ class TunerTest(unittest.TestCase):
         ),
     ],
 )
-def test_tuner_api_kwargs(params_expected):
+def test_tuner_api_kwargs(shutdown_only, params_expected):
     tuner_params, assertion = params_expected
 
     tuner = Tuner(lambda config: 1, **tuner_params)
@@ -288,7 +311,7 @@ def test_tuner_api_kwargs(params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true():
+def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -299,7 +322,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_true():
         tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_false():
+def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -309,7 +332,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_false():
     tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_none():
+def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -317,6 +340,90 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
         ),
     )
     tuner.fit()
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
+    """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
+    reading relatives paths to the original working directory.
+    Also tests that `session.get_trial_dir()` env variable can be used as the directory
+    to write data to within the Trainable.
+    """
+    # Write a data file that we want to read in our training loop
+    with open("./read.txt", "w") as f:
+        f.write("data")
+
+    ray.init(num_cpus=1, runtime_env=runtime_env)
+
+    def train_func(config):
+        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
+        assert str(orig_working_dir) == os.getcwd(), (
+            "Working directory should not have changed from "
+            f"{orig_working_dir} to {os.getcwd()}"
+        )
+        # Make sure we can access the data from the original working dir
+        assert os.path.exists("./read.txt") and open("./read.txt", "r").read() == "data"
+
+        # Write operations should happen in each trial's independent logdir to
+        # prevent write conflicts
+        trial_dir = Path(session.get_trial_dir())
+        with open(trial_dir / "write.txt", "w") as f:
+            f.write(f"{config['id']}")
+
+    tuner = Tuner(
+        train_func,
+        tune_config=TuneConfig(chdir_to_trial_dir=False),
+        param_space={"id": tune.grid_search(list(range(4)))},
+    )
+    results = tuner.fit()
+    assert not results.errors
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
+    """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
+    relative paths to the original working directory.
+    """
+    # Write a data file that we want to read in our training loop
+    with open("./read.txt", "w") as f:
+        f.write("data")
+
+    # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
+    # Tune should still chdir to the trial directory, since we didn't disable the
+    # `chdir_to_trial_dir` flag.
+    ray.init(num_cpus=1, runtime_env=runtime_env)
+
+    def train_func(config):
+        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
+        assert (
+            str(orig_working_dir) != os.getcwd()
+        ), f"Working directory should have changed from {orig_working_dir}"
+
+        # Make sure we can access the data from the original working dir
+        # Different from above: create an absolute path using the env variable
+        data_path = orig_working_dir / "read.txt"
+        assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
+
+        trial_dir = Path(session.get_trial_dir())
+        # Tune should have changed the working directory to the trial directory
+        assert str(trial_dir) == os.getcwd()
+
+        with open(trial_dir / "write.txt", "w") as f:
+            f.write(f"{config['id']}")
+
+    tuner = Tuner(
+        train_func,
+        tune_config=TuneConfig(chdir_to_trial_dir=True),
+        param_space={"id": tune.grid_search(list(range(4)))},
+    )
+    results = tuner.fit()
+    assert not results.errors
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
 
 
 if __name__ == "__main__":

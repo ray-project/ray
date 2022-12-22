@@ -228,8 +228,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
     auto object_info_spilled = CreateNewObjectInfo(owner_id);
     rpc::Address owner_address;
     owner_address.set_worker_id(object_info_spilled.owner_worker_id.Binary());
-    obod_.ReportObjectSpilled(
-        object_info_spilled.object_id, current_node_id, owner_address, "url1", true);
+    obod_.ReportObjectSpilled(object_info_spilled.object_id,
+                              current_node_id,
+                              owner_address,
+                              "url1",
+                              ObjectID::Nil(),
+                              true);
     rpc::ObjectLocationUpdate update =
         owner_client->buffered_object_locations_.at(object_info_spilled.owner_worker_id)
             .at(object_info_spilled.object_id);
@@ -279,8 +283,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedUpdate) {
   obod_.ReportObjectRemoved(object_info.object_id, current_node_id, object_info);
   rpc::Address owner_address;
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
-  obod_.ReportObjectSpilled(
-      object_info.object_id, current_node_id, owner_address, "url1", true);
+  obod_.ReportObjectSpilled(object_info.object_id,
+                            current_node_id,
+                            owner_address,
+                            "url1",
+                            ObjectID::Nil(),
+                            true);
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 1);
 

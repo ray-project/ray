@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Type
+from typing import Any, Callable, Type
 
 import numpy as np
 import tree  # dm_tree
@@ -43,7 +43,7 @@ def register_lambda_agent_connector(
             return name, None
 
         @staticmethod
-        def from_state(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: Any):
             return LambdaAgentConnector(ctx)
 
     LambdaAgentConnector.__name__ = name
@@ -60,11 +60,11 @@ def flatten_data(data: AgentConnectorsOutput):
         data, AgentConnectorsOutput
     ), "Single agent data must be of type AgentConnectorsOutput"
 
-    for_training = data.for_training
-    for_action = data.for_action
+    raw_dict = data.raw_dict
+    sample_batch = data.sample_batch
 
     flattened = {}
-    for k, v in for_action.items():
+    for k, v in sample_batch.items():
         if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith("state_out_"):
             # Do not flatten infos, actions, and state_out_ columns.
             flattened[k] = v
@@ -76,7 +76,7 @@ def flatten_data(data: AgentConnectorsOutput):
         flattened[k] = np.array(tree.flatten(v))
     flattened = SampleBatch(flattened, is_training=False)
 
-    return AgentConnectorsOutput(for_training, flattened)
+    return AgentConnectorsOutput(raw_dict, flattened)
 
 
 # Agent connector to build and return a flattened observation SampleBatch

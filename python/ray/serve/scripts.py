@@ -155,6 +155,7 @@ def start(address, http_host, http_port, http_location):
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
+        "Existing deployments with no code changes will not be redeployed.\n\n"
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
@@ -188,7 +189,10 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app from the specified import path or YAML config.\n"
+        "Runs the Serve app from the specified import path (e.g. "
+        "my_script:my_bound_deployment) or YAML config.\n\n"
+        "If using a YAML config, existing deployments with no code changes "
+        "will not be redeployed.\n\n"
         "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
@@ -306,21 +310,28 @@ def run(
 
     if is_config:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": config.host, "port": config.port}
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
         )
     else:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": host, "port": port}
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
         )
 
     try:
         if is_config:
             client.deploy_app(config, _blocking=gradio)
+            cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+            cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
@@ -435,6 +446,12 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
+    "--kubernetes_format",
+    "-k",
+    is_flag=True,
+    help="Print Serve config in Kubernetes format.",
+)
+@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -444,7 +461,9 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def build(import_path: str, app_dir: str, output_path: Optional[str]):
+def build(
+    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -455,13 +474,18 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         )
 
     app = build_app(node)
+    schema = ServeApplicationSchema(
+        import_path=import_path,
+        runtime_env={},
+        host="0.0.0.0",
+        port=8000,
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
+    )
 
-    config = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-    ).dict()
-    config["import_path"] = import_path
-    config["host"] = "0.0.0.0"
-    config["port"] = 8000
+    if kubernetes_format:
+        config = schema.kubernetes_dict(exclude_unset=True)
+    else:
+        config = schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -470,6 +494,9 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
+
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)

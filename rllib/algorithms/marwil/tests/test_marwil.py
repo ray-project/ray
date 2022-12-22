@@ -24,7 +24,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -35,7 +35,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         To generate this data, first run:
-        $ ./train.py --run=PPO --env=CartPole-v0 \
+        $ ./train.py --run=PPO --env=CartPole-v1 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -47,7 +47,7 @@ class TestMARWIL(unittest.TestCase):
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=2)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_workers=1,
@@ -64,10 +64,10 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build()
+            algo = config.build()
             learnt = False
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
@@ -88,9 +88,9 @@ class TestMARWIL(unittest.TestCase):
                     "offline data!".format(min_reward)
                 )
 
-            check_compute_single_action(trainer, include_prev_action_reward=True)
+            check_compute_single_action(algo, include_prev_action_reward=True)
 
-            trainer.stop()
+            algo.stop()
 
     def test_marwil_cont_actions_from_offline_file(self):
         """Test whether MARWILTrainer runs with cont. actions.
@@ -128,15 +128,15 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build(env="Pendulum-v1")
+            algo = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
-                print(trainer.train())
-            trainer.stop()
+                print(algo.train())
+            algo.stop()
 
     def test_marwil_loss_function(self):
         """
         To generate the historic data used in this test case, first run:
-        $ ./train.py --run=PPO --env=CartPole-v0 \
+        $ ./train.py --run=PPO --env=CartPole-v1 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -155,8 +155,8 @@ class TestMARWIL(unittest.TestCase):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            trainer = config.build(env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = config.build(env="CartPole-v1")
+            policy = algo.get_policy()
             model = policy.model
 
             # Calculate our own expected values (to then compare against the

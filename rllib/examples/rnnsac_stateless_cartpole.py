@@ -4,7 +4,7 @@ from pathlib import Path
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.tune.registry import get_trainable_cls
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
@@ -96,9 +96,7 @@ if __name__ == "__main__":
     best_checkpoint = results.get_best_result().best_checkpoints[0][0]
     print("Loading checkpoint: {}".format(best_checkpoint))
 
-    algo = get_algorithm_class("RNNSAC")(
-        env=StatelessCartPole, config=checkpoint_config
-    )
+    algo = get_trainable_cls("RNNSAC")(env=StatelessCartPole, config=checkpoint_config)
     algo.restore(best_checkpoint)
 
     env = algo.env_creator({})

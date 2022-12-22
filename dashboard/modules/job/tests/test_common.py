@@ -1,6 +1,8 @@
 import pytest
 
 from ray.dashboard.modules.job.common import (
+    JobInfo,
+    JobStatus,
     http_uri_components_to_uri,
     uri_to_http_components,
     validate_request_type,
@@ -103,6 +105,30 @@ def test_uri_to_http_and_back():
     for original_uri in ["gcs://hello.zip", "gcs://fasdf.whl"]:
         new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
         assert new_uri == original_uri
+
+
+def test_dynamic_status_message():
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_cpus=1
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_gpus=1
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING,
+        entrypoint="echo hi",
+        entrypoint_resources={"Custom": 1},
+    )
+    assert "may be waiting for resources" in info.message
+
+    info = JobInfo(
+        status=JobStatus.PENDING, entrypoint="echo hi", runtime_env={"conda": "env"}
+    )
+    assert "may be waiting for the runtime environment" in info.message
 
 
 if __name__ == "__main__":

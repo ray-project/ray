@@ -11,9 +11,10 @@ Key Concepts
 ============
 
 On this page, we'll cover the key concepts to help you understand how RLlib works and
-how to use it. In RLlib you use ``Algorithm``'s to learn in problem environments.
-These algorithms use ``policies`` to select actions for your agents.
-Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+how to use it. In RLlib, you use ``Algorithm``'s to learn how to solve problem ``environments``.
+The algorithms use ``policies`` to select actions. Given a policy,
+``rollouts`` throughout an ``environment`` produce
+``sample batches`` (or ``trajectories``) of experiences.
 You can also customize the ``training_step``\s of your RL experiments.
 
 .. _environments:
@@ -89,9 +90,7 @@ which implements the proximal policy optimization algorithm in RLlib.
         config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Train via Ray Tune.
-        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
-        # we need to convert back to old-style config dicts.
-        tune.run("PPO", config=config.to_dict())
+        tune.run("PPO", config=config)
 
 
 .. tabbed:: RLlib Command Line

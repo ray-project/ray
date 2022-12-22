@@ -218,6 +218,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
     cdef cppclass CBuffer "ray::Buffer":
         uint8_t *Data() const
         size_t Size() const
+        c_bool IsPlasmaBuffer() const
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)

@@ -4,12 +4,15 @@ import shutil
 import subprocess
 import tempfile
 from typing import List, Optional
+from unittest.mock import patch
 
 import pytest
 from freezegun import freeze_time
 
 import ray
+import ray.cloudpickle as pickle
 from ray import tune
+from ray.air import Checkpoint
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
@@ -20,6 +23,12 @@ def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
     # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
     ray.shutdown()
 
 
@@ -113,31 +122,39 @@ class CustomCommandSyncer(Syncer):
 
         super().__init__(sync_period=sync_period)
 
-    def sync_up(
-        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_up(self, local_dir: str, remote_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_up_template.format(
             source=local_dir,
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+            return False
         return True
 
-    def sync_down(
-        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_down(self, remote_dir: str, local_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_down_template.format(
             source=remote_dir,
             target=local_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+            return False
         return True
 
     def delete(self, remote_dir: str) -> bool:
         cmd_str = self.delete_template.format(
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when deleting {remote_dir}: {e}")
+            return False
         return True
 
     def retry(self):
@@ -431,6 +448,49 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
+@pytest.mark.parametrize("num_retries", [None, 1, 2])
+def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
+    """Check that Trainable.save() default syncing can retry"""
+    tmp_source, tmp_target = temp_data_dirs
+    num_retries = num_retries or 3
+    ray.init(
+        num_cpus=2,
+        configure_logging=False,
+        runtime_env={
+            "env_vars": {
+                "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S": "0",
+                "TUNE_CHECKPOINT_CLOUD_RETRY_NUM": str(num_retries),
+            }
+        },
+    )
+
+    class FaultyCheckpoint(Checkpoint):
+        def to_uri(self, uri: str) -> str:
+            raise subprocess.CalledProcessError(-1, "dummy")
+
+    class TestTrainableRetry(TestTrainable):
+        _checkpoint_cls = FaultyCheckpoint
+
+        def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
+            from ray.tune.trainable.trainable import logger
+
+            output = []
+
+            def mock_error(x):
+                output.append(x)
+
+            with patch.object(logger, "error", mock_error):
+                ret = super()._maybe_save_to_cloud(checkpoint_dir)
+            assert f"after {num_retries}" in output[0]
+            return ret
+
+    trainable = ray.remote(TestTrainableRetry).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}"
+    )
+
+    ray.get(trainable.save.remote())
+
+
 def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
@@ -471,6 +531,19 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+
+def test_syncer_serialize(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer()
+
+    syncer.sync_up(
+        local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
+    )
+
+    pickle.dumps(syncer)
 
 
 if __name__ == "__main__":

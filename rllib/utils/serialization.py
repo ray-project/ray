@@ -156,30 +156,33 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
 
     def __common(d: Dict):
         """Common updates to the dict before we use it to construct spaces"""
-        del d["space"]
-        if "dtype" in d:
-            d["dtype"] = np.dtype(d["dtype"])
-        return d
+        ret = d.copy()
+        del ret["space"]
+        if "dtype" in ret:
+            ret["dtype"] = np.dtype(ret["dtype"])
+        return ret
 
     def _box(d: Dict) -> gym.spaces.Box:
-        d.update(
+        ret = d.copy()
+        ret.update(
             {
                 "low": _deserialize_ndarray(d["low"]),
                 "high": _deserialize_ndarray(d["high"]),
             }
         )
-        return gym.spaces.Box(**__common(d))
+        return gym.spaces.Box(**__common(ret))
 
     def _discrete(d: Dict) -> gym.spaces.Discrete:
         return gym.spaces.Discrete(**__common(d))
 
     def _multi_discrete(d: Dict) -> gym.spaces.Discrete:
-        d.update(
+        ret = d.copy()
+        ret.update(
             {
-                "nvec": _deserialize_ndarray(d["nvec"]),
+                "nvec": _deserialize_ndarray(ret["nvec"]),
             }
         )
-        return gym.spaces.MultiDiscrete(**__common(d))
+        return gym.spaces.MultiDiscrete(**__common(ret))
 
     def _tuple(d: Dict) -> gym.spaces.Discrete:
         spaces = [gym_space_from_dict(sp) for sp in d["spaces"]]
@@ -197,8 +200,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return Repeated(child_space=child_space, max_len=d["max_len"])
 
     def _flex_dict(d: Dict) -> FlexDict:
-        del d["space"]
-        spaces = {k: gym_space_from_dict(s) for k, s in d.items()}
+        spaces = {k: gym_space_from_dict(s) for k, s in d.items() if k != "space"}
         return FlexDict(spaces=spaces)
 
     space_map = {

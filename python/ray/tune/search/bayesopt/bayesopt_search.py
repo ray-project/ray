@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.search.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized, Uniform
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
@@ -419,7 +419,9 @@ class BayesOptSearch(Searcher):
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler is not None:
+                if domain.sampler is not None and not isinstance(
+                    domain.sampler, Uniform
+                ):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler)

@@ -640,14 +640,19 @@ def load_trial_checkpoint_data(
             continue
 
         json_path = os.path.join(cp_full_dir, "checkpoint.json")
+        meta_path = os.path.join(cp_full_dir, ".tune_metadata")
+
         if os.path.exists(json_path):
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
-        else:
-            meta_path = os.path.join(cp_full_dir, ".tune_metadata")
+        elif os.path.exists(meta_path):
             with open(meta_path, "rb") as f:
                 checkpoint_meta = pickle.load(f)
                 checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}
+        else:
+            # If neither file exists, this means the checkpoint got only synced half,
+            # so we should skip it
+            continue
         checkpoints.append((cp_dir, checkpoint_data))
 
     return TrialCheckpointData(

@@ -38,7 +38,7 @@ class TestActionConnector(unittest.TestCase):
 
         action = torch.Tensor([8, 9])
         states = torch.Tensor([[1, 1, 1], [2, 2, 2]])
-        ac_data = ActionConnectorDataType(0, 1, (action, states, {}))
+        ac_data = ActionConnectorDataType(0, 1, {}, (action, states, {}))
 
         converted = c(ac_data)
         self.assertTrue(isinstance(converted.output[0], np.ndarray))
@@ -56,7 +56,7 @@ class TestActionConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, NormalizeActionsConnector))
 
-        ac_data = ActionConnectorDataType(0, 1, (0.5, [], {}))
+        ac_data = ActionConnectorDataType(0, 1, {}, (0.5, [], {}))
 
         normalized = c(ac_data)
         self.assertEqual(normalized.output[0], 4.5)
@@ -73,7 +73,7 @@ class TestActionConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, ClipActionsConnector))
 
-        ac_data = ActionConnectorDataType(0, 1, (8.8, [], {}))
+        ac_data = ActionConnectorDataType(0, 1, {}, (8.8, [], {}))
 
         clipped = c(ac_data)
         self.assertEqual(clipped.output[0], 6.0)
@@ -90,7 +90,7 @@ class TestActionConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, ImmutableActionsConnector))
 
-        ac_data = ActionConnectorDataType(0, 1, (np.array([8.8]), [], {}))
+        ac_data = ActionConnectorDataType(0, 1, {}, (np.array([8.8]), [], {}))
 
         immutable = c(ac_data)
 

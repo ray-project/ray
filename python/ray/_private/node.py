@@ -95,7 +95,7 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].split(":")
+            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -177,7 +177,7 @@ class Node:
         if head:
             # date including microsecond
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self.session_name = f"session_{date_str}_{os.getpid()}"
+            self._session_name = f"session_{date_str}_{os.getpid()}"
         else:
             session_name = ray._private.utils.internal_kv_get_with_retry(
                 self.get_gcs_client(),
@@ -185,7 +185,7 @@ class Node:
                 ray_constants.KV_NAMESPACE_SESSION,
                 num_retries=NUM_REDIS_GET_RETRIES,
             )
-            self.session_name = ray._private.utils.decode(session_name)
+            self._session_name = ray._private.utils.decode(session_name)
             # setup gcs client
             self.get_gcs_client()
 
@@ -224,10 +224,8 @@ class Node:
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.redis_address,
                     self.gcs_address,
                     self._raylet_ip_address,
-                    redis_password=self.redis_password,
                 )
                 self._plasma_store_socket_name = node_info.object_store_socket_name
                 self._raylet_socket_name = node_info.raylet_socket_name
@@ -272,7 +270,7 @@ class Node:
             # Make sure GCS is up.
             self.get_gcs_client().internal_kv_put(
                 b"session_name",
-                self.session_name.encode(),
+                self._session_name.encode(),
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
@@ -310,10 +308,8 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address,
                     self.gcs_address,
                     self._plasma_store_socket_name,
-                    self.redis_password,
                 )
             except TimeoutError:
                 raise Exception(
@@ -322,10 +318,8 @@ class Node:
                     "the Ray processes failed to startup."
                 )
             node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.redis_address,
                 self.gcs_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info.node_manager_port
@@ -399,7 +393,7 @@ class Node:
         try_to_create_directory(self._temp_dir)
 
         if self.head:
-            self._session_dir = os.path.join(self._temp_dir, self.session_name)
+            self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
             session_dir = ray._private.utils.internal_kv_get_with_retry(
                 self.get_gcs_client(),
@@ -479,6 +473,11 @@ class Node:
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
+
+    @property
+    def session_name(self):
+        """Get the session name (cluster ID)."""
+        return self._session_name
 
     @property
     def node_ip_address(self):
@@ -904,6 +903,7 @@ class Node:
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
+            self.session_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -958,6 +958,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            self.session_name,
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
@@ -997,13 +998,11 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
-            self.redis_address,
             self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
@@ -1427,7 +1426,7 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self.session_name
+                object_spilling_config, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1471,7 +1470,7 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self.session_name)
+        external_storage.setup_external_storage(deserialized_config, self._session_name)
         external_storage.reset_external_storage()
 
     def _record_stats(self):

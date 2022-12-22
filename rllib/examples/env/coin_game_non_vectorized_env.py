@@ -45,7 +45,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
         self._load_config(config)
         self.player_red_id, self.player_blue_id = self.players_ids
-        self.n_features = self.grid_size ** 2 * (2 * self.NUM_AGENTS)
+        self.n_features = self.grid_size**2 * (2 * self.NUM_AGENTS)
         self.OBSERVATION_SPACE = gym.spaces.Box(
             low=0, high=1, shape=(self.grid_size, self.grid_size, 4), dtype="uint8"
         )

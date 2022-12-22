@@ -1,5 +1,7 @@
 import copy
+import functools
 import itertools
+import logging
 import uuid
 from typing import (
     TYPE_CHECKING,
@@ -36,6 +38,9 @@ if TYPE_CHECKING:
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class Stage:
@@ -297,6 +302,7 @@ class ExecutionPlan:
         """
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
+            context = DatasetContext.get_current()
             for stage_idx, stage in enumerate(stages):
                 if allow_clear_input_blocks:
                     clear_input_blocks = self._should_clear_input_blocks(
@@ -313,6 +319,8 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
+                if context.enable_auto_log_stats:
+                    logger.info(stats.summary_string(include_parent=False))
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
@@ -533,6 +541,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
+        target_block_size: Optional[int] = None,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -543,6 +552,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
+        self.target_block_size = target_block_size
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -610,9 +620,15 @@ class OneToOneStage(Stage):
 
         block_fn1 = prev.block_fn
         block_fn2 = self.block_fn
+        if prev.target_block_size is not None and self.target_block_size is not None:
+            target_block_size = max(prev.target_block_size, self.target_block_size)
+        elif prev.target_block_size is not None:
+            target_block_size = prev.target_block_size
+        else:
+            target_block_size = self.target_block_size
 
         def block_fn(
-            block: Block,
+            blocks: Iterable[Block],
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -630,15 +646,15 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            for tmp1 in block_fn1(block, *prev_fn_args, **prev_fn_kwargs):
-                for tmp2 in block_fn2(tmp1, *self_fn_args, **self_fn_kwargs):
-                    yield tmp2
+            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
             block_fn,
             self.compute,
             prev.ray_remote_args,
+            target_block_size=target_block_size,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -665,6 +681,7 @@ class OneToOneStage(Stage):
             blocks,
             clear_input_blocks,
             name=self.name,
+            target_block_size=self.target_block_size,
             fn=self.fn,
             fn_args=self.fn_args,
             fn_kwargs=self.fn_kwargs,
@@ -705,7 +722,7 @@ class AllToAllStage(Stage):
             return False
         if not is_task_compute(prev.compute):
             return False
-        if any(k not in INHERITABLE_REMOTE_ARGS for k in prev.ray_remote_args):
+        if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
         return True
 
@@ -723,20 +740,19 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(block: Block) -> Iterable[Block]:
-                yield from prev_block_fn(block, *prev_fn_args, **prev_fn_kwargs)
+            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+                yield from prev_block_fn(blocks, *prev_fn_args, **prev_fn_kwargs)
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(block: Block) -> Iterable[Block]:
-                for tmp1 in prev_block_fn(
-                    block,
+            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+                blocks = prev_block_fn(
+                    blocks,
                     *prev_fn_args,
                     **prev_fn_kwargs,
-                ):
-                    for tmp2 in self_block_udf(tmp1):
-                        yield tmp2
+                )
+                yield from self_block_udf(blocks)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -811,6 +827,7 @@ def _rewrite_read_stage(
         blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
     )
 
+    @_adapt_for_multiple_blocks
     def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
         for block in read_fn():
             yield block
@@ -924,3 +941,14 @@ def _canonicalize(remote_args: dict) -> dict:
 def _is_lazy(blocks: BlockList) -> bool:
     """Whether the provided block list is lazy."""
     return isinstance(blocks, LazyBlockList)
+
+
+def _adapt_for_multiple_blocks(
+    fn: Callable[..., Iterable[Block]],
+) -> Callable[..., Iterable[Block]]:
+    @functools.wraps(fn)
+    def wrapper(blocks: Iterable[Block], *args, **kwargs):
+        for block in blocks:
+            yield from fn(block, *args, **kwargs)
+
+    return wrapper

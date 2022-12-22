@@ -6,6 +6,7 @@ import numbers
 
 import os
 import sys
+import textwrap
 import time
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -13,8 +14,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 from ray._private.dict import flatten_dict
 
+import ray
 from ray.tune.callback import Callback
-from ray.tune.logger import logger, pretty_print
+from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
@@ -33,9 +35,10 @@ from ray.tune.result import (
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
-from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.node import _force_on_current_node
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.queue import Queue
+from ray.util.queue import Empty, Queue
 
 from ray.widgets import Template
 
@@ -533,7 +536,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         )
 
         if not IS_NOTEBOOK:
-            logger.warning(
+            warnings.warn(
                 "You are using the `JupyterNotebookReporter`, but not "
                 "IPython/Jupyter-compatible environment was detected. "
                 "If this leads to unformatted output (e.g. like "
@@ -720,8 +723,8 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
 
         import psutil
 
-        total_gb = psutil.virtual_memory().total / (1024 ** 3)
-        used_gb = total_gb - psutil.virtual_memory().available / (1024 ** 3)
+        total_gb = psutil.virtual_memory().total / (1024**3)
+        used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
         if used_gb > total_gb * 0.9:
             message = (
                 ": ***LOW MEMORY*** less than 10% of the memory on "
@@ -754,7 +757,7 @@ def _memory_debug_str() -> str:
     if np.isnan(used_gb):
         return message
     else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB{message}"
+        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -902,7 +905,9 @@ def _trial_progress_str(
     return delim.join(messages)
 
 
-def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
+def _max_len(
+    value: Any, max_len: int = 20, add_addr: bool = False, wrap: bool = False
+) -> Any:
     """Abbreviate a string representation of an object to `max_len` characters.
 
     For numbers, booleans and None, the original value will be returned for
@@ -922,11 +927,20 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     if len(string) <= max_len:
         return string
 
+    if wrap:
+        # Maximum two rows.
+        # Todo: Make this configurable in the refactor
+        if len(value) > max_len * 2:
+            value = "..." + string[(3 - (max_len * 2)) :]
+
+        wrapped = textwrap.wrap(value, width=max_len)
+        return "\n".join(wrapped)
+
     if add_addr and not isinstance(value, (int, float, bool)):
         result = f"{string[: (max_len - 5)]}_{hex(id(value))[-4:]}"
         return result
 
-    result = f"{string[: (max_len - 3)]}..."
+    result = "..." + string[(3 - max_len) :]
     return result
 
 
@@ -1039,19 +1053,29 @@ def _get_progress_table_data(
     # Format column headings
     if isinstance(metric_columns, Mapping):
         formatted_metric_columns = [
-            _max_len(metric_columns[k], max_len=max_column_length, add_addr=False)
+            _max_len(
+                metric_columns[k], max_len=max_column_length, add_addr=False, wrap=True
+            )
             for k in metric_keys
         ]
     else:
-        formatted_metric_columns = metric_keys
+        formatted_metric_columns = [
+            _max_len(k, max_len=max_column_length, add_addr=False, wrap=True)
+            for k in metric_keys
+        ]
     if isinstance(parameter_columns, Mapping):
         formatted_parameter_columns = [
-            _max_len(parameter_columns[k], max_len=max_column_length, add_addr=False)
+            _max_len(
+                parameter_columns[k],
+                max_len=max_column_length,
+                add_addr=False,
+                wrap=True,
+            )
             for k in parameter_keys
         ]
     else:
         formatted_parameter_columns = [
-            _max_len(k, max_len=max_column_length, add_addr=False)
+            _max_len(k, max_len=max_column_length, add_addr=False, wrap=True)
             for k in parameter_keys
         ]
     columns = (
@@ -1510,3 +1534,61 @@ def _detect_progress_metrics(
         return None
 
     return getattr(trainable, "_progress_metrics", None)
+
+
+def _prepare_progress_reporter_for_ray_client(
+    progress_reporter: ProgressReporter,
+    verbosity: Union[int, Verbosity],
+    string_queue: Optional[Queue] = None,
+) -> Tuple[ProgressReporter, Queue]:
+    """Prepares progress reported for Ray Client by setting the string queue.
+
+    The string queue will be created if it's None."""
+    set_verbosity(verbosity)
+    progress_reporter = progress_reporter or _detect_reporter()
+
+    # JupyterNotebooks don't work with remote tune runs out of the box
+    # (e.g. via Ray client) as they don't have access to the main
+    # process stdout. So we introduce a queue here that accepts
+    # strings, which will then be displayed on the driver side.
+    if isinstance(progress_reporter, RemoteReporterMixin):
+        if string_queue is None:
+            string_queue = Queue(
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+            )
+        progress_reporter.output_queue = string_queue
+
+    return progress_reporter, string_queue
+
+
+def _stream_client_output(
+    remote_future: ray.ObjectRef,
+    progress_reporter: ProgressReporter,
+    string_queue: Queue,
+) -> Any:
+    """
+    Stream items from string queue to progress_reporter until remote_future resolves
+    """
+    if string_queue is None:
+        return
+
+    def get_next_queue_item():
+        try:
+            return string_queue.get(block=False)
+        except Empty:
+            return None
+
+    def _handle_string_queue():
+        string_item = get_next_queue_item()
+        while string_item is not None:
+            # This happens on the driver side
+            progress_reporter.display(string_item)
+            string_item = get_next_queue_item()
+
+    # ray.wait(...)[1] returns futures that are not ready, yet
+    while ray.wait([remote_future], timeout=0.2)[1]:
+        # Check if we have items to execute
+        _handle_string_queue()
+
+    # Handle queue one last time
+    _handle_string_queue()

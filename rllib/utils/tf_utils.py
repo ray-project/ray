@@ -18,6 +18,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)
@@ -227,8 +228,8 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
-) -> Type["TFPolicy"]:
+    orig_cls: Type["Policy"], config: PartialAlgorithmConfigDict
+) -> Type["Policy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
@@ -242,10 +243,10 @@ def get_tf_eager_cls_if_necessary(
     cls = orig_cls
     framework = config.get("framework", "tf")
 
-    if framework in ["tf2", "tf", "tfe"] and not tf1:
+    if framework in ["tf2", "tf"] and not tf1:
         raise ImportError("Could not import tensorflow!")
 
-    if framework in ["tf2", "tfe"]:
+    if framework == "tf2":
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy
@@ -295,6 +296,21 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
         tf.math.square(x) * 0.5,
         delta * (tf.abs(x) - 0.5 * delta),
     )
+
+
+@PublicAPI
+def l2_loss(x: TensorType) -> TensorType:
+    """Computes half the L2 norm over a tensor's values without the sqrt.
+
+    output = 0.5 * sum(x ** 2)
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        0.5 times the L2 norm over the given tensor's values (w/o sqrt).
+    """
+    return 0.5 * tf.reduce_sum(tf.pow(x, 2.0))
 
 
 @PublicAPI

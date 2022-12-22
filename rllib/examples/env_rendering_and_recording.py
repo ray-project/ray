@@ -5,12 +5,13 @@ import ray
 from gym.spaces import Box, Discrete
 
 from ray import air, tune
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -87,35 +88,36 @@ if __name__ == "__main__":
     ray.init(num_cpus=4)
     args = parser.parse_args()
 
-    # Example config causing
-    config = {
-        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
-        "env": (MultiAgentCustomRenderedEnv if args.multi_agent else CustomRenderedEnv),
-        "env_config": {
-            "corridor_length": 10,
-            "max_steps": 100,
-        },
-        # Evaluate once per training iteration.
-        "evaluation_interval": 1,
-        # Run evaluation on (at least) two episodes
-        "evaluation_duration": 2,
-        # ... using one evaluation worker (setting this to 0 will cause
-        # evaluation to run on the local evaluation worker, blocking
-        # training until evaluation is done).
-        "evaluation_num_workers": 1,
-        # Special evaluation config. Keys specified here will override
-        # the same keys in the main config, but only for evaluation.
-        "evaluation_config": {
-            # Render the env while evaluating.
-            # Note that this will always only render the 1st RolloutWorker's
-            # env and only the 1st sub-env in a vectorized env.
-            "render_env": True,
-        },
-        "num_workers": 1,
+    # Example config switching on rendering.
+    config = (
+        PPOConfig()
+        # Also try common gym envs like: "CartPole-v1" or "Pendulum-v1".
+        .environment(
+            MultiAgentCustomRenderedEnv if args.multi_agent else CustomRenderedEnv,
+            env_config={"corridor_length": 10, "max_steps": 100},
+        )
+        .framework(args.framework)
         # Use a vectorized env with 2 sub-envs.
-        "num_envs_per_worker": 2,
-        "framework": args.framework,
-    }
+        .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+        .evaluation(
+            # Evaluate once per training iteration.
+            evaluation_interval=1,
+            # Run evaluation on (at least) two episodes
+            evaluation_duration=2,
+            # ... using one evaluation worker (setting this to 0 will cause
+            # evaluation to run on the local evaluation worker, blocking
+            # training until evaluation is done).
+            evaluation_num_workers=1,
+            # Special evaluation config. Keys specified here will override
+            # the same keys in the main config, but only for evaluation.
+            evaluation_config={
+                # Render the env while evaluating.
+                # Note that this will always only render the 1st RolloutWorker's
+                # env and only the 1st sub-env in a vectorized env.
+                "render_env": True,
+            },
+        )
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -123,4 +125,8 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    tune.Tuner("PPO", param_space=config, run_config=air.RunConfig(stop=stop)).fit()
+    tune.Tuner(
+        "PPO",
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop),
+    ).fit()

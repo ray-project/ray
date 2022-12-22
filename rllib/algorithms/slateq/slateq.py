@@ -15,14 +15,13 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +32,30 @@ class SlateQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-        ... 0.0004
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "SlateQ",
-        ...     stop={"episode_reward_mean": 160.0},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 160.0}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -111,7 +111,6 @@ class SlateQConfig(AlgorithmConfig):
         }
         # Switch to greedy actions in evaluation workers.
         self.evaluation_config = {"explore": False}
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
@@ -119,6 +118,8 @@ class SlateQConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation(evaluation_config={"explore": False})
         # __sphinx_doc_end__
         # fmt: on
 
@@ -129,19 +130,19 @@ class SlateQConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        fcnet_hiddens_per_candidate: Optional[List[int]] = None,
-        target_network_update_freq: Optional[int] = None,
-        tau: Optional[float] = None,
-        use_huber: Optional[bool] = None,
-        huber_threshold: Optional[float] = None,
-        training_intensity: Optional[float] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        lr_choice_model: Optional[bool] = None,
-        rmsprop_epsilon: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        n_step: Optional[int] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        fcnet_hiddens_per_candidate: Optional[List[int]] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        use_huber: Optional[bool] = NotProvided,
+        huber_threshold: Optional[float] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        lr_choice_model: Optional[bool] = NotProvided,
+        rmsprop_epsilon: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "SlateQConfig":
         """Sets the training related configuration.
@@ -181,31 +182,31 @@ class SlateQConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
-        if fcnet_hiddens_per_candidate is not None:
+        if replay_buffer_config is not NotProvided:
+            self.replay_buffer_config.update(replay_buffer_config)
+        if fcnet_hiddens_per_candidate is not NotProvided:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if use_huber is not None:
+        if use_huber is not NotProvided:
             self.use_huber = use_huber
-        if huber_threshold is not None:
+        if huber_threshold is not NotProvided:
             self.huber_threshold = huber_threshold
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if lr_choice_model is not None:
+        if lr_choice_model is not NotProvided:
             self.lr_choice_model = lr_choice_model
-        if rmsprop_epsilon is not None:
+        if rmsprop_epsilon is not NotProvided:
             self.rmsprop_epsilon = rmsprop_epsilon
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
@@ -213,7 +214,7 @@ class SlateQConfig(AlgorithmConfig):
         return self
 
 
-def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
+def calculate_round_robin_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -228,11 +229,14 @@ def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SlateQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SlateQConfig()
 
+    @classmethod
     @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:
@@ -247,7 +251,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

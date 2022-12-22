@@ -66,8 +66,9 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
+        passthrough_args = [s.replace(" ", "\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
-        command_str = " && ".join(self.command_prefix + [exec_command])
+        command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
@@ -82,7 +83,8 @@ class RuntimeEnvContext:
             )
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            subprocess.run([executable, *passthrough_args])
+            cmd = [*self.command_prefix, executable, *passthrough_args]
+            subprocess.Popen(cmd, shell=True).wait()
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py

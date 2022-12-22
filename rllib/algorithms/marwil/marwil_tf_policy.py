@@ -98,7 +98,7 @@ class MARWILLoss:
 
             # Update averaged advantage norm.
             # Eager.
-            if policy.config["framework"] in ["tf2", "tfe"]:
+            if policy.config["framework"] == "tf2":
                 update_term = adv_squared - policy._moving_average_sqd_adv_norm
                 policy._moving_average_sqd_adv_norm.assign_add(rate * update_term)
 
@@ -165,7 +165,7 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
     class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -181,7 +181,7 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

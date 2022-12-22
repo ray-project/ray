@@ -12,8 +12,13 @@ from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+    ConcurrentMeanStdObservationFilterAgentConnector,
+)
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -37,6 +42,14 @@ def get_agent_connectors_from_config(
 
     if not config["_disable_preprocessor_api"]:
         connectors.append(ObsPreprocessorConnector(ctx))
+
+    # Filters should be after observation preprocessing
+    filter_connector = get_synced_filter_connector(
+        ctx,
+    )
+    # Configuration option "NoFilter" results in `filter_connector==None`.
+    if filter_connector:
+        connectors.append(filter_connector)
 
     connectors.extend(
         [
@@ -78,6 +91,12 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
+    assert policy.agent_connectors is None and policy.agent_connectors is None, (
+        "Can not create connectors for a policy that already has connectors. This "
+        "can happen if you add a Policy that has connectors attached to a "
+        "RolloutWorker with add_policy()."
+    )
+
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_config(ctx, config)
 
@@ -99,3 +118,34 @@ def restore_connectors_for_policy(
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config
     return get_connector(ctx, name, params)
+
+
+# We need this filter selection mechanism temporarily to remain compatible to old API
+@DeveloperAPI
+def get_synced_filter_connector(ctx: ConnectorContext):
+    filter_specifier = ctx.config.get("observation_filter")
+    if filter_specifier == "MeanStdFilter":
+        return MeanStdObservationFilterAgentConnector(ctx, clip=None)
+    elif filter_specifier == "ConcurrentMeanStdFilter":
+        return ConcurrentMeanStdObservationFilterAgentConnector(ctx, clip=None)
+    elif filter_specifier == "NoFilter":
+        return None
+    else:
+        raise Exception("Unknown observation_filter: " + str(filter_specifier))
+
+
+@DeveloperAPI
+def maybe_get_filters_for_syncing(rollout_worker, policy_id):
+    # As long as the historic filter synchronization mechanism is in
+    # place, we need to put filters into self.filters so that they get
+    # synchronized
+    filter_connectors = rollout_worker.policy_map[policy_id].agent_connectors[
+        SyncedFilterAgentConnector
+    ]
+    # There can only be one filter at a time
+    if filter_connectors:
+        assert len(filter_connectors) == 1, (
+            "ConnectorPipeline has multiple connectors of type "
+            "SyncedFilterAgentConnector but can only have one."
+        )
+        rollout_worker.filters[policy_id] = filter_connectors[0].filter

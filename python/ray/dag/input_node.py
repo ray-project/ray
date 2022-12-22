@@ -11,7 +11,7 @@ IN_CONTEXT_MANAGER = "__in_context_manager__"
 
 @DeveloperAPI
 class InputNode(DAGNode):
-    """Ray dag node used in DAG building API to mark entrypoints of a DAG.
+    r"""Ray dag node used in DAG building API to mark entrypoints of a DAG.
 
     Should only be function or class method. A DAG can have multiple
     entrypoints, but only one instance of InputNode exists per DAG, shared
@@ -19,7 +19,7 @@ class InputNode(DAGNode):
 
     >>> Example:
     >>>            m1.forward
-    >>>            /       \\
+    >>>            /       \
     >>>    dag_input     ensemble -> dag_output
     >>>            \       /
     >>>            m2.forward

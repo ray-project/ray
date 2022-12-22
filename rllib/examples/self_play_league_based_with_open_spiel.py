@@ -40,7 +40,7 @@ import re
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
@@ -50,7 +50,7 @@ from ray.tune import register_env
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -288,16 +288,18 @@ if __name__ == "__main__":
         # At first, only have main play against the random main exploiter.
         return "main" if episode.episode_id % 2 == agent_id else "main_exploiter_0"
 
-    config = {
-        "env": "open_spiel_env",
-        "callbacks": LeagueBasedSelfPlayCallback,
-        "num_sgd_iter": 20,
-        "num_envs_per_worker": 5,
-        "multiagent": {
+    config = (
+        PPOConfig()
+        .environment("open_spiel_env")
+        .framework(args.framework)
+        .callbacks(LeagueBasedSelfPlayCallback)
+        .rollouts(num_envs_per_worker=5)
+        .training(num_sgd_iter=20)
+        .multi_agent(
             # Initial policy map: All PPO. This will be expanded
             # to more policy snapshots. This is done in the
             # custom callback defined above (`LeagueBasedSelfPlayCallback`).
-            "policies": {
+            policies={
                 # Our main policy, we'd like to optimize.
                 "main": PolicySpec(),
                 # First frozen version of main (after we reach n% win-rate).
@@ -309,15 +311,14 @@ if __name__ == "__main__":
                 "league_exploiter_0": PolicySpec(policy_class=RandomPolicy),
                 "league_exploiter_1": PolicySpec(),
             },
-            "policy_mapping_fn": policy_mapping_fn,
+            policy_mapping_fn=policy_mapping_fn,
             # At first, only train main_0 (until good enough to win against
             # random).
-            "policies_to_train": ["main"],
-        },
+            policies_to_train=["main"],
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "timesteps_total": args.stop_timesteps,
@@ -344,14 +345,16 @@ if __name__ == "__main__":
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0
-        trainer = PPO(config=dict(config, **{"explore": False}))
+        # Switch off exploration for better inference performance.
+        config.explore = False
+        algo = config.build()
         if args.from_checkpoint:
-            trainer.restore(args.from_checkpoint)
+            algo.restore(args.from_checkpoint)
         else:
             checkpoint = results.get_best_result().checkpoint
             if not checkpoint:
                 raise ValueError("No last checkpoint found in results!")
-            trainer.restore(checkpoint)
+            algo.restore(checkpoint)
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
@@ -367,7 +370,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(obs, policy_id="main")
+                    action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]
@@ -389,5 +392,7 @@ if __name__ == "__main__":
             human_player = 1 - human_player
 
             num_episodes += 1
+
+        algo.stop()
 
     ray.shutdown()

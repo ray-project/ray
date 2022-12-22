@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
@@ -40,16 +43,15 @@ def PublicAPI(*args, **kwargs):
         stability = "stable"
 
     def wrap(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
         if stability in ["alpha", "beta"]:
-            obj.__doc__ += (
-                f"\n    PublicAPI ({stability}): This API is in {stability} "
+            message = (
+                f"PublicAPI ({stability}): This API is in {stability} "
                 "and may change before becoming stable."
             )
         else:
-            obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+            message = "PublicAPI: This API is stable across Ray releases."
 
+        _append_doc(obj, message=message)
         _mark_annotated(obj)
         return obj
 
@@ -73,10 +75,8 @@ def DeveloperAPI(*args, **kwargs):
         return DeveloperAPI()(args[0])
 
     def wrap(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
-        obj.__doc__ += (
-            "\n    DeveloperAPI: This API may change across minor Ray releases."
+        _append_doc(
+            obj, message="DeveloperAPI: This API may change across minor Ray releases."
         )
         _mark_annotated(obj)
         return obj
@@ -108,24 +108,86 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     message = (
-        "\n    DEPRECATED: This API is deprecated and may be removed "
-        "in future Ray releases."
+        "**DEPRECATED:** This API is deprecated and may be removed in a future "
+        "Ray release."
     )
+
     if "message" in kwargs:
-        message = message + " " + kwargs["message"]
+        message += " " + kwargs["message"]
         del kwargs["message"]
 
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
     def inner(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
-        obj.__doc__ += f"{message}"
+        _append_doc(obj, message=message, directive="warning")
         _mark_annotated(obj)
         return obj
 
     return inner
+
+
+def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
+    if not obj.__doc__:
+        obj.__doc__ = ""
+
+    obj.__doc__ = obj.__doc__.rstrip()
+
+    indent = _get_indent(obj.__doc__)
+    obj.__doc__ += "\n\n"
+    if directive is not None:
+        obj.__doc__ += f"{' ' * indent}.. {directive}::\n"
+        obj.__doc__ += f"{' ' * (indent + 4)}{message}"
+    else:
+        obj.__doc__ += f"{' ' * indent}{message}"
+    obj.__doc__ += f"\n{' ' * indent}"
+
+
+def _get_indent(docstring: str) -> int:
+    """
+
+    Example:
+        >>> def f():
+        ...     '''Docstring summary.'''
+        >>> f.__doc__
+        'Docstring summary.'
+        >>> _get_indent(f.__doc__)
+        0
+
+        >>> def g(foo):
+        ...     '''Docstring summary.
+        ...
+        ...     Args:
+        ...         foo: Does bar.
+        ...     '''
+        >>> g.__doc__
+        'Docstring summary.\\n\\n    Args:\\n        foo: Does bar.\\n    '
+        >>> _get_indent(g.__doc__)
+        4
+
+        >>> class A:
+        ...     def h():
+        ...         '''Docstring summary.
+        ...
+        ...         Returns:
+        ...             None.
+        ...         '''
+        >>> A.h.__doc__
+        'Docstring summary.\\n\\n        Returns:\\n            None.\\n        '
+        >>> _get_indent(A.h.__doc__)
+        8
+    """
+    if not docstring:
+        return 0
+
+    non_empty_lines = list(filter(bool, docstring.splitlines()))
+    if len(non_empty_lines) == 1:
+        # Docstring contains summary only.
+        return 0
+
+    # The docstring summary isn't indented, so check the indentation of the second
+    # non-empty line.
+    return len(non_empty_lines[1]) - len(non_empty_lines[1].lstrip())
 
 
 def _mark_annotated(obj) -> None:

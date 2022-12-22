@@ -7,7 +7,7 @@ import tensorflow as tf
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
@@ -18,22 +18,10 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
-
-
-def build_model() -> tf.keras.Model:
+def build_raw_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=()),
@@ -42,6 +30,15 @@ def build_model() -> tf.keras.Model:
             tf.keras.layers.Dense(1),
         ]
     )
+    return model
+
+
+weights = [np.array([[2.0]]), np.array([0.0])]
+
+
+def build_model() -> tf.keras.Model:
+    model = build_raw_model()
+    model.set_weights(weights)
     return model
 
 
@@ -66,11 +63,8 @@ def build_model_unsupported() -> tf.keras.Model:
     return model
 
 
-weights = [np.array([[2.0]]), np.array([0.0])]
-
-
 def test_repr():
-    predictor = TensorflowPredictor(model_definition=build_model)
+    predictor = TensorflowPredictor(model=build_model())
 
     representation = repr(predictor)
 
@@ -81,8 +75,8 @@ def test_repr():
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
-    checkpoint = Checkpoint.from_dict(
-        {MODEL_KEY: weights, PREPROCESSOR_KEY: preprocessor}
+    checkpoint = TensorflowCheckpoint.from_model(
+        build_model(), preprocessor=preprocessor
     )
 
     return checkpoint, preprocessor
@@ -91,50 +85,74 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
 def test_init():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
-    predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor, model_weights=weights
+    predictor = TensorflowPredictor(model=build_model(), preprocessor=preprocessor)
+
+    checkpoint_predictor = TensorflowPredictor.from_checkpoint(
+        checkpoint, model_definition=build_raw_model
     )
 
-    checkpoint_predictor = TensorflowPredictor.from_checkpoint(checkpoint, build_model)
-
-    assert checkpoint_predictor.model_definition == predictor.model_definition
-    assert checkpoint_predictor.model_weights == predictor.model_weights
+    assert checkpoint_predictor._model.get_weights() == predictor._model.get_weights()
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+
+
+def test_tensorflow_checkpoint():
+    model = build_model()
+    model.build(input_shape=(1,))
+    preprocessor = DummyPreprocessor()
+
+    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    assert (
+        checkpoint.get_model(model_definition=build_raw_model).get_weights()
+        == model.get_weights()
+    )
+
+    with checkpoint.as_directory() as path:
+        checkpoint = TensorflowCheckpoint.from_directory(path)
+        checkpoint_preprocessor = checkpoint.get_preprocessor()
+        assert (
+            checkpoint.get_model(model_definition=build_raw_model).get_weights()
+            == model.get_weights()
+        )
+        assert checkpoint_preprocessor == preprocessor
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(use_gpu):
-    predictor = TensorflowPredictor(
-        model_definition=build_model, model_weights=weights, use_gpu=use_gpu
-    )
+    predictor = TensorflowPredictor(model=build_model(), use_gpu=use_gpu)
 
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_with_preprocessor(use_gpu):
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
-        model_definition=build_model,
+        model=build_model(),
         preprocessor=preprocessor,
-        model_weights=weights,
         use_gpu=use_gpu,
     )
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [4, 8, 12]
+    assert len(predictions) == 1
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
+    assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
-    predictor = TensorflowPredictor(model_definition=build_model_multi_input)
+    predictor = TensorflowPredictor(model=build_model_multi_input())
 
     raw_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
@@ -145,21 +163,18 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = TensorflowCheckpoint.from_dict({MODEL_KEY: {}})
+@pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
+def test_predict_dataset_block(ray_start_4_cpus, block_type):
+    checkpoint = TensorflowCheckpoint.from_model(model=build_model_multi_input())
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model_multi_input
     )
 
     dummy_data = pd.DataFrame([[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["A", "B"])
 
-    # Todo: Ray data does not support numpy dicts
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data.to_numpy())
-    elif batch_type == pd.DataFrame:
+    if block_type == pd.DataFrame:
         dataset = ray.data.from_pandas(dummy_data)
-    elif batch_type == pa.Table:
+    elif block_type == pa.Table:
         dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
     else:
         raise RuntimeError("Invalid batch_type")
@@ -172,9 +187,7 @@ def test_predict_batch(ray_start_4_cpus, batch_type):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_dataframe(use_gpu):
-    predictor = TensorflowPredictor(
-        model_definition=build_model_multi_input, use_gpu=use_gpu
-    )
+    predictor = TensorflowPredictor(model=build_model_multi_input(), use_gpu=use_gpu)
 
     data_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch)
@@ -185,9 +198,7 @@ def test_predict_dataframe(use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_multi_output(use_gpu):
-    predictor = TensorflowPredictor(
-        model_definition=build_model_multi_output, use_gpu=use_gpu
-    )
+    predictor = TensorflowPredictor(model=build_model_multi_output(), use_gpu=use_gpu)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -202,7 +213,7 @@ def test_predict_multi_output(use_gpu):
 
 def test_predict_unsupported_output():
     """Tests predictions with models that have unsupported output types."""
-    predictor = TensorflowPredictor(model_definition=build_model_unsupported)
+    predictor = TensorflowPredictor(model=build_model_unsupported())
 
     data_batch = np.array([1, 2, 3])
     # Unsupported output should fail
@@ -215,7 +226,7 @@ def test_predict_unsupported_output():
             model_output = super().call_model(tensor)
             return {str(i): model_output[i] for i in range(len(model_output))}
 
-    predictor = CustomPredictor(model_definition=build_model_unsupported)
+    predictor = CustomPredictor(model=build_model_unsupported())
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors

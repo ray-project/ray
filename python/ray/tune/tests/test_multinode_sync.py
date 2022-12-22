@@ -11,6 +11,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
 from ray.tune.experiment import Trial
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @ray.remote
@@ -51,9 +52,13 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.assertEquals(
             5,
             ray.get(
-                remote_task.options(num_cpus=1, num_gpus=1, placement_group=pg).remote(
-                    5
-                )
+                remote_task.options(
+                    num_cpus=1,
+                    num_gpus=1,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg
+                    ),
+                ).remote(5)
             ),
         )
 

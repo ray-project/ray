@@ -9,15 +9,17 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air import CheckpointConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.progress_reporter import (
     ProgressReporter,
-    RemoteReporterMixin,
     _detect_reporter,
     _detect_progress_metrics,
+    _prepare_progress_reporter_for_ray_client,
+    _stream_client_output,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -55,7 +57,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
-from ray.util.queue import Empty, Queue
+from ray.util.queue import Queue
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +152,7 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -165,6 +168,8 @@ def run(
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
+    # Passed by the Tuner.
+    _remote_string_queue: Optional[Queue] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -284,12 +289,21 @@ def run(
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
-        trial_name_creator: Optional function
-            for generating the trial string representation.
-        trial_dirname_creator: Function
-            for generating the trial dirname. This function should take
-            in a Trial object and return a string representing the
-            name of the directory. The return value cannot be a path.
+        trial_name_creator: Optional function that takes in a Trial and returns
+            its name (i.e. its string representation). Be sure to include some unique
+            identifier (such as `Trial.trial_id`) in each trial's name.
+        trial_dirname_creator: Optional function that takes in a trial and
+            generates its trial directory name as a string. Be sure to include some
+            unique identifier (such as `Trial.trial_id`) is used in each trial's
+            directory name. Otherwise, trials could overwrite artifacts and checkpoints
+            of other trials. The return value cannot be a path.
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of
@@ -379,54 +393,25 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = _force_on_current_node(remote_run)
 
-        set_verbosity(verbose)
-        progress_reporter = progress_reporter or _detect_reporter()
-
-        # JupyterNotebooks don't work with remote tune runs out of the box
-        # (e.g. via Ray client) as they don't have access to the main
-        # process stdout. So we introduce a queue here that accepts
-        # strings, which will then be displayed on the driver side.
-        if isinstance(progress_reporter, RemoteReporterMixin):
-            string_queue = Queue(
-                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
-            )
-            progress_reporter.output_queue = string_queue
-
-            def get_next_queue_item():
-                try:
-                    return string_queue.get(block=False)
-                except Empty:
-                    return None
-
-        else:
-            # If we don't need a queue, use this dummy get fn instead of
-            # scheduling an unneeded actor
-            def get_next_queue_item():
-                return None
-
-        def _handle_string_queue():
-            string_item = get_next_queue_item()
-            while string_item is not None:
-                # This happens on the driver side
-                progress_reporter.display(string_item)
-
-                string_item = get_next_queue_item()
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
+            progress_reporter, verbose, _remote_string_queue
+        )
 
         # Override with detected progress reporter
         remote_run_kwargs["progress_reporter"] = progress_reporter
+
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
-        # ray.wait(...)[1] returns futures that are not ready, yet
-        while ray.wait([remote_future], timeout=0.2)[1]:
-            # Check if we have items to execute
-            _handle_string_queue()
-
-        # Handle queue one last time
-        _handle_string_queue()
-
+        _stream_client_output(
+            remote_future,
+            progress_reporter,
+            string_queue,
+        )
         return ray.get(remote_future)
 
     del remote_run_kwargs
+
+    ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()
 
@@ -441,6 +426,21 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     _validate_upload_dir(sync_config)
+
+    checkpoint_score_attr = checkpoint_score_attr or ""
+    if checkpoint_score_attr.startswith("min-"):
+        checkpoint_score_attr = checkpoint_score_attr[4:]
+        checkpoint_score_order = "min"
+    else:
+        checkpoint_score_order = "max"
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=keep_checkpoints_num,
+        checkpoint_score_attribute=checkpoint_score_attr,
+        checkpoint_score_order=checkpoint_score_order,
+        checkpoint_frequency=checkpoint_freq,
+        checkpoint_at_end=checkpoint_at_end,
+    )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -508,7 +508,9 @@ def run(
         )
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
+        reuse_actors=reuse_actors,
+        result_buffer_length=result_buffer_length,
+        chdir_to_trial_dir=chdir_to_trial_dir,
     )
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -528,13 +530,10 @@ def run(
                 local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
+                checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
-                checkpoint_freq=checkpoint_freq,
-                checkpoint_at_end=checkpoint_at_end,
-                keep_checkpoints_num=keep_checkpoints_num,
-                checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
                 restore=restore,
@@ -641,6 +640,7 @@ def run(
         trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
+        trial_checkpoint_config=experiments[0].checkpoint_config,
         # Driver should only sync trial checkpoints if
         # checkpoints are not synced to cloud
         driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),

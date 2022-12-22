@@ -185,7 +185,7 @@ class LibUsageRecorder:
         self._lib_usage_dir = Path(temp_dir_path)
         self._lib_usage_prefix = "_ray_lib_usage-"
         self._lib_usage_filename_match = re.compile(
-            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
         )
 
     def put_lib_usage(self, lib_name: str):
@@ -259,8 +259,22 @@ class TagKey(Enum):
     # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
 
-    # The GCS storage type, which could be memory or redis
+    # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
+
+    # Dashboard
+    # Whether a user is running ray with some third party metrics
+    # services (Ex: "True", "False")
+    DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
+    DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
+
+    # The count(int) of worker crash with exit type 'system error' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_SYSTEM_ERROR = auto()
+
+    # The count(int) of worker crash with exit type 'out-of-memory' since
+    # the cluster started, emitted from GCS
+    WORKER_CRASH_OOM = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -624,6 +638,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
         except Exception as e:
             logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
+    valid_tag_keys = [tag_key.name.lower() for tag_key in TagKey]
     try:
         keys = gcs_client.internal_kv_keys(
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
@@ -635,6 +650,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             )
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
         logger.info(f"Failed to get extra usage tags from kv store {e}")
@@ -661,7 +677,7 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2 ** 30
+        to_GiB = 1 / 2**30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
@@ -757,8 +773,14 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            result.cloud_provider = "kubernetes"
+        # Check if we're on Kubernetes
+        if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
+            # Check if we're using KubeRay >= 0.4.0.
+            if usage_constant.KUBERAY_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERAY
+            # Else, we're on Kubernetes but not in either of the above categories.
+            else:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")

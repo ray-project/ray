@@ -3,7 +3,7 @@
 # So we separate its own requirements file.
 
 ray_lightning==0.2.0
-tune-sklearn==0.4.3
+tune-sklearn==0.4.4
 xgboost_ray==0.1.10
 lightgbm_ray==0.1.5
-modin>=0.11.0; python_version >= '3.7'
+modin==0.12.1; python_version >= '3.7'

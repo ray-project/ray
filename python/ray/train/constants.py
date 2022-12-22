@@ -31,10 +31,6 @@ TIME_TOTAL_S = "_time_total_s"
 # env var is not 0
 DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
 
-# Time between Session.get_next checks when fetching
-# new results after signaling the training function to continue.
-RESULT_FETCH_TIMEOUT = 0.2
-
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
 
@@ -66,16 +62,8 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
-# The key used to identify whether we have already warned about ray.train
-# functions being used outside of the session
-SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
-
-# Reserved keyword used by the ``TorchWorkerProfiler`` and
-# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``session.report()``
-PYTORCH_PROFILER_KEY = "_train_torch_profiler"
-
-# Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``session.report()``.
-# See ``TrainingCallback._preprocess_results`` for more details.
-ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+# Default NCCL_SOCKET_IFNAME.
+# Use ethernet when possible.
+# NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
+# "en".
+DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"

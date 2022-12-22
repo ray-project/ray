@@ -1,3 +1,5 @@
+import enum
+import json
 import subprocess
 from kubernetes import client, config, watch
 import requests
@@ -9,10 +11,16 @@ import ray
 import os
 
 # global variables for the cluster informations
-cluster_id = str(uuid.uuid4()).split("-")[0]
-ray_cluster_name = "cluster-" + cluster_id
-ray_service_name = "service-" + cluster_id
-locust_id = "ray-locust-" + cluster_id
+CLUSTER_ID = None
+RAY_CLUSTER_NAME = None
+RAY_SERVICE_NAME = None
+LOCUST_ID = None
+
+
+# Kill node type
+class TestScenario(enum.Enum):
+    KILL_WORKER_NODE = "kill_worker_node"
+    KILL_HEAD_NODE = "kill_head_node"
 
 
 if os.environ.get("RAY_IMAGE") is not None:
@@ -28,6 +36,17 @@ config.load_kube_config()
 cli = client.CoreV1Api()
 
 yaml_path = pathlib.Path("/tmp/ray_v1alpha1_rayservice.yaml")
+
+
+def generate_cluster_variable():
+    global CLUSTER_ID
+    global RAY_CLUSTER_NAME
+    global RAY_SERVICE_NAME
+    global LOCUST_ID
+    CLUSTER_ID = str(uuid.uuid4()).split("-")[0]
+    RAY_CLUSTER_NAME = "cluster-" + CLUSTER_ID
+    RAY_SERVICE_NAME = "service-" + CLUSTER_ID
+    LOCUST_ID = "ray-locust-" + CLUSTER_ID
 
 
 def check_kuberay_installed():
@@ -72,7 +91,7 @@ def start_rayservice():
         pathlib.Path("ray_v1alpha1_rayservice_template.yaml")
         .read_text()
         .format(
-            cluster_id=cluster_id,
+            cluster_id=CLUSTER_ID,
             ray_image=ray_image,
             solution=solution,
             locustfile=locustfile,
@@ -92,7 +111,7 @@ def start_rayservice():
     )
 
     # step-2: create the cluter
-    print(f"Creating cluster with id: {cluster_id}")
+    print(f"Creating cluster with id: {CLUSTER_ID}")
     print(subprocess.check_output(["kubectl", "create", "-f", str(tmp_yaml)]).decode())
 
     # step-3: make sure the ray cluster is up
@@ -102,14 +121,14 @@ def start_rayservice():
     for event in w.stream(
         func=cli.list_namespaced_pod,
         namespace="default",
-        label_selector=f"rayCluster={ray_cluster_name},ray.io/node-type=head",
+        label_selector=f"rayCluster={RAY_CLUSTER_NAME},ray.io/node-type=head",
         timeout_seconds=60,
     ):
         if event["object"].status.phase == "Running":
             assert event["object"].kind == "Pod"
             head_pod_name = event["object"].metadata.name
             end_time = time.time()
-            print(f"{cluster_id} started in {end_time-start_time} sec")
+            print(f"{CLUSTER_ID} started in {end_time-start_time} sec")
             print(f"head pod {head_pod_name}")
             break
     assert head_pod_name is not None
@@ -143,7 +162,7 @@ def start_port_forward():
         [
             "kubectl",
             "port-forward",
-            f"svc/{ray_service_name}-serve-svc",
+            f"svc/{RAY_SERVICE_NAME}-serve-svc",
             "8000:8000",
             "--address=0.0.0.0",
         ]
@@ -189,7 +208,7 @@ def start_sending_traffics(duration, users):
     yaml_config = (
         pathlib.Path("locust-run.yaml")
         .read_text()
-        .format(users=users, cluster_id=cluster_id, duration=int(duration))
+        .format(users=users, cluster_id=CLUSTER_ID, duration=int(duration))
     )
     print("=== Locust YAML ===")
     print(yaml_config)
@@ -199,7 +218,7 @@ def start_sending_traffics(duration, users):
         [
             "helm",
             "install",
-            locust_id,
+            LOCUST_ID,
             "deliveryhero/locust",
             "-f",
             "/tmp/locust-run-config.yaml",
@@ -207,11 +226,27 @@ def start_sending_traffics(duration, users):
     )
     print(helm_install_logs)
 
+    timeout_wait_for_locust_s = 300
+    while timeout_wait_for_locust_s > 0:
+        labels = [
+            f"app.kubernetes.io/instance=ray-locust-{CLUSTER_ID}",
+            "app.kubernetes.io/name=locust,component=master",
+        ]
+        pods = cli.list_namespaced_pod("default", label_selector=",".join(labels))
+        assert len(pods.items) == 1
+
+        if pods.items[0].status.phase == "Pending":
+            print("Waiting for the locust pod to be ready...")
+            time.sleep(30)
+            timeout_wait_for_locust_s -= 30
+        else:
+            break
+
     proc = subprocess.Popen(
         [
             "kubectl",
             "port-forward",
-            f"svc/ray-locust-{cluster_id}",
+            f"svc/ray-locust-{CLUSTER_ID}",
             "8080:8089",
             "--address=0.0.0.0",
         ]
@@ -229,10 +264,10 @@ def dump_pods_actors(pod_name):
     )
 
 
-def kill_header():
+def kill_head():
     pods = cli.list_namespaced_pod(
         "default",
-        label_selector=f"rayCluster={ray_cluster_name},ray.io/node-type=head",
+        label_selector=f"rayCluster={RAY_CLUSTER_NAME},ray.io/node-type=head",
     )
     if pods.items[0].status.phase == "Running":
         print(f"Killing header {pods.items[0].metadata.name}")
@@ -243,7 +278,7 @@ def kill_header():
 def kill_worker():
     pods = cli.list_namespaced_pod(
         "default",
-        label_selector=f"rayCluster={ray_cluster_name},ray.io/node-type=worker",
+        label_selector=f"rayCluster={RAY_CLUSTER_NAME},ray.io/node-type=worker",
     )
     alive_pods = [
         (p.status.start_time, p.metadata.name)
@@ -260,21 +295,22 @@ def kill_worker():
     cli.delete_namespaced_pod(to_be_killed, "default")
 
 
-def start_killing_nodes(duration, kill_interval, kill_head_every_n):
+def start_killing_nodes(duration, kill_interval, kill_node_type):
     """Kill the nodes in ray cluster.
 
     duration: How long does we run the test (seconds)
     kill_interval: The interval between two kills (seconds)
     kill_head_every_n: For every n kills, we kill a head node
+    kill_node_type: kill either worker node or head node
     """
 
     for kill_idx in range(1, int(duration / kill_interval)):
         while True:
             try:
                 # kill
-                if kill_idx % kill_head_every_n == 0:
-                    kill_header()
-                else:
+                if kill_node_type == TestScenario.KILL_HEAD_NODE:
+                    kill_head()
+                elif kill_node_type == TestScenario.KILL_WORKER_NODE:
                     kill_worker()
                 break
             except Exception as e:
@@ -288,7 +324,7 @@ def start_killing_nodes(duration, kill_interval, kill_head_every_n):
 
 def get_stats():
     labels = [
-        f"app.kubernetes.io/instance=ray-locust-{cluster_id}",
+        f"app.kubernetes.io/instance=ray-locust-{CLUSTER_ID}",
         "app.kubernetes.io/name=locust,component=master",
     ]
     pods = cli.list_namespaced_pod("default", label_selector=",".join(labels))
@@ -298,7 +334,7 @@ def get_stats():
         [
             "kubectl",
             "cp",
-            f"{pod_name}:/home/locust/test_result_{cluster_id}_stats_history.csv",
+            f"{pod_name}:/home/locust/test_result_{CLUSTER_ID}_stats_history.csv",
             "./stats_history.csv",
         ]
     )
@@ -323,47 +359,55 @@ def get_stats():
 
 
 def main():
-    procs = []
-    try:
-        check_kuberay_installed()
-        start_rayservice()
-        procs.append(start_port_forward())
-        warmup_cluster(200)
-        users = 60
-        duration = 5 * 60 * 60
-        procs.append(start_sending_traffics(duration * 1.1, users))
-        start_killing_nodes(duration, 60, 6)
-        rate, qps, data = get_stats()
-
-        print("Result:", rate, qps)
-
+    result = {
+        TestScenario.KILL_WORKER_NODE.value: {"rate": None},
+        TestScenario.KILL_HEAD_NODE.value: {"rate": None},
+    }
+    expected_result = {
+        TestScenario.KILL_HEAD_NODE: 0.99,
+        TestScenario.KILL_HEAD_NODE: 0.99,
+    }
+    check_kuberay_installed()
+    users = 60
+    for kill_node_type, kill_interval, test_duration in [
+        (TestScenario.KILL_WORKER_NODE, 60, 600),
+        (TestScenario.KILL_HEAD_NODE, 300, 1200),
+    ]:
         try:
-            assert rate > 0.999
+            generate_cluster_variable()
+            procs = []
+            start_rayservice()
+            procs.append(start_port_forward())
+            warmup_cluster(200)
+            procs.append(start_sending_traffics(test_duration * 1.1, users))
+            start_killing_nodes(test_duration, kill_interval, kill_node_type)
+            rate, qps, data = get_stats()
+            print("Raw Data", data, qps)
+            result[kill_node_type.value]["rate"] = rate
+            assert expected_result[kill_node_type] <= rate
             assert qps > users * 10 * 0.8
-        except Exception:
-            print("Raw Data", data)
-            print("Result:", rate, qps)
-            raise
+        except Exception as e:
+            print(f"{kill_node_type} HA test failed, {e}")
+        finally:
+            print("=== Cleanup ===")
+            subprocess.run(
+                ["kubectl", "delete", "-f", str(yaml_path)],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["helm", "uninstall", LOCUST_ID],
+                capture_output=True,
+            )
+            for p in procs:
+                p.kill()
+            print("==== Cleanup done ===")
+        print("Result:", result)
 
-    except Exception as e:
-        print("Experiment failed")
-        raise e
-    finally:
-        print("=== Cleanup ===")
-
-        subprocess.run(
-            ["kubectl", "delete", "-f", str(yaml_path)],
-            capture_output=True,
+        test_output_json_path = os.environ.get(
+            "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
         )
-
-        subprocess.run(
-            ["helm", "uninstall", locust_id],
-            capture_output=True,
-        )
-
-        print("Kill processes")
-        for p in procs:
-            p.kill()
+        with open(test_output_json_path, "wt") as f:
+            json.dump(result, f)
 
 
 if __name__ == "__main__":

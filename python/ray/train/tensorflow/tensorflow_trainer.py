@@ -67,18 +67,6 @@ class TensorflowTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
-    You can also use :meth:`ray.train.tensorflow.prepare_dataset_shard`
-    within your training code.
-
-    .. code-block:: python
-
-        def train_loop_per_worker():
-            # Turns off autosharding for a dataset.
-            # You should use this if you are doing
-            # `session.get_dataset_shard(...).iter_tf_batches(...)`
-            # as the data will be already sharded.
-            train.tensorflow.prepare_dataset_shard(...)
-
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
@@ -93,7 +81,7 @@ class TensorflowTrainer(DataParallelTrainer):
 
         import ray
         from ray.air import session, Checkpoint
-        from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
+        from ray.train.tensorflow import TensorflowTrainer
         from ray.air.config import ScalingConfig
 
         input_size = 1
@@ -113,26 +101,14 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.compile(
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-            def to_tf_dataset(dataset, batch_size):
-                def to_tensor_iterator():
-                    for batch in dataset.iter_tf_batches(
-                        batch_size=batch_size, dtypes=tf.float32
-                    ):
-                        yield tf.expand_dims(batch["x"], 1), batch["y"]
-
-                output_signature = (
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                )
-                tf_dataset = tf.data.Dataset.from_generator(
-                    to_tensor_iterator, output_signature=output_signature
-                )
-                return prepare_dataset_shard(tf_dataset)
-
             for epoch in range(config["num_epochs"]):
-                tf_dataset = to_tf_dataset(dataset=dataset_shard, batch_size=1)
+                tf_dataset = dataset_shard.to_tf(
+                    feature_columns="x",
+                    label_columns="y",
+                    batch_size=1
+                )
                 model.fit(tf_dataset)
-                # You can also use ray.air.callbacks.keras.Callback
+                # You can also use ray.air.integrations.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
                 session.report(
                     {},

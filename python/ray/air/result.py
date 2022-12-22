@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -5,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 @dataclass
@@ -40,7 +42,7 @@ class Result:
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
     log_dir: Optional[Path]
-    metrics_dataframe: Optional[pd.DataFrame]
+    metrics_dataframe: Optional["pd.DataFrame"]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
     _items_to_repr = ["metrics", "error", "log_dir"]
 

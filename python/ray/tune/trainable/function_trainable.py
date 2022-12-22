@@ -11,11 +11,12 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type, Union
 
-from ray.air._internal.util import StartTraceback
+from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -38,10 +39,6 @@ logger = logging.getLogger(__name__)
 
 # Time between FunctionTrainable checks when fetching
 # new results after signaling the reporter to continue
-RESULT_FETCH_TIMEOUT = 0.2
-
-ERROR_REPORT_TIMEOUT = 10
-ERROR_FETCH_TIMEOUT = 1
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
@@ -132,6 +129,7 @@ class _StatusReporter:
         result_queue,
         continue_semaphore,
         end_event,
+        experiment_name=None,
         trial_name=None,
         trial_id=None,
         logdir=None,
@@ -141,6 +139,7 @@ class _StatusReporter:
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._end_event = end_event
+        self._experiment_name = experiment_name
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
@@ -261,6 +260,11 @@ class _StatusReporter:
         return self._logdir
 
     @property
+    def experiment_name(self):
+        """Trial name for the corresponding trial of this Trainable."""
+        return self._experiment_name
+
+    @property
     def trial_name(self):
         """Trial name for the corresponding trial of this Trainable."""
         return self._trial_name
@@ -274,42 +278,6 @@ class _StatusReporter:
     def trial_resources(self):
         """Resources assigned to the trial of this Trainable."""
         return self._trial_resources
-
-
-class _RunnerThread(threading.Thread):
-    """Supervisor thread that runs your script."""
-
-    def __init__(self, entrypoint, error_queue):
-        threading.Thread.__init__(self)
-        self._entrypoint = entrypoint
-        self._error_queue = error_queue
-        self.daemon = True
-
-    def run(self):
-        try:
-            self._entrypoint()
-        except StopIteration:
-            logger.debug(
-                (
-                    "Thread runner raised StopIteration. Interpreting it as a "
-                    "signal to terminate the thread without error."
-                )
-            )
-        except Exception as e:
-            logger.error("Runner Thread raised error")
-            try:
-                # report the error but avoid indefinite blocking which would
-                # prevent the exception from being propagated in the unlikely
-                # case that something went terribly wrong
-                self._error_queue.put(e, block=True, timeout=ERROR_REPORT_TIMEOUT)
-            except queue.Full:
-                logger.critical(
-                    (
-                        "Runner Thread was unable to report error to main "
-                        "function runner thread. This means a previous error "
-                        "was not processed. This should never happen."
-                    )
-                )
 
 
 @DeveloperAPI
@@ -341,6 +309,9 @@ class FunctionTrainable(Trainable):
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
+            experiment_name=(
+                self._trial_info.experiment_name if self._trial_info else None
+            ),
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir,
@@ -370,7 +341,9 @@ class FunctionTrainable(Trainable):
                 raise StartTraceback from e
 
         # the runner thread is not started until the first call to _train
-        self._runner = _RunnerThread(entrypoint, self._error_queue)
+        self._runner = RunnerThread(
+            target=entrypoint, error_queue=self._error_queue, daemon=True
+        )
         # if not alive, try to start
         self._status_reporter._start()
         try:
@@ -400,7 +373,7 @@ class FunctionTrainable(Trainable):
             # fetch the next produced result
             try:
                 result = self._results_queue.get(
-                    block=True, timeout=RESULT_FETCH_TIMEOUT
+                    block=True, timeout=_RESULT_FETCH_TIMEOUT
                 )
             except queue.Empty:
                 pass
@@ -589,7 +562,7 @@ class FunctionTrainable(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
+            e = self._error_queue.get(block=block, timeout=_ERROR_FETCH_TIMEOUT)
             raise StartTraceback from e
         except queue.Empty:
             pass
@@ -618,15 +591,6 @@ def wrap_function(
             "Found: {}".format(func_args)
         )
 
-    if use_config_single and not use_checkpoint:
-        if log_once("tune_function_checkpoint") and warn:
-            logger.warning(
-                "Function checkpointing is disabled. This may result in "
-                "unexpected behavior when using checkpointing features or "
-                "certain schedulers. To enable, set the train function "
-                "arguments to be `func(config, checkpoint_dir=None)`."
-            )
-
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
             with warnings.catch_warnings():
@@ -641,7 +605,7 @@ def wrap_function(
                     "    # ...\n"
                     '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
-                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                    "https://docs.ray.io/en/master/tune/api_docs/trainable.html\n"
                 )
                 warnings.warn(
                     warning_msg,

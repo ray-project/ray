@@ -22,9 +22,17 @@ prep.transform(env.reset()).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPOConfig
 
-algo = PPO(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
+config = (
+    PPOConfig()
+    .environment("CartPole-v1")
+    .framework("tf2")
+    .rollouts(num_rollout_workers=0)
+)
+# <ray.rllib.algorithms.ppo.PPOConfig object at 0x7fd020185473>
+algo = config.build()
+# <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>
 policy = algo.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -82,7 +90,7 @@ _____________________________________________________________________
 import numpy as np
 from ray.rllib.algorithms.dqn import DQN
 
-algo = DQN(env="CartPole-v0", config={"framework": "tf2"})
+algo = DQN(env="CartPole-v1", config={"framework": "tf2"})
 model = algo.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 

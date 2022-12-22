@@ -141,6 +141,7 @@ parser.add_argument(
     help="True if Ray debugger is made available externally.",
 )
 
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
@@ -203,6 +204,7 @@ if __name__ == "__main__":
     ray._private.worker._global_node = node
     ray._private.worker.connect(
         node,
+        node.session_name,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,

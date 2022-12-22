@@ -18,6 +18,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -34,6 +35,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -47,6 +49,7 @@ struct GcsServerConfig {
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;
+  bool enable_redis_ssl = false;
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
@@ -169,6 +172,8 @@ class GcsServer {
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
+  void TryGlobalGC();
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
@@ -197,6 +202,8 @@ class GcsServer {
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The health check manager.
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The heartbeat manager.
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
@@ -267,6 +274,10 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int task_pending_schedule_detected_ = 0;
+  /// Throttler for global gc
+  std::unique_ptr<Throttler> global_gc_throttler_;
+  std::shared_ptr<InternalKVInterface> kv_instance_;
 };
 
 }  // namespace gcs

@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=["tests"])
         else:
             return []
 
@@ -146,7 +146,6 @@ else:
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -183,8 +182,6 @@ ray_files += [
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
-    "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -194,6 +191,14 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
     for filename in filenames
 ]
+
+# Dashboard metrics files.
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
+    for filename in filenames
+]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
 
 # html templates for notebook integration
 ray_files += [
@@ -210,13 +215,19 @@ if setup_spec.type == SetupType.RAY:
     else:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
-        # Numpy dropped python 3.6 support in 1.20.
+        # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
+    if sys.version_info >= (3, 7) and sys.platform != "win32":
+        pyarrow_dep = "pyarrow >= 6.0.1, < 8.0.0"
+    else:
+        # pyarrow dropped python 3.6 support in 7.0.0.
+        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
+        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
         "data": [
             numpy_dep,
             pandas_dep,
-            "pyarrow >= 6.0.1, < 7.0.0",
+            pyarrow_dep,
             "fsspec",
         ],
         "default": [
@@ -227,13 +238,13 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0b1",  # for windows
+            "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
-        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -251,9 +262,6 @@ if setup_spec.type == SetupType.RAY:
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
-
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
         "gym>=0.21.0,<0.24.0",
@@ -264,6 +272,8 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
+        "typer",
+        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -285,19 +295,24 @@ if setup_spec.type == SetupType.RAY:
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
+#
+# NOTE: if you add any unbounded dependency, please also update
+# install-core-prerelease-dependencies.sh so we can test
+# new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0, <= 8.0.4",
+        "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.32.0, <= 1.43.0; python_version < '3.10'",
-        "grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'",
+        "grpcio >= 1.32.0; python_version < '3.10'",
+        "grpcio >= 1.42.0; python_version >= '3.10'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "packaging; python_version >= '3.10'",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",
@@ -767,7 +782,6 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
-            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },

@@ -38,7 +38,9 @@ class TestMADDPG(unittest.TestCase):
                         config={"agent_id": 1},
                     ),
                 },
-                policy_mapping_fn=lambda aid, **kwargs: "pol2" if aid else "pol1",
+                policy_mapping_fn=lambda agent_id, **kwargs: "pol2"
+                if agent_id
+                else "pol1",
             )
         )
 

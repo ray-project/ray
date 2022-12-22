@@ -45,6 +45,7 @@ Since each task requests by default one CPU, this setting allows us to execute u
 As a result, our Ray system consists of one driver executing the program,
 and up to four workers running remote tasks or actors.
 
+.. _tip-delay-get:
 
 Tip 1: Delay ray.get()
 ----------------------
