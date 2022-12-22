@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterator, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple
 
 import ray
 from ray.data._internal.stats import DatasetStats, StatsDict
@@ -15,7 +15,7 @@ class RefBundle:
 
     Operators take in and produce streams of RefBundles.
 
-    Most commonly an RefBundle consists of a single block object reference.
+    Most commonly a RefBundle consists of a single block object reference.
     In some cases, e.g., due to block splitting, or for a reduce task, there may
     be more than one block.
 
@@ -115,7 +115,7 @@ class PhysicalOperator:
             def __init__(self):
                 self.active_tasks = []
 
-            def add_input(self, refs):
+            def add_input(self, refs, _):
                 self.active_tasks.append(map_task.remote(refs))
 
             def has_next(self):
@@ -166,7 +166,7 @@ class PhysicalOperator:
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
             out_str += " -> "
@@ -265,7 +265,7 @@ class Executor:
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterator[RefBundle]:
+    ) -> Iterable[RefBundle]:
         """Start execution.
 
         Args:
