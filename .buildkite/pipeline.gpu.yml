@@ -17,7 +17,7 @@
     - ./ci/env/env_info.sh
     # --jobs 1 is necessary as we only have 1 GPU on the machine and running tests in parallel
     # would cause timeouts as the other scripts would wait for the GPU to become available.
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --jobs 4
       --test_tag_filters=algorithms_dir,-algorithms_dir_generic --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 - label: ":tv: :brain: RLlib: GPU Tests (rest)"
