@@ -18,8 +18,7 @@ class TestARS(unittest.TestCase):
     def test_ars_compilation(self):
         """Test whether an ARSAlgorithm can be built on all frameworks."""
         config = (
-            ars.ARSConfig()
-            .resources(
+            ars.ARSConfig().resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
                 num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )

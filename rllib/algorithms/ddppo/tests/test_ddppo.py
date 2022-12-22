@@ -28,9 +28,8 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_compilation(self):
         """Test whether DDPPO can be built with both frameworks."""
-        config = (
-            ddppo.DDPPOConfig()
-            .resources(num_gpus_per_worker=0.5 if self.use_gpus else 0)
+        config = ddppo.DDPPOConfig().resources(
+            num_gpus_per_worker=0.5 if self.use_gpus else 0
         )
 
         num_iterations = 2
