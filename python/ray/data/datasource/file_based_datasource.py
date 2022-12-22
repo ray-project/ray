@@ -1,6 +1,8 @@
 import logging
 import pathlib
 import posixpath
+import string
+import sys
 import urllib.parse
 from typing import (
     TYPE_CHECKING,
@@ -741,7 +743,20 @@ def _unwrap_protocol(path):
         # credentialed path, and we need to strip off the credentials.
         netloc = parsed.netloc.split("@")[-1]
 
-    return netloc + parsed.path + query
+    parsed_path = parsed.path
+    # urlparse prepends the path with a '/'. This does not work on Windows
+    # so if this is the case strip the leading slash.
+    if (
+        sys.platform == "win32"
+        and not netloc
+        and len(parsed_path) >= 3
+        and parsed_path[0] == "/"  # The problematic leading slash
+        and parsed_path[1] in string.ascii_letters  # Ensure it is a drive letter.
+        and parsed_path[2:4] in (":", ":/")
+    ):
+        parsed_path = parsed_path[1:]
+
+    return netloc + parsed_path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
