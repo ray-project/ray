@@ -36,7 +36,7 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core.train.trainer_runner import TrainerRunner
+from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -670,13 +670,34 @@ class Algorithm(Trainable):
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
 
-        # TODO (Kourosh/Avnish) create the trainer_runner
         self.trainer_runner = None
         if self.config.get("_enable_trainer_runner", False):
-            # create remote trainers
-            trainers = []
             # create the fault tolerant trainer runner
-            self.trainer_runner = TrainerRunner(trainers)
+            # TODO (Kourosh) Create this api in the config
+            trainer_class = self.config.get_trainer_class()
+            if trainer_class is None:
+                raise ValueError(
+                    "Must specify a trainer class to use the TrainerRunner"
+                )
+
+            # TODO (Kourosh/Avnishn) figure out the construction pattern
+            worker = self.workers.local_worker()
+            self.trainer_runner = TrainerRunner(
+                trainer_class=trainer_class,
+                trainer_config={
+                    "module_class": self.config.rl_module_class,
+                    "module_config": {
+                        "observation_space": worker.observation_space,
+                        "action_space": worker.action_space,
+                        "model_config": self.config.model,
+                    },
+                    "optimizer_class": self.config.rl_optimizer_class,
+                    "optimizer_config": {},
+                },
+                compute_config={
+                    "num_gpus": self.config.num_gpus,
+                },
+            )
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -1321,7 +1342,7 @@ class Algorithm(Trainable):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config.get("_enable_trainer_runner", False):
-                train_results = self.trainer_runner.update_sync(train_batch)
+                train_results = self.trainer_runner.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
