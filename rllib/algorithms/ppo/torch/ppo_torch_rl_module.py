@@ -21,8 +21,8 @@ from ray.rllib.core.rl_module.encoder import (
     LSTMConfig,
     IdentityConfig,
     LSTMEncoder,
-    ENCODER_OUT,
 )
+from ray.rllib.models.base_model import BaseModelIOKeys
 
 
 torch, nn = try_import_torch()
@@ -218,10 +218,27 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        shared_enc_out = self.shared_encoder(batch)
-        pi_enc_out = self.pi_encoder(shared_enc_out)
+        shared_enc_out = self.shared_encoder(
+            batch,
+            input_mapping={
+                BaseModelIOKeys.IN: SampleBatch.OBS,
+                BaseModelIOKeys.STATE_I: "state_in_0",
+            },
+        )
+        encoder_out_pi = self.pi_encoder(
+            shared_enc_out,
+            input_mapping={
+                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
+                BaseModelIOKeys.STATE_I: "state_in_0",
+            },
+        )
 
-        action_logits = self.pi(pi_enc_out[ENCODER_OUT])
+        action_logits = self.pi(
+            encoder_out_pi,
+            input_mapping={
+                BaseModelIOKeys.IN: self.pi_encoder.io_map[BaseModelIOKeys.OUT],
+            },
+        )
 
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
@@ -230,12 +247,12 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = pi_enc_out.get("state_out", {})
+        output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return self.shared_encoder.input_spec()
+        return self.shared_encoder.input_spec
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -260,10 +277,33 @@ class PPOTorchRLModule(TorchRLModule):
         policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        encoder_out_vf = self.vf_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
+        shared_enc_out = self.shared_encoder(
+            batch,
+            input_mapping={
+                BaseModelIOKeys.IN: SampleBatch.OBS,
+                BaseModelIOKeys.STATE_IN: "state_in_0",
+            },
+        )
+        encoder_out_pi = self.pi_encoder(
+            shared_enc_out,
+            input_mapping={
+                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
+                BaseModelIOKeys.STATE_IN: "state_in_0",
+            },
+        )
+        encoder_out_vf = self.vf_encoder(
+            shared_enc_out,
+            input_mapping={
+                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
+            },
+        )
+
+        action_logits = self.pi(
+            encoder_out_pi,
+            input_mapping={
+                BaseModelIOKeys.IN: self.pi_encoder.io_map[BaseModelIOKeys.OUT],
+            },
+        )
 
         output = {}
         if self._is_discrete:
@@ -277,7 +317,13 @@ class PPOTorchRLModule(TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist
 
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf[ENCODER_OUT]).squeeze(-1)
+        vf_out = self.vf(
+            encoder_out_vf,
+            input_mapping={
+                BaseModelIOKeys.IN: self.vf_encoder.io_map[BaseModelIOKeys.OUT],
+            },
+        )
+        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
         output["state_out"] = encoder_out_pi.get("state_out", {})
         return output
 
@@ -289,7 +335,7 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        spec_dict = self.shared_encoder.input_spec()
+        spec_dict = self.shared_encoder.input_spec
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -310,12 +356,22 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        encoder_out_vf = self.vf_encoder(encoder_out)
+        encoder_out = self.shared_encoder.forward(
+            batch, input_map={self.shared_encoder.io_map.IN: SampleBatch.OBS}
+        )
+        encoder_out_pi = self.pi_encoder.forward(
+            encoder_out,
+            input_map={self.pi_encoder.io_map.IN: self.shared_encoder.io_map.OUT},
+        )
+        encoder_out_vf = self.vf_encoder.forward(
+            encoder_out,
+            input_map={self.vf_encoder.io_map.IN: self.shared_encoder.io_map.OUT},
+        )
 
-        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
-        vf = self.vf(encoder_out_vf[ENCODER_OUT])
+        action_logits = self.pi.forward(
+            encoder_out_pi, io_map=self.pi_encoder.input_map
+        )
+        vf = self.vf.forward(encoder_out_vf, io_map=self.pi_encoder.input_map)
 
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)

@@ -5,18 +5,13 @@ from typing import List
 
 from dataclasses import dataclass, field
 
+from ray.rllib.utils.annotations import override
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.primitives import FCNet
-
-# TODO (Kourosh): Find a better / more straight fwd approach for sub-components
-
-ENCODER_OUT = "encoder_out"
-STATE_IN = "state_in"
-STATE_OUT = "state_out"
+from ray.rllib.models.base_model import Model, BaseModelIOKeys
 
 
 @dataclass
@@ -68,12 +63,11 @@ class LSTMConfig(EncoderConfig):
         return LSTMEncoder(self)
 
 
-class Encoder(nn.Module):
+class Encoder(nn.Module, Model):
     def __init__(self, config: EncoderConfig) -> None:
-        super().__init__()
+        nn.Module.__init__(self)
+        Model.__init__(self)
         self.config = config
-        self._input_spec = self.input_spec()
-        self._output_spec = self.output_spec()
 
     def get_initial_state(self):
         return []
@@ -83,14 +77,6 @@ class Encoder(nn.Module):
 
     def output_spec(self):
         return SpecDict()
-
-    @check_input_specs("_input_spec")
-    @check_output_specs("_output_spec")
-    def forward(self, input_dict):
-        return self._forward(input_dict)
-
-    def _forward(self, input_dict):
-        raise NotImplementedError
 
 
 class FullyConnectedEncoder(Encoder):
@@ -104,21 +90,38 @@ class FullyConnectedEncoder(Encoder):
             activation=config.activation,
         )
 
+    @property
+    @override(Model)
     def input_spec(self):
         return SpecDict(
-            {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
+            {
+                self.io_mapping[BaseModelIOKeys.IN]: TorchTensorSpec(
+                    "b, h", h=self.config.input_dim
+                )
+            }
         )
 
+    @property
+    @override(Model)
     def output_spec(self):
         return SpecDict(
-            {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
+            {
+                self.io_mapping[BaseModelIOKeys.IN]: TorchTensorSpec(
+                    "b, h", h=self.config.output_dim
+                )
+            }
         )
 
     def _forward(self, input_dict):
-        return {ENCODER_OUT: self.net(input_dict[SampleBatch.OBS])}
+        return {self.ENCODER_OUT: self.net(input_dict[SampleBatch.OBS])}
 
 
-class LSTMEncoder(Encoder):
+class RecurrentEncoder(Encoder):
+    def __init__(self, config: EncoderConfig):
+        super().__init__(config=config)
+
+
+class LSTMEncoder(RecurrentEncoder):
     def __init__(self, config: LSTMConfig) -> None:
         super().__init__(config)
 
@@ -137,13 +140,15 @@ class LSTMEncoder(Encoder):
             "c": torch.zeros(config.num_layers, config.hidden_dim),
         }
 
+    @property
+    @override(Model)
     def input_spec(self):
         config = self.config
         return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
-                STATE_IN: {
+                self.ENCODER_IN: TorchTensorSpec("bxt, h", h=config.input_dim),
+                self.STATE_IN: {
                     "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
@@ -154,12 +159,14 @@ class LSTMEncoder(Encoder):
             }
         )
 
+    @property
+    @override(Model)
     def output_spec(self):
         config = self.config
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
-                STATE_OUT: {
+                self.ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
+                self.STATE_OUT: {
                     "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
@@ -171,8 +178,8 @@ class LSTMEncoder(Encoder):
         )
 
     def _forward(self, input_dict: SampleBatch):
-        x = input_dict[SampleBatch.OBS]
-        states = input_dict[STATE_IN]
+        x = input_dict[self.STATE_IN]
+        states = input_dict[self.STATE_IN]
         # states are batch-first when coming in
         states = tree.map_structure(lambda x: x.transpose(0, 1), states)
 
@@ -189,14 +196,14 @@ class LSTMEncoder(Encoder):
         x = x.view(-1, x.shape[-1])
 
         return {
-            ENCODER_OUT: x,
-            STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
+            self.ENCODER_OUT: x,
+            self.STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
 
 
 class IdentityEncoder(Encoder):
     def __init__(self, config: EncoderConfig) -> None:
-        super().__init__(config)
+        super().__init__(config=config)
 
     def _forward(self, input_dict):
         return input_dict

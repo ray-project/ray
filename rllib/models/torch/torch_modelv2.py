@@ -67,7 +67,7 @@ class TorchModelV2(ModelV2):
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
         p = list(self.parameters())
         if as_dict:
-            return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
+            return {k: p[i] for i, k in enumerate(self.state_dict().io_map())}
         return p
 
     @override(ModelV2)

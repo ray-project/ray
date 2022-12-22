@@ -15,8 +15,6 @@ from ray.rllib.core.rl_module.encoder import (
     FCConfig,
     IdentityConfig,
     LSTMConfig,
-    STATE_IN,
-    STATE_OUT,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -135,7 +133,7 @@ class TestPPO(unittest.TestCase):
                             state_in = tree.map_structure(
                                 lambda x: x[None], convert_to_torch_tensor(state_in)
                             )
-                            batch[STATE_IN] = state_in
+                            batch["state_in_0"] = state_in
                             batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
                         if fwd_fn == "forward_exploration":
@@ -175,7 +173,7 @@ class TestPPO(unittest.TestCase):
                         if lstm:
                             input_batch = {
                                 SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                                STATE_IN: state_in,
+                                "state_in_0": state_in,
                                 SampleBatch.SEQ_LENS: np.array([1]),
                             }
                         else:
@@ -195,8 +193,7 @@ class TestPPO(unittest.TestCase):
                             SampleBatch.DONES: np.array(done),
                         }
                         if lstm:
-                            assert STATE_OUT in fwd_out
-                            state_in = fwd_out[STATE_OUT]
+                            state_in = fwd_out["state_out_0"]
                         batches.append(output_batch)
                         obs = new_obs
                         tstep += 1
@@ -209,7 +206,7 @@ class TestPPO(unittest.TestCase):
                         for k, v in batch.items()
                     }
                     if lstm:
-                        fwd_in[STATE_IN] = initial_state
+                        fwd_in["state_in_0"] = initial_state
                         fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
                     # forward train
