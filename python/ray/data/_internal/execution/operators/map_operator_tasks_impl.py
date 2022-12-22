@@ -68,22 +68,6 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_cur = 0
         self._obj_store_mem_peak = 0
 
-    def _create_task(self, bundle: RefBundle) -> None:
-        input_blocks = []
-        for block, _ in bundle.blocks:
-            input_blocks.append(block)
-        map_task = cached_remote_fn(_map_task, num_returns="dynamic")
-        generator_ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn, *input_blocks
-        )
-        task = _TaskState(bundle)
-        self._tasks[generator_ref] = task
-        self._tasks_by_output_order[self._next_task_index] = task
-        self._next_task_index += 1
-        self._obj_store_mem_cur += bundle.size_bytes()
-        if self._obj_store_mem_cur > self._obj_store_mem_peak:
-            self._obj_store_mem_peak = self._obj_store_mem_cur
-
     def add_input(self, bundle: RefBundle) -> None:
         if self._target_block_size is None:
             self._create_task(bundle)
@@ -166,3 +150,19 @@ class MapOperatorTasksImpl:
                 # a different error, or cancellation failed. In all cases, we
                 # swallow the exception.
                 pass
+
+    def _create_task(self, bundle: RefBundle) -> None:
+        input_blocks = []
+        for block, _ in bundle.blocks:
+            input_blocks.append(block)
+        map_task = cached_remote_fn(_map_task, num_returns="dynamic")
+        generator_ref = map_task.options(**self._ray_remote_args).remote(
+            self._transform_fn, *input_blocks
+        )
+        task = _TaskState(bundle)
+        self._tasks[generator_ref] = task
+        self._tasks_by_output_order[self._next_task_index] = task
+        self._next_task_index += 1
+        self._obj_store_mem_cur += bundle.size_bytes()
+        if self._obj_store_mem_cur > self._obj_store_mem_peak:
+            self._obj_store_mem_peak = self._obj_store_mem_cur
