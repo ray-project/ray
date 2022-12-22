@@ -30,6 +30,7 @@ def iter_batches(
             local_shuffle_buffer_size=local_shuffle_buffer_size,
         ):
             num_batches += 1
+    print("iter_batches done, num_rows:", ds.count(), "num_batches:", num_batches)
     return ds
 
 
@@ -42,10 +43,9 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
         .fully_executed()
     )
 
-    batch_formats = ["pandas", "numpy"]
     batch_sizes = [128, 256, 512]
 
-    # Test default parameters.
+    # Test default args.
     test_name = "iter-batches_default"
     benchmark.run(
         test_name,
@@ -73,18 +73,19 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
                 )
 
     # Test local shuffle with different buffer sizes.
-    for batch_format in batch_formats:
-        for batch_size in batch_sizes:
-            for shuffle_buffer_size in [batch_size, 2 * batch_size, 4 * batch_size]:
-                test_name = f"iter-batches-shuffle_{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
-                benchmark.run(
-                    test_name,
-                    iter_batches,
-                    ds=ds,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    local_shuffle_buffer_size=shuffle_buffer_size,
-                )
+    # Just use "pandas" here since shuffling will dominate the cost.
+    batch_format = "pandas"
+    for batch_size in batch_sizes:
+        for shuffle_buffer_size in [batch_size, 2 * batch_size, 4 * batch_size]:
+            test_name = f"iter-batches-shuffle_{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
+            benchmark.run(
+                test_name,
+                iter_batches,
+                ds=ds,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                local_shuffle_buffer_size=shuffle_buffer_size,
+            )
 
     # TODO(jian): test the prefetch as we set up multi-node cluster test.
 
