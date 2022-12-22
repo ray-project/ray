@@ -5,7 +5,7 @@ from typing import Iterator, Mapping, Any, Union, Dict
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override
 
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module import RLModule
 
@@ -243,32 +243,32 @@ class MultiAgentRLModule(RLModule):
         return self._rl_modules[module_id]
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
+    def output_specs_train(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_train")
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
+    def output_specs_inference(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_inference")
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_exploration")
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_train")
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_inference")
 
     @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpec:
+    def input_specs_exploration(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_exploration")
 
-    def _get_specs_for_modules(self, method_name: str) -> ModelSpec:
+    def _get_specs_for_modules(self, method_name: str) -> SpecDict:
         """Returns a ModelSpec from the given method_name for all modules."""
-        return ModelSpec(
+        return SpecDict(
             {
                 module_id: getattr(module, method_name)()
                 for module_id, module in self._rl_modules.items()

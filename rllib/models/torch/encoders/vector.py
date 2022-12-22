@@ -4,7 +4,7 @@ from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 import torch
 from torch import nn
 
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.torch.model import TorchModel
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.nested_dict import NestedDict
@@ -23,16 +23,16 @@ class TorchVectorEncoder(TorchModel):
     """
 
     @property
-    def input_spec(self) -> ModelSpec:
+    def input_spec(self) -> SpecDict:
         return self._input_spec
 
     @property
-    def output_spec(self) -> ModelSpec:
+    def output_spec(self) -> SpecDict:
         return self._output_spec
 
     def __init__(
         self,
-        input_spec: ModelSpec,
+        input_spec: SpecDict,
         config: "VectorEncoderConfig",
     ):
         super().__init__(config=config)
