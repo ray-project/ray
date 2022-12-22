@@ -166,6 +166,9 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``raylet.[out|err]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
 - ``redis.[out|err]``: Redis log files.
+- ``runtime_env_agent.log``: Every Ray node has one agent that manages :ref:`runtime environment <runtime-environments>` creation, deletion and caching.
+  This is the log file of the agent containing logs of create/delete requests and cache hits and misses.
+  For the logs of the actual installations (including e.g. ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
