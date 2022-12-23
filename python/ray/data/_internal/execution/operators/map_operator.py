@@ -33,7 +33,7 @@ class MapOperator(PhysicalOperator):
         input_op: PhysicalOperator,
         name: str = "Map",
         compute_strategy: Optional[ComputeStrategy] = None,
-        target_block_size: Optional[int] = None,
+        min_rows_per_batch: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create a MapOperator.
@@ -43,13 +43,16 @@ class MapOperator(PhysicalOperator):
             input_op: Operator generating input data for this op.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
+            min_rows_per_batch: The number of rows to gather per batch passed to the
+                transform_fn, or None to use the block size. Setting the batch size is
+                important for the performance of GPU-accelerated transform functions.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         self._transform_fn = transform_fn
         self._strategy = compute_strategy or TaskPoolStrategy()
         self._remote_args = (ray_remote_args or {}).copy()
         self._output_metadata: List[BlockMetadata] = []
-        self.target_block_size = target_block_size
+        self._min_rows_per_batch = min_rows_per_batch
         if isinstance(self._strategy, TaskPoolStrategy):
             self._execution_state = MapOperatorTasksImpl(self)
         elif isinstance(self._strategy, ActorPoolStrategy):
@@ -66,14 +69,14 @@ class MapOperator(PhysicalOperator):
         This callable must be serializable as it will be sent to remote processes.
 
         Returns:
-            A callable taking the following inputs:
-                block_bundle: Iterator over input blocks of a RefBundle. Typically,
-                    this will yield only a single block, unless the transformation has
-                    multiple inputs, e.g., in the SortReduce or ZipBlocks cases. It is
-                    an iterator instead of a list for memory efficiency.
+            A callable taking an iterator over input blocks of a RefBundle. Typically,
+            this will yield only a single block, unless the transformation has
+            multiple inputs. It is an iterator for memory efficiency.
         """
         return self._transform_fn
 
+    # TODO(ekl): slim down ComputeStrategy to only specify the compute
+    # config and not contain implementation code.
     def compute_strategy(self) -> ComputeStrategy:
         """Return the compute strategy to use for executing these tasks.
 
