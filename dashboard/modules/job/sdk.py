@@ -75,7 +75,7 @@ class JobSubmissionClient(SubmissionClient):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
-                "installation: `pip install 'ray[default']``"
+                "installation: `pip install 'ray[default]'`"
             )
 
         # Check types of arguments
