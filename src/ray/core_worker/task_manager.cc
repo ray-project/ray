@@ -799,8 +799,6 @@ void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
 rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
   rpc::TaskInfoEntry task_info;
-  return task_info;
-
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
