@@ -122,6 +122,10 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
   },
   {
+    title: "Node CPU by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=37",
+  },
+  {
     title: "Node GPU Memory (GRAM)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
   },
