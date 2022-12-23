@@ -125,27 +125,15 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
         )
 
 
-# Used for syncing allocations
-@ray.remote
-class BarrierActor:
-    def __init__(self, num_objects):
-        self.barrier = threading.Barrier(num_objects, timeout=30)
-
-    def wait_all_done(self):
-        self.barrier.wait()
-
-
 @ray.remote
 class ActorWithNestedTask:
-    def __init__(self, barrier=None):
+    def __init__(self):
         self.mem = []
-        self.barrier = barrier
 
     def perform_allocations(self, actor_bytes, nested_task_bytes):
         self.mem = alloc_mem(actor_bytes)
-        if self.barrier:
-            ray.get(self.barrier.wait_all_done.remote())
-        ray.get(allocate_memory.options(max_retries=-1).remote(nested_task_bytes))
+        time.sleep(10)
+        ray.get(allocate_memory.options(max_retries=-1).remote(nested_task_bytes, post_allocate_sleep_s=5))
 
 
 @pytest.mark.skipif(
@@ -177,15 +165,8 @@ def test_deadlock_actor_with_nested_task(
 def test_deadlock_two_sets_of_actor_with_nested_task(
     ray_with_memory_monitor,
 ):
-    barrier = BarrierActor.options(
-        max_restarts=0, max_task_retries=0, max_concurrency=2
-    ).remote(2)
-    leaker1 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
-        barrier
-    )
-    leaker2 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
-        barrier
-    )
+    leaker1 = ActorWithNestedTask.options(max_restarts=-1, max_task_retries=-1).remote()
+    leaker2 = ActorWithNestedTask.options(max_restarts=-1, max_task_retries=-1).remote()
     parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         (memory_usage_threshold - 0.05) / 2
     )
@@ -196,10 +177,9 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
     ref1 = leaker1.perform_allocations.remote(parent_bytes, nested_bytes)
     ref2 = leaker2.perform_allocations.remote(parent_bytes, nested_bytes)
 
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
-        ray.get(ref1)
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
-        ray.get(ref2)
+    with pytest.raises(ray.exceptions.GetTimeoutError) as _:
+        ray.get(ref1, timeout=60)
+        ray.get(ref2, timeout=60)
 
 
 @ray.remote
