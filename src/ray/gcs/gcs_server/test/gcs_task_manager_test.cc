@@ -80,9 +80,9 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
-  rpc::GetTaskEventsReply SyncGetTaskEvents(
-      absl::flat_hash_set<TaskID> task_ids,
-      absl::optional<JobID> job_id = absl::nullopt) {
+  rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
+                                            absl::optional<JobID> job_id = absl::nullopt,
+                                            int64_t limit = -1) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
@@ -95,6 +95,10 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     if (job_id) {
       request.set_job_id(job_id->Binary());
+    }
+
+    if (limit >= 0) {
+      request.set_limit(limit);
     }
 
     task_manager->HandleGetTaskEvents(
@@ -309,6 +313,40 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEvents) {
 
     EXPECT_EQ(reply.num_profile_task_events_dropped(), num_profile_task_events_dropped);
     EXPECT_EQ(reply.num_status_task_events_dropped(), num_status_task_events_dropped);
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithLimit) {
+  // Add task events
+  int32_t num_task_events = 100;
+  {
+    auto task_ids = GenTaskIDs(num_task_events);
+    auto profile_events = GenProfileEvents("event", /*start*/ 1, /*end*/ 1);
+    auto status_update = GenStateUpdate();
+    auto events = GenTaskEvents(task_ids, 0, 0, profile_events, status_update);
+    auto data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(data);
+  }
+
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {}, /* job_id */ absl::nullopt, 10);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    EXPECT_EQ(reply.num_profile_task_events_dropped(), num_task_events - 10);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), num_task_events - 10);
+  }
+
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {}, /* job_id */ absl::nullopt, 0);
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    EXPECT_EQ(reply.num_profile_task_events_dropped(), num_task_events);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), num_task_events);
+  }
+
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {}, /* job_id */ absl::nullopt, -1);
+    EXPECT_EQ(reply.events_by_task_size(), 100);
+    EXPECT_EQ(reply.num_profile_task_events_dropped(), 0);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 0);
   }
 }
 

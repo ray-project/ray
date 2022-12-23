@@ -32,12 +32,16 @@ from ray.core.generated.common_pb2 import (
     TaskType,
 )
 from ray.core.generated.gcs_pb2 import (
+    TaskEvents,
+    TaskStateUpdate,
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
+    GcsStatus,
+    GetTaskEventsReply,
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
@@ -183,44 +187,44 @@ def generate_worker_data(id, pid=1234):
     )
 
 
-def generate_task_entry(
+def generate_task_event(
     id,
     name="class",
     func_or_class="class",
     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     type=TaskType.NORMAL_TASK,
-    node_id=NodeID.from_random().binary(),
-):
-    return TaskInfoEntry(
-        task_id=id,
-        name=name,
-        func_or_class_name=func_or_class,
-        scheduling_state=state,
-        type=type,
-        node_id=node_id,
-    )
-
-
-def generate_task_data(
-    id,
-    name="class",
-    func_or_class="class",
-    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     node_id=NodeID.from_random(),
+    attempt_number=0,
+    job_id=b"0001",
 ):
     if node_id is not None:
         node_id = node_id.binary()
-    return GetTasksInfoReply(
-        owned_task_info_entries=[
-            generate_task_entry(
-                id=id,
-                name=name,
-                func_or_class=func_or_class,
-                state=state,
-                node_id=node_id,
-            )
-        ],
-        total=1,
+
+    task_info = TaskInfoEntry(
+        task_id=id,
+        name=name,
+        func_or_class_name=func_or_class,
+        type=type,
+    )
+    state_updates = TaskStateUpdate(
+        node_id=node_id,
+    )
+    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
+    return TaskEvents(
+        task_id=id,
+        job_id=job_id,
+        attempt_number=attempt_number,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+
+
+def generate_task_data(events_by_task):
+    return GetTaskEventsReply(
+        status=GcsStatus(),
+        events_by_task=events_by_task,
+        num_status_task_events_dropped=0,
+        num_profile_task_events_dropped=0,
     )
 
 
@@ -781,21 +785,22 @@ async def test_api_manager_list_workers(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
     node_id = NodeID.from_random()
     first_task_name = "1"
     second_task_name = "2"
-    data_source_client.get_task_info = AsyncMock()
+    data_source_client.get_all_task_info = AsyncMock()
     id = b"1234"
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name, node_id=node_id),
-        generate_task_data(b"2345", second_task_name, node_id=None),
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(id, first_task_name, node_id=node_id),
+                generate_task_event(b"2345", second_task_name, node_id=None),
+            ]
+        )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
-    data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
-    data_source_client.get_task_info.assert_any_await("2", timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result
     data = data
     assert len(data) == 2
@@ -809,9 +814,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test detail
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(id, first_task_name),
+                generate_task_event(b"2345", second_task_name),
+            ]
+        )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
     data = result.result
@@ -822,9 +831,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test limit
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(id, first_task_name),
+                generate_task_event(b"2345", second_task_name),
+            ]
+        )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
     data = result.result
@@ -834,39 +847,18 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test filters
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(id, first_task_name),
+                generate_task_event(b"2345", second_task_name),
+            ]
+        )
     ]
     result = await state_api_manager.list_tasks(
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
-
-    """
-    Test error handling
-    """
-    data_source_client.get_task_info.side_effect = [
-        DataSourceUnavailable(),
-        generate_task_data(b"2345", second_task_name),
-    ]
-    result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
-    # Make sure warnings are returned.
-    warning = result.partial_failure_warning
-    assert (
-        NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet", total=2, network_failures=1, log_command="raylet.out"
-        )
-        in warning
-    )
-
-    # Test if all RPCs fail, it will raise an exception.
-    data_source_client.get_task_info.side_effect = [
-        DataSourceUnavailable(),
-        DataSourceUnavailable(),
-    ]
-    with pytest.raises(DataSourceUnavailable):
-        result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
 
 
 @pytest.mark.skipif(
@@ -2012,6 +2004,49 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.skip(
+    reason=(
+        "This requires CoreWorker changes to record status change "
+        "to individual task attempt"
+    )
+)
+def test_list_get_task_multiple_attempt(shutdown_only):
+    ray.init(num_cpus=2)
+    job_id = ray.get_runtime_context().get_job_id()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    @ray.remote(retry_exceptions=True, max_retries=2)
+    def f():
+        raise ValueError("f is expected to failed")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(f.remote())
+
+    def verify(task_attempts):
+        assert len(task_attempts) == 3  # 2 retries + 1 initial run
+        for task_attempt in task_attempts:
+            assert task_attempt["job_id"] == job_id
+            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["node_id"] == node_id
+
+        assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
+            0,
+            1,
+            2,
+        }, "Attempt number should be 0,1,2"
+
+        assert (
+            len({task_attempt["task_id"] for task_attempt in task_attempts}) == 1
+        ), "Same task id"
+        return True
+
+    wait_for_condition(lambda: verify(list_tasks()))
+
+    # Test get with task id returns multiple task attempts
+    task_id = list_tasks()[0]["task_id"]
+    wait_for_condition(lambda: verify(get_task(task_id)))
+
+
 def test_list_actor_tasks(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
@@ -2032,6 +2067,7 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
         for task in tasks:
+            print(task)
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
         # Actor.call: 1 running, 9 waiting for execution (queued).
@@ -2202,8 +2238,9 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         # This will help the API not return until the node is killed.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=5000000:5000000",
+            "NodeManagerService.grpc_server.GetObjectsInfo=5000000:5000000",
         )
+        m.setenv("RAY_record_ref_creation_sites", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
@@ -2211,33 +2248,32 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
 
         @ray.remote
         def f():
-            import time
-
-            time.sleep(30)
+            ray.put(1)
 
         a = [f.remote() for _ in range(4)]  # noqa
-        wait_for_condition(lambda: len(list_tasks()) == 4)
+        wait_for_condition(lambda: len(list_objects()) == 4)
 
         # Make sure when there's 0 node failure, it doesn't print the error.
         with pytest.warns(None) as record:
-            list_tasks(_explain=True)
+            list_objects(_explain=True)
         assert len(record) == 0
 
-        # Kill raylet so that list_tasks will have network error on querying raylets.
+        # Kill raylet so that list_objects will have network error on querying raylets.
         cluster.remove_node(n, allow_graceful=False)
 
         with pytest.warns(UserWarning):
-            list_tasks(raise_on_missing_output=False, _explain=True)
+            list_objects(raise_on_missing_output=False, _explain=True)
 
         # Make sure when _explain == False, warning is not printed.
         with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=False)
+            list_objects(raise_on_missing_output=False, _explain=False)
         assert len(record) == 0
 
 
 def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
     """When the request fails due to network timeout,
     verifies it prints proper warning."""
+    monkeypatch.setenv("RAY_record_ref_creation_sites", "1")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -2245,21 +2281,19 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
         # defer for 10s for the second node.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+            "NodeManagerService.grpc_server.GetObjectsInfo=10000000:10000000",
         )
         cluster.add_node(num_cpus=2)
 
     @ray.remote
     def f():
-        import time
-
-        time.sleep(30)
+        ray.put(1)
 
     a = [f.remote() for _ in range(4)]  # noqa
 
     def verify():
         with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=True, timeout=5)
+            list_objects(raise_on_missing_output=False, _explain=True, timeout=5)
         return len(record) == 1
 
     wait_for_condition(verify)
@@ -2541,7 +2575,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=20000000:20000000,"
+                "TaskInfoGcsService.grpc_server.GetTaskEvents=20000000:20000000,"
                 "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
@@ -2568,10 +2602,6 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
         _objs = [ray.put(x) for x in range(10)]  # noqa
-
-        # list_objects() will wait for raylets to be registered, which
-        # means `list_tasks` will also see the registered raylets.
-        wait_for_condition(lambda: len(list_objects()) > 0)
 
         # Running 3 slow apis to exhaust the limits
         res_q = queue.Queue()
@@ -2668,7 +2698,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=200000:200000,"
+                "TaskInfoGcsService.grpc_server.GetTaskEvents=200000:200000,"
                 "NodeManagerService.grpc_server.GetObjectsInfo=200000:200000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=200000:200000,"
                 "NodeInfoGcsService.grpc_server.GetAllNodeInfo=200000:200000,"
@@ -2767,6 +2797,7 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
     Verify when there are network partial failures,
     state API raises an exception when `raise_on_missing_output=True`.
     """
+    monkeypatch.setenv("RAY_record_ref_creation_sites", "1")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -2774,15 +2805,13 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
         # defer for 10s for the second node.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+            "NodeManagerService.grpc_server.GetObjectsInfo=10000000:10000000",
         )
         cluster.add_node(num_cpus=2)
 
     @ray.remote
     def f():
-        import time
-
-        time.sleep(30)
+        ray.put(1)
 
     a = [f.remote() for _ in range(4)]  # noqa
 
@@ -2792,39 +2821,39 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
     def verify():
         # Verify when raise_on_missing_output=True, it raises an exception.
         try:
-            list_tasks(_explain=True, timeout=3)
+            list_objects(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all objects from the cluster" in str(e)
             assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
         try:
-            summarize_tasks(_explain=True, timeout=3)
+            summarize_objects(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all objects from the cluster" in str(e)
             assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
         # Verify when raise_on_missing_output=False, it prints warnings.
         with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+            list_objects(raise_on_missing_output=False, _explain=True, timeout=3)
         assert len(record) == 1
 
         with pytest.warns(None) as record:
-            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+            summarize_objects(raise_on_missing_output=False, _explain=True, timeout=3)
         assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
         with pytest.warns(None) as record:
-            result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
+            result = runner.invoke(ray_list, ["objects", "--timeout=3"])
         assert len(record) == 1
         assert result.exit_code == 0
 
         # Verify summary CLI also doesn't raise an exception.
         with pytest.warns(None) as record:
-            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
+            result = runner.invoke(summary_state_cli_group, ["objects", "--timeout=3"])
         assert result.exit_code == 0
         assert len(record) == 1
         return True

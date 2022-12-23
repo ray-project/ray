@@ -320,6 +320,13 @@ class StateApiClient(SubmissionClient):
             # e.g. pinned as local variable, used as parameter
             return result
 
+        if resource == StateResource.TASKS:
+            # There might be multiple task attempts given a task id due to
+            # task retries.
+            if len(result) == 1:
+                return result[0]
+            return result
+
         # For the rest of the resources, there should only be a single entry
         # for a particular id.
         assert len(result) == 1
@@ -666,7 +673,7 @@ def get_task(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[Dict]:
-    """Get a task by id.
+    """Get task attempts of a task by id.
 
     Args:
         id: Id of the task
@@ -677,8 +684,8 @@ def get_task(
             failed query information.
 
     Returns:
-        None if actor not found, or dictionarified
-        :ref:`TaskState <state-api-schema-task>`.
+        None if task not found, or a list of dictionarified
+        :ref:`TaskState <state-api-schema-task>` from the task attempts.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
