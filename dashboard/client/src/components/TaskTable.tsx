@@ -16,6 +16,7 @@ import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
+import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
 const TaskTable = ({
@@ -36,7 +37,8 @@ const TaskTable = ({
     { label: "ID" },
     { label: "Name" },
     { label: "Job Id" },
-    { label: "Scheduling State" },
+    { label: "State" },
+    { label: "Duration" },
     { label: "Function or Class Name" },
     { label: "Node Id" },
     { label: "Actor_id" },
@@ -59,12 +61,12 @@ const TaskTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(new Set(tasks.map((e) => e.scheduling_state)))}
+          options={Array.from(new Set(tasks.map((e) => e.state)))}
           onInputChange={(_: any, value: string) => {
-            changeFilter("scheduling_state", value.trim());
+            changeFilter("state", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Scheduling State" />
+            <TextField {...params} label="State" />
           )}
         />
         <Autocomplete
@@ -121,6 +123,9 @@ const TaskTable = ({
             count={Math.ceil(taskList.length / pageSize)}
           />
         </div>
+        <div>
+          <StateCounter type="task" list={taskList} />
+        </div>
       </div>
       <Table>
         <TableHead>
@@ -140,7 +145,8 @@ const TaskTable = ({
               task_id,
               name,
               job_id,
-              scheduling_state,
+              state,
+              duration_s,
               func_or_class_name,
               node_id,
               actor_id,
@@ -161,7 +167,14 @@ const TaskTable = ({
                 <TableCell align="center">{name ? name : "-"}</TableCell>
                 <TableCell align="center">{job_id}</TableCell>
                 <TableCell align="center">
-                  <StatusChip type="actor" status={scheduling_state} />
+                  <StatusChip type="actor" status={state} />
+                </TableCell>
+                <TableCell align="center">
+                  {duration_s ? (
+                    `${duration_s}s`
+                  ) : (
+                    "-"
+                  )}
                 </TableCell>
                 <TableCell align="center">{func_or_class_name}</TableCell>
                 <TableCell align="center">{node_id ? node_id : "-"}</TableCell>

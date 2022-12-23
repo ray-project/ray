@@ -805,7 +805,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     data = data
     assert len(data) == 2
     assert result.total == 2
-
+    print(data)
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
@@ -860,6 +860,52 @@ async def test_api_manager_list_tasks(state_api_manager):
     )
     assert len(result.result) == 1
 
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_list_tasks_events(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    node_id = NodeID.from_random()
+    first_task_name = "1"
+    second_task_name = "2"
+    data_source_client.get_all_task_info = AsyncMock()
+    id = b"1234"
+    func_or_class = "f"
+
+    # Generate a task event.
+
+    task_info = TaskInfoEntry(
+        task_id=id,
+        name=func_or_class,
+        func_or_class_name=func_or_class,
+        type=TaskType.NORMAL_TASK,
+    )
+    current = time.perf_counter_ns()
+    second = 1000000000
+    state_updates = TaskStateUpdate(
+        node_id=node_id.binary(),
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+        running_ts=current + (2 * second),
+        finished_ts=current + (3 * second)
+    )
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert "events" in result
+    print(result["duration_s"])
+    print(result["events"])
 
 @pytest.mark.skipif(
     sys.version_info < (3, 8, 0),

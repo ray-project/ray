@@ -399,7 +399,7 @@ class StateAPIManager:
                     task_state[key] = src.get(key)
 
             # Get the most updated scheduling_state by state transition ordering.
-            def _get_most_recent_status(task_state: dict) -> str:
+            def _get_most_recent_status(state_updates: dict) -> str:
                 # Reverse the order as defined in protobuf for the most recent state.
                 for status_name in reversed(common_pb2.TaskStatus.keys()):
                     key = f"{status_name.lower()}_ts"
@@ -407,7 +407,21 @@ class StateAPIManager:
                         return status_name
                 return common_pb2.TaskStatus.Name(common_pb2.NIL)
 
-            task_state["scheduling_state"] = _get_most_recent_status(state_updates)
+            task_state["state"] = _get_most_recent_status(state_updates)
+
+            from datetime import datetime
+            events = []
+            if "node_id" in state_updates:
+                state_updates.pop("node_id")
+            for state, ts_ns in state_updates.items():
+                events.append({"state": state.split("_ts")[0], "created": str(datetime.fromtimestamp(int(ts_ns) // 1000000000))})
+            task_state["events"] = events
+            task_state["duration_s"] = None
+            done = state_updates.get("finished_ts") or state_updates.get("failed_ts")
+            if done:
+                done_ts =  datetime.fromtimestamp(int(done) // 1000000000)
+                start_ts = datetime.fromtimestamp(int(state_updates["running_ts"]) // 1000000000)
+                task_state["duration_s"] = (done_ts - start_ts).seconds
 
             return task_state
 
