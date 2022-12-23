@@ -96,21 +96,20 @@ class TfRLTrainer(RLTrainer):
                 for grad in grads:
                     mean_grads[module_id][network].append(grad.mean())
                 mean_grads[module_id][network] = np.mean(mean_grads[module_id][network])
+
+        module_avg_weights = {}
+        for module_id in self._module.keys():
+            avg_weights = []
+            weights = self._module[module_id].get_weights()
+            for weight_array in weights:
+                avg_weights.append(weight_array.mean())
+            avg_weights = np.mean(avg_weights)
+            module_avg_weights[module_id] = avg_weights
         ret = {
             "loss": loss_numpy,
             "mean_gradient": mean_grads,
+            "mean_weight": module_avg_weights,
         }
-        module_avg_weights = {}
-
-        if self.debug:
-            for module_id in self._module.keys():
-                avg_weights = []
-                weights = self._module[module_id].get_weights()
-                for weight_array in weights:
-                    avg_weights.append(weight_array.mean())
-                avg_weights = np.mean(avg_weights)
-                module_avg_weights[module_id] = avg_weights
-            ret["mean_weight"] = module_avg_weights
         return ret
 
     @override(RLTrainer)

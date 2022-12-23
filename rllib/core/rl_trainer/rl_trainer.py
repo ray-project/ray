@@ -29,14 +29,12 @@ class RLTrainer:
         optimizer_config: Mapping[str, Any],
         scaling_config: Mapping[str, Any],
         distributed: bool = False,
-        debug=False,
     ):
         self.module_class = module_class
         self.module_config = module_config
         self.optimizer_class = optimizer_class
         self.optimizer_config = optimizer_config
         self.distributed = distributed
-        self.debug = debug
 
     def on_after_compute_gradients(
         self, gradients_dict: Mapping[str, Any]
