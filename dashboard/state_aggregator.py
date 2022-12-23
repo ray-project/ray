@@ -411,7 +411,6 @@ class StateAPIManager:
 
             return task_state
 
-        logging.info(reply.events_by_task)
         result = [
             _to_task_state(
                 self._message_to_dict(
