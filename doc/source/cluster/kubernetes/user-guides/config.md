@@ -212,6 +212,7 @@ For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
 This is required to expose the Ray dashboard outside the Ray cluster. (Future versions might set
 this parameter by default.)
 
+(kuberay-num-cpus)=
 ### num-cpus
 This optional field tells the Ray scheduler and autoscaler how many CPUs are
 available to the Ray pod. The CPU count can be autodetected from the
