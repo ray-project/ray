@@ -1104,6 +1104,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    // Must call `AddNestedObjectIds` after finished assign owner.
+    // Otherwise, it will cause the reference count of those contained objects
+    // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
+    reference_counter_->AddNestedObjectIds(
+        *object_id, contained_object_ids, real_owner_address);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
