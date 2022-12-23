@@ -58,7 +58,7 @@ architecture means that the head node will have extra stress due to GCS.
   at least as good as an r5dn.16xlarge on AWS EC2.
 * Set ``resources: {"CPU": 0}`` on the head node.
   (For Ray clusters deployed using KubeRay,
-  set ``rayStartParams: {"CPU": "0""}``.
+  set ``rayStartParams: {"CPU": "0"}``.
   See the :ref:`configuration guide for KubeRay clusters<kuberay-num-cpus>`.)
   Due to the heavy networking load (and the GCS and dashboard processes), we
   recommend setting the number of CPUs to 0 on the head node to avoid
