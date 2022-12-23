@@ -112,7 +112,7 @@ class MapOperatorTasksImpl:
         del ref
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:
-            _trace_allocation(ref, "map_operator_work_completed")
+            trace_allocation(ref, "map_operator_work_completed")
         task.output = RefBundle(list(zip(block_refs, block_metas)), owns_blocks=True)
         allocated = task.output.size_bytes()
         self._obj_store_mem_alloc += allocated
@@ -133,10 +133,12 @@ class MapOperatorTasksImpl:
             and self._tasks_by_output_order[i].output is not None
         )
 
-    def get_next(self) -> bool:
+    def get_next(self) -> RefBundle:
         i = self._next_output_index
         self._next_output_index += 1
-        return self._tasks_by_output_order.pop(i).output
+        bundle = self._tasks_by_output_order.pop(i).output
+        self._obj_store_mem_cur -= bundle.size_bytes()
+        return bundle
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return list(self._tasks)

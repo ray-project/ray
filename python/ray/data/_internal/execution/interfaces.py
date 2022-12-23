@@ -2,8 +2,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Iterator, Tuple
 
 import ray
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
 
@@ -62,7 +64,15 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        raise NotImplementedError
+        if self.owns_blocks and DatasetContext.get_current().eager_free:
+            size = self.size_bytes()
+            for b in self.blocks:
+                trace_deallocation(b[0], "RefBundle.destroy_if_owned")
+            return size
+        else:
+            for b in self.blocks:
+                trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=False)
+            return 0
 
 
 @dataclass
