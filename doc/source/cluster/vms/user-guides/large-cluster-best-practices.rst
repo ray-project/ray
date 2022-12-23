@@ -59,7 +59,7 @@ architecture means that the head node will have extra stress due to GCS.
 * Set ``resources: {"CPU": 0}`` on the head node.
   (For Ray clusters deployed using KubeRay,
   set ``rayStartParams: {"CPU": "0"}``.
-  See the :ref:`configuration guide for KubeRay clusters<kuberay-num-cpus>`.)
+  See the :ref:`configuration guide for KubeRay clusters <kuberay-num-cpus>`.)
   Due to the heavy networking load (and the GCS and dashboard processes), we
   recommend setting the number of CPUs to 0 on the head node to avoid
   scheduling additional tasks on it.
