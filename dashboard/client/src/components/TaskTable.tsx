@@ -170,11 +170,7 @@ const TaskTable = ({
                   <StatusChip type="actor" status={state} />
                 </TableCell>
                 <TableCell align="center">
-                  {duration_s ? (
-                    `${duration_s}s`
-                  ) : (
-                    "-"
-                  )}
+                  {duration_s ? `${duration_s}s` : "-"}
                 </TableCell>
                 <TableCell align="center">{func_or_class_name}</TableCell>
                 <TableCell align="center">{node_id ? node_id : "-"}</TableCell>

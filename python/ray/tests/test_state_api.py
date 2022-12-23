@@ -870,8 +870,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
 
     node_id = NodeID.from_random()
-    first_task_name = "1"
-    second_task_name = "2"
     data_source_client.get_all_task_info = AsyncMock()
     id = b"1234"
     func_or_class = "f"
@@ -891,7 +889,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
         pending_args_avail_ts=current,
         submitted_to_worker_ts=current + second,
         running_ts=current + (2 * second),
-        finished_ts=current + (3 * second)
+        finished_ts=current + (3 * second),
     )
     events = TaskEvents(
         task_id=id,
@@ -906,6 +904,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert "events" in result
     print(result["duration_s"])
     print(result["events"])
+
 
 @pytest.mark.skipif(
     sys.version_info < (3, 8, 0),

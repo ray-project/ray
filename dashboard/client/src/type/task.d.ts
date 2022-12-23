@@ -33,5 +33,5 @@ export type Task = {
   language: string;
   required_resources: { [key: string]: number };
   runtime_env_info: string;
-  duration_s: int
+  duration_s: int;
 };
