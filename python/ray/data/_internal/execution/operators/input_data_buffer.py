@@ -1,6 +1,5 @@
-from typing import List, Optional, Dict
+from typing import List, Optional
 
-from ray.data.block import BlockMetadata
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,

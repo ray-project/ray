@@ -2,7 +2,7 @@ from typing import Callable, Optional, List, Dict, TYPE_CHECKING
 
 import ray
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _trace_allocation
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
