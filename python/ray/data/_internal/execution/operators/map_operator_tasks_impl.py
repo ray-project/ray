@@ -2,7 +2,7 @@ from typing import Callable, Optional, List, Dict, TYPE_CHECKING
 
 import ray
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _trace_allocation
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
@@ -112,7 +112,7 @@ class MapOperatorTasksImpl:
         del ref
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:
-            _trace_allocation(ref, "map_operator_work_completed")
+            trace_allocation(ref, "map_operator_work_completed")
         task.output = RefBundle(list(zip(block_refs, block_metas)), owns_blocks=True)
         allocated = task.output.size_bytes()
         self._obj_store_mem_alloc += allocated

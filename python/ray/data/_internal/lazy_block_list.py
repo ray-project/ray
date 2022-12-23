@@ -8,7 +8,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _trace_allocation
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data.block import (
     Block,
@@ -567,7 +567,7 @@ class LazyBlockList(BlockList):
                 assert self._block_partition_meta_refs[
                     i
                 ], self._block_partition_meta_refs
-        _trace_allocation(
+        trace_allocation(
             self._block_partition_refs[i], f"LazyBlockList.get_or_compute({i})"
         )
         return self._block_partition_refs[i], self._block_partition_meta_refs[i]

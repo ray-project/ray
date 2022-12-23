@@ -13,7 +13,7 @@ from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import get_compute
-from ray.data._internal.util import _trace_allocation
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
@@ -107,7 +107,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         for i in inputs._input_data:
             for b in i.blocks:
-                _trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
+                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
 
         def do_read(blocks: Iterator[Block]) -> Iterator[Block]:
             for read_task in blocks:
@@ -119,7 +119,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
             for b in i.blocks:
-                _trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[1]")
+                trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[1]")
         return InputDataBuffer(output)
 
 
