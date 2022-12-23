@@ -16,6 +16,7 @@ def test_input_data_buffer():
 def test_map_operator():
     # Create with inputs.
     # Check we return transformed bundles in order.
+    # Check dataset stats.
     # Check memory stats and ownership flag.
     assert False
 
@@ -38,6 +39,7 @@ def test_map_operator_min_rows_per_batch():
 def test_all_to_all_operator():
     # Create with bundles.
     # Check we return transformed bundles.
+    # Check dataset stats.
     assert False
 
 
