@@ -173,13 +173,28 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   // Populate reply.
+  auto limit = request.has_limit() ? request.limit() : -1;
+  // Simple limit.
+  auto count = 0;
+  int32_t num_profile_event_limit = 0;
+  int32_t num_status_event_limit = 0;
   for (auto &task_event : task_events) {
-    auto events = reply->add_events_by_task();
-    events->Swap(&task_event);
+    if (limit < 0 || count++ < limit) {
+      auto events = reply->add_events_by_task();
+      events->Swap(&task_event);
+    } else {
+      num_profile_event_limit +=
+          task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
+      num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
+    }
   }
-
-  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_);
-  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_);
+  // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
+  // on a single task retry(attempt) rather than the actual events.
+  // https://github.com/ray-project/ray/issues/31280
+  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_ +
+                                             num_profile_event_limit);
+  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_ +
+                                            num_status_event_limit);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
@@ -201,7 +216,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
     total_num_task_events_reported_++;
     auto task_id = TaskID::FromBinary(events_by_task.task_id());
     // TODO(rickyx): add logic to handle too many profile events for a single task
-    // attempt.
+    // attempt.  https://github.com/ray-project/ray/issues/31279
     auto replaced_task_events =
         task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
 

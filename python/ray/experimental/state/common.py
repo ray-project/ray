@@ -476,6 +476,8 @@ class TaskState(StateSchema):
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The attempt (retry) number of the task.
+    attempt_number: int = state_column(filterable=True)
     #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
     #: The state of the task.
