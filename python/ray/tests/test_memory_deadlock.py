@@ -133,7 +133,11 @@ class ActorWithNestedTask:
     def perform_allocations(self, actor_bytes, nested_task_bytes):
         self.mem = alloc_mem(actor_bytes)
         time.sleep(10)
-        ray.get(allocate_memory.options(max_retries=-1).remote(nested_task_bytes, post_allocate_sleep_s=5))
+        ray.get(
+            allocate_memory.options(max_retries=-1).remote(
+                nested_task_bytes, post_allocate_sleep_s=5
+            )
+        )
 
 
 @pytest.mark.skipif(
