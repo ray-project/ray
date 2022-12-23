@@ -1,5 +1,5 @@
-import numpy as np
-from typing import Any, Mapping, Type
+import math
+from typing import Any, List, Mapping, Type
 
 import ray
 
@@ -9,8 +9,6 @@ from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
-from ray.train.torch import TorchConfig
-from ray.train.tensorflow import TensorflowConfig
 
 
 class TrainerRunner:
@@ -45,8 +43,12 @@ class TrainerRunner:
         )
         # the only part of this class that is framework agnostic:
         if framework == "torch":
+            from ray.train.torch import TorchConfig
+
             backend_config = TorchConfig()
         elif framework == "tf":
+            from ray.train.tensorflow import TensorflowConfig
+
             backend_config = TensorflowConfig()
         else:
             raise ValueError("framework must be either torch or tf")
@@ -102,11 +104,11 @@ class TrainerRunner:
                 refs.append(worker.update.remote(**kwargs))
         else:
             global_size = len(self.workers)
-            batch_size = np.ceil(len(batch) / global_size)
+            batch_size = math.ceil(len(batch) / global_size)
             for i, worker in enumerate(self.workers):
                 batch_to_send = {}
                 for pid, sub_batch in batch.policy_batches.items():
-                    batch_size = np.ceil(len(sub_batch) / global_size)
+                    batch_size = math.ceil(len(sub_batch) / global_size)
                     start = batch_size * i
                     end = min(start + batch_size, len(sub_batch))
                     batch_to_send[pid] = sub_batch[int(start) : int(end)]
@@ -123,7 +125,15 @@ class TrainerRunner:
         optimizer_cls: Type[RLOptimizer],
         optimizer_config: Mapping[str, Any],
     ) -> None:
-        """Add a module to the trainer."""
+        """Add a module to the RLTrainers maintained by this TrainerRunner.
+
+        Args:
+            module_id: The id of the module to add.
+            module_cls: The module class to add.
+            module_config: The config for the module.
+            optimizer_cls: The optimizer class to use.
+            optimizer_config: The config for the optimizer.
+        """
         refs = []
         for worker in self.workers:
             ref = worker.add_module.remote(
@@ -133,22 +143,32 @@ class TrainerRunner:
         ray.get(refs)
 
     def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the trainer."""
+        """Remove a module from the RLTrainers maintained by this TrainerRunner.
+
+        Args:
+            module_id: The id of the module to remove.
+
+        """
         refs = []
         for worker in self.workers:
             ref = worker.remove_module.remote(module_id)
             refs.append(ref)
         ray.get(refs)
 
-    def get_state(self):
-        """ """
+    def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
+        """Get the state of the RLTrainers"""
         refs = []
         for worker in self.workers:
             refs.append(worker.get_state.remote())
         return ray.get(refs)
 
-    def set_state(self, state: Mapping[ModuleID, Mapping[str, Any]]):
-        """Sets the state of the MultiAgentRLModule and the optimizer on each worker."""
+    def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]):
+        """Sets the state of the MultiAgentRLModule and the optimizer on each worker.
+
+        Args:
+            state: The state of the RLTrainers
+
+        """
         refs = []
         for worker in self.workers:
             refs.append(worker.set_state.remote(state))

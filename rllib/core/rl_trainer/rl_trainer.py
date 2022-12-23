@@ -4,7 +4,7 @@ from typing import Any, Mapping, Union, Type
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
@@ -38,9 +38,8 @@ class RLTrainer:
         self.distributed = distributed
         self.debug = debug
 
-    @staticmethod
     def on_after_compute_gradients(
-        gradients_dict: Mapping[str, Any]
+        self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Called after gradients have been computed.
 
@@ -84,7 +83,6 @@ class RLTrainer:
             **loss_numpy,
         }
 
-    @abc.abstractmethod
     def update(self, batch: SampleBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
 
@@ -94,6 +92,15 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
+        if not self.distributed:
+            fwd_out = self._module.forward_train(batch)
+            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            gradients = self.compute_gradients(loss)
+            post_processed_gradients = self.on_after_compute_gradients(gradients)
+            self.apply_gradients(post_processed_gradients)
+        else:
+            self.do_distributed_update(batch)
+        return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
     @abc.abstractmethod
     def compute_gradients(
@@ -111,13 +118,32 @@ class RLTrainer:
             A dictionary of extra information and statistics.
         """
 
+    @abc.abstractmethod
+    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
+        """Perform an update on self._module
+
+        Args:
+            gradients: A dictionary of gradients.
+        """
+
     def set_state(self, state: Mapping[str, Any]) -> None:
-        """Set the state of the trainer."""
+        """Set the state of the trainer.
+
+        Args:
+            state: The state of the optimizer and module. Can be obtained
+                from `get_state`.
+
+        """
         self._rl_optimizer.set_state(state.get("optimizer_state", {}))
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
-        """Get the state of the trainer."""
+        """Get the state of the trainer.
+
+        Returns:
+            The state of the optimizer and module.
+
+        """
         return {
             "module_state": self._module.get_state(),
             "optimizer_state": self._rl_optimizer.get_state(),
@@ -127,18 +153,32 @@ class RLTrainer:
         self,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_config,
-        optimizer_cls,
-        optimizer_config,
+        module_config: Mapping[str, Any],
+        optimizer_cls: Type[RLOptimizer],
+        optimizer_config: Mapping[str, Any],
     ) -> None:
-        """Add a module to the trainer."""
+        """Add a module to the trainer.
+
+        Args:
+            module_id: The id of the module to add.
+            module_cls: The module class to add.
+            module_config: The config for the module.
+            optimizer_cls: The optimizer class to use.
+            optimizer_config: The config for the optimizer.
+
+        """
         module = module_cls.from_model_config(**module_config)
         self._module.add_module(module_id, module)
         optimizer = optimizer_cls(module, optimizer_config)
         self._rl_optimizer.add_optimizer(module_id, optimizer)
 
     def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the trainer."""
+        """Remove a module from the trainer.
+
+        Args:
+            module_id: The id of the module to remove.
+
+        """
         self._module.remove_module(module_id)
         self._rl_optimizer.remove_optimizer(module_id)
 
@@ -153,3 +193,14 @@ class RLTrainer:
             self._rl_optimizer = self.optimizer_class(
                 self._module, self.optimizer_config
             ).as_multi_agent()
+
+    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        """Perform a distributed update on this Trainer.
+
+        Args:
+            batch: A batch of data.
+
+        Returns:
+            A dictionary of results.
+        """
+        raise NotImplementedError

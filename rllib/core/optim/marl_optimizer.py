@@ -57,6 +57,11 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
     @override(RLOptimizer)
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
+        """Get the optimizer state.
+
+        Returns:
+            The optimizer state.
+        """
         return {
             module_id: optimizer.get_state()
             for module_id, optimizer in self._optimizers.items()
@@ -64,6 +69,12 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
     @override(RLOptimizer)
     def set_state(self, state: Mapping[ModuleID, Mapping[str, Any]]) -> None:
+        """Set the optimizer state.
+
+        Args:
+            state: The optimizer state to set.
+
+        """
         for module_id, sub_optimizer_state in state.items():
             optimizer = self._optimizers[module_id]
             optimizer.set_state(sub_optimizer_state)
@@ -73,9 +84,22 @@ class MultiAgentRLOptimizer(RLOptimizer):
         return self
 
     def add_optimizer(self, module_id: ModuleID, optimizer: RLOptimizer) -> None:
+        """Add a new optimizer to the multi-agent optimizer.
+
+        Args:
+            module_id: The module id of the optimizer.
+            optimizer: The optimizer to add.
+
+        """
         self._optimizers[module_id] = optimizer
 
     def remove_optimizer(self, module_id: ModuleID) -> None:
+        """Remove an optimizer from the multi-agent optimizer.
+
+        Args:
+            module_id: The module id of the optimizer to remove.
+
+        """
         del self._optimizers[module_id]
 
     def _configure_optimizers(self) -> None:

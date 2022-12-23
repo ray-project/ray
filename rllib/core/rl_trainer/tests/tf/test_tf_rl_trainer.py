@@ -45,8 +45,6 @@ class TestTfRLTrainer(unittest.TestCase):
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
 
-        # path = "s3://air-example-data/rllib/cartpole/large.json"
-
         path = "tests/data/cartpole/large.json"
         input_config = {"format": "json", "paths": path}
         dataset, _ = get_dataset_and_shards(
@@ -88,8 +86,6 @@ class TestTfRLTrainer(unittest.TestCase):
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
-
-        # path = "s3://air-example-data/rllib/cartpole/large.json"
 
         path = "tests/data/cartpole/large.json"
         input_config = {"format": "json", "paths": path}
