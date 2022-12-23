@@ -15,12 +15,21 @@ class TrainerRunner:
     """Coordinator of RLTrainers.
     Public API:
         .update()
-        .get_state() -> returns the state of the model on worker 0 which should
-                        be in sync with the other workers
-        .set_state() -> sets the state of the model on all workers
+        .get_state() -> returns the state of the RLModule and RLOptimizer from
+                        all of the RLTrainers
+        .set_state() -> sets the state of all the RLTrainers
         .apply(fn, *args, **kwargs) -> apply a function to all workers while
                                        having access to the attributes
-        >>> trainer_runner.apply(lambda w: w.get_weights())
+        >>> trainer_runner.apply(lambda w: w.fn())
+
+    TODO(avnishn):
+        1. Add trainer runner with async operations
+        2. Use fault tolerant actor manager to handle failures
+        3. Add from_xxx constructor pattern. For example
+           add a `from_policy_map(self.local_worker().policy_map, cfg)`
+           constructor to make it easier to create a TrainerRunner from a
+           rollout worker.
+
     """
 
     def __init__(
@@ -156,14 +165,14 @@ class TrainerRunner:
         ray.get(refs)
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
-        """Get the state of the RLTrainers"""
+        """Get the states of the RLTrainers"""
         refs = []
         for worker in self.workers:
             refs.append(worker.get_state.remote())
         return ray.get(refs)
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]):
-        """Sets the state of the MultiAgentRLModule and the optimizer on each worker.
+        """Sets the states of the RLTrainers.
 
         Args:
             state: The state of the RLTrainers
