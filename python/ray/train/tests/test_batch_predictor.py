@@ -147,7 +147,8 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
     with pytest.raises(
         ValueError, match="DummyPredictor does not support GPU prediction"
     ):
-        _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+        ds = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+        ds.fully_executed()
 
 
 def test_batch_prediction_simple():

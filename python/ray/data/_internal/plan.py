@@ -251,6 +251,9 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it. So snapshot has output.
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
