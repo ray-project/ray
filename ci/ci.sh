@@ -389,6 +389,8 @@ install_ray() {
 }
 
 validate_wheels_commit_str() {
+  echo "TODO: validate_wheels_commit_str disabled"
+  return 0
   if [ "${OSTYPE}" = msys ]; then
     echo "Windows builds do not set the commit string, skipping wheel commit validity check."
     return 0
