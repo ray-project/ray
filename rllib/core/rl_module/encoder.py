@@ -3,6 +3,7 @@ import torch.nn as nn
 import tree
 from typing import List
 
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from dataclasses import dataclass, field
 
 from ray.rllib.utils.annotations import override
@@ -63,7 +64,7 @@ class LSTMConfig(EncoderConfig):
         return LSTMEncoder(self)
 
 
-class Encoder(nn.Module, Model):
+class Encoder(Model, nn.Module):
     def __init__(self, config: EncoderConfig) -> None:
         nn.Module.__init__(self)
         Model.__init__(self)
@@ -72,9 +73,11 @@ class Encoder(nn.Module, Model):
     def get_initial_state(self):
         return []
 
+    @property
     def input_spec(self):
         return SpecDict()
 
+    @property
     def output_spec(self):
         return SpecDict()
 
@@ -95,7 +98,7 @@ class FullyConnectedEncoder(Encoder):
     def input_spec(self):
         return SpecDict(
             {
-                self.io_mapping[BaseModelIOKeys.IN]: TorchTensorSpec(
+                self.io[BaseModelIOKeys.IN]: TorchTensorSpec(
                     "b, h", h=self.config.input_dim
                 )
             }
@@ -106,14 +109,17 @@ class FullyConnectedEncoder(Encoder):
     def output_spec(self):
         return SpecDict(
             {
-                self.io_mapping[BaseModelIOKeys.IN]: TorchTensorSpec(
+                self.io[BaseModelIOKeys.out]: TorchTensorSpec(
                     "b, h", h=self.config.output_dim
                 )
             }
         )
 
-    def _forward(self, input_dict):
-        return {self.ENCODER_OUT: self.net(input_dict[SampleBatch.OBS])}
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
+    def _forward(self, input_dict, **kwargs):
+        inputs = input_dict[self.io[BaseModelIOKeys.IN]]
+        return {self.io[BaseModelIOKeys.OUT]: self.net(inputs)}
 
 
 class RecurrentEncoder(Encoder):
@@ -147,8 +153,10 @@ class LSTMEncoder(RecurrentEncoder):
         return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                self.ENCODER_IN: TorchTensorSpec("bxt, h", h=config.input_dim),
-                self.STATE_IN: {
+                self.io[BaseModelIOKeys.IN]: TorchTensorSpec(
+                    "bxt, h", h=config.input_dim
+                ),
+                self.io[BaseModelIOKeys.STATE_IN]: {
                     "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
@@ -165,8 +173,10 @@ class LSTMEncoder(RecurrentEncoder):
         config = self.config
         return SpecDict(
             {
-                self.ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
-                self.STATE_OUT: {
+                self.io[BaseModelIOKeys.OUT]: TorchTensorSpec(
+                    "bxt, h", h=config.output_dim
+                ),
+                self.io[BaseModelIOKeys.STATE_OUT]: {
                     "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
@@ -177,9 +187,11 @@ class LSTMEncoder(RecurrentEncoder):
             }
         )
 
-    def _forward(self, input_dict: SampleBatch):
-        x = input_dict[self.STATE_IN]
-        states = input_dict[self.STATE_IN]
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
+    def _forward(self, input_dict: SampleBatch, **kwargs):
+        x = input_dict[self.io[BaseModelIOKeys.IN]]
+        states = input_dict[self.io[BaseModelIOKeys.STATE_IN]]
         # states are batch-first when coming in
         states = tree.map_structure(lambda x: x.transpose(0, 1), states)
 
@@ -196,8 +208,10 @@ class LSTMEncoder(RecurrentEncoder):
         x = x.view(-1, x.shape[-1])
 
         return {
-            self.ENCODER_OUT: x,
-            self.STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
+            self.io[BaseModelIOKeys.OUT]: x,
+            self.io[BaseModelIOKeys.STATE_OUT]: tree.map_structure(
+                lambda x: x.transpose(0, 1), states_o
+            ),
         }
 
 
@@ -205,5 +219,7 @@ class IdentityEncoder(Encoder):
     def __init__(self, config: EncoderConfig) -> None:
         super().__init__(config=config)
 
-    def _forward(self, input_dict):
-        return input_dict
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
+    def _forward(self, input_dict, **kwargs):
+        return {self.io[BaseModelIOKeys.OUT]: input_dict[self.io[BaseModelIOKeys.IN]]}

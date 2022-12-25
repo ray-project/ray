@@ -222,28 +222,28 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        shared_enc_out = self.shared_encoder(
+        x = self.shared_encoder(
             batch,
             input_mapping={
                 BaseModelIOKeys.IN: SampleBatch.OBS,
                 BaseModelIOKeys.STATE_I: "state_in_0",
             },
         )
-        encoder_out_pi = self.pi_encoder(
-            shared_enc_out,
+        x = self.pi_encoder(
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
+                BaseModelIOKeys.IN: self.shared_encoder.io[BaseModelIOKeys.OUT],
                 BaseModelIOKeys.STATE_I: "state_in_0",
             },
         )
 
-        action_logits = self.pi(
-            encoder_out_pi,
+        x = self.pi(
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.pi_encoder.io_map[BaseModelIOKeys.OUT],
+                BaseModelIOKeys.IN: self.pi_encoder.io[BaseModelIOKeys.OUT],
             },
         )
-
+        action_logits = x["action_logits"]
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
         else:
@@ -251,7 +251,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        output["state_out"] = x.get("state_out", {})
         return output
 
     @override(RLModule)
@@ -281,34 +281,41 @@ class PPOTorchRLModule(TorchRLModule):
         policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        shared_enc_out = self.shared_encoder(
+        x = self.shared_encoder(
             batch,
             input_mapping={
-                BaseModelIOKeys.IN: SampleBatch.OBS,
-                BaseModelIOKeys.STATE_IN: "state_in_0",
+                self.shared_encoder.io[BaseModelIOKeys.IN]: SampleBatch.OBS,
+                self.shared_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
             },
         )
-        encoder_out_pi = self.pi_encoder(
-            shared_enc_out,
+        x = self.pi_encoder(
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
-                BaseModelIOKeys.STATE_IN: "state_in_0",
+                self.pi_encoder.io[BaseModelIOKeys.IN]: self.shared_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
+                self.pi_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
             },
         )
-        encoder_out_vf = self.vf_encoder(
-            shared_enc_out,
+        x = self.vf_encoder(
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.shared_encoder.io_map[BaseModelIOKeys.OUT],
+                self.vf_encoder.io[BaseModelIOKeys.IN]: self.shared_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
             },
         )
 
-        action_logits = self.pi(
-            encoder_out_pi,
+        x = self.pi(
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.pi_encoder.io_map[BaseModelIOKeys.OUT],
+                self.pi.io[BaseModelIOKeys.OUT]: self.pi_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
             },
         )
 
+        action_logits = x[self.pi.io[BaseModelIOKeys.OUT]]
         output = {}
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
@@ -322,13 +329,13 @@ class PPOTorchRLModule(TorchRLModule):
 
         # compute the value function
         vf_out = self.vf(
-            encoder_out_vf,
+            x,
             input_mapping={
-                BaseModelIOKeys.IN: self.vf_encoder.io_map[BaseModelIOKeys.OUT],
+                self.vf.io.IN: self.vf_encoder.io.OUT,
             },
         )
         output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        output["state_out"] = x.get("state_out", {})
         return output
 
     @override(RLModule)

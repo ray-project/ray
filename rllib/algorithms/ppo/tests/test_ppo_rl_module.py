@@ -108,7 +108,7 @@ class TestPPO(unittest.TestCase):
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    for lstm in [True, False]:
+                    for lstm in [False, True]:
                         if lstm and shared_encoder:
                             # Not yet implemented
                             # TODO (Artur): Implement
@@ -145,7 +145,7 @@ class TestPPO(unittest.TestCase):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for shared_encoder in [False, True]:
-                for lstm in [True, False]:
+                for lstm in [False, True]:
                     if lstm and shared_encoder:
                         # Not yet implemented
                         # TODO (Artur): Implement

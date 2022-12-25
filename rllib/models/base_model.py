@@ -4,10 +4,6 @@ from typing import Optional, Tuple
 from collections import defaultdict
 from typing import Mapping
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-)
 
 from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.utils.annotations import (
@@ -25,10 +21,10 @@ UnrollOutputType = Tuple[TensorDict, TensorDict]
 
 @ExperimentalAPI
 class BaseModelIOKeys(Enum):
-    IN = "in"
-    OUT = "out"
-    STATE_IN = "state_in"
-    STATE_OUT = "state_out"
+    IN: str = "in"
+    OUT: str = "out"
+    STATE_IN: str = "state_in"
+    STATE_OUT: str = "state_out"
 
 
 class ModelIOMapping(Mapping):
@@ -49,9 +45,9 @@ class ModelIOMapping(Mapping):
         self.__init_counters__[model_name] += 1
         self._valid_keys = set()
 
-    def __getitem__(self, item: str):
+    def __getitem__(self, item):
         if item in self._valid_keys:
-            return self._name + "_" + item + "_" + self._init_idx
+            return self._name + "_" + str(item) + "_" + self._init_idx
         else:
             raise KeyError(
                 "`{}` is not a key of ModelIOKeyGenerator with name `{}` "
@@ -60,7 +56,7 @@ class ModelIOMapping(Mapping):
                 )
             )
 
-    def add(self, key: str):
+    def add(self, key):
         self._valid_keys.add(key)
 
     def __repr__(self):
@@ -126,11 +122,11 @@ class RecurrentModel(abc.ABC):
 
     def __init__(self, name: Optional[str] = None):
         self._name = name or self.__class__.__name__
-        self.io_mapping = ModelIOMapping(self._name)
-        self.io_mapping.add(BaseModelIOKeys.IN)
-        self.io_mapping.add(BaseModelIOKeys.OUT)
-        self.io_mapping.add(BaseModelIOKeys.STATE_IN)
-        self.io_mapping.add(BaseModelIOKeys.STATE_OUT)
+        self.io = ModelIOMapping(self._name)
+        self.io.add(BaseModelIOKeys.IN)
+        self.io.add(BaseModelIOKeys.OUT)
+        self.io.add(BaseModelIOKeys.STATE_IN)
+        self.io.add(BaseModelIOKeys.STATE_OUT)
 
     @property
     def name(self) -> str:
@@ -346,13 +342,14 @@ class Model(RecurrentModel):
         outputs = self._forward(inputs, **kwargs)
         return outputs, TensorDict()
 
-    def forward(self, input_dict, input_mapping: Mapping = None) -> ForwardOutputType:
+    def forward(
+        self, input_dict, input_mapping: Mapping = None, **kwargs
+    ) -> ForwardOutputType:
         if input_mapping:
             for forward_key, input_dict_key in input_mapping.items():
-                input_dict[self.io_mapping[forward_key]] = input_dict[input_dict_key]
-        return check_input_specs("input_spec")(
-            (check_output_specs("outputs_spec")(self._forward(input_dict)))
-        )
+                input_dict[forward_key] = input_dict[input_dict_key]
+
+        return self._forward(input_dict, **kwargs)
 
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
