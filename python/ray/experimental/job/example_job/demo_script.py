@@ -17,7 +17,7 @@ class StepActor:
 
         worker = ray._private.worker.global_worker
         worker_id = worker.core_worker.get_actor_id()
-        ray_kv._internal_kv_put(f"JOB:{worker_id}", self.current_step, overwrite=True)
+        ray_kv._internal_kv_put(f"JOB:{worker_id}", str(self.current_step), overwrite=True)
 
     def run(self):
         worker = ray._private.worker.global_worker
@@ -32,7 +32,7 @@ class StepActor:
                 time.sleep(self.interval_s)
                 self.current_step += 1
                 ray_kv._internal_kv_put(
-                    f"JOB:{worker_id}", self.current_step, overwrite=True
+                    f"JOB:{worker_id}", str(self.current_step), overwrite=True
                 )
             else:
                 print("Stop called or reached final step.")
