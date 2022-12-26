@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+import ray.tune.search.sample
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module import RLModule
@@ -214,7 +215,9 @@ class PPOConfig(PGConfig):
         if entropy_coeff is not NotProvided:
             if isinstance(entropy_coeff, int):
                 entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
+            if type(entropy_coeff) is float and entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0")
+            if isinstance(entropy_coeff, ray.tune.search.sample.Float) and entropy_coeff.lower < 0.0:
                 raise ValueError("`entropy_coeff` must be >= 0.0")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
