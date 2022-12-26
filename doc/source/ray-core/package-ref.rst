@@ -229,6 +229,15 @@ Runtime Env APIs
 .. autoclass:: ray.runtime_env.RuntimeEnv
     :members:
 
+.. _ray-on-spark-apis:
+
+Ray on Spark APIs
+-----------------
+
+.. autofunction:: ray.util.spark.init_ray_cluster
+
+.. autofunction:: ray.util.spark.shutdown_ray_cluster
+
 .. _package-ref-debugging-apis:
 
 Debugging APIs

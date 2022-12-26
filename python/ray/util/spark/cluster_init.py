@@ -398,8 +398,9 @@ def _init_ray_cluster(
     ) = get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node)
 
     max_concurrent_tasks = get_max_num_concurrent_tasks(spark.sparkContext)
-    if num_worker_nodes == -1:
-        # num_worker_nodes=-1 represents using all available spark task slots
+    if num_worker_nodes == MAX_NUM_WORKER_NODES:
+        # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
+        # spark task slots
         num_worker_nodes = max_concurrent_tasks
     elif num_worker_nodes <= 0:
         raise ValueError(
@@ -743,17 +744,17 @@ def init_ray_cluster(
     cluster.
 
     Args
-        num_worker_nodes: The number of spark worker nodes that the spark job will be
-            submitted to. This argument represents how many concurrent spark tasks will
-            be available in the creation of the ray cluster. The ray cluster's total
-            available resources (memory, CPU and/or GPU) is equal to the quantity of
+        num_worker_nodes: This argument represents how many concurrent spark tasks
+            for the background spark job will be created in the creation of the ray
+            cluster. The ray cluster's total available resources
+            (memory, CPU and/or GPU) is equal to the quantity of
             resources allocated within these spark tasks.
             Specifying the `num_worker_nodes` as `-1` represents a ray cluster
             configuration that will use all available spark tasks slots (and resources
             allocated to the spark application) on the spark cluster.
             To create a spark cluster that is intended to be used exclusively as a
             shared ray cluster, it is recommended to set this argument to
-            `ray.spark.utils.MAX_NUM_WORKER_NODES`.
+            `ray.util.spark.MAX_NUM_WORKER_NODES`.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
