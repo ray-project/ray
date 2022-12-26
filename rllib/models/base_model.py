@@ -347,9 +347,10 @@ class Model(RecurrentModel):
     ) -> ForwardOutputType:
         if input_mapping:
             for forward_key, input_dict_key in input_mapping.items():
-                input_dict[forward_key] = input_dict[input_dict_key]
-
-        return self._forward(input_dict, **kwargs)
+                if input_dict_key in input_dict:
+                    input_dict[forward_key] = input_dict[input_dict_key]
+        input_dict.update(self._forward(input_dict, **kwargs))
+        return input_dict
 
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:

@@ -166,10 +166,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         k = _flatten_index(k)
 
         if k not in self:
-            if default is not None:
-                return default
-            else:
-                raise KeyError(k)
+            return default
 
         data_ptr = self._data
         for key in k:
@@ -180,6 +177,8 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return data_ptr
 
     def __getitem__(self, k: SeqStrType) -> T:
+        if k not in self:
+            raise KeyError(k)
         output = self.get(k)
         return output
 

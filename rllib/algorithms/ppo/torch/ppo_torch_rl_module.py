@@ -16,7 +16,6 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
 )
 from ray.rllib.core.rl_module.encoder import (
-    FCNet,
     FCConfig,
     LSTMConfig,
     IdentityConfig,
@@ -79,20 +78,8 @@ class PPOTorchRLModule(TorchRLModule):
         self.shared_encoder = self.config.shared_encoder_config.build()
         self.pi_encoder = self.config.pi_encoder_config.build()
         self.vf_encoder = self.config.vf_encoder_config.build()
-
-        self.pi = FCNet(
-            input_dim=self.config.pi_encoder_config.output_dim,
-            output_dim=self.config.pi_config.output_dim,
-            hidden_layers=self.config.pi_config.hidden_layers,
-            activation=self.config.pi_config.activation,
-        )
-
-        self.vf = FCNet(
-            input_dim=self.config.vf_encoder_config.output_dim,
-            output_dim=1,
-            hidden_layers=self.config.vf_config.hidden_layers,
-            activation=self.config.vf_config.activation,
-        )
+        self.pi = self.config.pi_config.build()
+        self.vf = self.config.vf_config.build()
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
@@ -213,10 +200,6 @@ class PPOTorchRLModule(TorchRLModule):
             return NestedDict({})
 
     @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return self.input_specs_exploration()
-
-    @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
         return SpecDict({SampleBatch.ACTION_DIST: TorchDeterministic})
 
@@ -225,25 +208,27 @@ class PPOTorchRLModule(TorchRLModule):
         x = self.shared_encoder(
             batch,
             input_mapping={
-                BaseModelIOKeys.IN: SampleBatch.OBS,
-                BaseModelIOKeys.STATE_I: "state_in_0",
+                self.shared_encoder.io[BaseModelIOKeys.IN]: SampleBatch.OBS,
+                self.shared_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
             },
         )
         x = self.pi_encoder(
             x,
             input_mapping={
-                BaseModelIOKeys.IN: self.shared_encoder.io[BaseModelIOKeys.OUT],
-                BaseModelIOKeys.STATE_I: "state_in_0",
+                self.pi_encoder.io[BaseModelIOKeys.IN]: self.shared_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
+                self.pi_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
             },
         )
 
         x = self.pi(
             x,
             input_mapping={
-                BaseModelIOKeys.IN: self.pi_encoder.io[BaseModelIOKeys.OUT],
+                self.pi.io[BaseModelIOKeys.IN]: self.pi_encoder.io[BaseModelIOKeys.OUT],
             },
         )
-        action_logits = x["action_logits"]
+        action_logits = x[self.pi.io[BaseModelIOKeys.OUT]]
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
         else:
@@ -251,12 +236,8 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = x.get("state_out", {})
+        output["state_out_0"] = x.get("state_out", {})
         return output
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return self.shared_encoder.input_spec
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -309,14 +290,12 @@ class PPOTorchRLModule(TorchRLModule):
         x = self.pi(
             x,
             input_mapping={
-                self.pi.io[BaseModelIOKeys.OUT]: self.pi_encoder.io[
-                    BaseModelIOKeys.OUT
-                ],
+                self.pi.io[BaseModelIOKeys.IN]: self.pi_encoder.io[BaseModelIOKeys.OUT],
             },
         )
 
-        action_logits = x[self.pi.io[BaseModelIOKeys.OUT]]
         output = {}
+        action_logits = x[self.pi.io[BaseModelIOKeys.OUT]]
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
@@ -331,27 +310,17 @@ class PPOTorchRLModule(TorchRLModule):
         vf_out = self.vf(
             x,
             input_mapping={
-                self.vf.io.IN: self.vf_encoder.io.OUT,
+                self.vf.io[BaseModelIOKeys.IN]: self.vf_encoder.io[BaseModelIOKeys.OUT],
             },
         )
-        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
-        output["state_out"] = x.get("state_out", {})
+        output[SampleBatch.VF_PREDS] = vf_out[self.vf.io[BaseModelIOKeys.OUT]].squeeze(
+            -1
+        )
+
+        shared_encoder_state = x.get(self.shared_encoder.io[BaseModelIOKeys.STATE_OUT])
+        pi_encoder_state = x.get(self.pi_encoder.io[BaseModelIOKeys.STATE_OUT])
+        output["state_out_0"] = shared_encoder_state or pi_encoder_state
         return output
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        if self._is_discrete:
-            action_spec = TorchTensorSpec("b")
-        else:
-            action_dim = self.config.action_space.shape[0]
-            action_spec = TorchTensorSpec("b, h", h=action_dim)
-
-        spec_dict = self.shared_encoder.input_spec
-        spec_dict.update({SampleBatch.ACTIONS: action_spec})
-        if SampleBatch.OBS in spec_dict:
-            spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
-        spec = SpecDict(spec_dict)
-        return spec
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
@@ -367,22 +336,46 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder.forward(
-            batch, input_map={self.shared_encoder.io_map.IN: SampleBatch.OBS}
+        x = self.shared_encoder(
+            batch,
+            input_mapping={
+                self.shared_encoder.io[BaseModelIOKeys.IN]: SampleBatch.OBS,
+                self.shared_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
+            },
         )
-        encoder_out_pi = self.pi_encoder.forward(
-            encoder_out,
-            input_map={self.pi_encoder.io_map.IN: self.shared_encoder.io_map.OUT},
+        x = self.pi_encoder(
+            x,
+            input_mapping={
+                self.pi_encoder.io[BaseModelIOKeys.IN]: self.shared_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
+                self.pi_encoder.io[BaseModelIOKeys.STATE_IN]: "state_in_0",
+            },
         )
-        encoder_out_vf = self.vf_encoder.forward(
-            encoder_out,
-            input_map={self.vf_encoder.io_map.IN: self.shared_encoder.io_map.OUT},
+        x = self.vf_encoder(
+            x,
+            input_mapping={
+                self.vf_encoder.io[BaseModelIOKeys.IN]: self.shared_encoder.io[
+                    BaseModelIOKeys.OUT
+                ],
+            },
         )
 
-        action_logits = self.pi.forward(
-            encoder_out_pi, io_map=self.pi_encoder.input_map
+        x = self.pi(
+            x,
+            input_mapping={
+                self.pi.io[BaseModelIOKeys.IN]: self.pi_encoder.io[BaseModelIOKeys.OUT],
+            },
         )
-        vf = self.vf.forward(encoder_out_vf, io_map=self.pi_encoder.input_map)
+
+        action_logits = x[self.pi.io[BaseModelIOKeys.OUT]]
+
+        vf_out = self.vf(
+            x,
+            input_mapping={
+                self.vf.io[BaseModelIOKeys.IN]: self.vf_encoder.io[BaseModelIOKeys.OUT],
+            },
+        )
 
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
@@ -396,11 +389,11 @@ class PPOTorchRLModule(TorchRLModule):
         output = {
             SampleBatch.ACTION_DIST: action_dist,
             SampleBatch.ACTION_LOGP: logp,
-            SampleBatch.VF_PREDS: vf.squeeze(-1),
+            SampleBatch.VF_PREDS: vf_out[self.vf.io[BaseModelIOKeys.OUT]].squeeze(-1),
             "entropy": entropy,
         }
 
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        output["state_out_0"] = x.get("state_out", {})
         return output
 
     def __get_action_dist_type(self):

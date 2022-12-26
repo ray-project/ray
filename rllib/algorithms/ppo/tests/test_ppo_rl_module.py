@@ -74,8 +74,18 @@ def get_expected_model_config(
             activation="ReLU",
         )
 
-    pi_config = FCConfig()
-    vf_config = FCConfig()
+    pi_config = FCConfig(
+        input_dim=pi_encoder_config.output_dim,
+        hidden_layers=[16],
+    )
+    if isinstance(env.action_space, gym.spaces.Discrete):
+        pi_config.output_dim = env.action_space.n
+    else:
+        pi_config.output_dim = env.action_space.shape[0] * 2
+
+    vf_config = FCConfig(
+        input_dim=vf_encoder_config.output_dim, hidden_layers=[16], output_dim=1
+    )
 
     if isinstance(env.action_space, gym.spaces.Discrete):
         pi_config.output_dim = env.action_space.n
@@ -115,7 +125,7 @@ class TestPPO(unittest.TestCase):
                             continue
                         print(
                             f"[ENV={env_name}] | [SHARED={shared_encoder}] | LSTM"
-                            f"={lstm}"
+                            f"={lstm} | [FWD={fwd_fn}"
                         )
                         env = gym.make(env_name)
 
@@ -144,8 +154,8 @@ class TestPPO(unittest.TestCase):
     def test_forward_train(self):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
         for env_name in ["CartPole-v1", "Pendulum-v1"]:
-            for shared_encoder in [False, True]:
-                for lstm in [False, True]:
+            for shared_encoder in [False]:
+                for lstm in [True]:
                     if lstm and shared_encoder:
                         # Not yet implemented
                         # TODO (Artur): Implement

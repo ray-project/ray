@@ -109,7 +109,7 @@ class FullyConnectedEncoder(Encoder):
     def output_spec(self):
         return SpecDict(
             {
-                self.io[BaseModelIOKeys.out]: TorchTensorSpec(
+                self.io[BaseModelIOKeys.OUT]: TorchTensorSpec(
                     "b, h", h=self.config.output_dim
                 )
             }
