@@ -31,6 +31,8 @@ def gen_java_deps():
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
             "org.apache.httpcomponents.client5:httpclient5-fluent:5.0.3",
+            "org.glassfish.jersey.core:jersey-server:2.30.1",
+            "org.glassfish.jersey.inject:jersey-hk2:2.30.1",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

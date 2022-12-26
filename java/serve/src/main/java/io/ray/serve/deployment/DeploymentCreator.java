@@ -81,6 +81,9 @@ public class DeploymentCreator {
 
   private DeploymentLanguage language;
 
+  /** http ingress type */
+  private String ingress;
+
   public Deployment create() {
 
     Preconditions.checkArgument(
@@ -97,7 +100,8 @@ public class DeploymentCreator {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
-            .setDeploymentLanguage(language);
+            .setDeploymentLanguage(language)
+            .setIngress(ingress);
 
     return new Deployment(
         deploymentDef,
@@ -252,6 +256,11 @@ public class DeploymentCreator {
 
   public DeploymentCreator setLanguage(DeploymentLanguage language) {
     this.language = language;
+    return this;
+  }
+
+  public DeploymentCreator setIngress(String ingress) {
+    this.ingress = ingress;
     return this;
   }
 }

@@ -1,0 +1,2 @@
+io.ray.serve.replica.DefaultCallable
+io.ray.serve.replica.JerseyCallable

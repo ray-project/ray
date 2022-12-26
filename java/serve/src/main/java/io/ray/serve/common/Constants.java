@@ -49,4 +49,11 @@ public class Constants {
   public static final Double DEFAULT_HEALTH_CHECK_PERIOD_S = 10.0;
 
   public static final Double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30.0;
+
+  /** the type of ServeCallableProvider: default */
+  public static final String CALLABLE_PROVIDER_DEFAULT = "default";
+  /** the type of ServeCallableProvider: jersey */
+  public static final String CALLABLE_PROVIDER_JERSEY = "jersey";
+  /** the signature of the request from http proxy */
+  public static final String HTTP_PROXY_SIGNATURE = "__call__";
 }

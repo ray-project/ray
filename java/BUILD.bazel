@@ -178,6 +178,8 @@ define_java_module(
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_glassfish_jersey_core_jersey_server",
+        "@maven//:org_glassfish_jersey_inject_jersey_hk2",
     ],
 )
 

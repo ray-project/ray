@@ -101,6 +101,7 @@ public class DeploymentTest extends BaseServeTest {
     }
     HttpPost httpPost = new HttpPost("http://127.0.0.1:8341/" + deploymentName);
     httpPost.setEntity(new StringEntity("testhttppost"));
+    httpPost.setHeader("Content-Type", "application/json");
     try (CloseableHttpResponse httpResponse =
         (CloseableHttpResponse) httpClient.execute(httpPost)) {
       byte[] body = EntityUtils.toByteArray(httpResponse.getEntity());

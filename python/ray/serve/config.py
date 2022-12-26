@@ -148,6 +148,8 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
+    ingress: str = ""
+
     version: Optional[str] = None
 
     class Config:

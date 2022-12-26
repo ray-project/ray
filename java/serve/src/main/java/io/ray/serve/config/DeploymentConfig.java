@@ -10,6 +10,7 @@ import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.util.LogUtil;
 import java.io.Serializable;
+import org.apache.commons.lang3.StringUtils;
 
 /** Configuration options for a deployment, to be set by the user. */
 public class DeploymentConfig implements Serializable {
@@ -59,6 +60,9 @@ public class DeploymentConfig implements Serializable {
 
   /** This property tells the controller the deployment's language. */
   private DeploymentLanguage deploymentLanguage = DeploymentLanguage.JAVA;
+
+  /** http ingress type */
+  private String ingress;
 
   private String version;
 
@@ -172,6 +176,15 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public String getIngress() {
+    return ingress;
+  }
+
+  public DeploymentConfig setIngress(String ingress) {
+    this.ingress = ingress;
+    return this;
+  }
+
   public String getVersion() {
     return version;
   }
@@ -199,6 +212,9 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
+    if (StringUtils.isNotBlank(ingress)) {
+      builder.setIngress(ingress);
+    }
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
@@ -227,6 +243,7 @@ public class DeploymentConfig implements Serializable {
               Lists.newArrayList(DeploymentLanguage.values())));
     }
     deploymentConfig.setDeploymentLanguage(proto.getDeploymentLanguage());
+    deploymentConfig.setIngress(proto.getIngress());
     if (proto.getUserConfig() != null && proto.getUserConfig().size() != 0) {
       deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(

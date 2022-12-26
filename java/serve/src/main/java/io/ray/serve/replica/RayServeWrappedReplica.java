@@ -14,7 +14,6 @@ import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.util.LogUtil;
-import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
 import java.util.Map;
@@ -89,15 +88,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
           deploymentWrapper.getConfig());
 
       // Instantiate the object defined by deploymentDef.
-      Class deploymentClass =
-          Class.forName(
-              deploymentWrapper.getDeploymentDef(),
-              true,
-              Optional.ofNullable(Thread.currentThread().getContextClassLoader())
-                  .orElse(getClass().getClassLoader()));
-      Object callable =
-          ReflectUtil.getConstructor(deploymentClass, deploymentWrapper.getInitArgs())
-              .newInstance(deploymentWrapper.getInitArgs());
+      Object callable = CallableUtils.makeCallable(deploymentWrapper);
       Serve.getReplicaContext().setServableObject(callable);
 
       // Get the controller by controllerName.

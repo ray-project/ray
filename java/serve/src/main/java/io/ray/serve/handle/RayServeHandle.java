@@ -10,6 +10,7 @@ import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /** A handle to a service deployment. */
 public class RayServeHandle {
@@ -63,6 +64,8 @@ public class RayServeHandle {
     requestMetadata.setEndpoint(deploymentName);
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
+    requestMetadata.setCallMethodSignature(
+        handleOptions != null ? handleOptions.getSignature() : StringUtils.EMPTY);
     return router.assignRequest(requestMetadata.build(), parameters);
   }
 
@@ -71,7 +74,16 @@ public class RayServeHandle {
     return this;
   }
 
-  // TODO method(String methodName, String signature)
+  public RayServeHandle method(String methodName, String signature) {
+    handleOptions.setMethodName(methodName);
+    handleOptions.setSignature(methodName + "#" + signature);
+    return this;
+  }
+
+  public RayServeHandle signature(String signature) {
+    handleOptions.setSignature(signature);
+    return this;
+  }
 
   public Router getRouter() {
     return router;

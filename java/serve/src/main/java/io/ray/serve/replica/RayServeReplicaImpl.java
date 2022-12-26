@@ -1,6 +1,8 @@
 package io.ray.serve.replica;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
+import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
@@ -19,7 +21,11 @@ import io.ray.serve.router.Query;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +62,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private final Method callMethod;
 
+  private Map<String, Pair<Method, Object>> signatures;
+
   public RayServeReplicaImpl(
       Object callable,
       DeploymentConfig deploymentConfig,
@@ -69,6 +77,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     this.checkHealthMethod = getRunnerMethod(Constants.CHECK_HEALTH_METHOD, null, true);
     this.callMethod = getRunnerMethod(Constants.CALL_METHOD, new Object[] {new Object()}, true);
     registerMetrics();
+    this.signatures = CallableUtils.getSignatures(deploymentConfig.getIngress(), callable);
   }
 
   private void registerMetrics() {
@@ -185,11 +194,20 @@ public class RayServeReplicaImpl implements RayServeReplica {
           requestItem.getMetadata().getRequestId());
 
       Object[] args = parseRequestItem(requestItem);
-      methodToCall =
-          args.length == 1 && callMethod != null
-              ? callMethod
-              : getRunnerMethod(requestItem.getMetadata().getCallMethod(), args, false);
-      Object result = methodToCall.invoke(callable, args);
+      Object result = null;
+      if (StringUtils.isNotBlank(requestItem.getMetadata().getCallMethodSignature())
+          && signatures.containsKey(requestItem.getMetadata().getCallMethodSignature())) {
+        Pair<Method, Object> methodCallablePair =
+            signatures.get(requestItem.getMetadata().getCallMethodSignature());
+        methodToCall = methodCallablePair.getLeft();
+        result = methodToCall.invoke(methodCallablePair.getRight(), args);
+      } else {
+        methodToCall =
+            args.length == 1 && callMethod != null
+                ? callMethod
+                : getRunnerMethod(requestItem.getMetadata().getCallMethod(), args, false);
+        result = methodToCall.invoke(callable, args);
+      }
       RayServeMetrics.execute(() -> requestCounter.inc(1.0));
       return result;
     } catch (Throwable e) {
@@ -218,7 +236,34 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     // From other language Proxy or Handle.
     RequestWrapper requestWrapper = (RequestWrapper) requestItem.getArgs();
-    if (requestWrapper.getBody() == null || requestWrapper.getBody().isEmpty()) {
+    // Compatible with some http calls without http ingress
+    if (StringUtils.equals(
+        requestItem.getMetadata().getCallMethodSignature(), Constants.HTTP_PROXY_SIGNATURE)) {
+      LOGGER.info(
+          "body is {}, scope is {}",
+          requestWrapper.getBody().toStringUtf8(),
+          requestWrapper.getScopeMap().toString());
+      if (signatures.containsKey(Constants.HTTP_PROXY_SIGNATURE)) {
+        return new Object[] {requestWrapper};
+      } else if (StringUtils.isNotBlank(requestWrapper.getScopeMap().get("query_string"))) {
+        String[] fields = requestWrapper.getScopeMap().get("query_string").split("&");
+        List<String> args = Lists.newArrayList();
+        for (String field : fields) {
+          String[] tmp = field.split("=");
+          if (tmp.length > 1) {
+            args.add(tmp[1]);
+          }
+        }
+        return args.toArray();
+      } else if (!requestWrapper.getBody().isEmpty()
+          && StringUtils.contains(
+              requestWrapper.getScopeMap().get("headers"), "application/json")) {
+        Gson gson = new Gson();
+        Object temp = gson.fromJson(requestWrapper.getBody().toStringUtf8(), Object.class);
+        return new Object[] {temp};
+      }
+    }
+    if (requestWrapper.getBody().isEmpty()) {
       return new Object[0];
     }
 
@@ -229,6 +274,9 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private Method getRunnerMethod(String methodName, Object[] args, boolean isNullable) {
     try {
+      if (StringUtils.equals(methodName, Constants.HTTP_PROXY_SIGNATURE)) {
+        methodName = Constants.CALL_METHOD;
+      }
       return ReflectUtil.getMethod(callable.getClass(), methodName, args);
     } catch (NoSuchMethodException e) {
       String errMsg =

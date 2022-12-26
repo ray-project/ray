@@ -153,11 +153,19 @@ class ReplicaSet:
                 if query.metadata.http_arg_is_pickled:
                     assert isinstance(arg, bytes)
                     loaded_http_input = pickle.loads(arg)
-                    query_string = loaded_http_input.scope.get("query_string")
-                    if query_string:
-                        arg = query_string.decode().split("=", 1)[1]
-                    elif loaded_http_input.body:
-                        arg = loaded_http_input.body.decode()
+                    call_method_signature = "__call__"
+                    request_proto = RequestWrapperProto(
+                        body=loaded_http_input.body,
+                        scope={
+                            str(k): v.decode(encoding="UTF-8")
+                            if isinstance(v, bytes)
+                            else str(v)
+                            for k, v in loaded_http_input.scope.items()
+                        },
+                    )
+                else:
+                    call_method_signature = ""
+                    request_proto = RequestWrapperProto(body=msgpack_serialize(arg))
                 user_ref = JavaActorHandleProxy(
                     replica.actor_handle
                 ).handle_request.remote(
@@ -165,10 +173,9 @@ class ReplicaSet:
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
                         call_method=query.metadata.call_method,
+                        call_method_signature=call_method_signature,
                     ).SerializeToString(),
-                    RequestWrapperProto(
-                        body=msgpack_serialize(arg)
-                    ).SerializeToString(),
+                    request_proto.SerializeToString(),
                 )
                 self.in_flight_queries[replica].add(user_ref)
             else:

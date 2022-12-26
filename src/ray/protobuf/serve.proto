@@ -88,6 +88,8 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 10;
 
   string version = 11;
+
+  string ingress = 12;
 }
 
 // Deployment language.
@@ -104,10 +106,13 @@ message RequestMetadata {
   string call_method = 3;
 
   map<string, string> context = 4;
+
+  string call_method_signature = 5;
 }
 
 message RequestWrapper {
   bytes body = 1;
+  map<string, string> scope = 2;
 }
 
 message UpdatedObject {

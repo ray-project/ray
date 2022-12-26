@@ -44,6 +44,7 @@ public class HttpStrategyCalcOnRayServe {
       result =
           Request.post("http://127.0.0.1:8000/strategy")
               .bodyString(gson.toJson(data), null)
+              .addHeader("Content-Type", "application/json")
               .execute()
               .returnContent()
               .asString();
