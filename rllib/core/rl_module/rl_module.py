@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-import gym
+import gymnasium as gym
 from typing import Mapping, Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
@@ -11,7 +11,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
@@ -54,13 +55,13 @@ class RLModule(abc.ABC):
     .. code-block:: python
 
         module: RLModule = ...
-        obs = env.reset()
-        while not done:
+        obs, info = env.reset()
+        while not terminated and not truncated:
             fwd_outputs = module.forward_exploration({"obs": obs})
             # this can be deterministic or stochastic exploration
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, done, info)
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
             next_obs = obs
 
     # During Training (learning the policy)
@@ -76,12 +77,12 @@ class RLModule(abc.ABC):
     ----------------------------------------------------------
     .. code-block:: python
         module: RLModule = ...
-        obs = env.reset()
-        while not done:
+        obs, info = env.reset()
+        while not terminated and not truncated:
             fwd_outputs = module.forward_inference({"obs": obs})
             # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             next_obs = obs
 
     Args:
@@ -188,7 +189,7 @@ class RLModule(abc.ABC):
         return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> ModelSpec:
+    def output_specs_inference(self) -> SpecType:
         """Returns the output specs of the forward_inference method.
 
         Override this method to customize the output specs of the inference call.
@@ -196,10 +197,10 @@ class RLModule(abc.ABC):
         has `action_dist` key and its value is an instance of `Distribution`.
         This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecType:
         """Returns the output specs of the forward_exploration method.
 
         Override this method to customize the output specs of the inference call.
@@ -207,27 +208,26 @@ class RLModule(abc.ABC):
         that has `action_dist` key and its value is an instance of
         `Distribution`. This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
-    def output_specs_train(self) -> ModelSpec:
+    def output_specs_train(self) -> SpecType:
         """Returns the output specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecType:
         """Returns the input specs of the forward_inference method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_exploration(self) -> ModelSpec:
+    def input_specs_exploration(self) -> SpecType:
         """Returns the input specs of the forward_exploration method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecType:
         """Returns the input specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
-    @check_specs(
-        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
-    )
+    @check_input_specs("_input_specs_inference")
+    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method.
@@ -247,9 +247,8 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    @check_specs(
-        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
-    )
+    @check_input_specs("_input_specs_exploration")
+    @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -271,7 +270,8 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
+    @check_input_specs("_input_specs_train")
+    @check_output_specs("_output_specs_train")
     def forward_train(
         self,
         batch: SampleBatchType,

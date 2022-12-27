@@ -140,7 +140,7 @@ class SimpleQTorchPolicy(
         q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        dones = train_batch[SampleBatch.DONES].float()
+        dones = train_batch[SampleBatch.TERMINATEDS].float()
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), self.action_space.n
         )

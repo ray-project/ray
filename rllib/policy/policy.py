@@ -1,3 +1,5 @@
+import gymnasium as gym
+from gymnasium.spaces import Box
 import json
 import logging
 import os
@@ -1705,9 +1707,9 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
-            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.TERMINATEDS: ViewRequirement(),
+            SampleBatch.TRUNCATEDS: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
-            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
@@ -1868,7 +1870,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,
@@ -1876,8 +1879,8 @@ class Policy(metaclass=ABCMeta):
                     ):
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
-                # by Sampler to properly execute sample collection).
-                # Also always leave DONES, REWARDS, INFOS, no matter what.
+                # by Sampler to properly execute sample collection). Also always leave
+                # TERMINATEDS, TRUNCATEDS, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if (
                         key not in all_accessed_keys
@@ -1886,7 +1889,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,

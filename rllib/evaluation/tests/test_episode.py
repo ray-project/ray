@@ -39,19 +39,34 @@ class LastInfoCallback(DefaultCallbacks):
         last_obs = {
             k: np.where(v)[0].item() for k, v in episode._agent_to_last_obs.items()
         }
+        last_raw_obs = episode._agent_to_last_raw_obs
         last_info = episode._agent_to_last_info
-        last_done = episode._agent_to_last_done
+        last_terminated = episode._agent_to_last_terminated
+        last_truncated = episode._agent_to_last_truncated
         last_action = episode._agent_to_last_action
         last_reward = {k: v[-1] for k, v in episode._agent_reward_history.items()}
         if self.step == 0:
-            for last in [last_obs, last_info, last_done, last_action, last_reward]:
+            for last in [
+                last_obs,
+                last_terminated,
+                last_truncated,
+                last_action,
+                last_reward,
+            ]:
                 self.tc.assertEqual(last, {})
+            self.tc.assertTrue("__common__" in last_info)
+            self.tc.assertTrue(len(last_raw_obs) > 0)
+            for agent in last_raw_obs.keys():
+                index = int(str(agent).replace("agent", ""))
+                self.tc.assertEqual(last_raw_obs[agent], 0)
+                self.tc.assertEqual(last_info[agent]["timestep"], self.step + index)
         else:
             for agent in last_obs.keys():
                 index = int(str(agent).replace("agent", ""))
                 self.tc.assertEqual(last_obs[agent], self.step + index)
                 self.tc.assertEqual(last_reward[agent], self.step + index)
-                self.tc.assertEqual(last_done[agent], self.step == NUM_STEPS)
+                self.tc.assertEqual(last_terminated[agent], self.step == NUM_STEPS)
+                self.tc.assertEqual(last_truncated[agent], self.step == NUM_STEPS)
                 if self.step == 1:
                     self.tc.assertEqual(last_action[agent], 0)
                 else:
@@ -81,26 +96,36 @@ class EpisodeEnv(MultiAgentEnv):
         super().__init__()
         self._skip_env_checking = True
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
-        self.dones = set()
+        self.terminateds = set()
+        self.truncateds = set()
         self.observation_space = self.agents[0].observation_space
         self.action_space = self.agents[0].action_space
 
-    def reset(self):
-        self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
+    def reset(self, *, seed=None, options=None):
+        self.terminateds = set()
+        self.truncateds = set()
+        obs_and_infos = [a.reset() for a in self.agents]
+        return (
+            {i: oi[0] for i, oi in enumerate(obs_and_infos)},
+            {i: dict(oi[1], **{"timestep": i}) for i, oi in enumerate(obs_and_infos)},
+        )
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
-        print("ACTIONDICT IN ENV\n", action_dict)
+        obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+                action
+            )
             obs[i] = obs[i] + i
             rew[i] = rew[i] + i
             info[i]["timestep"] = info[i]["timestep"] + i
-            if done[i]:
-                self.dones.add(i)
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+            if terminated[i]:
+                self.terminateds.add(i)
+            if truncated[i]:
+                self.truncateds.add(i)
+        terminated["__all__"] = len(self.terminateds) == len(self.agents)
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        return obs, rew, terminated, truncated, info
 
 
 class TestEpisodeLastValues(unittest.TestCase):

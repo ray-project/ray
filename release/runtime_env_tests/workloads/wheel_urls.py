@@ -21,6 +21,7 @@ import time
 import requests
 import pprint
 
+import ray._private.ray_constants as ray_constants
 from ray._private.utils import get_master_wheel_url, get_release_wheel_url
 
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
 
     retry = set()
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38", "39", "310"]:
+        for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             if "dev" in ray.__version__:
                 url = get_master_wheel_url(
                     ray_commit=ray.__commit__,

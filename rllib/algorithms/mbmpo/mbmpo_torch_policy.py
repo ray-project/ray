@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import logging
 from typing import Tuple, Type
 
