@@ -31,7 +31,7 @@ git clone --depth 1 --branch 3.1.1 https://github.com/ntop/n2n.git && \
 cd n2n && mkdir build && cd build && \
 cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" "-DN2N_OPTION_USE_PTHREAD=ON" && \
 cmake --build . && \
-sudo cmake --install .
+sudo cmake --install . && cd $HOME && rm -rf n2n
 
 #COPY --from=build-env /usr/local/sbin/supernode /usr/bin/
 #COPY --from=build-env /usr/local/sbin/edge /usr/sbin/
