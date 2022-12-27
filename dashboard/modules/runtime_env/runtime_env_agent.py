@@ -7,7 +7,9 @@ import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
-from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.ray_constants import (
+    DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+)
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
@@ -167,6 +169,8 @@ class RuntimeEnvAgent(
         dashboard_agent: The DashboardAgent object contains global config.
     """
 
+    LOG_FILENAME = "runtime_env_agent.log"
+
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
@@ -214,6 +218,14 @@ class RuntimeEnvAgent(
         )
 
         self._logger = default_logger
+        self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
 
     def uris_parser(self, runtime_env):
         result = list()
@@ -250,6 +262,7 @@ class RuntimeEnvAgent(
             params = self._logging_params.copy()
             params["filename"] = f"runtime_env_setup-{job_id}.log"
             params["logger_name"] = f"runtime_env_{job_id}"
+            params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]

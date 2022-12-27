@@ -340,9 +340,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 /// Maximum number of items in one batch to scan/get/delete from GCS storage.
 RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
-/// Maximum number of rows in GCS profile table.
-RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
-
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
@@ -461,7 +458,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
-RAY_CONFIG(int64_t, task_events_report_interval_ms, 0)
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
@@ -527,6 +524,8 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
+/// This requires RAY_task_events_report_interval_ms > 0, so that events will
+/// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
