@@ -2,6 +2,34 @@ import gymnasium as gym
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
+from ray.util.annotations import PublicAPI
+
+
+@PublicAPI
+def try_import_pyspiel(error: bool = False):
+    """Tries importing pyspiel and returns the module (or None).
+
+    Args:
+        error: Whether to raise an error if pyspiel cannot be imported.
+
+    Returns:
+        The tfp module.
+
+    Raises:
+        ImportError: If error=True and tfp is not installed.
+    """
+    try:
+        import pyspiel
+
+        return pyspiel
+    except ImportError as e:
+        if error:
+            raise ImportError(
+                "Could not import pyspiel! Pygame is not a dependency of RLlib "
+                "and Rllib requires you to install pygame separately: "
+                "`pip install pygame`."
+            )
+        return None
 
 
 def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:

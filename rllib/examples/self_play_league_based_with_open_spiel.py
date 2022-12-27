@@ -31,21 +31,24 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
-import numpy as np
 import os
-from open_spiel.python.rl_environment import Environment
-import pyspiel
 import re
+
+import numpy as np
+from open_spiel.python.rl_environment import Environment
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+
+pyspiel = try_import_pyspiel(error=True)
 
 
 def get_cli_args():
