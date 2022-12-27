@@ -1,0 +1,306 @@
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-cluster-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-head
+  policyTypes:
+    - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6380
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 52365
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8265
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8076
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8077
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8078
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8079
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10002
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10003
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10004
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10005
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10006
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10007
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10008
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10009
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10010
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10011
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10012
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10013
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10014
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10015
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10016
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10017
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10018
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10019
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10020
+
+# Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-cluster-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-head
+  policyTypes:
+    - Egress
+  egress:
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6380
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 52365
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8265 
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8076
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8077
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8078
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8079
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10002
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10003
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10004
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10005
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10006
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10007
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10008
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10009
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10010
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10011
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10012
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10013
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10014
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10015
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10016
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10017
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10018
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10019
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10020

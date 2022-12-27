@@ -1,0 +1,303 @@
+# Ray head node service, allowing worker pods to discover the head node to perform the bi-directional communication.
+# More contexts can be found at [the Ports configurations doc](https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations).
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-ray-cluster
+  labels:
+    app: ray-cluster-head
+spec:
+  ports:
+  - name: client
+    protocol: TCP
+    port: 10001
+    targetPort: 10001
+  - name: dashboard
+    protocol: TCP
+    port: 8265
+    targetPort: 8265
+  - name: gcs-server
+    protocol: TCP
+    port: 6380
+    targetPort: 6380
+  - name: object-manager-port
+    protocol: TCP
+    port: 8076
+    targetPort: 8076
+  - name: node-manager-port
+    protocol: TCP
+    port: 8077
+    targetPort: 8077
+  - name: dashboard-agent-grpc-port
+    protocol: TCP
+    port: 8078
+    targetPort: 8078
+  - name: dashboard-agent-listen-port
+    protocol: TCP
+    port: 8079
+    targetPort: 8079
+  - name: worker-port-1
+    protocol: TCP
+    port: 10002
+    targetPort: 10002
+  - name: worker-port-2
+    protocol: TCP
+    port: 10003
+    targetPort: 10003
+  - name: worker-port-3
+    protocol: TCP
+    port: 10004
+    targetPort: 10004
+  - name: worker-port-4
+    protocol: TCP
+    port: 10005
+    targetPort: 10005
+  - name: worker-port-5
+    protocol: TCP
+    port: 10006
+    targetPort: 10006
+  - name: worker-port-6
+    protocol: TCP
+    port: 10007
+    targetPort: 10007
+  - name: worker-port-7
+    protocol: TCP
+    port: 10008
+    targetPort: 10008
+  - name: worker-port-8
+    protocol: TCP
+    port: 10009
+    targetPort: 10009
+  - name: worker-port-9
+    protocol: TCP
+    port: 10010
+    targetPort: 10010
+  - name: worker-port-10
+    protocol: TCP
+    port: 10011
+    targetPort: 10011
+  - name: worker-port-11
+    protocol: TCP
+    port: 10012
+    targetPort: 10012
+  - name: worker-port-12
+    protocol: TCP
+    port: 10013
+    targetPort: 10013
+  - name: worker-port-13
+    protocol: TCP
+    port: 10014
+    targetPort: 10014
+  - name: worker-port-14
+    protocol: TCP
+    port: 10015
+    targetPort: 10015
+  - name: worker-port-15
+    protocol: TCP
+    port: 10016
+    targetPort: 10016
+  - name: worker-port-16
+    protocol: TCP
+    port: 10017
+    targetPort: 10017
+  - name: worker-port-17
+    protocol: TCP
+    port: 10018
+    targetPort: 10018
+  - name: worker-port-18
+    protocol: TCP
+    port: 10019
+    targetPort: 10019
+  - name: worker-port-19
+    protocol: TCP
+    port: 10020
+    targetPort: 10020
+  selector:
+    app: ray-cluster-head
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-head
+  labels:
+    app: ray-cluster-head
+spec:
+  # Do not change this - Ray currently only supports one head node per cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      component: ray-head
+      type: ray
+      app: ray-cluster-head
+  template:
+    metadata:
+      labels:
+        component: ray-head
+        type: ray
+        app: ray-cluster-head
+    spec:
+      # If the head node goes down, the entire cluster (including all worker
+      # nodes) will go down as well. If you want Kubernetes to bring up a new
+      # head node in this case, set this to "Always," else set it to "Never."
+      restartPolicy: Always
+
+      # This volume allocates shared memory for Ray to use for its plasma
+      # object store. If you do not provide this, Ray will fall back to
+      # /tmp which cause slowdowns if is not a shared memory volume.
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+        - name: ray-head
+          image: rayproject/ray:2.2.0
+          imagePullPolicy: Always
+          command: [ "/bin/bash", "-c", "--" ]
+          # if there is no password for Redis, set --redis-password=''
+          args:
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --redis-password=<PASSWORD> --block"
+          ports:
+            - containerPort: 6380 # GCS server
+            - containerPort: 10001 # Used by Ray Client
+            - containerPort: 8265 # Used by Ray Dashboard
+            - containerPort: 8076
+            - containerPort: 8077
+            - containerPort: 8078
+            - containerPort: 8079
+            - containerPort: 10002
+            - containerPort: 10003
+            - containerPort: 10004
+            - containerPort: 10005
+            - containerPort: 10006
+            - containerPort: 10007
+            - containerPort: 10008
+            - containerPort: 10009
+            - containerPort: 10010
+            - containerPort: 10011
+            - containerPort: 10012
+            - containerPort: 10013
+            - containerPort: 10014
+            - containerPort: 10015
+            - containerPort: 10016
+            - containerPort: 10017
+            - containerPort: 10018
+            - containerPort: 10019
+            - containerPort: 10020 
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+            # RAY_REDIS_ADDRESS can force ray to use external redis for fault tolerance purposes
+            - name: RAY_REDIS_ADDRESS
+              value: <REDIS IP ADDRESS> # ip address for the external Redis
+            # This is used in the ray start command so that Ray can spawn the
+            # correct number of processes. Omitting this may lead to degraded
+            # performance.
+            - name: MY_CPU_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2G"
+            requests:
+              # For production use-cases, we recommend specifying integer CPU reqests and limits.
+              # We also recommend setting requests equal to limits for both CPU and memory.
+              # For this example, we use a 500m CPU request to accomodate resource-constrained local
+              # Kubernetes testing environments such as KinD and minikube.
+              cpu: "500m"
+              # The rest state memory usage of the Ray head node is around 1Gb. We do not
+              # recommend allocating less than 2Gb memory for the Ray head pod.
+              # For production use-cases, we recommend allocating at least 8Gb memory for each Ray container.
+              memory: "2G"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-worker
+  labels:
+    app: ray-cluster-worker
+spec:
+  # Change this to scale the number of worker nodes started in the Ray cluster.
+  replicas: 4
+  selector:
+    matchLabels:
+      component: ray-worker
+      type: ray
+      app: ray-cluster-worker
+  template:
+    metadata:
+      labels:
+        component: ray-worker
+        type: ray
+        app: ray-cluster-worker
+    spec:
+      restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+      - name: ray-worker
+        image: rayproject/ray:2.2.0
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c", "--"]
+        args:
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --block"
+        ports:
+          - containerPort: 8076
+          - containerPort: 8077
+          - containerPort: 8078
+          - containerPort: 8079
+          - containerPort: 10002
+          - containerPort: 10003
+          - containerPort: 10004
+          - containerPort: 10005
+          - containerPort: 10006
+          - containerPort: 10007
+          - containerPort: 10008
+          - containerPort: 10009
+          - containerPort: 10010
+          - containerPort: 10011
+          - containerPort: 10012
+          - containerPort: 10013
+          - containerPort: 10014
+          - containerPort: 10015
+          - containerPort: 10016
+          - containerPort: 10017
+          - containerPort: 10018
+          - containerPort: 10019
+          - containerPort: 10020 
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          # This is used in the ray start command so that Ray can spawn the
+          # correct number of processes. Omitting this may lead to degraded
+          # performance.
+          - name: MY_CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                resource: requests.cpu
+          # The resource requests and limits in this config are too small for production!
+          # It is better to use a few large Ray pod than many small ones.
+          # For production, it is ideal to size each Ray pod to take up the
+          # entire Kubernetes node on which it is scheduled.
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1G"
+            # For production use-cases, we recommend specifying integer CPU reqests and limits.
+            # We also recommend setting requests equal to limits for both CPU and memory.
+            # For this example, we use a 500m CPU request to accomodate resource-constrained local
+            # Kubernetes testing environments such as KinD and minikube.
+          requests:
+            cpu: "500m"
+            memory: "1G"
