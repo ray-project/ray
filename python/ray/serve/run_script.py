@@ -2,6 +2,7 @@ import argparse
 import pathlib
 import sys
 import time
+import traceback
 import yaml
 
 from ray import serve
@@ -110,6 +111,7 @@ def main():
         sys.exit()
 
     except Exception:
+        traceback.print_exc()
         cli_logger.info(
             "Received unexpected error, see logs for more details. Shutting down..."
         )

@@ -513,6 +513,31 @@ def test_run_config_port3(ray_start_stop):
 
 
 @serve.deployment
+class ConstructorFailure:
+    def __init__(self):
+        raise RuntimeError("Intentionally failing.")
+
+
+constructor_failure_node = ConstructorFailure.bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_teardown(ray_start_stop):
+    """Consecutive serve runs should tear down controller so logs can always be seen."""
+    logs = subprocess.check_output(
+        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        timeout=30,
+    ).decode()
+    assert "Intentionally failing." in logs
+
+    logs = subprocess.check_output(
+        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        timeout=30,
+    ).decode()
+    assert "Intentionally failing." in logs
+
+
+@serve.deployment
 def global_f(*args):
     return "wonderful world"
 
