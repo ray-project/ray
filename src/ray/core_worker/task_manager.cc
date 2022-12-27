@@ -431,6 +431,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         << "Tried to retry task that was not pending " << task_id;
     RAY_CHECK(it->second.IsPending())
         << "Tried to retry task that was not pending " << task_id;
+    spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     num_oom_retries_left = it->second.num_oom_retries_left;
     if (task_failed_due_to_oom) {
@@ -451,7 +452,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     if (will_retry) {
       MarkTaskRetryOnFailed(it->second);
     }
-    spec = it->second.spec;
   }
 
   // We should not hold the lock during these calls because they may trigger
