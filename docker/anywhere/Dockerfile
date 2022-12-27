@@ -59,5 +59,5 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-ENTRYPOINT ["/home/ray/startup.sh"]
-CMD ["/bin/bash"]
+#ENTRYPOINT ["/home/ray/startup.sh"]
+CMD ["ray start --head --port=6379 --object-manager-port=8076 --dashboard-host=$RAY_HEAD_IP --autoscaling-config=~/ray_bootstrap_config.yaml"]
