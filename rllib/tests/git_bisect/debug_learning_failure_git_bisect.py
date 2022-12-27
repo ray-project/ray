@@ -175,7 +175,7 @@ if __name__ == "__main__":
         subprocess.run(
             "sudo apt-get install -y build-essential curl unzip psmisc".split(" ")
         )
-        subprocess.run("pip install cython==0.29.26 pytest".split(" "))
+        subprocess.run("pip install cython==0.29.32 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.
         try:
             subprocess.run("pip uninstall -y ray".split(" "))
