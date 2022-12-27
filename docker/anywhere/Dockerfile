@@ -59,5 +59,5 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-#ENTRYPOINT ["/home/ray/startup.sh"]
+ENTRYPOINT ["/usr/bin/bash"]
 CMD ["/bin/sh -c"]
