@@ -803,6 +803,9 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
 
   // Mark the new status and also include task spec info for the new attempt.
   task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
+  // `retry_task_callback_` is invoked. In order to record the correct status change for
+  // the new task attempt, we pass the the attempt number explicitly.
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
                         task_entry.spec,
                         rpc::TaskStatus::PENDING_ARGS_AVAIL);
