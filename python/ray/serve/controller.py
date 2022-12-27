@@ -580,14 +580,16 @@ class ServeController:
             else:
                 try:
                     await finished[0]
-                except RayTaskError:
+                except Exception as e:
                     serve_app_status = ApplicationStatus.DEPLOY_FAILED
-                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
-                except RuntimeEnvSetupError:
-                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
-                    serve_app_message = (
-                        f"Runtime env setup failed:\n{traceback.format_exc()}"
-                    )
+                    tb = traceback.format_exc()
+
+                    if isinstance(e, RayTaskError):
+                        serve_app_message = f"Deployment failed:\n{tb}"
+                    elif isinstance(e, RuntimeEnvSetupError):
+                        serve_app_message = f"Runtime env setup failed:\n{tb}"
+                    else:
+                        serve_app_message = f"Unknown error occurred:\n{tb}"
 
         app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
