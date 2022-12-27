@@ -153,6 +153,10 @@ class AgentCollector:
             #  space that is not a gym.Space
             if (
                 hasattr(vr.space, "shape")
+                and log_once(
+                    f"view_requirement"
+                    f"_{view_requirement_name}_checked_in_agent_collector"
+                )
                 and not (
                     np.sum(
                         (
@@ -164,11 +168,6 @@ class AgentCollector:
                     ),
                 )
                 == np.shape(data)
-                # and not vr.space.shape == np.shape(data)
-                and log_once(
-                    f"view_requirement"
-                    f"_{view_requirement_name}_checked_in_agent_collector"
-                )
             ):
 
                 # TODO (Artur): Enforce VR shape
