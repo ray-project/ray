@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude="*/tests")
         else:
             return []
 
