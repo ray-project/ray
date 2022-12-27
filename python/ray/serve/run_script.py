@@ -109,6 +109,13 @@ def main():
         serve.shutdown()
         sys.exit()
 
+    except Exception:
+        cli_logger.info(
+            "Received unexpected error, see logs for more details. Shutting down..."
+        )
+        serve.shutdown()
+        sys.exit()
+
 
 if __name__ == "__main__":
     main()
