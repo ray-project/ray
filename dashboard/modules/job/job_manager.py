@@ -341,7 +341,7 @@ class JobSupervisor:
             try:
                 if os.getpgid(proc.pid) == pgid:
                     process_group.append(proc)
-            except:
+            except ProcessLookupError:
                 pass
 
         while True:
