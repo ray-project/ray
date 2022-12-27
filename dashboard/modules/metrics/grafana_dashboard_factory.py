@@ -297,19 +297,6 @@ GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=37,
-        title="Node CPU by Component",
-        description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component.",
-        unit="cores",
-        targets=[
-            Target(
-                # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
-                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
-                legend="{{Component}}",
-            )
-        ],
-    ),
-    Panel(
         id=18,
         title="Node GPU Memory (GRAM)",
         description="The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
