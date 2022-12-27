@@ -23,7 +23,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     modin \
     dask[dataframe]==2022.2.0
 
-RUN $(if [ "$NODETYPE" = "head" ]; then echo 'dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom' | sudo tee -a /home/ray/.bashrc; fi)
+RUN $(if [ "$NODETYPE" = "head" ]; then echo 'dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping-dyndns' | sudo tee -a /home/ray/.bashrc; fi)
 
 ## building n2n
 RUN cd $HOME && \
