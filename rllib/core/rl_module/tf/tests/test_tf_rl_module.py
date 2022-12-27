@@ -1,13 +1,15 @@
-import gymnasium as gym
-import tensorflow as tf
-import tensorflow_probability as tfp
 import unittest
 from typing import Mapping
 
+import gymnasium as gym
+import tensorflow as tf
+
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-
+from ray.rllib.utils.framework import try_import_tfp
 from ray.rllib.utils.test_utils import check
+
+tfp = try_import_tfp(error=True)
 
 
 class TestRLModule(unittest.TestCase):

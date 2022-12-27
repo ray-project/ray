@@ -1,8 +1,9 @@
 import logging
-import numpy as np
 import os
 import sys
 from typing import Any, Optional
+
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
@@ -146,9 +147,13 @@ def try_import_tfp(error: bool = False):
         import tensorflow_probability as tfp
 
         return tfp
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError(
+                "Could not import TensorFlow Probabilty! RLlib does not come with "
+                "TensorFlow Probabilty as a dependency. You can install it with "
+                "`pip install tensorflow_probability`."
+            )
         return None
 
 
