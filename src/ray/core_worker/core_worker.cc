@@ -328,6 +328,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+        spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -2368,17 +2369,8 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    // Make task event
-    if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
-      task_event.set_task_id(task_spec.TaskId().Binary());
-      task_event.set_attempt_number(task_spec.AttemptNumber());
-      task_event.set_job_id(task_spec.JobId().Binary());
-
-      auto state_updates = task_event.mutable_state_updates();
-      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
-    }
+    task_manager_->RecordTaskStatusEvent(
+        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());

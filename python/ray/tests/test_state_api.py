@@ -2004,7 +2004,7 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
-def test_list_get_task_multiple_attempt(shutdown_only):
+def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
     node_id = ray.get_runtime_context().get_node_id()
@@ -2039,6 +2039,48 @@ def test_list_get_task_multiple_attempt(shutdown_only):
     # Test get with task id returns multiple task attempts
     task_id = list_tasks()[0]["task_id"]
     wait_for_condition(lambda: verify(get_task(task_id)))
+
+
+def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
+    ray.init(num_cpus=2)
+
+    # Test success after retries.
+    @ray.remote
+    class Phaser:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            self.i += 1
+            if self.i < 3:
+                raise ValueError(
+                    f"First two tries are expected to fail (try={self.i})."
+                )
+
+    phaser = Phaser.remote()
+
+    @ray.remote(retry_exceptions=True, max_retries=3)
+    def f():
+        ray.get(phaser.inc.remote())
+
+    ray.get(f.remote())
+
+    def verify(task_attempts):
+        assert len(task_attempts) == 3
+        for task_attempt in task_attempts[:-1]:
+            assert task_attempt["scheduling_state"] == "FAILED"
+
+        task_attempts[-1]["scheduling_state"] == "FINISHED"
+
+        assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
+            0,
+            1,
+            2,
+        }, "Attempt number should be 0,1,2"
+
+        return True
+
+    wait_for_condition(lambda: verify(list_tasks(filters=[("name", "=", "f")])))
 
 
 def test_list_actor_tasks(shutdown_only):

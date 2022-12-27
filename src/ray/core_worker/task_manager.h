@@ -309,6 +309,20 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Record OCL metrics.
   void RecordMetrics();
 
+  /// Update task status change for the task attempt in TaskEventBuffer.
+  ///
+  /// \param attempt_number Attempt number for the task attempt.
+  /// \param spec corresponding TaskSpecification of the task
+  /// \param status the changed status.
+  /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
+  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
+  /// for SUBMITTED_TO_WORKER status change.
+  void RecordTaskStatusEvent(int32_t attempt_number,
+                             const TaskSpecification &spec,
+                             rpc::TaskStatus status,
+                             bool include_task_info = false,
+                             absl::optional<NodeID> node_id = absl::nullopt);
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
@@ -468,26 +482,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status new status.
-  /// \param include_task_info True if TaskInfoEntry will be included when recording
-  /// status task event change for RecordTaskStatusEvent.
-  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
-  void SetTaskStatus(TaskEntry &task_entry,
-                     rpc::TaskStatus status,
-                     bool include_task_info = false,
-                     absl::optional<NodeID> node_id = absl::nullopt);
-
-  /// Update task status change in TaskEventBuffer
-  ///
-  /// \param task_entry corresponding TaskEntry of a task to record the event.
-  /// \param status the changed status.
-  /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
-  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
-  void RecordTaskStatusEvent(const TaskSpecification &spec,
-                             rpc::TaskStatus status,
-                             bool include_task_info,
-                             absl::optional<NodeID> node_id = absl::nullopt);
+  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
