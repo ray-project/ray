@@ -1,7 +1,4 @@
 FROM rayproject/ray:2.1.0-py38-gpu
-
-#ARG DEBIAN_FRONTEND=noninteractive
-#ARG HOME=/home/ray
 ENV __MODIN_AUTOIMPORT_PANDAS__=1
 ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
@@ -23,22 +20,19 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     modin \
     dask[dataframe]==2022.2.0
 
-RUN $(if [ "$NODETYPE" = "head" ]; then echo 'dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping-dyndns' | sudo tee -a /home/ray/.bashrc; fi)
+RUN if [ "$NODETYPE" = "head" ]; then echo -e "dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping-dyndns\n" >> /home/ray/.bashrc; fi
 
-## building n2n
+
+# building n2n
 RUN cd $HOME && \
 git clone --depth 1 --branch 3.1.1 https://github.com/ntop/n2n.git && \
 cd n2n && mkdir build && cd build && \
 cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" "-DN2N_OPTION_USE_PTHREAD=ON" && \
 cmake --build . && \
 sudo cmake --install . && cd $HOME && rm -rf n2n
-
-#COPY --from=build-env /usr/local/sbin/supernode /usr/bin/
-#COPY --from=build-env /usr/local/sbin/edge /usr/sbin/
-#COPY --from=build-env /root/n2n/packages/etc/n2n /etc/n2n
-
+ 
 ### begin installing crate
-RUN wget https://cdn.crate.io/downloads/deb/DEB-GPG-KEY-crate -O DEB-GPG-KEY-crate && sudo apt-key add DEB-GPG-KEY-crate && sudo add-apt-repository "deb https://cdn.crate.io/downloads/deb/stable/ $(lsb_release -cs) main" && sudo apt-get update && sudo apt-get install crate && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
+RUN sudo apt-key adv --fetch-keys https://cdn.crate.io/downloads/deb/DEB-GPG-KEY-crate && sudo add-apt-repository "deb https://cdn.crate.io/downloads/deb/stable/ $(lsb_release -cs) main" && sudo apt-get update && sudo apt-get install crate && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
 
 ENV PATH /usr/share/crate/bin/:$PATH
 ENV CRATE_HEAP_SIZE 512M
