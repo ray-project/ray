@@ -468,7 +468,7 @@ def one_hot(
 
     # Handle bool arrays correctly.
     if x.dtype == np.bool_:
-        x = x.astype(np.int)
+        x = x.astype(np.int_)
         depth = 2
 
     # If depth is not given, try to infer it from the values in the array.
