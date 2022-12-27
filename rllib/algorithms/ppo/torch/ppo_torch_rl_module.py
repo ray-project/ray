@@ -23,7 +23,7 @@ from ray.rllib.core.rl_module.encoder import (
     LSTMEncoder,
     ENCODER_OUT,
 )
-from rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
+from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 
 
 torch, nn = try_import_torch()
