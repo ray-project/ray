@@ -200,7 +200,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> psutil.Process:
+    async def _exec_entrypoint(self, logs_path: str) -> psutil.Process:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -236,6 +236,7 @@ class JobSupervisor:
                 and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
                 else None,
             )
+            shell_process = psutil.Process(shell_process.pid)
             parent_pid = os.getpid()
             child_pid = shell_process.pid
             # Create new pgid with new subprocess to execute driver command
@@ -282,11 +283,15 @@ class JobSupervisor:
                 )
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
-            shell_process = psutil.Process(shell_process.pid)
+            # Give time for the shell process to create job
+            await asyncio.sleep(0.1)
             children = shell_process.children()
-            # The shell process should create exactly one process: the job to run
-            assert len(children) == 1
-            return children[0]
+            if len(children) == 1:
+                # The shell process should create exactly one process: the job to run
+                return children[0]
+            else:
+                # The job already exited
+                return shell_process
 
     def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
@@ -322,7 +327,7 @@ class JobSupervisor:
 
     async def _polling(self, child_process: psutil.Process) -> int:
         while child_process is not None:
-            (finished, _) = psutil.wait_procs(child_process, timeout=0)
+            (finished, _) = psutil.wait_procs([child_process], timeout=0)
             if finished:
                 # subprocess finished with return code
                 return finished[0].returncode
@@ -394,8 +399,7 @@ class JobSupervisor:
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = self._exec_entrypoint(log_path)
-            child_pgid = os.getpgid(child_process.pid)
+            child_process = await self._exec_entrypoint(log_path)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -407,43 +411,49 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    os.killpg(child_pgid, getattr(signal, signal.SIGTERM))
-                    # Wait for job to terminate gracefully, otherwise kill process
-                    # forcefully after timeout.
-                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
-                    if stop_signal not in self.VALID_STOP_SIGNALS:
-                        logger.warning(
-                            f"{stop_signal} not a valid stop signal. Terminating "
-                            "job with SIGTERM."
-                        )
-                        stop_signal = "SIGTERM"
-                    os.killpg(
-                        os.getpgid(child_process.pid),
-                        getattr(signal, stop_signal),
-                    )
-                    # Wait for job to exit gracefully, otherwise kill process
-                    # forcefully after timeout.
                     try:
-                        stop_job_wait_time = int(
-                            os.environ.get(
-                                "RAY_JOB_STOP_WAIT_TIME_S",
-                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
-                            )
-                        )
-                        poll_group_task = create_task(self._poll_group(child_pgid))
-                        await asyncio.wait_for(poll_group_task, stop_job_wait_time)
+                        child_pgid = os.getpgid(child_process.pid)
+                    except ProcessLookupError:
+                        # Process already completed.
                         logger.info(
-                            f"Job {self._job_id} has been terminated gracefully "
-                            f"with {stop_signal}."
+                            f"Job {self._job_id} completed on its own before it could "
+                            "be manually terminated."
                         )
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            f"Attempt to gracefully terminate job {self._job_id} "
-                            f"through {stop_signal} has timed out after "
-                            f"{stop_job_wait_time} seconds. Job is now being "
-                            "force-killed."
-                        )
-                        os.killpg(child_pgid, getattr(signal, signal.SIGKILL))
+                    else:
+                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                        if stop_signal not in self.VALID_STOP_SIGNALS:
+                            logger.warning(
+                                f"{stop_signal} not a valid stop signal. Terminating "
+                                "job with SIGTERM."
+                            )
+                            stop_signal = "SIGTERM"
+                        os.killpg(child_pgid, getattr(signal, stop_signal))
+                        # Wait for job to terminate gracefully, otherwise kill process
+                        # forcefully after timeout.
+                        try:
+                            stop_job_wait_time = int(
+                                os.environ.get(
+                                    "RAY_JOB_STOP_WAIT_TIME_S",
+                                    self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                                )
+                            )
+                            poll_group_task = create_task(self._poll_group(child_pgid))
+                            await asyncio.wait_for(poll_group_task, stop_job_wait_time)
+                            logger.info(
+                                f"Job {self._job_id} has been terminated gracefully "
+                                f"with {stop_signal}."
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Attempt to gracefully terminate job {self._job_id} "
+                                f"through {stop_signal} has timed out after "
+                                f"{stop_job_wait_time} seconds. Job is now being "
+                                "force-killed."
+                            )
+                            poll_group_task.cancel()
+                            # Kill the entire process group in case the job spawned any
+                            # child processes of its own
+                            os.killpg(child_pgid, getattr(signal, signal.SIGKILL))
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
