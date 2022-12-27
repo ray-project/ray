@@ -21,7 +21,7 @@ from ray.rllib.core.rl_module.encoder import (
     IdentityConfig,
     LSTMEncoder,
 )
-from rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
+from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.models.base_model import BaseModelIOKeys
 
 
