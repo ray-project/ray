@@ -1,7 +1,7 @@
 FROM rayproject/ray:2.1.0-py38-gpu
 
-ARG DEBIAN_FRONTEND=noninteractive
-ARG HOME=/home/ray
+#ARG DEBIAN_FRONTEND=noninteractive
+#ARG HOME=/home/ray
 ENV __MODIN_AUTOIMPORT_PANDAS__=1
 ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
@@ -59,5 +59,5 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-ENTRYPOINT ["/usr/bin/bash"]
+ENTRYPOINT ["/bin/bash"]
 CMD ["/bin/sh -c"]
