@@ -287,7 +287,11 @@ def test_status_invalid_runtime_env(ray_start_stop):
 
     def check_for_failed_deployment():
         app_status = ServeSubmissionClient("http://localhost:52365").get_status()
-        return app_status["app_status"]["status"] == "DEPLOY_FAILED"
+        return (
+            app_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "Failed to set up runtime environment"
+            in app_status["app_status"]["message"]
+        )
 
     wait_for_condition(check_for_failed_deployment)
 
