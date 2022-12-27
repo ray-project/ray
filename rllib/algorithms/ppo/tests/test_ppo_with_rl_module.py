@@ -98,7 +98,7 @@ class TestPPO(unittest.TestCase):
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
                 # TODO (Kourosh): for now just do lstm=False
-                for lstm in [False, True]:
+                for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(

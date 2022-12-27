@@ -319,7 +319,10 @@ class PPOTorchRLModule(TorchRLModule):
 
         shared_encoder_state = x.get(self.shared_encoder.io[BaseModelIOKeys.STATE_OUT])
         pi_encoder_state = x.get(self.pi_encoder.io[BaseModelIOKeys.STATE_OUT])
-        output["state_out_0"] = shared_encoder_state or pi_encoder_state
+
+        state_out = shared_encoder_state or pi_encoder_state
+        if state_out:
+            output["state_out_0"] = state_out
         return output
 
     @override(RLModule)
