@@ -80,7 +80,7 @@ def invoke_state_api(
         else:
             key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
-        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
+        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)})"
     except Exception as e:
         traceback.print_exc()
         assert (

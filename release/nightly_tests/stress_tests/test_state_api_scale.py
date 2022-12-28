@@ -46,15 +46,21 @@ class SignalActor:
 def invoke_state_api_n(*args, **kwargs):
     NUM_API_CALL_SAMPLES = 10
     for _ in range(NUM_API_CALL_SAMPLES):
-        invoke_state_api(*args, **kwargs)
+
+        def verify():
+            invoke_state_api(*args, **kwargs)
+            return True
+
+        test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=20)
 
 
 def test_many_tasks(num_tasks: int):
     if num_tasks == 0:
         print("Skipping test with no tasks")
         return
+
     # No running tasks
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
         filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
@@ -68,7 +74,7 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    @ray.remote
+    @ray.remote(num_cpus=0.05)
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
@@ -84,17 +90,13 @@ def test_many_tasks(num_tasks: int):
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
         results.append(pi4_sample.remote(signal))
 
-    def verify():
-        invoke_state_api_n(
-            lambda res: len(res) == num_tasks,
-            list_tasks,
-            filters=[("name", "=", "pi4_sample")],
-            key_suffix=f"{num_tasks}",
-            limit=STATE_LIST_LIMIT,
-        )
-        return True
-
-    test_utils.wait_for_condition(verify)
+    invoke_state_api_n(
+        lambda res: len(res) == num_tasks,
+        list_tasks,
+        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        key_suffix=f"{num_tasks}",
+        limit=STATE_LIST_LIMIT,
+    )
 
     print("Waiting for tasks to finish...")
     ray.get(signal.send.remote())
@@ -102,16 +104,13 @@ def test_many_tasks(num_tasks: int):
 
     # Clean up
     # All compute tasks done other than the signal actor
-    def verify():
-        invoke_state_api(
-            lambda res: len(res) == 0,
-            list_tasks,
-            filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
-            key_suffix="0",
-            limit=STATE_LIST_LIMIT,
-        )
-
-    test_utils.wait_for_condition(verify)
+    invoke_state_api_n(
+        lambda res: len(res) == 0,
+        list_tasks,
+        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        key_suffix="0",
+        limit=STATE_LIST_LIMIT,
+    )
 
     del signal
 
