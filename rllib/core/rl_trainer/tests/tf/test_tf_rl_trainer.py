@@ -182,38 +182,3 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
-    # env = gym.make("CartPole-v1")
-    # trainer_class = TfRLTrainer
-    # trainer_cfg = dict(
-    #     module_class=DiscreteBCTFModule,
-    #     module_kwargs={
-    #         "observation_space": env.observation_space,
-    #         "action_space": env.action_space,
-    #         "model_config": {"hidden_dim": 32},
-    #     },
-    #     optimizer_class=BCTFOptimizer,
-    #     optimizer_kwargs={"config": {"lr": 1e-3}},
-    # )
-    # runner = TrainerRunner(
-    #     trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
-    # )
-
-    # path = "tests/data/cartpole/large.json"
-    # input_config = {"format": "json", "paths": path}
-    # dataset, _ = get_dataset_and_shards(
-    #     AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-    # )
-    # batch_size = 500
-    # ioctx = IOContext(
-    #     config=(
-    #         AlgorithmConfig()
-    #         .training(train_batch_size=batch_size)
-    #         .offline_data(actions_in_input_normalized=True)
-    #     ),
-    #     worker_index=0,
-    # )
-    # reader = DatasetReader(dataset, ioctx)
-
-    # batch = reader.next()
-    # for _ in range(5):
-    #     results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())
