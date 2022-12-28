@@ -48,11 +48,12 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310")
   PY_MMS=("3.6.13"
           "3.7.10"
           "3.8.10"
-          "3.9.5")
+          "3.9.5"
+          "3.10.9")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   "${ROOT_DIR}"/../suppress_output bash miniconda3.sh -b -p "$HOME/miniconda3"
   export PATH="$HOME/miniconda3/bin:$PATH"
