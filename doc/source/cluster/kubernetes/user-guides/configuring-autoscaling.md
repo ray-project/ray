@@ -158,7 +158,7 @@ image pull policy. The default is `Always`.
 
 **`env`** and **`envFrom`**: These fields specify autoscaler container
 environment variables. These fields should be formatted following the
-[Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
+[Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
 
 ## Understanding the Ray Autoscaler in the Context of Kubernetes
@@ -179,7 +179,7 @@ task and actor annotations. For instance, if each Ray container spec in your Ray
 a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
 10 Ray pods will be created to satisfy the 100-CPU resource demand.
 In this respect, the Ray autoscaler is similar to the
-[Kuberentes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
+[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
 resource requests.
 #### Fine-grained control of scale-down
