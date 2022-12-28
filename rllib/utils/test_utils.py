@@ -1,11 +1,15 @@
 from collections import Counter
 import copy
+import gymnasium as gym
+from gymnasium.spaces import Box
 import logging
+import numpy as np
+import os
+import pprint
 import random
 import re
 import time
-import os
-import gym
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,12 +21,7 @@ from typing import (
     Type,
     Union,
 )
-
-import numpy as np
-import tree  # pip install dm_tree
 import yaml
-import pprint
-from gym.spaces import Box
 
 import ray
 from ray import air, tune
@@ -461,6 +460,13 @@ def check_compute_single_action(
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test(
                                 what,
                                 method_to_test,
@@ -487,7 +493,11 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    env = gym.make(env_name)
+    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
+    if env_name.startswith("ALE/"):
+        env = gym.make("GymV26Environment-v0", env_id=env_name)
+    else:
+        env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -497,20 +507,21 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
             framestack=policy.config["model"].get("framestack"),
         )
 
-    obs = env.reset()
-    reward, done, info = 0.0, False, {}
+    obs, info = env.reset()
+    reward, terminated, truncated = 0.0, False, False
     ts = 0
-    while not done and ts < max_steps:
+    while not terminated and not truncated and ts < max_steps:
         action_out = local_policy_inference(
             policy,
             env_id=0,
             agent_id=0,
             obs=obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
             info=info,
         )
-        obs, reward, done, info = env.step(action_out[0][0])
+        obs, reward, terminated, truncated, info = env.step(action_out[0][0])
 
         ts += 1
 
@@ -692,6 +703,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
+    framework: Optional[str] = None,
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
@@ -699,6 +711,8 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
+        framework: The framework to use for running this test. If None,
+            run the test on all frameworks.
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
@@ -734,15 +748,18 @@ def run_learning_tests_from_yaml(
         return experiment["config"].get("evaluation_interval", None) is not None
 
     # Loop through all collected files and gather experiments.
-    # Augment all by `torch` framework.
+    # Set correct framework(s).
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            # If framework explicitly given, only test for that framework.
+            # If framework given as arg, use that framework.
+            if framework is not None:
+                frameworks = [framework]
+            # If framework given in config, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e:
+            elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support

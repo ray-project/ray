@@ -521,6 +521,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
+      RAY_LOG(DEBUG) << "Runtime env for task " << spec.TaskId() << " is "
+                     << spec.RuntimeEnvDebugString();
     }
   }
 
@@ -797,8 +799,6 @@ void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
 rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
   rpc::TaskInfoEntry task_info;
-  return task_info;
-
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
@@ -887,6 +887,7 @@ void TaskManager::RecordTaskStatusEvent(const TaskEntry &task_entry,
   // Make task event
   rpc::TaskEvents task_event;
   task_event.set_task_id(task_entry.spec.TaskId().Binary());
+  task_event.set_job_id(task_entry.spec.JobId().Binary());
   task_event.set_attempt_number(task_entry.spec.AttemptNumber());
   auto state_updates = task_event.mutable_state_updates();
   switch (status) {

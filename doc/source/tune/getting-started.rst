@@ -16,7 +16,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray torch torchvision
+    $ pip install "ray[tune]" torch torchvision
 
 Setting Up a Pytorch Model to Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
 import numpy as np
 import unittest
 
@@ -77,7 +77,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
                     action_space=action_space,
                     observation_space=obs_space,
                     reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                    p_done=1.0,
+                    p_terminated=1.0,
                     check_action_bounds=check_bounds,
                 )
             )
@@ -144,7 +144,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -193,6 +193,27 @@ class TestSupportedSpacesPG(unittest.TestCase):
                     "fcnet_hiddens": [10],
                 },
             )
+        )
+        check_support("PPO", config, check_bounds=True, tf2=True)
+
+    def test_ppo_no_preprocessors_gpu(self):
+        # Same test as test_ppo, but also test if we are able to move models and tensors
+        # on the same device when not using preprocessors.
+        # (Artur) This covers a superposition of these edge cases that can lead to
+        # obscure errors.
+        config = (
+            PPOConfig()
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .training(
+                train_batch_size=100,
+                num_sgd_iter=1,
+                sgd_minibatch_size=50,
+                model={
+                    "fcnet_hiddens": [10],
+                },
+            )
+            .experimental(_disable_preprocessor_api=True)
+            .resources(num_gpus=1)
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
 

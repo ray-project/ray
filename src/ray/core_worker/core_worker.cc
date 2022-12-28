@@ -224,10 +224,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
-  // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(
-      worker_context_, options_.node_ip_address, io_service_, gcs_client_);
-
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
   task_event_buffer_ =
@@ -881,16 +877,31 @@ CoreWorker::GetAllReferenceCounts() const {
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
-rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
+rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
-  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
-  RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
-         "does not know which task created them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+  auto status = GetOwnerAddress(object_id, &owner_address);
+  RAY_CHECK(status.ok()) << status.message();
   return owner_address;
+}
+
+Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
+                                   rpc::Address *owner_address) const {
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
+  if (!has_owner) {
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << object_id
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectUnknownOwner(stream.str());
+  }
+  return Status::OK();
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
@@ -909,17 +920,31 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   return refs;
 }
 
-void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
-                                  rpc::Address *owner_address,
-                                  std::string *serialized_object_status) {
+void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
+                                       rpc::Address *owner_address,
+                                       std::string *serialized_object_status) {
+  auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
+  RAY_CHECK(status.ok()) << status.message();
+}
+
+Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
+                                    rpc::Address *owner_address,
+                                    std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
-  RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
-         "which task will create them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/: "
-      << object_id;
+  if (!has_owner) {
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << object_id
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectUnknownOwner(stream.str());
+  }
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -931,6 +956,7 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
     }
   }
   *serialized_object_status = object_status.SerializeAsString();
+  return Status::OK();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
@@ -1078,6 +1104,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    // Must call `AddNestedObjectIds` after finished assign owner.
+    // Otherwise, it will cause the reference count of those contained objects
+    // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
+    reference_counter_->AddNestedObjectIds(
+        *object_id, contained_object_ids, real_owner_address);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1176,6 +1207,31 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
+  std::ostringstream ids_stream;
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    rpc::Address unused_owner_address;
+    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
+    if (status.IsObjectUnknownOwner()) {
+      ids_stream << ids[i] << " ";
+      got_exception = true;
+    }
+  }
+
+  if (got_exception) {
+    std::ostringstream stream;
+    stream << "An application is trying to access Ray objects whose owner is unknown"
+           << "(" << ids_stream.str()
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectUnknownOwner(stream.str());
+  }
 
   if (!memory_object_ids.empty()) {
     RAY_RETURN_NOT_OK(memory_store_->Get(
@@ -1313,6 +1369,35 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
 
+  size_t missing_owners = 0;
+  std::ostringstream ids_stream;
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    rpc::Address unused_owner_address;
+    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
+    if (status.IsObjectUnknownOwner()) {
+      ids_stream << ids[i] << " ";
+      missing_owners += 1;
+    }
+  }
+
+  int objects_with_known_owners = ids.size() - missing_owners;
+  // If we are requesting more items than items available, then return a failed status.
+  if (missing_owners > 0 && num_objects > objects_with_known_owners) {
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << ids_stream.str()
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectUnknownOwner(stream.str());
+  }
+
   absl::flat_hash_set<ObjectID> ready;
   int64_t start_time = current_time_ms();
   RAY_RETURN_NOT_OK(memory_store_->Wait(
@@ -1351,23 +1436,34 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
 }
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
-  // Release the object from plasma. This does not affect the object's ref
-  // count. If this was called from a non-owning worker, then a warning will be
-  // logged and the object will not get released.
-  reference_counter_->FreePlasmaObjects(object_ids);
-
-  // Store an error in the in-memory store to indicate that the plasma value is
-  // no longer reachable.
-  memory_store_->Delete(object_ids);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Freeing object " << object_id;
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
+  absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
+  absl::flat_hash_map<WorkerID, rpc::Address> addresses;
+  // Group by owner id.
+  for (const auto &obj_id : object_ids) {
+    auto owner_address = GetOwnerAddressOrDie(obj_id);
+    auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    by_owner[worker_id].push_back(obj_id);
+    addresses[worker_id] = owner_address;
   }
-
-  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
-  // objects can only be deleted once the ref count goes to 0.
-  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
+  // Send a batch delete call per owner id.
+  for (const auto &entry : by_owner) {
+    if (entry.first != worker_context_.GetWorkerID()) {
+      RAY_LOG(INFO) << "Deleting remote objects " << entry.second.size() << " "
+                    << entry.first;
+      auto conn = core_worker_client_pool_->GetOrConnect(addresses[entry.first]);
+      rpc::DeleteObjectsRequest request;
+      for (const auto &obj_id : entry.second) {
+        request.add_object_ids(obj_id.Binary());
+      }
+      request.set_local_only(local_only);
+      conn->DeleteObjects(request,
+                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
+                            RAY_LOG(INFO) << "Completed object delete request " << status;
+                          });
+    }
+  }
+  // Also try to delete all objects locally.
+  return DeleteImpl(object_ids, local_only);
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -1386,7 +1482,8 @@ Status CoreWorker::GetLocationFromOwner(
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
   for (const auto &object_id : object_ids) {
-    auto owner_address = GetOwnerAddress(object_id);
+    rpc::Address owner_address;
+    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
     auto object_location_request = request.mutable_object_location_request();
@@ -2195,8 +2292,9 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const {
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
-    const std::string &event_type) {
-  return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
+    const std::string &event_name) {
+  return std::make_unique<worker::ProfileEvent>(
+      *task_event_buffer_, worker_context_, options_.node_ip_address, event_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
@@ -2276,6 +2374,8 @@ Status CoreWorker::ExecuteTask(
       rpc::TaskEvents task_event;
       task_event.set_task_id(task_spec.TaskId().Binary());
       task_event.set_attempt_number(task_spec.AttemptNumber());
+      task_event.set_job_id(task_spec.JobId().Binary());
+
       auto state_updates = task_event.mutable_state_updates();
       state_updates->set_running_ts(absl::GetCurrentTimeNanos());
       task_event_buffer_->AddTaskEvent(std::move(task_event));
@@ -3280,6 +3380,37 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
   }
 }
 
+void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
+                                     rpc::DeleteObjectsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  for (const auto &obj_id : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(obj_id));
+  }
+  auto status = DeleteImpl(object_ids, request.local_only());
+  send_reply_callback(status, nullptr, nullptr);
+}
+
+Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
+  // Release the object from plasma. This does not affect the object's ref
+  // count. If this was called from a non-owning worker, then a warning will be
+  // logged and the object will not get released.
+  reference_counter_->FreePlasmaObjects(object_ids);
+
+  // Store an error in the in-memory store to indicate that the plasma value is
+  // no longer reachable.
+  memory_store_->Delete(object_ids);
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Freeing object " << object_id;
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
+  }
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects can only be deleted once the ref count goes to 0.
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
+}
+
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
@@ -3461,7 +3592,8 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   // Ask raylet to subscribe to object notification. Raylet will call this core worker
   // when the object is local (and it will fire the callback immediately if the object
   // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
-  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
+  auto owner_address = GetOwnerAddressOrDie(object_id);
+  local_raylet_client_->SubscribeToPlasma(object_id, owner_address);
 }
 
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
