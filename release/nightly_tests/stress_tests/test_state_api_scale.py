@@ -44,14 +44,13 @@ class SignalActor:
 
 
 def invoke_state_api_n(*args, **kwargs):
-    NUM_API_CALL_SAMPLES = 10
-    for _ in range(NUM_API_CALL_SAMPLES):
-
-        def verify():
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
             invoke_state_api(*args, **kwargs)
-            return True
+        return True
 
-        test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=20)
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
@@ -66,6 +65,7 @@ def test_many_tasks(num_tasks: int):
         filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks.",
     )
 
     # Task definition adopted from:
@@ -96,6 +96,7 @@ def test_many_tasks(num_tasks: int):
         filters=[("name", "=", "pi4_sample"), ("scheduling_state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
+        err_msg=f"Expect {num_tasks} non finished tasks.",
     )
 
     print("Waiting for tasks to finish...")
@@ -110,6 +111,7 @@ def test_many_tasks(num_tasks: int):
         filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks",
     )
 
     del signal
