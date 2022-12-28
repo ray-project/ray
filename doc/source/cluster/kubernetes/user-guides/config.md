@@ -280,7 +280,7 @@ The Ray Client server can be accessed from a pod in another namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+(This assumes the Ray cluster was deployed into the default Kubernetes namespace.
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 
