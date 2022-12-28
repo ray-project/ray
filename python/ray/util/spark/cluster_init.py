@@ -448,15 +448,29 @@ def _init_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
 
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
-    ray_dashboard_port = get_random_unused_port(
-        ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
-    )
-    ray_dashboard_agent_port = get_random_unused_port(
-        ray_head_ip,
-        min_port=9000,
-        max_port=10000,
-        exclude_list=[ray_head_port, ray_dashboard_port],
-    )
+
+    include_dashboard = head_options.pop("include_dashboard", True)
+
+    if include_dashboard:
+        ray_dashboard_port = get_random_unused_port(
+            ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
+        )
+        ray_dashboard_agent_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=[ray_head_port, ray_dashboard_port],
+        )
+        dashboard_options = {
+            "--include-dashboard=true",
+            "--dashboard-host=0.0.0.0",
+            f"--dashboard-port={ray_dashboard_port}",
+            f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
+        }
+    else:
+        dashboard_options = {
+            "--include-dashboard=false",
+        }
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -478,10 +492,6 @@ def _init_ray_cluster(
         "--head",
         f"--node-ip-address={ray_head_ip}",
         f"--port={ray_head_port}",
-        "--include-dashboard=true",
-        "--dashboard-host=0.0.0.0",
-        f"--dashboard-port={ray_dashboard_port}",
-        f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
         # disallow ray tasks with cpu requirements from being scheduled on the head
         # node.
         "--num-cpus=0",
@@ -491,6 +501,7 @@ def _init_ray_cluster(
         # limit the object store memory allocation to the head node (actual usage
         # may increase beyond this for processing of tasks and actors).
         f"--object-store-memory={128 * 1024 * 1024}",
+        *dashboard_options,
         *_convert_ray_node_options(head_options),
     ]
 

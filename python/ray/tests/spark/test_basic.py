@@ -52,7 +52,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_cpu_allocation(self):
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with _init_ray_cluster(num_worker_nodes=num_spark_tasks, safe_mode=False):
+            with _init_ray_cluster(
+                    num_worker_nodes=num_spark_tasks, safe_mode=False,
+                    head_options={"include_dashboard": False},
+            ):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
@@ -103,7 +106,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_ray_cluster_shutdown(self):
         with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks, safe_mode=False,
+            head_options={"include_dashboard": False},
         ) as cluster:
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -120,7 +124,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks, safe_mode=False,
+            head_options={"include_dashboard": False},
         ) as cluster:
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()

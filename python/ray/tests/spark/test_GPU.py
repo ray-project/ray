@@ -24,7 +24,10 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     def test_gpu_allocation(self):
 
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with _init_ray_cluster(num_worker_nodes=num_spark_tasks, safe_mode=False):
+            with _init_ray_cluster(
+                num_worker_nodes=num_spark_tasks, safe_mode=False,
+                head_options={"include_dashboard": False},
+            ):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
