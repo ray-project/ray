@@ -1,13 +1,17 @@
 import numpy as np
-from typing import Any, Mapping, Union, Type
+from typing import Any, Mapping, Tuple, Union, Type
+from ray.rllib.core.optim.rl_optimizer import RLOptimizer
+from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
@@ -66,15 +70,34 @@ class TfRLTrainer(RLTrainer):
                 )
 
     @override(RLTrainer)
-    def make_distributed(self):
+    def make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
-            module = self.module_class.from_model_config(
-                **self.module_config
-            ).as_multi_agent()
-            optimizer = self.optimizer_class(
-                module, self.optimizer_config
-            ).as_multi_agent()
+            if issubclass(self.module_class, MultiAgentRLModule):
+                module = self.module_class.from_multi_agent_config(**self.module_kwargs)
+            elif issubclass(self.module_class, RLModule):
+                module = self.module_class.from_model_config(
+                    **self.module_kwargs
+                ).as_multi_agent()
+            else:
+                raise ValueError(
+                    f"Module class {self.module_class} is not a subclass of "
+                    f"RLModule or MultiAgentRLModule."
+                )
+            if issubclass(self.optimizer_class, RLOptimizer):
+                optimizer = self.optimizer_class.from_module(
+                    module, **self.optimizer_kwargs
+                )
+                optimizer = optimizer.as_multi_agent()
+            elif issubclass(self.optimizer_class, MultiAgentRLOptimizer):
+                optimizer = self.optimizer_class.from_marl_module(
+                    module, **self.optimizer_kwargs
+                )
+            else:
+                raise ValueError(
+                    f"Optimizer class {self.optimizer_class} is not a subclass of "
+                    f"RLOptimizer or MultiAgentRLOptimizer."
+                )
         return module, optimizer
 
     @override(RLTrainer)
@@ -117,22 +140,22 @@ class TfRLTrainer(RLTrainer):
         self,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_config,
+        module_kwargs,
         optimizer_cls,
-        optimizer_config,
+        optimizer_kwargs,
     ) -> None:
         if self.distributed:
             with self.strategy.scope():
                 super().add_module(
                     module_id,
                     module_cls,
-                    module_config,
+                    module_kwargs,
                     optimizer_cls,
-                    optimizer_config,
+                    optimizer_kwargs,
                 )
         else:
             super().add_module(
-                module_id, module_cls, module_config, optimizer_cls, optimizer_config
+                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
             )
         self.traced_update_fn = tf.function(self._do_update_fn)
 

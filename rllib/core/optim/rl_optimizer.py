@@ -5,9 +5,6 @@ if TYPE_CHECKING:
     from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 
 from ray.rllib.core.rl_module import RLModule
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import TensorType
 from ray.util.annotations import PublicAPI
@@ -16,10 +13,6 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="beta")
 class RLOptimizer(abc.ABC):
     """Base class for defining a loss function and optimizer for a RLModule.
-
-    Args:
-        rl_module: The RLModule that will be optimized.
-        config: The configuration for the optimizer.
 
     Abstract Methods:
         compute_loss: computing a loss to optimize rl_module over.
@@ -31,7 +24,7 @@ class RLOptimizer(abc.ABC):
     .. code-block:: python
 
         module = RLModule(...)
-        rl_optim = RLOptimizer(module, config)
+        rl_optim = RLOptimizer.from_module(module, config)
         sample_batch = ...
         fwd_out = module.forward_train(sample_batch)
         loss_dict = rl_optim.compute_loss(fwd_out, sample_batch)
@@ -39,17 +32,48 @@ class RLOptimizer(abc.ABC):
         # compute gradients of loss w.r.t. trainable variables
         ...
 
-        for optim in rl_optim.get_optimizers():
+        for network_id, optim in rl_optim.get_optimizers().items():
             optim.step()
             optim.zero_grad()
 
     """
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, module: RLModule, config: Mapping[str, Any]):
-        self.module = module
-        self._config = config
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of RLModule.
+        # This method is called after the __init__ method of the subclass.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
+
+    def __post_init__(self):
+        """Called automatically after the __init__ method of the subclass.
+
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
+        method of the subclass is called, the __post_init__ method is called.
+
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
         self._optimizers = self._configure_optimizers()
+
+    @classmethod
+    def from_module(cls, module: RLModule, config: Mapping[str, Any]):
+        """Constructs an RLOptimizer from a RLModule.
+
+        Args:
+            module: The RLModule to optimize.
+            config: The configuration for the optimizer.
+
+        Returns:
+            An RLOptimizer for optimizing module.
+        """
 
     @abc.abstractmethod
     def compute_loss(

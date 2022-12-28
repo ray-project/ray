@@ -34,7 +34,7 @@ class BCTFTrainer:
             env.action_space,
             model_config={"hidden_dim": 32},
         )
-        self._rl_optimizer = BCTFOptimizer(self._module, optimizer_config)
+        self._rl_optimizer = BCTFOptimizer.from_module(self._module, optimizer_config)
 
     @staticmethod
     def on_after_compute_gradients(

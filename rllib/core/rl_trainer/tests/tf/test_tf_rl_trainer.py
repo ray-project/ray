@@ -32,14 +32,13 @@ class TestTfRLTrainer(unittest.TestCase):
         trainer_class = TfRLTrainer
         trainer_cfg = dict(
             module_class=DiscreteBCTFModule,
-            module_config={
+            module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_class=BCTFOptimizer,
-            optimizer_config={},
-            debug=True,
+            optimizer_kwargs={"config": {"lr": 1e-3}},
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
@@ -61,27 +60,37 @@ class TestTfRLTrainer(unittest.TestCase):
         )
         reader = DatasetReader(dataset, ioctx)
 
-        batch = reader.next()
-        for _ in range(5):
+        min_loss = float("inf")
+        for _ in range(1000):
+            batch = reader.next()
             results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())
+            loss = (
+                results_worker_0["loss"]["total_loss"]
+                + results_worker_1["loss"]["total_loss"]
+            ) / 2
+            min_loss = min(loss, min_loss)
+            # The loss is initially around 0.68. When it gets to around
+            # 0.57 the return of the policy gets to around 100.
+            if min_loss < 0.57:
+                break
             self.assertEqual(
                 results_worker_0["mean_weight"]["default_policy"],
                 results_worker_1["mean_weight"]["default_policy"],
             )
+        self.assertLess(min_loss, 0.57)
 
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
         trainer_class = TfRLTrainer
         trainer_cfg = dict(
             module_class=DiscreteBCTFModule,
-            module_config={
+            module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_class=BCTFOptimizer,
-            optimizer_config={},
-            debug=True,
+            optimizer_kwargs={"config": {"lr": 1e-3}},
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
@@ -111,13 +120,13 @@ class TestTfRLTrainer(unittest.TestCase):
         runner.add_module(
             module_id=new_module_id,
             module_cls=DiscreteBCTFModule,
-            module_config={
+            module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_cls=BCTFOptimizer,
-            optimizer_config={},
+            optimizer_kwargs={"config": {"lr": 1e-3}},
         )
 
         # do training that includes the test_module
@@ -173,3 +182,38 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+    # env = gym.make("CartPole-v1")
+    # trainer_class = TfRLTrainer
+    # trainer_cfg = dict(
+    #     module_class=DiscreteBCTFModule,
+    #     module_kwargs={
+    #         "observation_space": env.observation_space,
+    #         "action_space": env.action_space,
+    #         "model_config": {"hidden_dim": 32},
+    #     },
+    #     optimizer_class=BCTFOptimizer,
+    #     optimizer_kwargs={"config": {"lr": 1e-3}},
+    # )
+    # runner = TrainerRunner(
+    #     trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
+    # )
+
+    # path = "tests/data/cartpole/large.json"
+    # input_config = {"format": "json", "paths": path}
+    # dataset, _ = get_dataset_and_shards(
+    #     AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    # )
+    # batch_size = 500
+    # ioctx = IOContext(
+    #     config=(
+    #         AlgorithmConfig()
+    #         .training(train_batch_size=batch_size)
+    #         .offline_data(actions_in_input_normalized=True)
+    #     ),
+    #     worker_index=0,
+    # )
+    # reader = DatasetReader(dataset, ioctx)
+
+    # batch = reader.next()
+    # for _ in range(5):
+    #     results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())

@@ -1,10 +1,11 @@
 import abc
-from typing import Any, Mapping, Union, Type
+from typing import Any, Mapping, Tuple, Union, Type
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
@@ -15,25 +16,26 @@ class RLTrainer:
 
     Args:
         module_class: The (MA)RLModule class to use.
-        module_config: The config for the (MA)RLModule.
+        module_kwargs: The config for the (MA)RLModule.
         optimizer_class: The optimizer class to use.
-        optimizer_config: The config for the optimizer.
+        optimizer_kwargs: The config for the optimizer.
 
     """
 
     def __init__(
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_config: Mapping[str, Any],
-        optimizer_class: Type[RLOptimizer],
-        optimizer_config: Mapping[str, Any],
+        module_kwargs: Mapping[str, Any],
+        optimizer_class: Union[Type[RLOptimizer], Type[MultiAgentRLOptimizer]],
+        optimizer_kwargs: Mapping[str, Any],
         scaling_config: Mapping[str, Any],
         distributed: bool = False,
     ):
         self.module_class = module_class
-        self.module_config = module_config
+        self.module_kwargs = module_kwargs
         self.optimizer_class = optimizer_class
-        self.optimizer_config = optimizer_config
+        self.optimizer_kwargs = optimizer_kwargs
+        self.scaling_config = scaling_config
         self.distributed = distributed
 
     def on_after_compute_gradients(
@@ -81,7 +83,7 @@ class RLTrainer:
             **loss_numpy,
         }
 
-    def update(self, batch: SampleBatch) -> Mapping[str, Any]:
+    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
 
         Args:
@@ -151,23 +153,23 @@ class RLTrainer:
         self,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_config: Mapping[str, Any],
+        module_kwargs: Mapping[str, Any],
         optimizer_cls: Type[RLOptimizer],
-        optimizer_config: Mapping[str, Any],
+        optimizer_kwargs: Mapping[str, Any],
     ) -> None:
         """Add a module to the trainer.
 
         Args:
             module_id: The id of the module to add.
             module_cls: The module class to add.
-            module_config: The config for the module.
+            module_kwargs: The config for the module.
             optimizer_cls: The optimizer class to use.
-            optimizer_config: The config for the optimizer.
+            optimizer_kwargs: The config for the optimizer.
 
         """
-        module = module_cls.from_model_config(**module_config)
+        module = module_cls.from_model_config(**module_kwargs)
         self._module.add_module(module_id, module)
-        optimizer = optimizer_cls(module, optimizer_config)
+        optimizer = optimizer_cls(module, optimizer_kwargs)
         self._rl_optimizer.add_optimizer(module_id, optimizer)
 
     def remove_module(self, module_id: ModuleID) -> None:
@@ -185,12 +187,32 @@ class RLTrainer:
         if self.distributed:
             self._module, self._rl_optimizer = self.make_distributed()
         else:
-            self._module = self.module_class.from_model_config(
-                **self.module_config
-            ).as_multi_agent()
-            self._rl_optimizer = self.optimizer_class(
-                self._module, self.optimizer_config
-            ).as_multi_agent()
+            if issubclass(self.module_class, MultiAgentRLModule):
+                self._module = self.module_class.from_multi_agent_config(
+                    **self.module_kwargs
+                )
+            elif issubclass(self.module_class, RLModule):
+                self._module = self.module_class.from_model_config(
+                    **self.module_kwargs
+                ).as_multi_agent()
+            else:
+                raise ValueError(
+                    f"Module class {self.module_class} is not a subclass of "
+                    f"RLModule or MultiAgentRLModule."
+                )
+            if issubclass(self.optimizer_class, RLOptimizer):
+                self._rl_optimizer = self.optimizer_class.from_module(
+                    self._module, **self.optimizer_kwargs
+                ).as_multi_agent()
+            elif issubclass(self.optimizer_class, MultiAgentRLOptimizer):
+                self._rl_optimizer = self.optimizer_class.from_marl_module(
+                    self._module, **self.optimizer_kwargs
+                )
+            else:
+                raise ValueError(
+                    f"Optimizer class {self.optimizer_class} is not a subclass of "
+                    f"RLOptimizer or MultiAgentRLOptimizer."
+                )
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
@@ -200,5 +222,13 @@ class RLTrainer:
 
         Returns:
             A dictionary of results.
+        """
+        raise NotImplementedError
+
+    def make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+        """Initialize this trainer in a distributed training setting.
+
+        Returns:
+            The distributed module and optimizer.
         """
         raise NotImplementedError

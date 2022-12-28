@@ -130,23 +130,23 @@ class TrainerRunner:
         self,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_config: Mapping[str, Any],
+        module_kwargs: Mapping[str, Any],
         optimizer_cls: Type[RLOptimizer],
-        optimizer_config: Mapping[str, Any],
+        optimizer_kwargs: Mapping[str, Any],
     ) -> None:
         """Add a module to the RLTrainers maintained by this TrainerRunner.
 
         Args:
             module_id: The id of the module to add.
             module_cls: The module class to add.
-            module_config: The config for the module.
+            module_kwargs: The config for the module.
             optimizer_cls: The optimizer class to use.
-            optimizer_config: The config for the optimizer.
+            optimizer_kwargs: The config for the optimizer.
         """
         refs = []
         for worker in self.workers:
             ref = worker.add_module.remote(
-                module_id, module_cls, module_config, optimizer_cls, optimizer_config
+                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
             )
             refs.append(ref)
         ray.get(refs)
