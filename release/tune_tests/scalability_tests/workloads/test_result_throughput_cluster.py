@@ -8,7 +8,7 @@ Cluster: cluster_16x64.yaml
 
 Test owner: krfricke
 
-Acceptance criteria: Should run faster than 130 seconds.
+Acceptance criteria: Should run faster than 135 seconds.
 
 Theoretical minimum time: 100 seconds
 """
