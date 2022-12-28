@@ -84,13 +84,17 @@ def test_many_tasks(num_tasks: int):
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
         results.append(pi4_sample.remote(signal))
 
-    invoke_state_api_n(
-        lambda res: len(res) == num_tasks,
-        list_tasks,
-        filters=[("name", "=", "pi4_sample")],
-        key_suffix=f"{num_tasks}",
-        limit=STATE_LIST_LIMIT,
-    )
+    def verify():
+        invoke_state_api_n(
+            lambda res: len(res) == num_tasks,
+            list_tasks,
+            filters=[("name", "=", "pi4_sample")],
+            key_suffix=f"{num_tasks}",
+            limit=STATE_LIST_LIMIT,
+        )
+        return True
+
+    test_utils.wait_for_condition(verify)
 
     print("Waiting for tasks to finish...")
     ray.get(signal.send.remote())
@@ -98,13 +102,16 @@ def test_many_tasks(num_tasks: int):
 
     # Clean up
     # All compute tasks done other than the signal actor
-    invoke_state_api(
-        lambda res: len(res) == 0,
-        list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
-        key_suffix="0",
-        limit=STATE_LIST_LIMIT,
-    )
+    def verify():
+        invoke_state_api(
+            lambda res: len(res) == 0,
+            list_tasks,
+            filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+            key_suffix="0",
+            limit=STATE_LIST_LIMIT,
+        )
+
+    test_utils.wait_for_condition(verify)
 
     del signal
 
