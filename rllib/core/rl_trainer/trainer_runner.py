@@ -18,9 +18,6 @@ class TrainerRunner:
         .get_state() -> returns the state of the RLModule and RLOptimizer from
                         all of the RLTrainers
         .set_state() -> sets the state of all the RLTrainers
-        .apply(fn, *args, **kwargs) -> apply a function to all workers while
-                                       having access to the attributes
-        >>> trainer_runner.apply(lambda w: w.fn())
 
     TODO(avnishn):
         1. Add trainer runner with async operations

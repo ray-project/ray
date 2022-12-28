@@ -59,7 +59,6 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
         Returns:
             A MultiAgentRLOptimizer.
-
         """
         assert len(rl_optimizer_classes) == len(optim_kwargs)
         assert set(rl_optimizer_classes.keys()) == set(optim_kwargs.keys())
@@ -99,7 +98,6 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
         Returns:
             The optimizer state.
-
         """
         return {
             module_id: optimizer.get_state()
@@ -112,7 +110,6 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
         Args:
             state: The optimizer state to set.
-
         """
         for module_id, sub_optimizer_state in state.items():
             optimizer = self._optimizers[module_id]
@@ -128,7 +125,6 @@ class MultiAgentRLOptimizer(RLOptimizer):
         Args:
             module_id: The module id of the optimizer.
             optimizer: The optimizer to add.
-
         """
         self._optimizers[module_id] = optimizer
 
@@ -137,10 +133,20 @@ class MultiAgentRLOptimizer(RLOptimizer):
 
         Args:
             module_id: The module id of the optimizer to remove.
-
         """
         del self._optimizers[module_id]
 
     def _configure_optimizers(self) -> None:
         # Do not override this.
         return self._optimizers
+
+    def __getitem__(self, module_id: ModuleID) -> RLOptimizer:
+        """Returns the optimizer with the given module ID.
+
+        Args:
+            module_id: The module ID to get.
+
+        Returns:
+            The optimizer with the given module ID.
+        """
+        return self._optimizers[module_id]

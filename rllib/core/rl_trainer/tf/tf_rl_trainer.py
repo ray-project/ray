@@ -70,7 +70,7 @@ class TfRLTrainer(RLTrainer):
                 )
 
     @override(RLTrainer)
-    def make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+    def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
             if issubclass(self.module_class, MultiAgentRLModule):

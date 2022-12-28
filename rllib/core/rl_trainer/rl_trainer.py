@@ -16,9 +16,45 @@ class RLTrainer:
 
     Args:
         module_class: The (MA)RLModule class to use.
-        module_kwargs: The config for the (MA)RLModule.
+        module_kwargs: The kwargs for the (MA)RLModule.
         optimizer_class: The optimizer class to use.
-        optimizer_kwargs: The config for the optimizer.
+        optimizer_kwargs: The kwargs for the optimizer.
+        scaling_config: A mapping that holds the world size and rank of this
+            trainer. Note this is only used for distributed training.
+        distributed: Whether this trainer is distributed or not.
+
+    Abstract Methods:
+        compute_gradients: Compute gradients for the module being optimized.
+        apply_gradients: Apply gradients to the module being optimized with respect to
+            a loss that is computed by the optimizer.
+
+    Example:
+        .. code-block:: python
+
+        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_class,
+                optimizer_kwargs, scaling_config)
+        trainer.init_trainer()
+        batch = ...
+        results = trainer.update(batch)
+
+        # add a new module, perhaps for league based training or lru caching
+        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
+            NewPlayerOptimCls, new_player_optim_kwargs)
+
+        batch = ...
+        results = trainer.update(batch)  # will train previous and new modules.
+
+        # remove a module
+        trainer.remove_module("new_player")
+
+        batch = ...
+        results = trainer.update(batch)  # will train previous modules only.
+
+        # get the state of the trainer
+        state = trainer.get_state()
+
+        # set the state of the trainer
+        trainer.set_state(state)
 
     """
 
@@ -77,9 +113,10 @@ class RLTrainer:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        batch = convert_to_numpy(batch)
+        rewards = batch["rewards"]
+        rewards = convert_to_numpy(rewards)
         return {
-            "avg_reward": batch["rewards"].mean(),
+            "avg_reward": rewards.mean(),
             **loss_numpy,
         }
 
@@ -185,7 +222,7 @@ class RLTrainer:
     def init_trainer(self) -> None:
         """Initialize the model."""
         if self.distributed:
-            self._module, self._rl_optimizer = self.make_distributed()
+            self._module, self._rl_optimizer = self._make_distributed()
         else:
             if issubclass(self.module_class, MultiAgentRLModule):
                 self._module = self.module_class.from_multi_agent_config(
@@ -225,7 +262,7 @@ class RLTrainer:
         """
         raise NotImplementedError
 
-    def make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+    def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
         """Initialize this trainer in a distributed training setting.
 
         Returns:
