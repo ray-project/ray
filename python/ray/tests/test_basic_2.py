@@ -365,7 +365,7 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-def test_get_with_timeout(ray_start_regular_shared, monkeypatch):
+def test_get_with_timeout(ray_start_regular_shared):
     SignalActor = create_remote_signal_actor(ray)
     signal = SignalActor.remote()
 
