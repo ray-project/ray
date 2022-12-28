@@ -74,7 +74,7 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    @ray.remote(num_cpus=0.05)
+    @ray.remote
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
@@ -93,7 +93,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
     )
