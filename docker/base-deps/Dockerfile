@@ -12,6 +12,7 @@ ENV TZ=America/Los_Angeles
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.7.7
+ARG CONDA_CHANNEL="defaults"
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -48,7 +49,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
-    && $HOME/anaconda3/bin/conda install -y \
+    && $HOME/anaconda3/bin/conda install -c $CONDA_CHANNEL -y \
         libgcc python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \

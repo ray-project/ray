@@ -35,6 +35,7 @@ PY_MATRIX = {
     "py38": "3.8",
     "py39": "3.9",
     "py310": "3.10",
+    "py311": "3.11",
 }
 
 BASE_IMAGES = {
@@ -43,8 +44,8 @@ BASE_IMAGES = {
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
     "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
     "cpu": "ubuntu:focal",
 }
 
@@ -212,6 +213,10 @@ def _build_docker_image(
         # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
         # can be found.
         build_args["FIND_LINKS_PATH"] = ".whl"
+
+    if py_version == "py311":
+        # TODO(rickyx): remove once conda supports py3.11
+        build_args["CONDA_CHANNEL"] = "defaults;conda-forge"
 
     tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
 
@@ -619,7 +624,7 @@ if __name__ == "__main__":
         default="py37",
         nargs="*",
         help="Which python versions to build. "
-        "Must be in (py36, py37, py38, py39, py310)",
+        "Must be in (py36, py37, py38, py39, py310, py311)",
     )
     parser.add_argument(
         "--device-types",
