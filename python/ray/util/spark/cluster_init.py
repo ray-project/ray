@@ -533,7 +533,8 @@ def _init_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    start_hook.on_ray_dashboard_created(ray_dashboard_port)
+    if include_dashboard:
+        start_hook.on_ray_dashboard_created(ray_dashboard_port)
 
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,

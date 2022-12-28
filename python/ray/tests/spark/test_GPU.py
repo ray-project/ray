@@ -25,7 +25,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
             with _init_ray_cluster(
-                num_worker_nodes=num_spark_tasks, safe_mode=False,
+                num_worker_nodes=num_spark_tasks,
+                safe_mode=False,
                 head_options={"include_dashboard": False},
             ):
                 worker_res_list = self.get_ray_worker_resources_list()
