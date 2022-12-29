@@ -2,7 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.alpha_star as alpha_star
-from ray.rllib.env.utils import try_import_pyspiel
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -11,6 +11,7 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune import register_env
 
+open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
 # Connect-4 OpenSpiel env.

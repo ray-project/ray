@@ -13,21 +13,48 @@ def try_import_pyspiel(error: bool = False):
         error: Whether to raise an error if pyspiel cannot be imported.
 
     Returns:
-        The tfp module.
+        The pyspiel module.
 
     Raises:
-        ImportError: If error=True and tfp is not installed.
+        ImportError: If error=True and pyspiel is not installed.
     """
     try:
         import pyspiel
 
         return pyspiel
-    except ImportError as e:
+    except ImportError:
         if error:
             raise ImportError(
                 "Could not import pyspiel! Pygame is not a dependency of RLlib "
                 "and Rllib requires you to install pygame separately: "
                 "`pip install pygame`."
+            )
+        return None
+
+
+@PublicAPI
+def try_import_open_spiel(error: bool = False):
+    """Tries importing open_spiel and returns the module (or None).
+
+    Args:
+        error: Whether to raise an error if open_spiel cannot be imported.
+
+    Returns:
+        The open_spiel module.
+
+    Raises:
+        ImportError: If error=True and open_spiel is not installed.
+    """
+    try:
+        import pyspiel
+
+        return pyspiel
+    except ImportError:
+        if error:
+            raise ImportError(
+                "Could not import open_spiel! open_spiel is not a dependency of RLlib "
+                "and Rllib requires you to install open_spiel separately: "
+                "`pip install open_spiel`."
             )
         return None
 
