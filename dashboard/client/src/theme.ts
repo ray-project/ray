@@ -19,6 +19,16 @@ const basicTheme: ThemeOptions = {
     h1: {
       fontSize: "2rem",
     },
+    h2: {
+      fontSize: "1.5rem",
+    },
+    h3: {
+      fontSize: "1rem",
+      fontWeight: 500,
+    },
+    h4: {
+      fontSize: "1rem",
+    },
     body1: {
       fontSize: "0.75rem",
     },
@@ -26,6 +36,27 @@ const basicTheme: ThemeOptions = {
   props: {
     MuiPaper: {
       elevation: 0,
+    },
+  },
+  overrides: {
+    MuiTooltip: {
+      tooltip: {
+        fontSize: "0.75rem",
+        fontWeight: 400,
+        boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+        padding: 8,
+      },
+      tooltipPlacementRight: {
+        margin: "0 8px",
+        "@media (min-width: 600px)": {
+          margin: "0 8px",
+        },
+      },
+    },
+    MuiPaper: {
+      outlined: {
+        borderColor: "#D2DCE6",
+      },
     },
   },
 };

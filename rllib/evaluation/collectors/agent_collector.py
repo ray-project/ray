@@ -1,7 +1,7 @@
 import logging
 
 from copy import deepcopy
-from gym.spaces import Space
+from gymnasium.spaces import Space
 import math
 import numpy as np
 import tree  # pip install dm_tree
@@ -88,7 +88,8 @@ class AgentCollector:
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
         view_req_shifts = [
-            min(vr.shift_arr) - int((vr.data_col or k) == SampleBatch.OBS)
+            min(vr.shift_arr)
+            - int((vr.data_col or k) in [SampleBatch.OBS, SampleBatch.INFOS])
             for k, vr in view_reqs.items()
         ]
         self.shift_before = -min(view_req_shifts)
@@ -186,6 +187,7 @@ class AgentCollector:
         agent_index: int,
         env_id: EnvID,
         init_obs: TensorType,
+        init_infos: Optional[Dict[str, TensorType]] = None,
         t: int = -1,
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
@@ -196,8 +198,8 @@ class AgentCollector:
             agent_index: Unique int index (starting from 0) for the agent
                 within its episode. Not to be confused with AGENT_ID (Any).
             env_id: The environment index (in a vectorized setup).
-            init_obs: The initial observation tensor (after
-            `env.reset()`).
+            init_obs: The initial observation tensor (after `env.reset()`).
+            init_infos: The initial infos dict (after `env.reset()`).
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
         """
@@ -219,6 +221,7 @@ class AgentCollector:
         if SampleBatch.OBS not in self.buffers:
             single_row = {
                 SampleBatch.OBS: init_obs,
+                SampleBatch.INFOS: init_infos or {},
                 SampleBatch.AGENT_INDEX: agent_index,
                 SampleBatch.ENV_ID: env_id,
                 SampleBatch.T: t,
@@ -255,6 +258,7 @@ class AgentCollector:
         flattened = tree.flatten(init_obs)
         for i, sub_obs in enumerate(flattened):
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
+        self.buffers[SampleBatch.INFOS][0].append(init_infos or {})
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
         self.buffers[SampleBatch.T][0].append(t)
@@ -266,8 +270,8 @@ class AgentCollector:
 
         Args:
             values: Data dict (interpreted as a single row) to be added to buffer.
-            Must contain keys:
-                SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
+                Must contain keys:
+                SampleBatch.ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS, and NEXT_OBS.
         """
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
@@ -422,8 +426,8 @@ class AgentCollector:
     ) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
 
-        If the episode/trajectory has no DONE=True at the end, will copy
-        the necessary n timesteps at the end of the trajectory back to the
+        If the episode/trajectory has no TERMINATED|TRUNCATED=True at the end, will
+        copy the necessary n timesteps at the end of the trajectory back to the
         beginning of the buffers and wait for new samples coming in.
         SampleBatches created by this method will be ready for postprocessing
         by a Policy.
@@ -454,9 +458,9 @@ class AgentCollector:
                 if not is_state:
                     continue
 
-            # OBS are already shifted by -1 (the initial obs starts one ts
-            # before all other data columns).
-            obs_shift = -1 if data_col == SampleBatch.OBS else 0
+            # OBS and INFOS are already shifted by -1 (the initial obs/info starts one
+            # ts before all other data columns).
+            obs_shift = -1 if data_col in [SampleBatch.OBS, SampleBatch.INFOS] else 0
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -539,8 +543,10 @@ class AgentCollector:
         # self.shift_before) to the beginning of buffers and erase everything
         # else.
         if (
-            SampleBatch.DONES in self.buffers
-            and not self.buffers[SampleBatch.DONES][0][-1]
+            SampleBatch.TERMINATEDS in self.buffers
+            and not self.buffers[SampleBatch.TERMINATEDS][0][-1]
+            and SampleBatch.TRUNCATEDS in self.buffers
+            and not self.buffers[SampleBatch.TRUNCATEDS][0][-1]
         ):
             # Copy data to beginning of buffer and cut lists.
             if self.shift_before > 0:
@@ -571,6 +577,7 @@ class AgentCollector:
                 if col
                 in [
                     SampleBatch.OBS,
+                    SampleBatch.INFOS,
                     SampleBatch.EPS_ID,
                     SampleBatch.AGENT_INDEX,
                     SampleBatch.ENV_ID,

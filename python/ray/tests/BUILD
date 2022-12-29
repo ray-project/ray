@@ -109,7 +109,9 @@ py_test_module_list(
     "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
+    "test_nested_task.py",
     "test_metrics.py",
+    "test_task_events.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -125,6 +127,7 @@ py_test_module_list(
     "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",
@@ -179,7 +182,6 @@ py_test_module_list(
     "test_node_manager.py",
     "test_numba.py",
     "test_redis_tls.py",
-    "test_ray_shutdown.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_top_level_api.py",
@@ -515,4 +517,20 @@ py_test_module_list(
   name_suffix = "_asan",
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
+    "spark/test_utils.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )

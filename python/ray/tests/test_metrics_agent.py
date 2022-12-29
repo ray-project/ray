@@ -316,13 +316,17 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
+        _, autoscaler_metric_names, autoscaler_samples = fetch_prometheus(
+            [autoscaler_export_addr]
+        )  # noqa
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
             assert any(
                 name.startswith(metric) for name in autoscaler_metric_names
             ), f"{metric} not in {autoscaler_metric_names}"
+            for sample in autoscaler_samples:
+                assert sample.labels["SessionName"] == session_name
 
         # Dashboard metrics
         _, dashboard_metric_names, _ = fetch_prometheus([dashboard_export_addr])
@@ -368,7 +372,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "workers"}
+        assert components == {"raylet", "agent", "ray::IDLE"}
 
         avail_metrics = set(avail_metrics)
 
@@ -431,6 +435,63 @@ def test_operation_stats(monkeypatch, shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=60)
+
+
+def test_per_func_name_stats(shutdown_only):
+    # Test operation stats are available when flag is on.
+    comp_metrics = [
+        "ray_component_cpu_percentage",
+    ]
+    if sys.platform == "linux" or sys.platform == "linux2":
+        # Uss only available from Linux
+        comp_metrics.append("ray_component_uss_mb")
+    addr = ray.init()
+
+    @ray.remote
+    class Actor:
+        pass
+
+    @ray.remote
+    class ActorB:
+        pass
+
+    a = Actor.remote()  # noqa
+    b = ActorB.remote()
+
+    def verify():
+        metrics = raw_metrics(addr)
+        metric_names = set(metrics.keys())
+        for metric in comp_metrics:
+            assert metric in metric_names
+            samples = metrics[metric]
+            components = set()
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert {
+            "raylet",
+            "agent",
+            "ray::Actor",
+            "ray::ActorB",
+            "ray::IDLE",
+        } == components
+        return True
+
+    wait_for_condition(verify, timeout=30)
+
+    # Verify ActorB is reported as value 0 because it is killed.
+    ray.kill(b)
+
+    def verify():
+        metrics = raw_metrics(addr)
+        for metric in comp_metrics:
+            samples = metrics[metric]
+            for sample in samples:
+                if sample.labels["Component"] == "ray::ActorB":
+                    print("abc")
+                    assert sample.value == 0.0
+        return True
+
+    wait_for_condition(verify, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):

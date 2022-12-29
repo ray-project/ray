@@ -75,6 +75,14 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
     :img-top: /images/ray_logo.png
 
     +++
+    .. link-button:: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
+        :type: url
+        :text: [Blog] Training One Million ML Models in Record Time with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
     .. link-button:: /ray-core/examples/batch_training
         :type: ref
         :text: [Example] Batch Training with Ray Core
@@ -144,14 +152,6 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
-    .. link-button:: https://www.anyscale.com/blog/ray-serve-fastapi-the-best-of-both-worlds
-        :type: url
-        :text: [Blog] Ray Serve + FastAPI: The best of both worlds
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/serve.svg
-
-    +++
     .. link-button:: /serve/getting_started
         :type: ref
         :text: [Guide] Getting Started with Ray Serve
@@ -160,17 +160,25 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
-    .. link-button:: /serve/tutorials/rllib
-        :type: ref
-        :text: [Guide] Serving RLlib Models
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/serve.svg
-
-    +++
     .. link-button:: /serve/model_composition
         :type: ref
         :text: [Guide] Model Composition in Serve
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: /serve/tutorials/index
+        :type: ref
+        :text: [Gallery] Serve Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_serve
+        :type: url
+        :text: [Gallery] More Serve Use Cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Hyperparameter Tuning
@@ -188,33 +196,25 @@ Learn more about the Tune library with the following talks and user guides.
     :img-top: /images/tune.png
 
     +++
-    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
-        :type: url
-        :text: [Talk] Distributed Hyperparameter Optimization Made Simple
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: https://druce.ai/2020/10/hyperparameter-tuning-with-xgboost-ray-tune-hyperopt-and-optuna
-        :type: url
-        :text: [Blog] Hyperopt, Optuna, and Ray Tune for XGBoost and LightGBM
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: https://www.cncf.io/blog/2022/02/15/managing-public-cloud-resources-for-deep-learning-training-experiments-and-lessons-learned/
-        :type: url
-        :text: [Blog] Managing public cloud resources for deep learning training
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/tune.png
-
-    +++
     .. link-button:: /tune/getting-started
         :type: ref
         :text: [Guide] Getting Started with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune
+        :type: url
+        :text: [Blog] How to distribute hyperparameter tuning with Ray Tune
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tune.png
+
+    +++
+    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
+        :type: url
+        :text: [Talk] Simple Distributed Hyperparameter Optimization
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/tune.png
@@ -225,12 +225,20 @@ Learn more about the Tune library with the following talks and user guides.
         :text: [Blog] Hyperparameter Search with 🤗 Transformers
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/tune.png
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /tune/examples/index
         :type: ref
         :text: [Gallery] Ray Tune Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray-tune
+        :type: url
+        :text: More Tune use cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Distributed Training
@@ -257,14 +265,6 @@ Learn more about the Train library with the following talks and user guides.
     :img-top: /images/uber.png
 
     +++
-    .. link-button:: https://www.uber.com/blog/horovod-ray/
-        :type: url
-        :text: [Blog] Elastic Deep Learning with Horovod on Ray
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/uber.png
-
-    +++
     .. link-button:: https://www.uber.com/blog/elastic-xgboost-ray/
         :type: url
         :text: [Blog] Elastic Distributed Training with XGBoost on Ray
@@ -286,12 +286,20 @@ Learn more about the Train library with the following talks and user guides.
         :text: [Example] Fine-tune a 🤗 Transformers model
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ray_logo.png
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /train/examples
         :type: ref
         :text: [Gallery] Ray Train Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_train
+        :type: url
+        :text: [Gallery] More Train Use Cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Reinforcement Learning
@@ -304,6 +312,14 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     :column: col-md-4 px-2 py-2
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: https://applied-rl-course.netlify.app/
+        :type: url
+        :text: [Course] Applied Reinforcement Learning with RLlib
+        :classes: btn-link btn-block stretched-link
     ---
     :img-top: /rllib/images/rllib-logo.png
 
@@ -321,14 +337,29 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :text: [Guide] Getting Started with RLlib
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /rllib/images/rllib-logo.png
+    :img-top: /images/riot.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
+        :type: url
+        :text: [Talk] Deep reinforcement learning at Riot Games
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /rllib/rllib-examples
         :type: ref
         :text: [Gallery] RLlib Examples Gallery
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
 
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=rllib
+        :type: url
+        :text: [Gallery] More RL Use Cases on the Blog
+        :classes: btn-link btn-block stretched-link
 
 ML Platform
 -----------
@@ -440,7 +471,7 @@ The following are highlighted examples utilizing Ray AIR to implement end-to-end
         :text: [Example] AutoML for Time Series with Ray
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ray_logo.png
+    :img-top: /images/grid.png
 
     +++
     .. link-button:: /ray-air/examples/index
