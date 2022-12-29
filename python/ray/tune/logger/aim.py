@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, List
 from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
 from aim.sdk import Run
 
@@ -30,6 +30,19 @@ class AimCallback(LoggerCallback):
     It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
     performant and beautiful UI.
     Source: https://github.com/aimhubio/aim
+
+    Args:
+    repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
+        If skipped, default Repo is used.
+    experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
+        Can be used later to query runs/sequences.
+    system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
+        metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
+    log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
+        git info, environment variables, etc.
+    metrics (:obj:`List[str]`, optional): Specific metrics to track,
+        if no metric is specified log everything that is reported.
+    as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -41,7 +54,8 @@ class AimCallback(LoggerCallback):
         experiment: Optional[str] = None,
         system_tracking_interval: Optional[int] = DEFAULT_SYSTEM_TRACKING_INT,
         log_system_params: bool = True,
-        metrics: Optional[str] = None,
+        metrics: Optional[List[str]] = None,
+        as_multirun: bool = False,
     ):
 
         self._repo_path = repo
@@ -49,11 +63,11 @@ class AimCallback(LoggerCallback):
         self._system_tracking_interval = system_tracking_interval
         self._log_system_params = log_system_params
         self._metrics = metrics
-        self._log_value_warned = False
+        self._as_multirun = as_multirun
         self._run_cls = Run
         self._trial_run: Dict["Trial", Run] = {}
 
-    def _create_run(self, trial):
+    def _create_run(self, trial: "Trial"):
         """
         Returns: Run
         """
@@ -63,14 +77,19 @@ class AimCallback(LoggerCallback):
             system_tracking_interval=self._system_tracking_interval,
             log_system_params=self._log_system_params,
         )
-        run["trial_id"] = trial.trial_id
+        if self._as_multirun:
+            run["trial_id"] = trial.trial_id
         return run
 
     def log_trial_start(self, trial: "Trial"):
         logger.info(f"trial {trial} logger is started")
 
-        if trial in self._trial_run:
-            self._trial_run[trial].close()
+        if self._as_multirun:
+            if trial in self._trial_run:
+                self._trial_run[trial].close()
+        elif self._trial_run:
+            return
+
         trial.init_logdir()
         self._trial_run[trial] = self._create_run(trial)
 
@@ -87,8 +106,6 @@ class AimCallback(LoggerCallback):
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         # create local copy to avoid problems
         tmp_result = result.copy()
-        if trial not in self._trial_run:
-            self.log_trial_start(trial)
 
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
@@ -96,9 +113,9 @@ class AimCallback(LoggerCallback):
             if k in tmp_result:
                 del tmp_result[k]  # not useful to log these
 
-        context = None
+        context = {}
         if "context" in tmp_result:
-            context = tmp_result["context"]
+            context.update(tmp_result["context"])
             del tmp_result["context"]
 
         epoch = None
@@ -106,10 +123,14 @@ class AimCallback(LoggerCallback):
             epoch = tmp_result["epoch"]
             del tmp_result["epoch"]
 
+        trial_run = self._get_trial_run(trial)
+        if not self._as_multirun:
+            context["trial"] = trial.trial_id
+
         if self._metrics:
             for metric in self._metrics:
                 try:
-                    self._trial_run[trial].track(
+                    trial_run.track(
                         value=tmp_result[metric],
                         epoch=epoch,
                         name=metric,
@@ -130,7 +151,7 @@ class AimCallback(LoggerCallback):
                     value
                 ):
                     valid_result[attr] = value
-                    self._trial_run[trial].track(
+                    trial_run.track(
                         value=value, name=attr, epoch=epoch, step=step, context=context
                     )
                 elif (isinstance(value, list) and len(value) > 0) or (
@@ -140,8 +161,9 @@ class AimCallback(LoggerCallback):
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         # cleanup in the end
-        self._trial_run[trial].close()
-        del self._trial_run[trial]
+        trial_run = self._get_trial_run(trial)
+        trial_run.close()
+        del trial_run
 
         logger.info(f"trial {trial} aim logger closed")
 
@@ -171,3 +193,9 @@ class AimCallback(LoggerCallback):
             )
 
         self._trial_run[trial]["hparams"] = scrubbed_params
+
+
+    def _get_trial_run(self, trial):
+        if not self._as_multirun:
+            return list(self._trial_run.values())[0]
+        return self._trial_run[trial]
