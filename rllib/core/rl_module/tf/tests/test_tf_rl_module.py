@@ -2,13 +2,13 @@ import unittest
 from typing import Mapping
 
 import gymnasium as gym
-import tensorflow as tf
 
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.utils.framework import try_import_tfp
+from ray.rllib.utils.framework import try_import_tfp, try_import_tf
 from ray.rllib.utils.test_utils import check
 
+_, tf, _ = try_import_tf(error=True)
 tfp = try_import_tfp(error=True)
 
 

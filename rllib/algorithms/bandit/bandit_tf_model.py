@@ -13,12 +13,8 @@ tfp = try_import_tfp()
 
 class OnlineLinearRegression(tf.Module if tf else object):
     def __init__(self, feature_dim, alpha=1, lambda_=1):
-        if not tfp:
-            raise ImportError(
-                "Could not import TensorFlow Probabilty! OnlineLinearRegression "
-                "requires you to install Tensorflow Probabilty. You can install it "
-                "with `pip install tensorflow_probability`."
-            )
+        try_import_tf(error=True)
+        try_import_tfp(error=True)
 
         super(OnlineLinearRegression, self).__init__()
 
