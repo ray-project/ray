@@ -201,6 +201,6 @@ with InputNode(input_type={0: int, 1: str, "id": str}) as user_input:
 Notice there are multiple inputs: `user_input[0]`, `user_input[1]`, and `user_input["id"]`. They are accessed by indexing into `user_input`. The data types for each of these inputs must be one of the supported input data types.
 :::
 
-When initializing `InputNode()`, these data types can be specified by passing in a dictionary that maps key to `type` (where key is integer or string) to the parameter `input_type`. Here, the input types are specified to be `int`, `str`, and `str`, so the Gradio visualization will take in the three inputs through one [Numeric Field](https://gradio.app/docs/#number) and two [Textboxs](https://gradio.app/docs/#textbox).
+When initializing `InputNode()`, these data types can be specified by passing in a dictionary that maps key to `type` (where key is integer or string) to the parameter `input_type`. Here, the input types are specified to be `int`, `str`, and `str`, so the Gradio visualization will take in the three inputs through one [Numeric Field](https://gradio.app/docs/#number) and two [Textboxes](https://gradio.app/docs/#textbox).
 
 ![multiple input example](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_visualization/multiple_inputs.png)
