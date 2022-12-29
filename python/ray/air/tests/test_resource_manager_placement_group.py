@@ -234,15 +234,15 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
 
     res1 = ray.get(av1.remote())
 
-    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0_")) == 0
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0_")) == 0, res1
 
     [av1, av2] = acq.annotate_remote_entities(
         [get_assigned_resources, get_assigned_resources]
     )
 
     res1, res2 = ray.get([av1.remote(), av2.remote()])
-    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0_")) == 0
-    assert sum(v for k, v in res2.items() if k.startswith("CPU_group_0_")) == 2
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0_")) == 0, res1
+    assert sum(v for k, v in res2.items() if k.startswith("CPU_group_0_")) == 2, res2
 
 
 def test_capture_child_tasks(ray_start_4_cpus):
