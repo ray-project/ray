@@ -200,7 +200,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    async def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -327,6 +327,7 @@ class JobSupervisor:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     async def _poll_all(self, pid: int):
+        """Poll process and all its child processes until all are completed."""
         parent_process = psutil.Process(pid)
         children = parent_process.children(recursive=True)
 
@@ -337,9 +338,19 @@ class JobSupervisor:
             else:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
-    def kill_children(self, pid: int, sig):
-        parent_process = psutil.Process(pid)
+    def _kill_job(self, entrypoint_pid: int, sig: signal.Signals):
+        """Kills job associated with pid of process from _exec_entrypoint (Unix only).
+        
+        On Mac OSX systems, this kills the parent process itself along with all of its
+        child processes.
+
+        On Linux systems, the parent process is a shell process used to start the actual
+        entrypoint command, so this kills all its child processes but not the parent
+        process itself.
+        """
+        parent_process = psutil.Process(entrypoint_pid)
         procs_to_kill = parent_process.children(recursive=True)
+
         if sys.platform == "darwin":
             procs_to_kill += [parent_process]
 
@@ -394,7 +405,7 @@ class JobSupervisor:
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = await self._exec_entrypoint(log_path)
+            child_process = self._exec_entrypoint(log_path)
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
@@ -414,7 +425,7 @@ class JobSupervisor:
                             "job with SIGTERM."
                         )
                         stop_signal = "SIGTERM"
-                    self.kill_children(child_pid, getattr(signal, stop_signal))
+                    self._kill_job(child_pid, getattr(signal, stop_signal))
                     # Wait for job to terminate gracefully, otherwise kill process
                     # forcefully after timeout.
                     try:
@@ -424,8 +435,8 @@ class JobSupervisor:
                                 self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
                             )
                         )
-                        polling_task = create_task(self._poll_all(child_pid))
-                        await asyncio.wait_for(polling_task, stop_job_wait_time)
+                        poll_job_stop_task = create_task(self._poll_all(child_pid))
+                        await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
                         logger.info(
                             f"Job {self._job_id} has been terminated gracefully "
                             f"with {stop_signal}."
@@ -437,10 +448,10 @@ class JobSupervisor:
                             f"{stop_job_wait_time} seconds. Job is now being "
                             "force-killed."
                         )
-                        polling_task.cancel()
+                        poll_job_stop_task.cancel()
                         # Kill the entire process group in case the job spawned any
                         # child processes of its own
-                        self.kill_children(child_pid, signal.SIGKILL)
+                        self._kill_job(child_pid, signal.SIGKILL)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
